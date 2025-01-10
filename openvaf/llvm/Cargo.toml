@@ -21,3 +21,6 @@ ahash = "0.8"
 
 [build-dependencies]
 cc = "1.0"
+
+[lints.rust]
+ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(llvm_component, values("x86", "arm", "aarch64", "riscv"))'] }
