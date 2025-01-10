@@ -29,10 +29,13 @@ backtrace = "0.3.68"
 mimalloc = { version = "*", default-features = false}
 
 [dev-dependencies]
-xshell = "0.2.3"
+xshell = "0.2.7"
 stdx = { version = "0.0.0", path = "../../lib/stdx" }
 mini_harness = { version = "0.0.1", path = "../../lib/mini_harness" }
 
 [[test]]
 name = "cli"
 harness = false
+
+[features]
+nightly = []
