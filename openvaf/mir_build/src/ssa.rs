@@ -39,8 +39,14 @@ pub(crate) trait ControlFlowGraph {
 }
 
 impl<'c> ControlFlowGraph for &'c CompleteCfg {
-    type Predecessors<'a> = mir::flowgraph::PredecessorIter<'a> where 'c: 'a;
-    type PredecessorsRev<'a> = mir::flowgraph::PredecessorRevIter<'a> where 'c: 'a;
+    type Predecessors<'a>
+        = mir::flowgraph::PredecessorIter<'a>
+    where
+        'c: 'a;
+    type PredecessorsRev<'a>
+        = mir::flowgraph::PredecessorRevIter<'a>
+    where
+        'c: 'a;
 
     const NEEDS_TAG: bool = false;
     fn predecessors(&self, bb: Block) -> Self::Predecessors<'_> {

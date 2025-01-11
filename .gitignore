@@ -30,3 +30,4 @@ markus_notes
 .vscode/*
 !.vscode/launch-openvaf*.json
 *~
+.clangd

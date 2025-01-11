@@ -1,11 +1,11 @@
 #include "llvm/IR/Instructions.h"
-#include "llvm/Support/CrashRecoveryContext.h"
+//#include "llvm/Support/CrashRecoveryContext.h"
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 
-#include <iostream>
-#include <mutex>
+//#include <iostream>
+//#include <mutex>
 #include <stdlib.h>
 
 using namespace llvm;

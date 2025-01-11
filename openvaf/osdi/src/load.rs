@@ -84,7 +84,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     NoiseSourceKind::NoiseTable { .. } => unimplemented!("noise tables"),
                 };
                 // Multiply with squared factor because factor is in terms of signal, but
-                // we are computing the power, which is scaled by factor**2. 
+                // we are computing the power, which is scaled by factor**2.
                 pwr = LLVMBuildFMul(llbuilder, pwr, fac, UNNAMED);
                 LLVMSetFastMath(pwr);
                 pwr = LLVMBuildFMul(llbuilder, pwr, fac, UNNAMED);

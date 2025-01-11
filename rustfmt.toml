@@ -2,5 +2,7 @@ use_small_heuristics = "Max"
 newline_style = "unix"
 use_field_init_shorthand = true
 
-imports_granularity = "Module"
-group_imports = "StdExternalCrate"
+# These are only available in nightly rust
+
+# imports_granularity = "Module"
+# group_imports = "StdExternalCrate"

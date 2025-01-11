@@ -9,12 +9,12 @@ fn fail(s: &str) -> ! {
     std::process::exit(1);
 }
 
+// https://doc.rust-lang.org/reference/attributes/codegen.html#the-track_caller-attribute
 #[track_caller]
 pub fn output(cmd: &mut Command) -> String {
-    let output = match cmd.stderr(Stdio::inherit()).output() {
-        Ok(status) => status,
-        Err(e) => fail(&format!("failed to execute command: {:?}\nerror: {}", cmd, e)),
-    };
+    let output = cmd.stderr(Stdio::inherit()).output().unwrap_or_else(|err| {
+        fail(&format!("failed to execute command: {:?}\nerror: {}", cmd, err))
+    });
     if !output.status.success() {
         panic!(
             "command did not execute successfully: {:?}\n\
@@ -68,18 +68,15 @@ fn winepath(path: &str) -> PathBuf {
 }
 
 fn main() {
-    if std::env::var("COMPILER_NAME").is_err() {
+    if env::var("COMPILER_NAME").is_err() {
         println!("cargo:rustc-env=COMPILER_NAME=openvaf");
     }
-
+    // If we're just running `check`, there's no need to build LLVM
     if tracked_env_var_os("RUST_CHECK").is_some() {
-        // If we're just running `check`, there's no need for LLVM to be built.
         return;
     }
 
     // build_helper::restore_library_path();
-
-    // let target = env::var("TARGET").expect("TARGET was not set");
     let llvm_config = tracked_env_var_os("LLVM_CONFIG").map(PathBuf::from);
     // TODO provide mechanism to build llvm yourself
     // .unwrap_or_else(|| {
@@ -158,12 +155,13 @@ fn main() {
         "lto",
         "debuginfopdb",
         "windowsmanifest",
-        "libdriver", // "coverage",
-                     // "instrumentation",
+        "libdriver",
+        // "coverage",
+        // "instrumentation",
     ];
 
     let components = output(Command::new(&llvm_config).arg("--components"));
-    let mut components = components.split_whitespace().collect::<Vec<_>>();
+    let mut components: Vec<&str> = components.split_whitespace().collect();
     components.retain(|c| optional_components.contains(c) || required_components.contains(c));
 
     for component in required_components {
@@ -172,19 +170,13 @@ fn main() {
         }
     }
 
-    for component in components.iter() {
+    for component in &components {
         println!("cargo:rustc-cfg=llvm_component=\"{}\"", component);
     }
 
     // Link in our own LLVM shims, compiled with the same flags as LLVM
-    let mut cmd = Command::new(&llvm_config);
-    cmd.arg("--cxxflags");
-    let cxxflags = output(&mut cmd);
-
-    // Obtain version and pass as env variable
-    let mut cmd = Command::new(&llvm_config);
-    cmd.arg("--version");
-    let version = output(&mut cmd).trim().to_owned();
+    let cxxflags = output(Command::new(&llvm_config).arg("--cxxflags"));
+    let version = output(Command::new(&llvm_config).arg("--version")).trim().to_owned();
     let version_components: Vec<_> = version.split('.').collect();
     if let [major, minor, patch] = version_components.as_slice() {
         let major: Result<u32, _> = major.parse();
@@ -196,7 +188,7 @@ fn main() {
             println!("cargo:rustc-env=LLVM_VERSION_PATCH={}", patch);
         } else {
             fail(&format!(
-                "Invalid LLVM version {:?}!\nExpected 3 numbers separated by '.' foound {:?}",
+                "Invalid LLVM version {:?}!\nExpected 3 numbers separated by '.' found {:?}",
                 version, components
             ))
         }
