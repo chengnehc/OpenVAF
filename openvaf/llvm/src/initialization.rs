@@ -6,8 +6,12 @@ use std::sync::Once;
 use ahash::AHashSet;
 use libc::{c_char, c_int};
 
-use crate::{Bool, PassRegistry};
+use crate::{Bool, LLVMParseCommandLineOptions, PassRegistry};
 
+// TODO(JW) remove dependencies on the following unnecessary functions
+// Since LLVM 17, all functions below for initializing legacy passes have been removed.
+// `LLVMPassRegistryRef` and `LLVMGetGlobalPassRegistry`, which were only useful
+// in conjunction with initialization functions, have been removed.
 extern "C" {
     fn LLVMInitializeCore(R: *mut PassRegistry);
     fn LLVMInitializeTransformUtils(R: *mut PassRegistry);
@@ -19,15 +23,16 @@ extern "C" {
     fn LLVMInitializeAnalysis(R: *mut PassRegistry);
     fn LLVMInitializeCodeGen(R: *mut PassRegistry);
     fn LLVMInitializeTarget(R: *mut PassRegistry);
-
     fn LLVMGetGlobalPassRegistry() -> *mut PassRegistry;
+
+    // Threading
+    // Check whether LLVM is executing in thread-safe mode or not
     fn LLVMIsMultithreaded() -> Bool;
-    fn LLVMParseCommandLineOptions(
-        argc: c_int,
-        argv: *const *const c_char,
-        overview: *const c_char,
-    );
 }
+
+// See Also:
+
+// https://github.com/rust-lang/rust/blob/master/compiler/rustc_codegen_llvm/src/llvm_util.rs
 
 static INIT: Once = Once::new();
 
@@ -86,6 +91,9 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
     //     llvm::LLVMTimeTraceProfilerInitialize();
     // }
 
+    // TODO: remove dependencies on the following unnecessary functions
+    // Since LLVM 17, all functions below for initializing legacy passes have been removed.
+    // Calls to such functions can simply be dropped, as they are no longer necessary.
     let registry = LLVMGetGlobalPassRegistry();
     LLVMInitializeCore(registry);
     LLVMInitializeCodeGen(registry);
@@ -106,6 +114,7 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
     );
 }
 
+// https://github.com/rust-lang/rust/blob/master/compiler/rustc_llvm/src/lib.rs
 /// Initialize targets enabled by the build script via `cfg(llvm_component = "...")`.
 /// N.B., this function can't be moved to `rustc_codegen_llvm` because of the `cfg`s.
 pub fn initialize_available_targets() {
@@ -135,14 +144,14 @@ pub fn initialize_available_targets() {
         LLVMInitializeX86AsmPrinter,
         LLVMInitializeX86AsmParser
     );
-    init_target!(
-        llvm_component = "arm",
-        LLVMInitializeARMTargetInfo,
-        LLVMInitializeARMTarget,
-        LLVMInitializeARMTargetMC,
-        LLVMInitializeARMAsmPrinter,
-        LLVMInitializeARMAsmParser
-    );
+    // init_target!(
+    //     llvm_component = "arm",
+    //     LLVMInitializeARMTargetInfo,
+    //     LLVMInitializeARMTarget,
+    //     LLVMInitializeARMTargetMC,
+    //     LLVMInitializeARMAsmPrinter,
+    //     LLVMInitializeARMAsmParser
+    // );
     init_target!(
         llvm_component = "aarch64",
         LLVMInitializeAArch64TargetInfo,
@@ -213,14 +222,14 @@ pub fn initialize_available_targets() {
     //     LLVMInitializeMSP430AsmPrinter,
     //     LLVMInitializeMSP430AsmParser
     // );
-    init_target!(
-        llvm_component = "riscv",
-        LLVMInitializeRISCVTargetInfo,
-        LLVMInitializeRISCVTarget,
-        LLVMInitializeRISCVTargetMC,
-        LLVMInitializeRISCVAsmPrinter,
-        LLVMInitializeRISCVAsmParser
-    );
+    // init_target!(
+    //     llvm_component = "riscv",
+    //     LLVMInitializeRISCVTargetInfo,
+    //     LLVMInitializeRISCVTarget,
+    //     LLVMInitializeRISCVTargetMC,
+    //     LLVMInitializeRISCVAsmPrinter,
+    //     LLVMInitializeRISCVAsmParser
+    // );
     // init_target!(
     //     llvm_component = "sparc",
     //     LLVMInitializeSparcTargetInfo,

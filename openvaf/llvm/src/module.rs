@@ -1,3 +1,7 @@
+//! Core::Modules
+//!
+//! Modules represent the top-level structure in an LLVM program.
+
 use std::iter;
 use std::mem::MaybeUninit;
 
@@ -6,18 +10,20 @@ use libc::{c_char, size_t};
 use crate::support::LLVMString;
 use crate::{Bool, Context, Module, Type, Value};
 
-// Core->Modules
 extern "C" {
     pub fn LLVMModuleCreateWithNameInContext<'a>(
         ModuleID: *const c_char,
         C: &'a Context,
     ) -> &'a Module;
-
     /// Set the original source file name of a module to a string Name with length Len.
     pub fn LLVMSetSourceFileName(module: &Module, name: *const c_char, len: size_t);
-
+    /// Set the data layout for a module.
     pub fn LLVMSetDataLayout(module: &Module, DataLayoutStr: *const c_char);
-    pub fn LLVMLinkModules2(dst: &Module, src: &Module) -> Bool;
+    /// Obtain the target triple for a module.
+    pub fn LLVMGetTarget(module: &Module) -> *const c_char;
+    /// Set the target triple for a module.
+    pub fn LLVMSetTarget(module: &Module, triple: *const c_char);
+
     // /// Returns the module flags as an array of flag-key-value triples.  The caller is responsible for freeing this array by calling LLVMDisposeModuleFlagsMetadata.
     // pub fn LLVMCopyModuleFlagsMetadata(
     //     module: &Module,
@@ -54,7 +60,6 @@ extern "C" {
 
     // pub fn LLVMDumpModule(module: &Module);
     pub fn LLVMPrintModuleToString(module: &Module) -> *mut c_char;
-
     // pub fn LLVMGetModuleInlineAsm(module: &Module, Len: *mut size_t) -> *const c_char;
     // pub fn LLVMSetModuleInlineAsm2(module: &Module, Asm: *const c_char, Len: size_t);
     // pub fn LLVMAppendModuleInlineAsm(module: &Module, Asm: *const c_char, Len: size_t);
@@ -70,32 +75,34 @@ extern "C" {
     //     CanThrow: LLVMBool,
     // ) -> &'a Value;
 
-    //     // pub fn LLVMGetModuleContext(module: &Module) -> &'a Context;
-    //     pub fn LLVMGetFirstNamedMetadata(module: &Module) -> NamedMDNodeRef;
-    //     pub fn LLVMGetLastNamedMetadata(module: &Module) -> NamedMDNodeRef;
-    //     pub fn LLVMGetNextNamedMetadata(NamedMDNode: NamedMDNodeRef) -> NamedMDNodeRef;
-    //     pub fn LLVMGetPreviousNamedMetadata(NamedMDNode: NamedMDNodeRef) -> NamedMDNodeRef;
-    //     pub fn LLVMGetNamedMetadata(
-    //         module: &Module,
-    //         name: *const c_char,
-    //         NameLen: size_t,
-    //     ) -> NamedMDNodeRef;
-    //     pub fn LLVMGetOrInsertNamedMetadata(
-    //         module: &Module,
-    //         name: *const c_char,
-    //         NameLen: size_t,
-    //     ) -> NamedMDNodeRef;
-    //     pub fn LLVMGetNamedMetadataName(
-    //         NamedMD: NamedMDNodeRef,
-    //         NameLen: *const size_t,
-    //     ) -> *const c_char;
-    //     pub fn LLVMGetNamedMetadataNumOperands(module: &Module, name: *const c_char) -> c_uint;
-    //     pub fn LLVMGetNamedMetadataOperands(module: &Module, name: *const c_char, Dest: *mut &'a Value);
-    //     pub fn LLVMAddNamedMetadataOperand(module: &Module, name: *const c_char, Val: &'a Value);
-    //     pub fn LLVMGetDebugLocDirectory(Val: &'a Value, Length: *mut c_uint) -> *const c_char;
-    //     pub fn LLVMGetDebugLocFilename(Val: &'a Value, Length: *mut c_uint) -> *const c_char;
-    //     pub fn LLVMGetDebugLocLine(Val: &'a Value) -> c_uint;
-    //     pub fn LLVMGetDebugLocColumn(Val: &'a Value) -> c_uint;
+    // pub fn LLVMGetModuleContext(module: &Module) -> &'a Context;
+    // pub fn LLVMGetFirstNamedMetadata(module: &Module) -> NamedMDNodeRef;
+    // pub fn LLVMGetLastNamedMetadata(module: &Module) -> NamedMDNodeRef;
+    // pub fn LLVMGetNextNamedMetadata(NamedMDNode: NamedMDNodeRef) -> NamedMDNodeRef;
+    // pub fn LLVMGetPreviousNamedMetadata(NamedMDNode: NamedMDNodeRef) -> NamedMDNodeRef;
+    // pub fn LLVMGetNamedMetadata(
+    //     module: &Module,
+    //     name: *const c_char,
+    //     NameLen: size_t,
+    // ) -> NamedMDNodeRef;
+    // pub fn LLVMGetOrInsertNamedMetadata(
+    //     module: &Module,
+    //     name: *const c_char,
+    //     NameLen: size_t,
+    // ) -> NamedMDNodeRef;
+    // pub fn LLVMGetNamedMetadataName(
+    //     NamedMD: NamedMDNodeRef,
+    //     NameLen: *const size_t,
+    // ) -> *const c_char;
+    // pub fn LLVMGetNamedMetadataNumOperands(module: &Module, name: *const c_char) -> c_uint;
+    // pub fn LLVMGetNamedMetadataOperands(module: &Module, name: *const c_char, Dest: *mut &'a Value);
+    // pub fn LLVMAddNamedMetadataOperand(module: &Module, name: *const c_char, Val: &'a Value);
+    // pub fn LLVMGetDebugLocDirectory(Val: &'a Value, Length: *mut c_uint) -> *const c_char;
+    // pub fn LLVMGetDebugLocFilename(Val: &'a Value, Length: *mut c_uint) -> *const c_char;
+    // pub fn LLVMGetDebugLocLine(Val: &'a Value) -> c_uint;
+    // pub fn LLVMGetDebugLocColumn(Val: &'a Value) -> c_uint;
+
+    /// Add a function to a module under a specified name.
     pub fn LLVMAddFunction<'a>(
         module: &'a Module,
         name: *const c_char,
@@ -107,16 +114,13 @@ extern "C" {
     fn LLVMGetNextFunction(fun: &Value) -> Option<&Value>;
     // fn LLVMGetPreviousFunction<'a>(Fn: &'a Value) -> Option<&'a Value>;
 
-    /// Verify that a module is valid, taking the specified action if not.
+    /// Core::Linker
     ///
-    /// Optionally returns a human-readable description of any invalid constructs,
-    /// which must be disposed with `LLVMDisposeMessage`.
-    pub fn LLVMVerifyModule(
-        module: &Module,
-        Action: VerifierFailureAction,
-        OutMessage: Option<&mut MaybeUninit<LLVMString>>,
-    ) -> Bool;
-
+    /// Link the source module into the destination module.
+    ///
+    /// Destroys the source module, returns true on error. Use the diagnostic
+    /// handler to get any diagnostic message.
+    pub fn LLVMLinkModules2(dst: &Module, src: &Module) -> Bool;
 }
 
 pub fn function_iter(module: &Module) -> impl Iterator<Item = &Value> + '_ {
@@ -133,4 +137,18 @@ pub enum VerifierFailureAction {
     PrintMessage = 1,
     /// Return 1 and print nothing.
     ReturnStatus = 2,
+}
+
+extern "C" {
+    /// Analysis
+    ///
+    /// Verify that a module is valid, taking the specified action if not.
+    ///
+    /// Optionally returns a human-readable description of any invalid constructs,
+    /// which must be disposed with `LLVMDisposeMessage`.
+    pub fn LLVMVerifyModule(
+        module: &Module,
+        Action: VerifierFailureAction,
+        OutMessage: Option<&mut MaybeUninit<LLVMString>>,
+    ) -> Bool;
 }

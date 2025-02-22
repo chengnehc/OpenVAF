@@ -1,3 +1,5 @@
+//! Opaque Pointers
+
 use std::marker::PhantomData;
 
 enum Opaque {}

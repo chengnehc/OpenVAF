@@ -3,30 +3,21 @@ use ::libc::{c_char, c_uint};
 use crate::{BasicBlock, Bool, Builder, Context, IntPredicate, RealPredicate, Type, Value};
 pub use LLVMBuildInBoundsGEP2 as LLVMBuildGEP2;
 
-// Core->Instruction Builders
+// Instruction Builders
 extern "C" {
     pub fn LLVMCreateBuilderInContext(ctx: &Context) -> &mut Builder<'_>;
-    pub fn LLVMPositionBuilderAtEnd<'a>(builder: &Builder<'a>, block: &'a BasicBlock);
     pub fn LLVMPositionBuilder<'a>(
         builder: &Builder<'a>,
         block: &'a BasicBlock,
         inst: Option<&'a Value>,
     );
+    pub fn LLVMPositionBuilderAtEnd<'a>(builder: &Builder<'a>, block: &'a BasicBlock);
     pub fn LLVMGetInsertBlock<'a>(builder: &Builder<'a>) -> &'a BasicBlock;
     pub fn LLVMDisposeBuilder<'a>(builder: &'a mut Builder<'a>);
 
     // Terminators
     pub fn LLVMBuildRetVoid<'a>(builder: &Builder<'a>) -> &'a Value;
     pub fn LLVMBuildRet<'a>(builder: &Builder<'a>, val: &'a Value) -> &'a Value;
-    pub fn LLVMBuildSwitch<'a>(
-        builder: &Builder<'a>,
-        val: &'a Value,
-        default_block: &'a BasicBlock,
-        num_case: c_uint,
-    ) -> &'a Value;
-
-    pub fn LLVMAddCase<'a>(switch: &'a Value, val: &'a Value, bb: &'a BasicBlock);
-
     // pub fn LLVMBuildAggregateRet(
     //     builder: &Builder<'a>,
     //     RetVals: *mut &'a Value,
@@ -39,13 +30,13 @@ extern "C" {
         then_bb: &'a BasicBlock,
         else_bb: &'a BasicBlock,
     ) -> &'a Value;
-
-    pub fn LLVMBuildExtractValue<'a>(
-        arg1: &Builder<'a>,
-        AggVal: &'a Value,
-        Index: c_uint,
-        Name: *const c_char,
+    pub fn LLVMBuildSwitch<'a>(
+        builder: &Builder<'a>,
+        val: &'a Value,
+        default_block: &'a BasicBlock,
+        num_case: c_uint,
     ) -> &'a Value;
+    pub fn LLVMAddCase<'a>(switch: &'a Value, val: &'a Value, bb: &'a BasicBlock);
 
     // Arithmetic
     pub fn LLVMBuildAdd<'a>(
@@ -78,7 +69,6 @@ extern "C" {
         RHS: &'a Value,
         Name: *const c_char,
     ) -> &'a Value;
-
     pub fn LLVMBuildFMul<'a>(
         builder: &Builder<'a>,
         LHS: &'a Value,
@@ -97,7 +87,6 @@ extern "C" {
         RHS: &'a Value,
         Name: *const c_char,
     ) -> &'a Value;
-
     pub fn LLVMBuildSRem<'a>(
         builder: &Builder<'a>,
         LHS: &'a Value,
@@ -212,7 +201,21 @@ extern "C" {
         Name: *const c_char,
     ) -> &'a Value;
     pub fn LLVMBuildStore<'a>(builder: &Builder<'a>, Val: &'a Value, Ptr: &'a Value) -> &'a Value;
-
+    pub fn LLVMBuildInBoundsGEP2<'a>(
+        B: &Builder<'a>,
+        Ty: &'a Type,
+        Pointer: &'a Value,
+        Indices: *const &'a Value,
+        NumIndices: c_uint,
+        Name: *const c_char,
+    ) -> &'a Value;
+    pub fn LLVMBuildStructGEP2<'a>(
+        builder: &Builder<'a>,
+        ty: &'a Type,
+        ptr: &'a Value,
+        idx: u32,
+        Name: *const c_char,
+    ) -> &'a Value;
     // pub fn LLVMBuildGlobalString(B: &Builder, Str: *const c_char, Name: *const c_char)
     //     -> &'a Value;
     // pub fn LLVMBuildGlobalStringPtr(
@@ -263,31 +266,6 @@ extern "C" {
         Val: &'a Value,
         Destty: &'a Type,
         Name: *const c_char,
-    ) -> &'a Value;
-
-    pub fn LLVMBuildInBoundsGEP2<'a>(
-        B: &Builder<'a>,
-        Ty: &'a Type,
-        Pointer: &'a Value,
-        Indices: *const &'a Value,
-        NumIndices: c_uint,
-        Name: *const c_char,
-    ) -> &'a Value;
-
-    pub fn LLVMBuildStructGEP2<'a>(
-        builder: &Builder<'a>,
-        ty: &'a Type,
-        ptr: &'a Value,
-        idx: u32,
-        Name: *const c_char,
-    ) -> &'a Value;
-
-    pub fn LLVMBuildSelect<'a>(
-        builder: &Builder<'a>,
-        cond: &'a Value,
-        then_val: &'a Value,
-        else_val: &'a Value,
-        name: *const c_char,
     ) -> &'a Value;
     // pub fn LLVMBuildFPTrunc(
     //     builder: &Builder<'a>,
@@ -390,7 +368,19 @@ extern "C" {
         NumArgs: c_uint,
         Name: *const c_char,
     ) -> &'a Value;
-
+    pub fn LLVMBuildSelect<'a>(
+        builder: &Builder<'a>,
+        cond: &'a Value,
+        then_val: &'a Value,
+        else_val: &'a Value,
+        name: *const c_char,
+    ) -> &'a Value;
+    pub fn LLVMBuildExtractValue<'a>(
+        arg1: &Builder<'a>,
+        AggVal: &'a Value,
+        Index: c_uint,
+        Name: *const c_char,
+    ) -> &'a Value;
     pub fn LLVMBuildIsNull<'a>(
         builder: &Builder<'a>,
         Val: &'a Value,
@@ -407,13 +397,6 @@ extern "C" {
         elem_ty: &'a Type,
         LHS: &'a Value,
         RHS: &'a Value,
-        Name: *const c_char,
-    ) -> &'a Value;
-
-    pub fn LVMBuildArrayMalloc<'a>(
-        builder: &Builder<'a>,
-        ty: &'a Type,
-        val: &'a Value,
         Name: *const c_char,
     ) -> &'a Value;
 }

@@ -1,4 +1,4 @@
-use std::mem::forget;
+//! Core::Types
 
 use ::libc::{c_char, c_uint};
 
@@ -11,7 +11,8 @@ extern "C" {
     // pub fn LLVMDumpType(Val: &'a Type);
     pub fn LLVMPrintTypeToString(Val: &Type) -> *mut c_char;
 
-    // Core->Types->Integer
+    // Integer Types
+
     pub fn LLVMInt1TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     pub fn LLVMInt8TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMInt16TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
@@ -21,7 +22,8 @@ extern "C" {
     pub fn LLVMIntTypeInContext<'a>(ctx: &'a Context, num_bits: c_uint) -> &'a Type;
     // pub fn LLVMGetIntTypeWidth<'a>(ty: &Type) -> c_uint;
 
-    // Core->Types->Floating-Point
+    // Floating Point Types
+
     // pub fn LLVMHalfTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMBFloatTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMFloatTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
@@ -30,7 +32,8 @@ extern "C" {
     // pub fn LLVMFP128TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMPPCFP128TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
 
-    // Core->Types->Function
+    // Function Types
+
     pub fn LLVMFunctionType<'a>(
         ReturnType: &'a Type,
         ParamTypes: *const &'a Type,
@@ -42,15 +45,19 @@ extern "C" {
     pub fn LLVMCountParamTypes<'a>(fun_ty: &'a Type) -> c_uint;
     pub fn LLVMGetParamTypes<'a>(fun_ty: &'a Type, dst: *mut &'a Type);
 
-    // Core->Types->Struct
+    // Structure Types
+
+    /// Create a new structure type in a context.
     pub fn LLVMStructTypeInContext<'a>(
         ctx: &'a Context,
         ElementTypes: *const &'a Type,
         ElementCount: c_uint,
         Packed: Bool,
     ) -> &'a Type;
+    /// Create an empty structure in a context having a specified name.
     pub fn LLVMStructCreateNamed<'a>(ctx: &'a Context, Name: *const c_char) -> &'a Type;
     pub fn LLVMGetStructName<'a>(ty: &'a Type) -> *const c_char;
+    /// Set the contents of a structure type.
     pub fn LLVMStructSetBody<'a>(
         struct_ty: &'a Type,
         ElementTypes: *const &'a Type,
@@ -59,16 +66,13 @@ extern "C" {
     );
     pub fn LLVMCountStructElementTypes(struct_ty: &Type) -> c_uint;
     fn LLVMGetStructElementTypes<'a>(struct_ty: &'a Type, dst: *mut &'a Type);
-    ///// Get the type of the element at the given index in a structure.
-    /////
-    ///// Added in LLVM 3.7.
     pub fn LLVMStructGetTypeAtIndex<'a>(struct_ty: &'a Type, i: c_uint) -> &'a Type;
-    ///// Determine whether a structure is packed.
     //pub fn LLVMIsPackedStruct(struct_ty: &Type) -> Bool;
     //pub fn LLVMIsOpaqueStruct(struct_ty: &Type) -> Bool;
     //pub fn LLVMIsLiteralStruct(struct_ty: &Type) -> Bool;
 
-    //// Core->Types->Sequential
+    // Sequential Types
+
     // pub fn LLVMGetElementType<'a>(ty: &'a Type) -> &'a Type;
     ///// Get the subtypes of the given type.
     //pub fn LLVMGetSubtypes<'a>(ty: &'a Type, arr: *mut &'a Type);
@@ -79,16 +83,11 @@ extern "C" {
     pub fn LLVMPointerType<'a>(elem: &'a Type, address_space: AddressSpace) -> &'a Type;
     // pub fn LLVMGetPointerAddressSpace(PointerTy: &'a Type) -> c_uint;
     // pub fn LLVMVectorType(ElementType: &'a Type, ElementCount: c_uint) -> &'a Type;
-    /// Create a vector type that contains a defined type and has a scalable
-    /// number of elements.
-    ///
-    /// The created type will exist in the context that its element type
-    /// exists in.
     // pub fn LLVMScalableVectorType(ElementType: &'a Type, ElementCount: c_uint) -> &'a Type;
-    /// Obtain the (possibly scalable) number of elements in a vector type.
     // pub fn LLVMGetVectorSize(VectorTy: &'a Type) -> c_uint;
 
-    // Core->Types->Other
+    // Other Types
+
     pub fn LLVMVoidTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMLabelTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMX86MMXTypeInContext(ctx: &'a Context) -> &'a Type;
@@ -120,7 +119,7 @@ pub unsafe fn struct_element_types(struct_ty: &Type) -> Box<[&Type]> {
 
     let mut raw_vec: Vec<&Type> = Vec::with_capacity(count as usize);
     let ptr = raw_vec.as_mut_ptr();
-    forget(raw_vec);
+    std::mem::forget(raw_vec);
 
     LLVMGetStructElementTypes(struct_ty, ptr);
     Vec::from_raw_parts(ptr, count as usize, count as usize).into_boxed_slice()

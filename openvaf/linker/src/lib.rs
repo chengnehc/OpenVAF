@@ -1,14 +1,14 @@
+use std::ffi::{OsStr, OsString};
+use std::fs::{remove_file, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Output, Stdio};
+use std::{ascii, env, io, mem};
+
 use anyhow::{bail, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use cc::windows_registry;
 
-use std::ffi::{OsStr, OsString};
-use std::fs::{remove_file, File};
-use std::io::Write;
-use std::mem::take;
-use std::path::{Path, PathBuf};
-use std::process::{Output, Stdio};
-use std::{ascii, env, io};
 use target::spec::{LinkerFlavor, Target};
 
 pub fn link(
@@ -49,6 +49,7 @@ fn escape_stdout_stderr_string(s: &[u8]) -> String {
         x
     })
 }
+
 /// Disables non-English messages from localized linkers.
 /// Such messages may cause issues with text encoding on Windows (#35785)
 /// and prevent inspection of linker output in case of errors, which we occasionally do.
@@ -222,7 +223,7 @@ impl dyn Linker + '_ {
     pub fn take_cmd(&mut self) -> std::process::Command {
         let cmd = self.cmd();
         let mut res = std::process::Command::new(cmd.command.as_os_str());
-        res.args(cmd.args.iter()).envs(take(&mut cmd.env));
+        res.args(cmd.args.iter()).envs(mem::take(&mut cmd.env));
         res
     }
 }

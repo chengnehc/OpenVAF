@@ -12,11 +12,22 @@ using namespace llvm;
 
 extern "C" {
 
+// TODO(JW) LLVM 18+ has added LLVMGetFastMathFlags and LLVMSetFastMathFlags for 
+// getting/setting the fast-math flags of an instruction, as well as 
+// LLVMCanValueUseFastMathFlags for checking if an instruction can use such flags.
+// Use that, instead of this wrapper.
+
+/*
+LLVMFastMathFlags LLVMGetFastMathFlags(LLVMValueRef FPMathInst)
+// Get the flags for which fast-math-style optimizations are allowed for this value.
+void LLVMSetFastMathFlags(LLVMValueRef FPMathInst, LLVMFastMathFlags FMF)
+// Sets the flags for which fast-math-style optimizations are allowed for this value.
+*/
+
 // Enable some fast-math flags for an operation
 // These flags are used for derivatives by default because they only change
 // the rounding behaviour which is not relevant for automatically generated code
 // (derivatives in OpenVAF)
-//
 // https://llvm.org/docs/LangRef.html#fast-math-flags
 void LLVMSetPartialFastMath(LLVMValueRef V) {
   if (auto I = dyn_cast<Instruction>(unwrap<Value>(V))) {

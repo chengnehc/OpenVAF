@@ -1,3 +1,5 @@
+//! Target Information
+
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 
@@ -6,11 +8,20 @@ use libc::{c_uint, c_ulonglong};
 
 use crate::support::LLVMString;
 use crate::{
-    Bool, CodeGenFileType, CodeModel, Module, OptLevel, RelocMode, Target, TargetData,
-    TargetMachine, Type,
+    Bool, CodeGenFileType, CodeModel, LLVMSetTarget, Module, OptLevel, RelocMode, Target,
+    TargetData, TargetMachine, Type,
 };
 
 extern "C" {
+    pub fn LLVMCreateTargetData(StringRep: *const c_char) -> &'static mut TargetData;
+    pub fn LLVMDisposeTargetData(target_data: &'static mut TargetData);
+    /// Computes the ABI size of a type in bytes for a target.
+    pub fn LLVMABISizeOfType(data: &TargetData, ty: &Type) -> c_ulonglong;
+    /// Computes the ABI alignment of a type in bytes for a target.
+    pub fn LLVMABIAlignmentOfType(data: &TargetData, ty: &Type) -> c_uint;
+    /// Computes the byte offset of the indexed struct element for a target.
+    pub fn LLVMOffsetOfElement(TD: &TargetData, struct_ty: &Type, elem: c_uint) -> c_ulonglong;
+    // Finds the target corresponding to the given triple and stores it in T.
     fn LLVMGetTargetFromTriple(
         Triple: *const c_char,
         T: &mut Option<&'static Target>,
@@ -26,7 +37,7 @@ extern "C" {
         CodeModel: CodeModel,
     ) -> Option<&'static mut TargetMachine>;
     pub fn LLVMDisposeTargetMachine(target_machine: &'static mut TargetMachine);
-    /// Create a DataLayout based on the target machine.
+    /// Emits an asm or object file for the given module to the filename.
     pub fn LLVMTargetMachineEmitToFile(
         target: &TargetMachine,
         module: &Module,
@@ -34,6 +45,7 @@ extern "C" {
         codegen: CodeGenFileType,
         ErrorMessage: *mut *mut c_char,
     ) -> Bool;
+    /// Compile the LLVM IR stored in M and store the result in OutMemBuf.
     // pub fn LLVMTargetMachineEmitToMemoryBuffer(
     //     T: LLVMTargetMachineRef,
     //     M: LLVMModuleRef,
@@ -41,26 +53,19 @@ extern "C" {
     //     ErrorMessage: *mut *mut ::libc::c_char,
     //     OutMemBuf: *mut LLVMMemoryBufferRef,
     // ) -> LLVMBool;
-    pub fn LLVMGetHostCPUName() -> *const c_char;
-    pub fn LLVMGetHostCPUFeatures() -> *const c_char;
-
     /// Normalize a target triple. The result needs to be disposed with LLVMDisposeMessage.
     fn LLVMNormalizeTargetTriple(triple: *const c_char) -> *mut c_char;
-    fn LLVMSetTarget(module: &Module, triple: *const c_char);
-
-    pub fn LLVMOffsetOfElement(TD: &TargetData, struct_ty: &Type, elem: c_uint) -> c_ulonglong;
-
-    pub fn LLVMCreateTargetData(StringRep: *const c_char) -> &'static mut TargetData;
-    pub fn LLVMDisposeTargetData(target_data: &'static mut TargetData);
-
-    pub fn LLVMABISizeOfType(data: &TargetData, ty: &Type) -> c_ulonglong;
-    pub fn LLVMABIAlignmentOfType(data: &TargetData, ty: &Type) -> c_uint;
+    pub fn LLVMGetHostCPUName() -> *const c_char;
+    pub fn LLVMGetHostCPUFeatures() -> *const c_char;
 }
 
+/// See also:
+/// https://docs.rs/crate/inkwell/0.5.0/source/src/targets.rs
+///
 /// # Safety
 ///
-/// This function calls the LLVM C interface and may emit unsafety for invalid inputs.
-/// Specifically this function is not thread save!
+/// This function calls the LLVM C API and may emit unsafety for invalid inputs.
+/// Specifically this function is not thread safe!
 pub unsafe fn create_target(
     triple: &str,
     cpu: &str,

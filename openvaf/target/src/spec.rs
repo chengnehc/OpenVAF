@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use crate::host_triple;
 
+// TODO(JW) Add lld?
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum LinkerFlavor {
     Ld,
@@ -52,9 +53,9 @@ pub type LinkArgs = BTreeMap<LinkerFlavor, Vec<String>>;
 pub struct Target {
     /// Target triple to pass to LLVM.
     pub llvm_target: String,
-
+    /// String to use as the `target_pointer_width` `cfg` variable.
     pub pointer_width: u32,
-    /// Architecture to use for ABI considerations. Valid options include: "x86",
+    /// Architecture name for ABI considerations. Valid options include: "x86",
     /// "x86_64", "arm", "aarch64", "mips", "powerpc", "powerpc64", and others.
     pub arch: String,
     /// [Data layout](https://llvm.org/docs/LangRef.html#data-layout) to pass to LLVM.
@@ -93,6 +94,8 @@ pub struct TargetOptions {
 
     /// Whether the target toolchain is like Windows
     pub is_like_windows: bool,
+
+    /// Whether the target toolchain is like macOS's.
     pub is_like_osx: bool,
 }
 
@@ -102,12 +105,12 @@ impl Default for TargetOptions {
             is_builtin: true,
             cpu: "generic".to_string(),
             features: "".to_string(),
-            is_like_windows: false,
-            is_like_osx: false,
             linker_flavor: LinkerFlavor::Ld,
             pre_link_args: BTreeMap::default(),
             post_link_args: BTreeMap::default(),
             import_lib: &[],
+            is_like_windows: false,
+            is_like_osx: false,
         }
     }
 }

@@ -20,23 +20,21 @@ use std::fmt;
 
 use libc::{c_char, c_uint, c_void};
 
-use crate::util::InvariantOpaque;
-
-mod util;
-
-pub mod attributes;
-pub mod basic_block;
-pub mod bitcode;
-pub mod builder;
-pub mod context;
-pub mod initialization;
-// pub mod lld;
-pub mod module;
-pub mod pass_manager;
 pub mod support;
-pub mod targets;
-pub mod types;
-pub mod values;
+
+mod attributes;
+mod basic_block;
+mod bitcode;
+mod builder;
+mod context;
+mod initialization;
+// mod lld;
+mod module;
+mod pass_manager;
+mod targets;
+mod types;
+mod util;
+mod values;
 
 pub use attributes::*;
 pub use basic_block::*;
@@ -48,6 +46,7 @@ pub use module::*;
 pub use pass_manager::*;
 pub use targets::*;
 pub use types::*;
+pub(crate) use util::InvariantOpaque;
 pub use values::*;
 
 pub type Bool = c_uint;
@@ -167,9 +166,7 @@ pub enum OptLevel {
 }
 
 // Only allow default CodeModel/RelocMode
-// If we allow different modes we might need to change
-// this for each module as done in rustc
-
+// If we allow different modes we might need to change this for each module as done in rustc
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RelocMode {
@@ -199,6 +196,31 @@ pub enum CodeModel {
 pub enum CodeGenFileType {
     AssemblyFile = 0,
     ObjectFile = 1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TypeKind {
+    Void = 0,
+    Half = 1,
+    Float = 2,
+    Double = 3,
+    X86_FP80 = 4,
+    FP128 = 5,
+    PPC_FP128 = 6,
+    Label = 7,
+    Integer = 8,
+    Function = 9,
+    Struct = 10,
+    Array = 11,
+    Pointer = 12,
+    Vector = 13,
+    Metadata = 14,
+    X86_MMX = 15,
+    Token = 16,
+    ScalableVector = 17,
+    BFloat = 18,
+    X86_AMX = 19,
 }
 
 #[repr(C)]
@@ -288,15 +310,6 @@ pub enum IntPredicate {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
-pub enum DiagnosticSeverity {
-    Error = 0,
-    Warning = 1,
-    Remark = 2,
-    Note = 3,
-}
-
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RealPredicate {
     RealPredicateFalse = 0,
@@ -315,6 +328,15 @@ pub enum RealPredicate {
     RealULE = 13,
     RealUNE = 14,
     RealPredicateTrue = 15,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
+pub enum DiagnosticSeverity {
+    Error = 0,
+    Warning = 1,
+    Remark = 2,
+    Note = 3,
 }
 
 pub const LLVMAttributeReturnIndex: ::libc::c_uint = 0;
@@ -339,28 +361,3 @@ pub fn get_version() -> (u32, u32, u32) {
 /// that the instruction is to be left unnamed (i.e. numbered, in textual IR).
 // FIXME(eddyb) pass `&CStr` directly to FFI once it's a thin pointer.
 pub const UNNAMED: *const c_char = b"\0".as_ptr() as *const c_char;
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TypeKind {
-    Void = 0,
-    Half = 1,
-    Float = 2,
-    Double = 3,
-    X86_FP80 = 4,
-    FP128 = 5,
-    PPC_FP128 = 6,
-    Label = 7,
-    Integer = 8,
-    Function = 9,
-    Struct = 10,
-    Array = 11,
-    Pointer = 12,
-    Vector = 13,
-    Metadata = 14,
-    X86_MMX = 15,
-    Token = 16,
-    ScalableVector = 17,
-    BFloat = 18,
-    X86_AMX = 19,
-}

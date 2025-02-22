@@ -4,12 +4,49 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+const OPTIONAL_COMPONENTS: &[&str] = &[
+    "x86",
+    // "arm",
+    "aarch64",
+    // "amdgpu",
+    // "avr",
+    // "loongarch",
+    // "m68k",
+    // "csky",
+    // "mips",
+    // "powerpc",
+    // "systemz",
+    // "jsbackend",
+    // "webassembly",
+    // "msp430",
+    // "sparc",
+    // "nvptx",
+    // "hexagon",
+    // "riscv",
+    // "xtensa",
+    // "bpf",
+];
+
+const REQUIRED_COMPONENTS: &[&str] = &[
+    "ipo",
+    "bitreader",
+    "bitwriter",
+    // "linker",
+    "option",
+    // "asmparser",
+    "lto",
+    "debuginfopdb",
+    "windowsmanifest",
+    "libdriver",
+    // "coverage",
+    // "instrumentation"
+];
+
 fn fail(s: &str) -> ! {
     println!("\n\n{}\n\n", s);
     std::process::exit(1);
 }
 
-// https://doc.rust-lang.org/reference/attributes/codegen.html#the-track_caller-attribute
 #[track_caller]
 pub fn output(cmd: &mut Command) -> String {
     let output = cmd.stderr(Stdio::inherit()).output().unwrap_or_else(|err| {
@@ -68,37 +105,26 @@ fn winepath(path: &str) -> PathBuf {
 }
 
 fn main() {
+    for component in REQUIRED_COMPONENTS.iter().chain(OPTIONAL_COMPONENTS.iter()) {
+        println!("cargo:rustc-check-cfg=cfg(llvm_component,values(\"{component}\"))");
+    }
+
     if env::var("COMPILER_NAME").is_err() {
         println!("cargo:rustc-env=COMPILER_NAME=openvaf");
     }
-    // If we're just running `check`, there's no need to build LLVM
+
     if tracked_env_var_os("RUST_CHECK").is_some() {
+        // If we're just running `check`, there's no need to build LLVM
         return;
     }
 
-    // build_helper::restore_library_path();
-    let llvm_config = tracked_env_var_os("LLVM_CONFIG").map(PathBuf::from);
-    // TODO provide mechanism to build llvm yourself
-    // .unwrap_or_else(|| {
-    //     if let Some(dir) = tracked_env_var_os("CARGO_TARGET_DIR").map(PathBuf::from) {
-    //         let to_test = dir
-    //             .parent()
-    //             .unwrap()
-    //             .parent()
-    //             .unwrap()
-    //             .join(&target)
-    //             .join("llvm/bin/llvm-config");
-    //         if Command::new(&to_test).output().is_ok() {
-    //             return Some(to_test);
-    //         }
-    //     }
-    //     None
-    // });
-
-    if let Some(llvm_config) = &llvm_config {
-        println!("cargo:rerun-if-changed={}", llvm_config.display());
-    }
-    let llvm_config = llvm_config.unwrap_or_else(|| PathBuf::from("llvm-config"));
+    let llvm_config = match tracked_env_var_os("LLVM_CONFIG").map(PathBuf::from) {
+        Some(llvm_config) => {
+            println!("cargo:rerun-if-changed={}", llvm_config.display());
+            llvm_config
+        }
+        None => PathBuf::from("llvm-config"),
+    };
 
     // Test whether we're cross-compiling LLVM. This is a pretty rare case
     // currently where we're producing an LLVM for a different platform than
@@ -126,45 +152,11 @@ fn main() {
     let is_crossed = target != host;
     let is_wine = is_crossed && target.contains("windows-msvc") && !host.contains("windows");
 
-    let optional_components = &[
-        "x86", "arm",
-        "aarch64",
-        // "amdgpu",
-        // "avr",
-        // "m68k",
-        // "mips",
-        // "powerpc",
-        // "systemz",
-        // "jsbackend",
-        // "webassembly",
-        // "msp430",
-        // "sparc",
-        // "nvptx",
-        // "hexagon",
-        // "riscv",
-        // "bpf",
-    ];
-
-    let required_components = &[
-        "ipo",
-        "bitreader",
-        "bitwriter",
-        // "linker",
-        "option",
-        // "asmparser",
-        "lto",
-        "debuginfopdb",
-        "windowsmanifest",
-        "libdriver",
-        // "coverage",
-        // "instrumentation",
-    ];
-
     let components = output(Command::new(&llvm_config).arg("--components"));
     let mut components: Vec<&str> = components.split_whitespace().collect();
-    components.retain(|c| optional_components.contains(c) || required_components.contains(c));
+    components.retain(|c| OPTIONAL_COMPONENTS.contains(c) || REQUIRED_COMPONENTS.contains(c));
 
-    for component in required_components {
+    for component in REQUIRED_COMPONENTS {
         if !components.contains(component) {
             panic!("require llvm component {} but wasn't found", component);
         }
@@ -189,11 +181,11 @@ fn main() {
         } else {
             fail(&format!(
                 "Invalid LLVM version {:?}!\nExpected 3 numbers separated by '.' found {:?}",
-                version, components
+                version, version_components
             ))
         }
     } else {
-        fail(&format!("Invalid LLVM version {:?}!\nExpected 3 components (major, minor, path) but found the following {} components\n{:?}", version, components.len(),components))
+        fail(&format!("Invalid LLVM version {:?}!\nExpected 3 components (major, minor, path) but found the following {} components\n{:?}", version, version_components.len(), version_components))
     }
 
     let mut cfg = cc::Build::new();
@@ -250,63 +242,100 @@ fn main() {
     // we don't pick up system libs because unfortunately they're for the host
     // of llvm-config, not the target that we're attempting to link.
     let mut cmd = Command::new(&llvm_config);
-    cmd.arg(llvm_link_arg).arg("--libnames");
+    cmd.arg(llvm_link_arg).arg("--libs");
+
+    // Don't link system libs if cross-compiling unless targeting Windows.
+    // On Windows system DLLs aren't linked directly, instead import libraries are used.
+    // These import libraries are independent of the host.
+    if !is_crossed || target.contains("windows") {
+        cmd.arg("--system-libs");
+    }
+
+    // We need libkstat for getHostCPUName on SPARC builds.
+    // See also: https://github.com/llvm/llvm-project/issues/64186
+    if target.starts_with("sparcv9") && target.contains("solaris") {
+        println!("cargo:rustc-link-lib=kstat");
+    }
+
+    if (target.starts_with("arm") && !target.contains("freebsd"))
+        || target.starts_with("mips-")
+        || target.starts_with("mipsel-")
+        || target.starts_with("powerpc-")
+        || target.starts_with("sparc-")
+    {
+        // 32-bit targets need to link libatomic.
+        println!("cargo:rustc-link-lib=atomic");
+    } else if target.contains("windows-gnu") {
+        println!("cargo:rustc-link-lib=shell32");
+        println!("cargo:rustc-link-lib=uuid");
+    } else if target.contains("haiku")
+        || target.contains("darwin")
+        || (is_crossed && (target.contains("dragonfly") || target.contains("solaris")))
+    {
+        println!("cargo:rustc-link-lib=z");
+    } else if target.contains("netbsd") {
+        // On NetBSD/i386, gcc and g++ is built for i486 (to maximize backward compat)
+        // However, LLVM insists on using 64-bit atomics.
+        // This gives rise to a need to link rust itself with -latomic for these targets
+        if target.starts_with("i586") || target.starts_with("i686") {
+            println!("cargo:rustc-link-lib=atomic");
+        }
+        println!("cargo:rustc-link-lib=z");
+        println!("cargo:rustc-link-lib=execinfo");
+    }
     cmd.args(&components);
 
-    for mut lib in output(&mut cmd).split_whitespace() {
-        lib = lib
-            .trim_end_matches(".lib")
-            .trim_end_matches(".so")
-            .trim_end_matches(".a")
-            .trim_start_matches("lib");
-
+    for lib in output(&mut cmd).split_whitespace() {
+        let mut is_static = false;
+        let name = if let Some(stripped) = lib.strip_prefix("-l") {
+            stripped
+        } else if let Some(stripped) = lib.strip_prefix('-') {
+            stripped
+        } else if Path::new(lib).exists() {
+            // On MSVC llvm-config will print the full path to libraries,
+            // but we're only interested in the name part
+            // On Unix when we get a static library llvm-config will print the
+            // full name and we *are* interested in the path, but we need to
+            // handle it separately. For example, when statically linking to
+            // libzstd llvm-config will output something like
+            //   -lrt -ldl -lm -lz /usr/local/lib/libzstd.a -lxml2
+            // and we transform the zstd part into
+            //   cargo:rustc-link-search-native=/usr/local/lib
+            //   cargo:rustc-link-lib=static=zstd
+            let path = Path::new(lib);
+            if lib.ends_with(".a") {
+                is_static = true;
+                println!("cargo:rustc-link-search=native={}", path.parent().unwrap().display());
+                let name = path.file_stem().unwrap().to_str().unwrap();
+                name.trim_start_matches("lib")
+            } else {
+                let name = path.file_name().unwrap().to_str().unwrap();
+                name.trim_end_matches(".lib")
+            }
+        } else if lib.ends_with(".lib") {
+            // Some MSVC libraries just come up with trailing `.lib`, trim
+            // that off
+            lib.trim_end_matches(".lib")
+        } else {
+            continue;
+        };
         // Don't need or want this library, but LLVM's CMake build system
         // doesn't provide a way to disable it, so filter it here even though we
         // may or may not have built it. We don't reference anything from this
         // library and it otherwise may just pull in extra dependencies on
         // libedit which we don't want
-        if lib.contains("LLVMLineEditor") {
+        if name == "LLVMLineEditor" {
             continue;
         }
 
-        println!("cargo:rustc-link-lib={llvm_kind}={}", lib);
-    }
-
-    // Link in all LLVM libraries, if we're using the "wrong" llvm-config then
-    // we don't pick up system libs because unfortunately they're for the host
-    // of llvm-config, not the target that we're attempting to link.
-    let mut cmd = Command::new(&llvm_config);
-    cmd.arg(llvm_link_arg);
-
-    if !is_crossed {
-        cmd.arg("--system-libs");
-        cmd.args(&components);
-
-        for lib in output(&mut cmd).split_whitespace() {
-            let name = if let Some(stripped) = lib.strip_prefix("-l") {
-                stripped
-            } else if let Some(stripped) = lib.strip_prefix('-') {
-                stripped
-            } else if Path::new(lib).exists() {
-                // On MSVC llvm-config will print the full name to libraries, but
-                // we're only interested in the name part
-                let name = Path::new(lib).file_name().unwrap().to_str().unwrap();
-                name.trim_end_matches(".lib")
-            } else if lib.ends_with(".lib") {
-                // Some MSVC libraries just come up with `.lib` tacked on, so chop
-                // that off
-                lib.trim_end_matches(".lib")
-            } else {
-                continue;
-            };
-
-            println!("cargo:rustc-link-lib=dylib={}", name);
-        }
-    } else if target.contains("windows-gnu") {
-        println!("cargo:rustc-link-lib=shell32");
-        println!("cargo:rustc-link-lib=uuid");
-    } else if target.contains("netbsd") || target.contains("haiku") || target.contains("darwin") {
-        println!("cargo:rustc-link-lib=z");
+        let kind = if name.starts_with("LLVM") {
+            llvm_kind
+        } else if is_static {
+            "static"
+        } else {
+            "dylib"
+        };
+        println!("cargo:rustc-link-lib={kind}={name}");
     }
 
     // LLVM ldflags
@@ -344,11 +373,15 @@ fn main() {
         } else {
             "c++"
         }
-    } else if target.contains("freebsd") || target.contains("darwin") {
+    } else if target.contains("darwin")
+        || target.contains("freebsd")
+        || target.contains("windows-gnullvm")
+        || target.contains("aix")
+    {
         "c++"
     } else if target.contains("netbsd") && llvm_static_stdcpp.is_some() {
         // NetBSD uses a separate library when relocation is required
-        "stdc++_pic"
+        "stdc++_p"
     } else if llvm_use_libcxx.is_some() {
         "c++"
     } else {

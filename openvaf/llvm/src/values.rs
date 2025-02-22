@@ -1,3 +1,5 @@
+//! Core::Values
+
 use libc::{c_char, c_double, c_uint, c_ulonglong};
 
 use crate::{
@@ -5,49 +7,51 @@ use crate::{
     Value, Visibility,
 };
 
-// Core->Values
 extern "C" {
-    // Core->Values->General
+    // General
+
     // Get the enumerated kind of a Value instance.
     pub fn LLVMTypeOf(val: &Value) -> &Type;
-
     // pub fn LLVMGetValueName2(val: &'a Value, Length: *mut ::libc::size_t) -> *const ::libc::c_char;
     // pub fn LLVMSetValueName2(val: &'a Value, Name: *const ::libc::c_char, NameLen: ::libc::size_t);
-
     // pub fn LLVMDumpValue(Val: &'a Value);
     pub fn LLVMPrintValueToString(val: &Value) -> *mut c_char;
     pub fn LLVMReplaceAllUsesWith<'a>(old_val: &'a Value, new_val: &'a Value);
-    /// Determine whether the specified value instance is constant.
     // pub fn LLVMIsConstant(Val: &'a Value) -> LLVMBool;
     // pub fn LLVMIsUndef(Val: &'a Value) -> LLVMBool;
-    // /// Determine whether a value instance is poisonous.
     // pub fn LLVMIsPoison(Val: &'a Value) -> LLVMBool;
     // pub fn LLVMIsAMDNode(Val: &'a Value) -> &'a Value;
     // pub fn LLVMIsAMDString(Val: &'a Value) -> &'a Value;
 
-    // Core->Values->Usage
+    /// Usage
     // pub fn LLVMGetFirstUse(Val: &'a Value) -> LLVMUseRef;
     // pub fn LLVMGetNextUse(U: LLVMUseRef) -> LLVMUseRef;
     // pub fn LLVMGetUser(U: LLVMUseRef) -> &'a Value;
     // pub fn LLVMGetUsedValue(U: LLVMUseRef) -> &'a Value;
 
-    // Core->Values->User value
+    /// User value
     // pub fn LLVMGetOperand(Val: &'a Value, Index: ::libc::c_uint) -> &'a Value;
     // pub fn LLVMGetOperandUse(Val: &'a Value, Index: ::libc::c_uint) -> LLVMUseRef;
     // pub fn LLVMSetOperand(User: &'a Value, Index: ::libc::c_uint, Val: &'a Value);
     // pub fn LLVMGetNumOperands(Val: &'a Value) -> ::libc::c_int;
 
-    // Core->Values->Constants
+    // Constants
+
+    /// Obtain a constant value referring to the null instance of a type.
     pub fn LLVMConstNull(ty: &Type) -> &Value;
-    pub fn LLVMConstAllOnes(ty: &Type) -> &Value;
+    // pub fn LLVMConstAllOnes(ty: &Type) -> &Value;
+
+    /// Obtain a constant value referring to an undefined value of a type.
     pub fn LLVMGetUndef(ty: &Type) -> &Value;
-    /// Obtain a constant value referring to a poison value of a type.
     // pub fn LLVMGetPoison(Ty: TypeRef) -> &'a Value;
     // pub fn LLVMIsNull(Val: &'a Value) -> LLVMBool;
+
+    /// Obtain a constant that is a constant pointer pointing to NULL for a specified type.
     pub fn LLVMConstPointerNull(ty: &Type) -> &Value;
 
-    // Core->Values->Constants->Scalar
-    pub fn LLVMConstInt(ty: &Type, val: c_ulonglong, sign_extend: Bool) -> &Value;
+    // Constants::Scalar
+
+    pub fn LLVMConstInt(IntTy: &Type, val: c_ulonglong, sign_extend: Bool) -> &Value;
     // pub fn LLVMConstIntOfArbitraryPrecision(
     //     IntTy: TypeRef,
     //     NumWords: ::libc::c_uint,
@@ -78,7 +82,9 @@ extern "C" {
     //     losesInfo: *mut LLVMBool,
     // ) -> ::libc::c_double;
 
-    // Core->Values->Constants->Composite
+    // Composite Constants
+
+    /// Create a ConstantDataSequential and initialize it with a string.
     pub fn LLVMConstStringInContext(
         C: &Context,
         Str: *const c_char,
@@ -111,7 +117,8 @@ extern "C" {
     // pub fn LLVMGetElementAsConstant(C: &'a Value, idx: ::libc::c_uint) -> &'a Value;
     // pub fn LLVMConstVector(ScalarConstantVals: *mut &'a Value, Size: ::libc::c_uint) -> &'a Value;
 
-    // Core->Values->Constants->Constant expressions
+    // Constants::Constant expressions
+
     // pub fn LLVMGetConstOpcode(ConstantVal: &'a Value) -> Opcode;
     // pub fn LLVMAlignOf(Ty: TypeRef) -> &'a Value;
     // pub fn LLVMSizeOf(Ty: TypeRef) -> &'a Value;
@@ -156,6 +163,8 @@ extern "C" {
     // pub fn LLVMConstShl(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
     // pub fn LLVMConstLShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
     // pub fn LLVMConstAShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
+
+    /// GEP stands for get element pointer (in a struct)
     pub fn LLVMConstInBoundsGEP2<'a>(
         elem_ty: &'a Type,
         ConstantVal: &'a Value,
@@ -234,7 +243,8 @@ extern "C" {
     // ) -> &'a Value;
     // pub fn LLVMBlockAddress(F: &'a Value, BB: LLVMBasicBlockRef) -> &'a Value;
 
-    // Core->Values->Constants->Global Values
+    // Constants::Global Values
+
     // pub fn LLVMGetGlobalParent(global: &'a Value) -> ModuleRef;
     pub fn LLVMIsDeclaration(global: &Value) -> Bool;
     // pub fn LLVMGetLinkage(global: &Value) -> Linkage;
@@ -245,14 +255,11 @@ extern "C" {
     pub fn LLVMSetVisibility(global: &Value, viz: Visibility);
     // pub fn LLVMGetDLLStorageClass(global: &'a Value) -> LLVMDLLStorageClass;
     pub fn LLVMSetDLLStorageClass(global: &Value, Class: DLLStorageClass);
-
     // pub fn LLVMGetUnnamedAddress(global: &'a Value) -> LLVMUnnamedAddr;
     pub fn LLVMSetUnnamedAddress(global: &Value, UnnamedAddr: UnnamedAddr);
     // pub fn LLVMGlobalGetValueType(global: &'a Value) -> TypeRef;
-
     // pub fn LLVMGetAlignment(V: &'a Value) -> ::libc::c_uint;
     pub fn LLVMSetAlignment(val: &Value, align: c_uint);
-
     // pub fn LLVMGlobalSetMetadata(global: &'a Value, Kind: ::libc::c_uint, MD: &'a Metadata);
     // pub fn LLVMGlobalEraseMetadata(global: &'a Value, Kind: ::libc::c_uint);
     // pub fn LLVMGlobalClearMetadata(global: &'a Value);
@@ -270,7 +277,8 @@ extern "C" {
     //     Index: ::libc::c_uint,
     // ) -> &'a Metadata;
 
-    // // Core->Values->Constants->Global Variables
+    // Constants::Global Variables
+
     pub fn LLVMAddGlobal<'a>(module: &'a Module, ty: &'a Type, name: *const c_char) -> &'a Value;
     // pub fn LLVMAddGlobalInAddressSpace(
     //     M: ModuleRef,
@@ -295,7 +303,8 @@ extern "C" {
     // pub fn LLVMIsExternallyInitialized(GlobalVar: &'a Value) -> LLVMBool;
     // pub fn LLVMSetExternallyInitialized(GlobalVar: &'a Value, IsExtInit: LLVMBool);
 
-    //// Core->Values->Constants->Global Aliases
+    // Constants::Global Aliases
+
     // /// Obtain a GlobalAlias value from a Module by its name.
     // ///
     // /// The returned value corresponds to a llvm::GlobalAlias value.
@@ -320,7 +329,6 @@ extern "C" {
     //pub fn LLVMAliasGetAliasee(Alias: &'a Value) -> &'a Value;
     ///// Set the target value of an alias.
     //pub fn LLVMAliasSetAliasee(Alias: &'a Value, Aliasee: &'a Value);
-
     //pub fn LLVMAddAlias(
     //    M: ModuleRef,
     //    Ty: TypeRef,
@@ -328,7 +336,8 @@ extern "C" {
     //    Name: *const ::libc::c_char,
     //) -> &'a Value;
 
-    //..->Function Values
+    // Constants::Function Values
+
     //// pub fn LLVMDeleteFunction(Fn: &'a Value);
     ///// Check whether the given function has a personality function.
     //// pub fn LLVMHasPersonalityFn(Fn: &'a Value) -> LLVMBool;
@@ -370,8 +379,12 @@ extern "C" {
     //    NameLength: *mut ::libc::size_t,
     //) -> *const ::libc::c_char;
     //pub fn LLVMIntrinsicIsOverloaded(ID: ::libc::c_uint) -> LLVMBool;
+
+    /// Obtain the calling function of a function.
     pub fn LLVMGetFunctionCallConv(Fn: &Value) -> CallConv;
+    /// Set the calling convention of a function.
     pub fn LLVMSetFunctionCallConv(fun: &Value, cc: CallConv);
+    /// Set the calling convention for a call instruction.
     pub fn LLVMSetInstructionCallConv(instr: &Value, cc: CallConv);
     //pub fn LLVMGetGC(Fn: &'a Value) -> *const ::libc::c_char;
     //pub fn LLVMSetGC(Fn: &'a Value, Name: *const ::libc::c_char);
@@ -410,21 +423,29 @@ extern "C" {
     //    V: *const ::libc::c_char,
     //);
 
-    // ..->Function Values->Function Parameters
+    // Constants::Function Values::Function Parameters
+
     // pub fn LLVMCountParams(Fn: &'a Value) -> ::libc::c_uint;
     // pub fn LLVMGetParams(Fn: &'a Value, Params: *mut &'a Value);
     pub fn LLVMGetParam(fun: &Value, index: c_uint) -> &Value;
-
     // pub fn LLVMGetParamParent(Inst: &'a Value) -> &'a Value;
     // pub fn LLVMGetFirstParam(Fn: &'a Value) -> &'a Value;
     // pub fn LLVMGetLastParam(Fn: &'a Value) -> &'a Value;
     // pub fn LLVMGetNextParam(Arg: &'a Value) -> &'a Value;
     // pub fn LLVMGetPreviousParam(Arg: &'a Value) -> &'a Value;
     // pub fn LLVMSetParamAlignment(Arg: &'a Value, Align: ::libc::c_uint);
+
+    // Instruction Builder
+
+    //TODO(JW) LLVM 18+ has added LLVMGetFastMathFlags and LLVMSetFastMathFlags for
+    // getting/setting the fast-math flags of an instruction, as well as
+    // LLVMCanValueUseFastMathFlags for checking if an instruction can use such flags.
     pub fn LLVMSetPartialFastMath(val: &Value);
     pub fn LLVMSetFastMath(val: &Value);
 
-    // Instruction->PHI Nodes
+    // Instruction::PHI Nodes
+
+    /// Add an incoming value to the end of a PHI list.
     pub fn LLVMAddIncoming<'a>(
         PhiNode: &'a Value,
         IncomingValues: *const &'a Value,

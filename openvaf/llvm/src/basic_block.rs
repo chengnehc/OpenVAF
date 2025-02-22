@@ -1,14 +1,13 @@
+//! Core::Basic Block
+
 use libc::c_char;
 
 use crate::{BasicBlock, Context, Value};
 
-// Core->Basic Block
 extern "C" {
     // pub fn LLVMBasicBlockAsValue(BB: &BasicBlock) -> &'a Value;
     // pub fn LLVMValueIsBasicBlock(Val: &'a Value) -> LLVMBool;
     // pub fn LLVMValueAsBasicBlock(Val: &'a Value) -> & BasicBlock;
-    //
-    /// Get the string name of a basic block.
     // pub fn LLVMGetBasicBlockName(BB: & BasicBlock) -> *const ::libc::c_char;
     // pub fn LLVMGetBasicBlockParent(BB: & BasicBlock) -> &'a Value;
     // pub fn LLVMGetBasicBlockTerminator(BB: & BasicBlock) -> &'a Value;
@@ -33,5 +32,4 @@ extern "C" {
     ) -> &'a BasicBlock;
 
     pub fn LLVMGetLastInstruction<'a>(bb: &'a BasicBlock) -> Option<&'a Value>;
-
 }

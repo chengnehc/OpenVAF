@@ -1,3 +1,5 @@
+//! Pass Managers
+
 use libc::c_uint;
 
 use crate::module::function_iter;
@@ -8,15 +10,14 @@ use crate::{Bool, Module, OptLevel, PassManager, PassManagerBuilder, Value};
 pub struct FunctionPassManager<'a>(InvariantOpaque<'a>);
 
 extern "C" {
+    // TODO(JW) LLVMPassManagerBuilderRef and functions interacting with it has been
+    // removed since LLVM 17, as the legacy pass manager will no longer be supported.
+    // Move to 'Core->New Pass Manager' instead.
 
-    // crate and destroy
+    // Transforms::Pass Manager Builder
     pub fn LLVMPassManagerBuilderCreate() -> &'static mut PassManagerBuilder;
     pub fn LLVMPassManagerBuilderDispose(PMB: &'static mut PassManagerBuilder);
-
-    fn LLVMPassManagerBuilderSetOptLevel(PMB: &PassManagerBuilder, OptLevel: c_uint);
     pub fn LLVMPassManagerBuilderSetSizeLevel(PMB: &PassManagerBuilder, SizeLevel: c_uint);
-    fn LLVMPassManagerBuilderSLPVectorize(PMB: &PassManagerBuilder);
-
     pub fn LLVMPassManagerBuilderSetDisableUnitAtATime(PMB: &PassManagerBuilder, Value: Bool);
     pub fn LLVMPassManagerBuilderSetDisableUnrollLoops(PMB: &PassManagerBuilder, Value: Bool);
     pub fn LLVMPassManagerBuilderSetDisableSimplifyLibCalls(PMB: &PassManagerBuilder, Value: Bool);
@@ -38,11 +39,14 @@ extern "C" {
         Internalize: Bool,
         RunInliner: Bool,
     );
+    fn LLVMPassManagerBuilderSetOptLevel(PMB: &PassManagerBuilder, OptLevel: c_uint);
+    // This is defined in the OpenVafWrapper.cpp and not intrinsic to API
+    fn LLVMPassManagerBuilderSLPVectorize(PMB: &PassManagerBuilder);
 }
 
 /// # Safety
-/// This should always be save but this low level wrapper purposefully refrains from making Safety
-/// garantuees
+/// This should always be safe but this low level wrapper intentionally
+/// refrains from making safety garantuees
 pub unsafe fn pass_manager_builder_set_opt_lvl(pmb: &PassManagerBuilder, opt_lvl: OptLevel) {
     LLVMPassManagerBuilderSetOptLevel(pmb, opt_lvl as c_uint);
     if opt_lvl > OptLevel::Less {
@@ -50,22 +54,21 @@ pub unsafe fn pass_manager_builder_set_opt_lvl(pmb: &PassManagerBuilder, opt_lvl
     }
 }
 
-// Core->Pass managers
+// Pass Managers
 extern "C" {
     /// Creates a pass manager.
     pub fn LLVMCreatePassManager() -> &'static mut PassManager<'static>;
-
     /// Creates a function-by-function pass manager
     pub fn LLVMCreateFunctionPassManagerForModule<'a>(M: &'a Module) -> &'a mut PassManager<'a>;
-
     /// Disposes a pass manager.
     pub fn LLVMDisposePassManager<'a>(PM: &'a mut PassManager<'a>);
-
     /// Runs a pass manager on a module.
     pub fn LLVMRunPassManager(PM: &PassManager<'static>, M: &Module) -> Bool;
-
+    /// Initializes all of the function passes scheduled in the function pass manager.
     fn LLVMInitializeFunctionPassManager(FPM: &PassManager<'_>) -> Bool;
+    /// Executes all of the function passes scheduled in the function pass manager on the provided function.
     fn LLVMRunFunctionPassManager<'a>(FPM: &PassManager<'a>, F: &'a Value) -> Bool;
+    /// Finalizes all of the function passes scheduled in the function pass manager.
     fn LLVMFinalizeFunctionPassManager(FPM: &PassManager<'_>) -> Bool;
 }
 

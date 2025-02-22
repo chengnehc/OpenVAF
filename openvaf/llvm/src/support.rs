@@ -9,6 +9,11 @@ use libc::c_char;
 use crate::{LLVMCreateMessage, LLVMDisposeMessage};
 
 /// An owned LLVM String. Also known as a LLVM Message
+///
+/// See also: crate 'inkwell'
+///
+/// - https://thedan64.github.io/inkwell/inkwell/support/struct.LLVMString.html
+/// - https://docs.rs/crate/inkwell/latest/source/src/support/mod.rs
 #[derive(Eq)]
 #[repr(transparent)]
 pub struct LLVMString {
@@ -31,7 +36,7 @@ impl LLVMString {
     //     (*self).to_string_lossy().into_owned()
     // }
 
-    // /// This method will allocate a c string through LLVM
+    /// This method will allocate a c string through LLVM
     pub(crate) fn create_from_str(string: &str) -> LLVMString {
         let msg = CString::new(string).unwrap();
         unsafe { LLVMString::new(LLVMCreateMessage(msg.as_ptr() as *const _)) }

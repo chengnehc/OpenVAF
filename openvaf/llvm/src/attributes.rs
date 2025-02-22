@@ -1,10 +1,10 @@
+//! Create a string attribute
+
 use libc::c_char;
 
-/**
- * Create a string attribute.
- */
 use crate::{Attribute, Context, Value};
 
+// Core::Contexts
 extern "C" {
     fn LLVMCreateStringAttribute(
         ctx: &Context,
