@@ -157,73 +157,62 @@ nature Angular_Force
     attr60: access
     attr61: abstol
 discipline logi
-
     potential = None
     flow = None
     domain = Some((Discrete, Idx::<DisciplineAttrData>(0)))
     attr0: domain (UserDefined)
 discipline ddiscrete
-
     potential = None
     flow = None
     domain = Some((Discrete, Idx::<DisciplineAttrData>(0)))
     attr1: domain (UserDefined)
 discipline electrical
-
     potential = Some((NatureRef { name: Name("Voltage"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = Some((NatureRef { name: Name("Current"), kind: Nature }, Idx::<DisciplineAttrData>(1)))
     domain = None
     attr2: potential (UserDefined)
     attr3: flow (UserDefined)
 discipline voltage
-
     potential = Some((NatureRef { name: Name("Voltage"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = None
     domain = None
     attr4: potential (UserDefined)
 discipline current
-
     potential = None
     flow = Some((NatureRef { name: Name("Current"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     domain = None
     attr5: flow (UserDefined)
 discipline magnetic
-
     potential = Some((NatureRef { name: Name("Magneto_Motive_Force"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = Some((NatureRef { name: Name("Flux"), kind: Nature }, Idx::<DisciplineAttrData>(1)))
     domain = None
     attr6: potential (UserDefined)
     attr7: flow (UserDefined)
 discipline thermal
-
     potential = Some((NatureRef { name: Name("Temperature"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = Some((NatureRef { name: Name("Power"), kind: Nature }, Idx::<DisciplineAttrData>(1)))
     domain = None
     attr8: potential (UserDefined)
     attr9: flow (UserDefined)
 discipline kinematic
-
     potential = Some((NatureRef { name: Name("Position"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = Some((NatureRef { name: Name("Force"), kind: Nature }, Idx::<DisciplineAttrData>(1)))
     domain = None
     attr10: potential (UserDefined)
     attr11: flow (UserDefined)
 discipline kinematic_v
-
     potential = Some((NatureRef { name: Name("Velocity"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = Some((NatureRef { name: Name("Force"), kind: Nature }, Idx::<DisciplineAttrData>(1)))
     domain = None
     attr12: potential (UserDefined)
     attr13: flow (UserDefined)
 discipline rotational
-
     potential = Some((NatureRef { name: Name("Angle"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = Some((NatureRef { name: Name("Angular_Force"), kind: Nature }, Idx::<DisciplineAttrData>(1)))
     domain = None
     attr14: potential (UserDefined)
     attr15: flow (UserDefined)
 discipline rotational_omega
-
     potential = Some((NatureRef { name: Name("Angular_Velocity"), kind: Nature }, Idx::<DisciplineAttrData>(0)))
     flow = Some((NatureRef { name: Name("Angular_Force"), kind: Nature }, Idx::<DisciplineAttrData>(1)))
     domain = None

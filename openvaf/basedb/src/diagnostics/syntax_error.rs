@@ -1,11 +1,11 @@
 use std::iter::once;
-
 use stdx::iter::zip;
+
 use syntax::sourcemap::FileSpan;
 use syntax::SyntaxKind::BLOCK_STMT;
 use syntax::{AstNode, SyntaxError, TextRange, TextSize};
 
-use crate::diagnostics::{
+use super::{
     text_range_list_to_unified_spans, text_ranges_to_unified_spans, Diagnostic, Label, LabelStyle,
     Report,
 };
@@ -34,6 +34,7 @@ impl Diagnostic for SyntaxError {
             _ => None,
         }
     }
+
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
         let sm = db.sourcemap(root_file);
         let parse = db.parse(root_file);
@@ -41,14 +42,14 @@ impl Diagnostic for SyntaxError {
         let report = match *self {
             SyntaxError::UnexpectedToken {
                 ref expected,
-                span,
+                range,
                 expected_at: Some(expected_at),
                 missing_delimiter,
                 panic_end: None,
                 ..
             } => {
                 let (file_id, [expected_at, range]) =
-                    text_ranges_to_unified_spans(&sm, &parse, [expected_at, span]);
+                    text_ranges_to_unified_spans(&sm, &parse, [expected_at, range]);
                 syntax_err_report(missing_delimiter).with_labels(vec![
                     Label {
                         style: LabelStyle::Secondary,
@@ -66,7 +67,7 @@ impl Diagnostic for SyntaxError {
             }
             SyntaxError::UnexpectedToken {
                 ref expected,
-                span,
+                range,
                 missing_delimiter,
                 panic_end: Some(panic_end),
                 ..
@@ -76,12 +77,12 @@ impl Diagnostic for SyntaxError {
                 } else {
                     "unexpected_token".to_owned()
                 };
-
                 let (file_id, [range, skipped]) = text_ranges_to_unified_spans(
                     &sm,
                     &parse,
-                    [span, TextRange::new(span.start(), panic_end)],
+                    [range, TextRange::new(range.start(), panic_end)],
                 );
+
                 syntax_err_report(missing_delimiter).with_labels(vec![
                     Label { style: LabelStyle::Primary, file_id, range: range.into(), message },
                     Label {
@@ -92,14 +93,13 @@ impl Diagnostic for SyntaxError {
                     },
                 ])
             }
-
-            SyntaxError::UnexpectedToken { ref expected, span, missing_delimiter, .. } => {
+            SyntaxError::UnexpectedToken { ref expected, range, missing_delimiter, .. } => {
                 let message = if expected.data.len() < 4 {
                     format!("expected {}", expected)
                 } else {
                     "unexpected_token".to_owned()
                 };
-                let FileSpan { file: file_id, range } = parse.to_file_span(span, &sm);
+                let FileSpan { file: file_id, range } = parse.to_file_span(range, &sm);
 
                 syntax_err_report(missing_delimiter).with_labels(vec![Label {
                     style: LabelStyle::Primary,
@@ -109,8 +109,8 @@ impl Diagnostic for SyntaxError {
                 }])
             }
 
-            SyntaxError::SurplusToken { found, span } => {
-                let FileSpan { file: file_id, range } = parse.to_file_span(span, &sm);
+            SyntaxError::SurplusToken { found, range } => {
+                let FileSpan { file: file_id, range } = parse.to_file_span(range, &sm);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -124,9 +124,10 @@ impl Diagnostic for SyntaxError {
                         found
                     )])
             }
-            SyntaxError::MissingToken { expected, span, expected_at } => {
+            SyntaxError::MissingToken { expected, range, expected_at } => {
                 let (file_id, [expected_at, range]) =
-                    text_ranges_to_unified_spans(&sm, &parse, [expected_at, span]);
+                    text_ranges_to_unified_spans(&sm, &parse, [expected_at, range]);
+
                 Report::error().with_labels(vec![
                     Label {
                         style: LabelStyle::Secondary,
@@ -186,7 +187,7 @@ impl Diagnostic for SyntaxError {
             }
             SyntaxError::BlockItemsAfterStmt { ref items, first_stmt } => {
                 let ranges: Vec<_> =
-                    once(first_stmt).chain(items.iter().map(|item| item.range())).collect();
+                    once(first_stmt).chain(items.iter().map(|item| item.text_range())).collect();
 
                 let (file_id, ranges) = text_range_list_to_unified_spans(&sm, &parse, &ranges);
 
@@ -216,7 +217,7 @@ impl Diagnostic for SyntaxError {
             }
             SyntaxError::BlockItemsWithoutScope { ref items, begin_token } => {
                 let ranges: Vec<_> =
-                    once(begin_token).chain(items.iter().map(|item| item.range())).collect();
+                    once(begin_token).chain(items.iter().map(|item| item.text_range())).collect();
 
                 let (file_id, ranges) = text_range_list_to_unified_spans(&sm, &parse, &ranges);
 
@@ -241,9 +242,9 @@ impl Diagnostic for SyntaxError {
 
                 Report::error().with_labels(labels)
             }
-            SyntaxError::FunItemsAfterBody { ref items, body } => {
+            SyntaxError::ItemsAfterFuncBody { ref items, body } => {
                 let ranges: Vec<_> =
-                    once(body).chain(items.iter().map(|item| item.range())).collect();
+                    once(body).chain(items.iter().map(|item| item.text_range())).collect();
 
                 let (file_id, ranges) = text_range_list_to_unified_spans(&sm, &parse, &ranges);
 
@@ -271,12 +272,12 @@ impl Diagnostic for SyntaxError {
 
                 Report::error().with_labels(labels)
             }
-            SyntaxError::MultipleFunBodys { ref additional_bodys, ref body } => {
+            SyntaxError::MultipleFuncBodies { ref additional_bodys, ref body } => {
                 let (range, message) = if body.syntax_kind() == BLOCK_STMT {
-                    (body.range(), "help: add these statements to this block".to_owned())
+                    (body.text_range(), "help: add these statements to this block".to_owned())
                 } else {
                     (
-                        body.range().cover(*additional_bodys.last().unwrap()),
+                        body.text_range().cover(*additional_bodys.last().unwrap()),
                         "help: surround with begin ... end to create a single function body"
                             .to_owned(),
                     )
@@ -309,7 +310,7 @@ impl Diagnostic for SyntaxError {
                 Report::error().with_labels(labels)
             }
 
-            SyntaxError::FunWithoutBody { fun } => {
+            SyntaxError::FuncWithoutBody { fun } => {
                 let FileSpan { range, file: file_id } = parse.to_file_span(fun, &sm);
                 Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
@@ -400,7 +401,7 @@ impl Diagnostic for SyntaxError {
                             .to_owned(),
                     ])
             }
-            SyntaxError::IllegalAttriubte { expected, range, .. } => {
+            SyntaxError::IllegalAttribute { expected, range, .. } => {
                 let FileSpan { range, file: file_id } = parse.to_file_span(range, &sm);
                 Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
@@ -410,11 +411,11 @@ impl Diagnostic for SyntaxError {
                 }])
             }
             SyntaxError::ReservedIdentifier { src, compat, ref name } => {
-                let FileSpan { file, range } = parse.to_file_span(src.range(), &sm);
+                let FileSpan { range, file: file_id } = parse.to_file_span(src.text_range(), &sm);
 
                 let report = Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
-                    file_id: file,
+                    file_id,
                     range: range.into(),
                     message: format!("'{}' is a keyword", name),
                 }]);
@@ -460,7 +461,6 @@ impl Diagnostic for SyntaxError {
             }
             SyntaxError::MixedModuleHead { ref module_ports } => {
                 let ports = module_ports.to_node(parse.tree().syntax());
-
                 let name_cnt = ports.names().count();
                 let name_ranges: Vec<_> = ports
                     .names()

@@ -1,3 +1,5 @@
+//! The core of the module-level name resolution algorithm.
+
 use std::sync::Arc;
 
 use arena::Arena;
@@ -6,8 +8,6 @@ use indexmap::IndexMap;
 use syntax::ast;
 use syntax::name::Name;
 
-use super::diagnostics::DefDiagnostic;
-use super::{DefMap, DefMapSource, LocalScopeId, Scope, ScopeDefItem, ScopeOrigin};
 use crate::builtin::insert_module_builtin_scope;
 use crate::db::HirDefDB;
 use crate::item_tree::{
@@ -19,6 +19,9 @@ use crate::{
     Lookup, ModuleLoc, NatureAttrLoc, NatureLoc, NodeLoc, ScopeId,
 };
 
+use super::diagnostics::DefDiagnostic;
+use super::{DefMap, DefMapSource, LocalScopeId, Scope, ScopeDefItem, ScopeOrigin};
+
 pub fn collect_root_def_map(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {
     let tree = &db.item_tree(root_file);
     let scope_cnt = tree.data.natures.len() + tree.data.disciplines.len() + tree.data.modules.len();
@@ -26,7 +29,6 @@ pub fn collect_root_def_map(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap>
     let mut collector = DefCollector {
         map: DefMap {
             scopes: Arena::with_capacity(scope_cnt),
-            // nodes: Arena::with_capacity(tree.data.nets.len()),
             root_scope: LocalScopeId::from(0u32),
             src: DefMapSource::Root,
             diagnostics: Vec::new(),
@@ -48,7 +50,6 @@ pub fn collect_function_map(db: &dyn HirDefDB, function: FunctionId) -> Arc<DefM
     let mut collector = DefCollector {
         map: DefMap {
             scopes: Arena::with_capacity(tree.data.modules.len() + 1),
-            // nodes: Arena::with_capacity(tree.data.nets.len()),
             src: DefMapSource::Function(function),
             root_scope: LocalScopeId::from(0u32), // This will be changed once the scope has been created
             diagnostics: Vec::new(),
@@ -64,11 +65,10 @@ pub fn collect_function_map(db: &dyn HirDefDB, function: FunctionId) -> Arc<DefM
 }
 
 pub fn collect_block_map(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
+    // Note: `BlockLoc`s are only created for named blocks.
     let BlockLoc { ast, parent } = block.lookup(db);
-
     let tree = &db.item_tree(parent.root_file);
-    let items = &tree.block_scope(ast).scope_items;
-
+    let items = &tree[ast].scope_items;
     if items.is_empty() {
         return None;
     }
@@ -106,11 +106,11 @@ impl DefCollector<'_> {
     ) {
         debug_assert_eq!(self.map.src, DefMapSource::Function(id));
 
-        let root_def_map = self.db.def_map(self.root_file);
+        let root_def_map = self.db.root_def_map(self.root_file);
 
         // parent is a placeholder here...
         let scope = self.new_scope(ScopeOrigin::Function(id), LocalScopeId::from(0u32));
-        assert_eq!(scope, self.map.entry());
+        assert_eq!(scope, self.map.entry_scope());
 
         self.map[scope]
             .declarations
@@ -135,11 +135,11 @@ impl DefCollector<'_> {
 
         let root = self.new_root_scope(ScopeOrigin::Root);
         self.map.root_scope = root;
-        debug_assert_eq!(self.map.root(), root);
+        debug_assert_eq!(self.map.root_scope(), root);
 
         // Copy the modules and their parameters since these are the only declarations outside
         // of the function itself that are accessible insdie an analog function
-        let main_root_scope = &root_def_map.scopes[root_def_map.root()];
+        let main_root_scope = &root_def_map.scopes[root_def_map.root_scope()];
 
         let mut parent_module_ = None;
 
@@ -156,7 +156,7 @@ impl DefCollector<'_> {
                     })
                     .collect();
 
-                debug_assert_eq!(scope.parent, Some(root_def_map.root()));
+                debug_assert_eq!(scope.parent, Some(root_def_map.root_scope()));
 
                 let scope = Scope {
                     origin: scope.origin,
@@ -183,11 +183,11 @@ impl DefCollector<'_> {
 
     fn collect_block_map(&mut self, id: BlockId, items: &[BlockScopeItem]) {
         let scope = self.new_root_scope(id.into());
-        debug_assert_eq!(scope, self.map.entry());
+        debug_assert_eq!(scope, self.map.entry_scope());
         for item in items {
             match *item {
                 BlockScopeItem::Scope(ast) => {
-                    if let Some(name) = &self.tree.block_scope(ast).name {
+                    if let Some(name) = &self.tree[ast].name {
                         let loc = BlockLoc {
                             ast,
                             parent: ScopeId {
@@ -219,8 +219,8 @@ impl DefCollector<'_> {
     fn collect_root_map(&mut self) {
         let root_scope = self.new_root_scope(ScopeOrigin::Root);
 
-        debug_assert_eq!(root_scope, self.map.entry());
-        debug_assert_eq!(root_scope, self.map.root());
+        debug_assert_eq!(root_scope, self.map.entry_scope());
+        debug_assert_eq!(root_scope, self.map.root_scope());
 
         for item in &*self.tree.top_level {
             match *item {
@@ -294,11 +294,7 @@ impl DefCollector<'_> {
         let id = loc.intern(self.db);
         self.insert_decl(
             scope,
-            self.tree
-                .block_scope(ast)
-                .name
-                .clone()
-                .expect("Item tree must only contain named blocks"),
+            self.tree[ast].name.clone().expect("Item tree must only contain named blocks"),
             id,
         );
     }

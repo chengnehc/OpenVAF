@@ -1,728 +1,942 @@
-use basedb::diagnostics::{Diagnostic, Label, LabelStyle, Report};
-use basedb::lints::builtin::{const_simparam, trivial_probe, variant_const_simparam};
-use basedb::lints::{self, Lint, LintSrc};
-use basedb::{AstIdMap, BaseDB, FileId};
-pub use body::BodyValidationDiagnostic;
-use hir_def::body::BodySourceMap;
-use hir_def::{
-    DisciplineAttr, ExprId, ItemLoc, ItemTree, ItemTreeNode, Lookup, NatureAttr, NodeId,
-    NodeTypeDecl,
-};
-use syntax::name::Name;
-use syntax::sourcemap::{FileSpan, SourceMap};
-use syntax::{Parse, SourceFile, TextRange};
-pub use types::TypeValidationDiagnostic;
+use std::{iter, mem};
+use stdx::impl_display;
 
+use ahash::{HashMap, HashSet};
+use basedb::FileId;
+use hir_def::{
+    body::Body,
+    nameres::{DefMap, PathResolveError, ScopeDefItem},
+    AliasParamId, Branch, BranchId, BuiltIn, DefWithBodyId, DisciplineId, Expr, ExprId,
+    FunctionArgLoc, ItemLoc, ItemTree, Literal, Lookup, ModuleId, ModuleLoc, NatureId, NodeId,
+    NodeTypeDecl, Path, ScopeId, Stmt, StmtId,
+};
+use syntax::{
+    ast::{ArgListOwner, AssignOp},
+    name::AsIdent,
+    {AstNode, SyntaxNodePtr},
+};
+use typed_index_collections::TiSlice;
+
+use crate::builtin::{
+    ABSDELAY_MAX, DDT_TOL, IDT_IC_ASSERT_TOL, NATURE_ACCESS_BRANCH, NATURE_ACCESS_NODES,
+    NATURE_ACCESS_NODE_GND, NATURE_ACCESS_PORT_FLOW, NOISE_TABLE_INLINE, NOISE_TABLE_INLINE_NAME,
+    TRANSITION_DELAY_RISET_FALLT_TOL,
+};
 use crate::db::HirTyDB;
-use crate::inference::BranchWrite;
-use crate::validation::body::{BodyCtx, IllegalCtxAccess, IllegalCtxAccessKind};
-use crate::validation::types::DuplicateItem;
+use crate::inference::{BranchWrite, InferenceResult, ResolvedFun};
+use crate::lower::BranchKind;
+use crate::types::{Signature, Ty};
 
 mod body;
+mod diagnostics;
 mod types;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
-struct IncompatibleBranchDiagnostic {
-    branch_span: FileSpan,
-    branch_name: String,
-    node1: NodeId,
-    node2: NodeId,
+use body::IllegalCtxAccessKind;
+use types::DuplicateItem;
+
+pub use body::BodyDiagnostic;
+pub use diagnostics::{BodyDiagnosticWrapped, TypeDiagnosticWrapped};
+pub use types::TypeDiagnostic;
+
+struct BodyValidator<'a> {
+    db: &'a dyn HirTyDB,
+    owner: DefWithBodyId,
+    body: &'a Body,
+    infer: &'a InferenceResult,
+    diagnostics: Vec<BodyDiagnostic>,
+    ctx: BodyCtx,
+    non_const_dominator: Box<[ExprId]>,
+    non_trivial_branches: HashSet<BranchWrite>,
+    trivial_probes: HashMap<BranchWrite, Vec<(StmtId, ExprId)>>,
 }
 
-impl IncompatibleBranchDiagnostic {
-    fn into_report(
-        self,
-        db: &dyn HirTyDB,
-        parse: &Parse<SourceFile>,
-        map: &AstIdMap,
-        sm: &SourceMap,
-    ) -> Report {
-        let Self { branch_span, branch_name, node1, node2 } = self;
+impl BodyValidator<'_> {
+    fn validate_stmt(&mut self, stmt: StmtId) {
+        let cond = match self.body.stmts[stmt] {
+            Stmt::Assignment { dst, val, op_kind: assignment_kind } => {
+                self.validate_expr(val, stmt);
 
-        let node1_ = node1.lookup(db.upcast());
-        let node1_range = map.get_syntax(node1_.discipline_ast_id(db.upcast()).unwrap()).range();
-        let node1_span = parse.to_file_span(node1_range, sm);
-        let node1 = db.node_data(node1);
+                if assignment_kind == AssignOp::Contribute && !self.ctx.allow_contribute() {
+                    self.diagnostics.push(BodyDiagnostic::IllegalContribute { stmt, ctx: self.ctx })
+                }
+                // avoid duplicate errors
+                else if self.infer.assignment_destination.contains_key(&stmt) {
+                    self.validate_assignment_dst(dst, stmt);
+                }
 
-        let node2_ = node2.lookup(db.upcast());
-        let node2_range = map.get_syntax(node2_.discipline_ast_id(db.upcast()).unwrap()).range();
-        let node2_span = parse.to_file_span(node2_range, sm);
-        let node2 = db.node_data(node2);
+                return;
+            }
+            Stmt::EventControl { body, .. } => {
+                let old = mem::replace(&mut self.ctx, BodyCtx::EventControl);
+                self.validate_stmt(body);
+                self.ctx = old;
+                return;
+            }
+            Stmt::Block { ref body } => {
+                body.iter().for_each(|stmt| self.validate_stmt(*stmt));
+                return;
+            }
 
-        let msg = format!(
-            "nodes '{}' and '{}' of branch '{}' have incompatible disciplines!",
-            node1.name, node2.name, branch_name
-        );
+            Stmt::Missing | Stmt::Empty => return,
 
-        Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: branch_span.file,
-                        range: branch_span.range.into(),
-                        message: format!("'{}' has mismatched disciplines", branch_name),
-                    }])
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: node1_span.file,
-                        range: node1_span.range.into(),
-                        message: format!("help: '{}' declared with discipline '{}'", node1.name, node1.discipline.as_ref().unwrap()),
-                    }])
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: node2_span.file,
-                        range: node2_span.range.into(),
-                        message: format!("help: '{}' declared with discipline '{}'", node2.name, node2.discipline.as_ref().unwrap()),
-                    }])
-                    .with_message(msg)
-                    .with_notes(vec![
-                        format!("help: disciplines are compatible if their potential and flow natures have the same 'units' attribute"),
-                    ])
+            Stmt::Expr(e) => {
+                self.validate_expr(e, stmt);
+                return;
+            }
+
+            Stmt::If { cond, .. }
+            | Stmt::ForLoop { cond, .. }
+            | Stmt::WhileLoop { cond, .. }
+            | Stmt::Case { discr: cond, .. } => cond,
+        };
+
+        self.validate_condition(cond, stmt, |s| {
+            s.body.stmts[stmt].walk_child_stmts(|stmt| s.validate_stmt(stmt))
+        });
+    }
+
+    fn validate_condition(
+        &mut self,
+        cond: ExprId,
+        stmt: StmtId,
+        f: impl FnOnce(&mut Self),
+    ) -> Option<Box<[ExprId]>> {
+        if self.ctx == BodyCtx::AnalogBlock || self.ctx == BodyCtx::Conditional {
+            let mut non_const_access = Vec::new();
+            ExprValidator {
+                parent: self,
+                cond_diagnostic_sink: Some(&mut non_const_access),
+                write: false,
+                stmt,
+            }
+            .validate_expr(cond);
+
+            if !non_const_access.is_empty() {
+                let non_const_dominator = mem::replace(
+                    &mut self.non_const_dominator,
+                    non_const_access.into_boxed_slice(),
+                );
+                let ctx = mem::replace(&mut self.ctx, BodyCtx::Conditional);
+                f(self);
+                self.ctx = ctx;
+                return Some(mem::replace(&mut self.non_const_dominator, non_const_dominator));
+            }
+        } else {
+            self.validate_expr(cond, stmt);
+        }
+
+        f(self);
+        None
+    }
+
+    fn validate_expr(&mut self, expr: ExprId, stmt: StmtId) {
+        ExprValidator { parent: self, cond_diagnostic_sink: None, write: false, stmt }
+            .validate_expr(expr)
+    }
+
+    fn validate_assignment_dst(&mut self, expr: ExprId, stmt: StmtId) {
+        ExprValidator { parent: self, cond_diagnostic_sink: None, write: true, stmt }
+            .validate_expr(expr)
     }
 }
 
-pub struct BodyValidationDiagnosticWrapped<'a> {
-    pub body_sm: &'a BodySourceMap,
-    pub diag: &'a BodyValidationDiagnostic,
-    pub parse: &'a Parse<SourceFile>,
-    pub db: &'a dyn HirTyDB,
-    pub sm: &'a SourceMap,
-    pub map: &'a AstIdMap,
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum BodyCtx {
+    AnalogBlock,
+    AnalogInitialBlock,
+    Conditional,
+    EventControl,
+    Function,
+    ConstOrAnalysis,
+    Const,
 }
 
-impl BodyValidationDiagnosticWrapped<'_> {
-    fn expr_src(&self, expr: ExprId) -> FileSpan {
-        self.parse.to_file_span(self.body_sm.expr_map_back[expr].as_ref().unwrap().range(), self.sm)
+impl BodyCtx {
+    fn allow_nature_access(self) -> bool {
+        matches!(self, Self::AnalogBlock | Self::Conditional | Self::EventControl)
     }
 
-    fn lookup<I, T>(&self, id: I) -> (Name, FileSpan)
-    where
-        I: Lookup<Data = ItemLoc<T>>,
-        T: ItemTreeNode,
-    {
-        let loc = id.lookup(self.db.upcast());
-        let src = loc.ast_ptr(self.db.upcast()).range();
-        (loc.name(self.db.upcast()), self.parse.to_file_span(src, self.sm))
+    fn allow_contribute(self) -> bool {
+        matches!(self, Self::AnalogBlock | Self::Conditional)
+    }
+
+    fn allow_analog_operator(self) -> bool {
+        matches!(self, Self::AnalogBlock)
+    }
+
+    // FIXME: likely wrong
+    fn allow_analysis_fun(self) -> bool {
+        !matches!(self, Self::Const)
+    }
+
+    fn allow_var_ref(self) -> bool {
+        !matches!(self, Self::Const | Self::ConstOrAnalysis)
     }
 }
 
-impl Diagnostic for BodyValidationDiagnosticWrapped<'_> {
-    fn lint(&self, root_file: FileId, db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
-        match *self.diag {
-            BodyValidationDiagnostic::ConstSimparam { known: false, stmt, .. } => {
-                let src1 = self.body_sm.lint_src(stmt, const_simparam);
-                let (lvl1, _) = src1.lvl(const_simparam, root_file, db);
-                let src2 = self.body_sm.lint_src(stmt, variant_const_simparam);
-                let (lvl2, _) = src2.lvl(variant_const_simparam, root_file, db);
+impl_display! {
+    match BodyCtx{
+       BodyCtx::AnalogBlock => "analog block";
+       BodyCtx::AnalogInitialBlock => "analog initial block";
+       BodyCtx::Conditional => "conditions";
+       BodyCtx::EventControl => "events";
+       BodyCtx::Function => "analog functions";
+       BodyCtx::ConstOrAnalysis => "constant or analysis";
+       BodyCtx::Const => "constants";
+    }
+}
 
-                let res = if lvl2 > lvl1 {
-                    (variant_const_simparam, src2)
-                } else {
-                    (const_simparam, src1)
-                };
-                Some(res)
-            }
+struct ExprValidator<'a, 'b> {
+    parent: &'a mut BodyValidator<'b>,
+    cond_diagnostic_sink: Option<&'a mut Vec<ExprId>>,
+    write: bool,
+    stmt: StmtId,
+}
 
-            BodyValidationDiagnostic::ConstSimparam { known: true, stmt, .. } => {
-                let src = self.body_sm.lint_src(stmt, const_simparam);
-                Some((const_simparam, src))
-            }
-            BodyValidationDiagnostic::TrivialBranchAccess { stmt, .. } => {
-                let src = self.body_sm.lint_src(stmt, trivial_probe);
-                Some((trivial_probe, src))
-            }
-            _ => None,
+impl ExprValidator<'_, '_> {
+    fn report_illegal_access(&mut self, kind: IllegalCtxAccessKind, expr: ExprId) {
+        let err = BodyDiagnostic::IllegalCtxAccess { kind, ctx: self.parent.ctx, expr };
+        self.report(err);
+    }
+
+    fn check_access(
+        &mut self,
+        kind: impl FnOnce(&Self) -> IllegalCtxAccessKind,
+        expr: ExprId,
+        allowed: bool,
+    ) {
+        if let Some(sink) = &mut self.cond_diagnostic_sink {
+            sink.push(expr)
+        }
+
+        if !allowed {
+            self.report_illegal_access(kind(self), expr)
         }
     }
 
-    fn build_report(&self, _root_file: basedb::FileId, _db: &dyn basedb::BaseDB) -> Report {
-        match *self.diag {
-            BodyValidationDiagnostic::ExpectedPort { expr, node } => {
-                let FileSpan { range, file } = self.expr_src(expr);
-                let node = node.lookup(self.db.upcast());
-                let module = node.module.lookup(self.db.upcast());
-                let tree = module.item_tree(self.db.upcast());
-                let node = &tree[module.id].nodes[node.id];
-                let name = &node.name;
+    fn report(&mut self, diagnostic: BodyDiagnostic) {
+        self.parent.diagnostics.push(diagnostic)
+    }
 
-                let mut labels = vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "expected port".to_owned(),
-                }];
+    fn report_illegal_nature_access(
+        &mut self,
+        branch: String,
+        discipline: DisciplineId,
+        access_nature: Option<NatureId>,
+        access_expr: ExprId,
+    ) {
+        let db = self.parent.db;
+        let discipline = db.discipline_info(discipline);
 
-                labels.extend(node.decls.iter().map(|decl| {
-                    let net = match decl {
-                        NodeTypeDecl::Net(net) => *net,
-                        NodeTypeDecl::Port(_) => unreachable!(),
+        let nature_info = |nature: NatureId| {
+            let nature = nature.lookup(db.upcast());
+            let nature = &nature.item_tree(db.upcast())[nature.id];
+            Some((nature.name.clone(), nature.access.clone()?.0))
+        };
+        let pot = discipline.potential.and_then(nature_info);
+        let flow = discipline.flow.and_then(nature_info);
+        self.parent.diagnostics.push(BodyDiagnostic::IncompatibleNatureAccess {
+            candidates: [pot, flow],
+            access_nature,
+            access_expr,
+            branch,
+        })
+    }
+
+    fn validate_implicit_branch(
+        &mut self,
+        expr: ExprId,
+        node1: NodeId,
+        node2: NodeId,
+    ) -> Option<DisciplineId> {
+        if let Some(discipline1) = self.parent.db.node_discipline(node1) {
+            if let Some(discipline2) = self.parent.db.node_discipline(node2) {
+                let discipline2 = self.parent.db.discipline_info(discipline2);
+                if !discipline2.compatible(discipline1, self.parent.db) {
+                    self.report(BodyDiagnostic::IncompatibleImplicitBranch {
+                        access_expr: expr,
+                        node1,
+                        node2,
+                    });
+                } else {
+                    return Some(discipline1);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn lint_trivial_branch(&mut self, branch: BranchWrite, call: BuiltIn, expr: ExprId) {
+        let is_flow = call == BuiltIn::flow;
+        if self.write {
+            self.parent.non_trivial_branches.insert(branch);
+            self.parent.trivial_probes.remove(&branch);
+        } else if is_flow && !self.parent.non_trivial_branches.contains(&branch) {
+            self.parent.trivial_probes.entry(branch).or_default().push((self.stmt, expr))
+        }
+    }
+
+    fn validate_flow_or_pot(&mut self, expr: ExprId, call: BuiltIn, discipline: DisciplineId) {
+        let is_pot = call == BuiltIn::potential;
+        let discipline_ = self.parent.db.discipline_info(discipline);
+        if discipline_.potential.is_none() && is_pot || discipline_.flow.is_none() && !is_pot {
+            self.report(BodyDiagnostic::IllegalNatureAccess { is_pot, access_expr: expr })
+        }
+    }
+
+    fn validate_nature_access(
+        &mut self,
+        access_nature: NatureId,
+        access_expr: ExprId,
+        args: &[ExprId],
+    ) {
+        match self.parent.infer.resolved_signatures.get(&access_expr).copied() {
+            Some(NATURE_ACCESS_BRANCH) => {
+                let branch = self.parent.infer.expr_types[args[0]].unwrap_branch();
+                if let Some(branch_info) = self.parent.db.branch_info(branch) {
+                    self.report_illegal_nature_access(
+                        self.parent.db.branch_data(branch).name.to_string(),
+                        branch_info.discipline,
+                        Some(access_nature),
+                        access_expr,
+                    )
+                }
+            }
+
+            Some(NATURE_ACCESS_NODE_GND) => {
+                let node = self.parent.infer.expr_types[args[0]].unwrap_node();
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                    let node = self.parent.db.node_data(node);
+                    self.report_illegal_nature_access(
+                        format!("({})", node.name),
+                        discipline,
+                        Some(access_nature),
+                        access_expr,
+                    )
+                }
+            }
+
+            Some(NATURE_ACCESS_NODES) => {
+                let node1 = self.parent.infer.expr_types[args[0]].unwrap_node();
+                let node2 = self.parent.infer.expr_types[args[0]].unwrap_node();
+                if let Some(discipline1) = self.parent.db.node_discipline(node1) {
+                    if let Some(discipline2) = self.parent.db.node_discipline(node2) {
+                        let discipline2 = self.parent.db.discipline_info(discipline2);
+                        if discipline2.compatible(discipline1, self.parent.db) {
+                            let node1 = self.parent.db.node_data(node1);
+                            let node2 = self.parent.db.node_data(node2);
+                            self.report_illegal_nature_access(
+                                format!("({}, {})", node1.name, node2.name),
+                                discipline1,
+                                Some(access_nature),
+                                access_expr,
+                            )
+                        } else {
+                            self.report(BodyDiagnostic::IncompatibleImplicitBranch {
+                                access_expr,
+                                node1,
+                                node2,
+                            })
+                        }
+                    }
+                }
+            }
+
+            Some(NATURE_ACCESS_PORT_FLOW) => {
+                let node = self.parent.infer.expr_types[args[0]].unwrap_port_flow();
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                    let node = self.parent.db.node_data(node);
+                    self.report_illegal_nature_access(
+                        format!("(<{}>)", node.name),
+                        discipline,
+                        Some(access_nature),
+                        access_expr,
+                    )
+                }
+            }
+            Some(_) => unreachable!(),
+            None => (),
+        };
+    }
+
+    fn validate_expr(&mut self, expr: ExprId) {
+        match self.parent.body.exprs[expr] {
+            Expr::Call { ref fun, ref args, .. } => {
+                match self.parent.infer.resolved_calls.get(&expr) {
+                    Some(ResolvedFun::BuiltIn(builtin)) => {
+                        let signature = self.parent.infer.resolved_signatures.get(&expr);
+                        self.validate_builtin(fun, expr, args, *builtin, signature.cloned());
+                        return;
+                    }
+                    Some(ResolvedFun::InvalidNatureAccess(nature)) => {
+                        self.validate_nature_access(*nature, expr, args);
+                        return;
+                    }
+                    _ => (),
+                }
+            }
+
+            Expr::Select { cond, then_val, else_val } => {
+                if let Some(non_const_dominators) =
+                    self.parent.validate_condition(cond, self.stmt, |s| {
+                        let mut validator = ExprValidator {
+                            parent: s,
+                            cond_diagnostic_sink: self.cond_diagnostic_sink.as_deref_mut(),
+                            write: false,
+                            stmt: self.stmt,
+                        };
+                        validator.validate_expr(then_val);
+                        validator.validate_expr(else_val);
+                    })
+                {
+                    if let Some(sink) = &mut self.cond_diagnostic_sink {
+                        sink.extend(non_const_dominators.to_vec())
+                    }
+                }
+            }
+
+            Expr::Path { port: false, .. } => {
+                match self.parent.infer.expr_types[expr] {
+                    Ty::FunctionVar { arg: Some(arg), fun, .. } => {
+                        let is_output = self.parent.db.function_data(fun).args[arg].is_output;
+                        if self.write && !is_output {
+                            self.report(BodyDiagnostic::WriteToInputArg {
+                                expr,
+                                arg: FunctionArgLoc { fun, id: arg },
+                            })
+                        }
+                    }
+
+                    Ty::Var(_, var) => {
+                        self.check_access(
+                            |__| IllegalCtxAccessKind::Var(var),
+                            expr,
+                            self.parent.ctx.allow_var_ref(),
+                        );
+                    }
+                    Ty::Param(_, param) => {
+                        if let DefWithBodyId::ParamId(def) = self.parent.owner {
+                            if def.lookup(self.parent.db.upcast()).id
+                                < param.lookup(self.parent.db.upcast()).id
+                            {
+                                self.report(BodyDiagnostic::IllegalParamAccess { def, expr, param })
+                            }
+                        }
+                    }
+                    _ => (),
+                };
+                return;
+            }
+
+            _ => (),
+        }
+
+        self.parent.body.exprs[expr].walk_child_exprs(|child| self.validate_expr(child))
+    }
+
+    fn validate_builtin(
+        &mut self,
+        name: &Option<Path>,
+        expr: ExprId,
+        mut args: &[ExprId],
+        call: BuiltIn,
+        signature: Option<Signature>,
+    ) {
+        match call {
+            _ if call.is_unsupported() => self
+                .parent
+                .diagnostics
+                .push(BodyDiagnostic::UnsupportedFunction { expr, func: call }),
+            BuiltIn::potential | BuiltIn::flow => self.check_access(
+                |_| IllegalCtxAccessKind::NatureAccess,
+                expr,
+                self.parent.ctx.allow_nature_access(),
+            ),
+
+            _ if call.is_analog_operator() && call != BuiltIn::ddx
+                || call.is_analog_operator_sysfun() =>
+            {
+                // let non_const_dominator = if self.cond_diagnostic_sink.is_none() {
+                // self.parent.non_const_dominator.clone()
+                // } else {
+                // vec![].into_boxed_slice()
+                // };
+
+                self.check_access(
+                    |sel| IllegalCtxAccessKind::AnalogOperator {
+                        name: name.as_ref().and_then(|p| p.as_ident()).unwrap(),
+                        is_standard: call.is_analog_operator(),
+                        non_const_dominator: sel.parent.non_const_dominator.clone(),
+                    },
+                    expr,
+                    self.parent.ctx.allow_analog_operator(),
+                )
+            }
+
+            _ if call.is_analysis_var() && !self.parent.ctx.allow_analysis_fun() => self
+                .report_illegal_access(
+                    IllegalCtxAccessKind::AnalysisFun {
+                        name: name.as_ref().and_then(|p| p.as_ident()).unwrap(),
+                    },
+                    expr,
+                ),
+            _ => (),
+        }
+
+        match (call, signature) {
+            (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_NODES)) => {
+                let hi = self.parent.infer.expr_types[args[0]].unwrap_node();
+                let lo = self.parent.infer.expr_types[args[1]].unwrap_node();
+                let branch = if hi >= lo {
+                    BranchWrite::Unnamed { hi, lo: Some(lo) }
+                } else {
+                    BranchWrite::Unnamed { hi: lo, lo: Some(hi) }
+                };
+                self.lint_trivial_branch(branch, call, expr);
+                if let Some(discipline) = self.validate_implicit_branch(expr, hi, lo) {
+                    self.validate_flow_or_pot(expr, call, discipline)
+                }
+            }
+
+            (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_NODE_GND)) => {
+                let node = self.parent.infer.expr_types[args[0]].unwrap_node();
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                    self.lint_trivial_branch(
+                        BranchWrite::Unnamed { hi: node, lo: None },
+                        call,
+                        expr,
+                    );
+                    self.validate_flow_or_pot(expr, call, discipline)
+                }
+            }
+
+            (BuiltIn::flow, Some(NATURE_ACCESS_PORT_FLOW)) => {
+                let node = self.parent.infer.expr_types[args[0]].unwrap_port_flow();
+                let node_data = self.parent.db.node_data(node);
+                if !(node_data.is_input | node_data.is_output) {
+                    self.report(BodyDiagnostic::ExpectedPort { node, expr })
+                }
+
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                    self.validate_flow_or_pot(expr, BuiltIn::flow, discipline)
+                }
+            }
+
+            (BuiltIn::potential, Some(NATURE_ACCESS_PORT_FLOW)) => {
+                self.report(BodyDiagnostic::PotentialOfPortFlow { expr, branch: None })
+            }
+
+            (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_BRANCH)) => {
+                let branch = self.parent.infer.expr_types[args[0]].unwrap_branch();
+
+                if let Some(branch_info) = self.parent.db.branch_info(branch) {
+                    match branch_info.kind {
+                        BranchKind::PortFlow(_) => {
+                            if call == BuiltIn::potential {
+                                self.report(BodyDiagnostic::PotentialOfPortFlow {
+                                    expr,
+                                    branch: Some(branch),
+                                })
+                            } else if !self.write {
+                                self.validate_flow_or_pot(
+                                    expr,
+                                    BuiltIn::flow,
+                                    branch_info.discipline,
+                                )
+                            }
+                        }
+                        BranchKind::NodeGnd(node) => {
+                            self.lint_trivial_branch(
+                                BranchWrite::Unnamed { hi: node, lo: None },
+                                call,
+                                expr,
+                            );
+                            self.validate_flow_or_pot(expr, call, branch_info.discipline)
+                        }
+                        BranchKind::Nodes(hi, lo) => {
+                            let branch = if hi >= lo {
+                                BranchWrite::Unnamed { hi, lo: Some(lo) }
+                            } else {
+                                BranchWrite::Unnamed { hi: lo, lo: Some(hi) }
+                            };
+                            self.lint_trivial_branch(branch, call, expr);
+                            self.validate_flow_or_pot(expr, call, branch_info.discipline)
+                        }
+                    }
+                }
+            }
+
+            (BuiltIn::port_connected, _) => {
+                let node = self.parent.infer.expr_types[args[0]].unwrap_node();
+                let node_data = self.parent.db.node_data(node);
+                if !(node_data.is_input | node_data.is_output) {
+                    self.report(BodyDiagnostic::ExpectedPort { node, expr })
+                }
+            }
+
+            (
+                BuiltIn::noise_table | BuiltIn::noise_table_log,
+                Some(NOISE_TABLE_INLINE | NOISE_TABLE_INLINE_NAME),
+            ) => self.validate_const_expr(args[0]),
+            (func @ (BuiltIn::simparam | BuiltIn::simparam_str), _) => {
+                if self.parent.ctx == BodyCtx::Const {
+                    let known = if let Expr::Literal(Literal::String(name)) =
+                        &self.parent.body.exprs[args[0]]
+                    {
+                        matches!(
+                            (func, &**name),
+                            (
+                                BuiltIn::simparam,
+                                "minr"
+                                    | "imelt"
+                                    | "shrink"
+                                    | "imax"
+                                    | "rthresh"
+                                    | "scale"
+                                    | "simulatorSubversion"
+                                    | "simulatorVersion"
+                                    | "tnom"
+                            ) | (BuiltIn::simparam_str, "cwd" | "module" | "instance" | "path")
+                        )
+                    } else {
+                        false
                     };
 
-                    let range = self.map.get(tree[net].ast_id).range();
-                    let FileSpan { range, file } = self.parse.to_file_span(range, self.sm);
-                    Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: format!("info: '{}' was declared here", name),
-                    }
-                }));
-
-                Report::error()
-                    .with_message(format!(
-                        "expected a port reference but no direction was declared for net '{}'",
-                        name
-                    ))
-                    .with_labels(labels)
-                    .with_notes(vec![
-                        "help: prefix one of the declarations with inout, input or output"
-                            .to_owned(),
-                    ])
-            }
-            BodyValidationDiagnostic::PotentialOfPortFlow { expr, branch } => {
-                let FileSpan { range, file } = self.expr_src(expr);
-
-                let mut labels = vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "invalid potential access".to_owned(),
-                }];
-
-                if let Some(branch) = branch {
-                    let (name, FileSpan { range, file }) = self.lookup(branch);
-
-                    labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: format!("info: '{}' was declared here", name),
-                    });
+                    self.report(BodyDiagnostic::ConstSimparam { known, expr, stmt: self.stmt });
                 }
-
-                Report::error()
-                    .with_message("access of port-branch potential")
-                    .with_labels(labels)
-                    .with_notes(vec![
-                        "help: only the flow of port branches like <foo> can be accessed"
-                            .to_owned(),
-                    ])
             }
-            BodyValidationDiagnostic::IllegalContribute { stmt, ctx } => {
-                let FileSpan { range, file } = self.parse.to_file_span(
-                    self.body_sm.stmt_map_back[stmt].as_ref().unwrap().range(),
-                    self.sm,
+
+            (BuiltIn::absdelay, Some(ABSDELAY_MAX))
+            | (BuiltIn::transition, Some(TRANSITION_DELAY_RISET_FALLT_TOL))
+            | (BuiltIn::ddt, Some(DDT_TOL))
+            | (BuiltIn::idt | BuiltIn::idtmod, Some(IDT_IC_ASSERT_TOL)) => {
+                if let [other_args @ .., const_expr] = args {
+                    // Do not type check const expr twice
+                    args = other_args;
+                    self.validate_const_expr(*const_expr);
+                };
+            }
+
+            (
+                BuiltIn::laplace_nd
+                | BuiltIn::laplace_np
+                | BuiltIn::laplace_zp
+                | BuiltIn::laplace_zd
+                | BuiltIn::zi_nd
+                | BuiltIn::zi_np
+                | BuiltIn::zi_zd
+                | BuiltIn::zi_zp,
+                Some(_),
+            ) => {
+                if let [_expr, const_args @ ..] = args {
+                    args = &args[..1];
+                    for arg in const_args {
+                        self.validate_const_expr(*arg)
+                    }
+                }
+            }
+
+            _ => (),
+        }
+
+        for arg in args {
+            self.validate_expr(*arg)
+        }
+    }
+
+    fn validate_const_expr(&mut self, expr: ExprId) {
+        let old = mem::replace(&mut self.parent.ctx, BodyCtx::Const);
+        let sink = self.cond_diagnostic_sink.take();
+        self.validate_expr(expr);
+        self.cond_diagnostic_sink = sink;
+        self.parent.ctx = old;
+    }
+}
+
+struct TypeValidator<'a> {
+    db: &'a dyn HirTyDB,
+    dst: &'a mut Vec<TypeDiagnostic>,
+    def_map: &'a DefMap,
+    tree: &'a ItemTree,
+    root_file: FileId,
+}
+
+impl TypeValidator<'_> {
+    fn validate(&mut self) {
+        let root = &self.def_map[self.def_map.root_scope()];
+        for def in root.declarations.values() {
+            match *def {
+                ScopeDefItem::NatureId(nature) => self.verify_nature(nature),
+                ScopeDefItem::DisciplineId(discipline) => self.verify_discipline(discipline),
+                ScopeDefItem::ModuleId(module) => self.verify_module(module),
+                _ => (),
+            }
+        }
+    }
+
+    fn verify_module(&mut self, module: ModuleId) {
+        let loc = module.lookup(self.db.upcast());
+        let scope = loc.scope.local_scope;
+        for item in self.def_map[scope].declarations.values() {
+            match item {
+                ScopeDefItem::NodeId(node) => self.verify_node(*node, loc),
+                ScopeDefItem::BranchId(branch) => self.verify_branch(*branch),
+                ScopeDefItem::AliasParamId(alias) => self.verify_alias(*alias),
+                _ => (),
+            }
+        }
+    }
+
+    fn resolve_node(
+        &mut self,
+        node: &Path,
+        scope: ScopeId,
+        branch: &ItemLoc<Branch>,
+    ) -> Option<NodeId> {
+        let node = scope.resolve_item_path::<NodeId>(self.db.upcast(), node);
+        match node {
+            Ok(node) => Some(node),
+            Err(err) => {
+                let src = SyntaxNodePtr::new(
+                    branch
+                        .source(self.db.upcast())
+                        .arg_list()
+                        .unwrap()
+                        .args()
+                        .next()
+                        .unwrap()
+                        .syntax(),
                 );
-
-                Report::error()
-                    .with_message(format!("branch contributions are not allowed in {}", ctx))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "not allowed here".to_owned(),
-                    }])
-                    .with_notes(vec![
-                        "help: branch contributions are only allowed in module-level analog blocks"
-                            .to_owned(),
-                    ])
+                self.report(TypeDiagnostic::PathError { err, src });
+                None
             }
-            BodyValidationDiagnostic::WriteToInputArg { expr, arg } => {
-                let FileSpan { range, file } = self.expr_src(expr);
-                let arg_name = arg.name(self.db.upcast());
-                let arg_src = arg.ast_ptr(self.db.upcast()).range();
-                let arg_src = self.parse.to_file_span(arg_src, self.sm);
+        }
+    }
 
-                Report::error()
-                    .with_message(format!("write to input function argument '{}'", arg_name))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: arg_src.file,
-                        range: arg_src.range.into(),
-                        message: format!("help: '{}' is defined here", arg_name),
-                    }])
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "write to input argument".to_owned(),
-                    }])
-                    .with_notes(vec![format!("help: change direction of '{}' to inout", arg_name)])
-            }
-            BodyValidationDiagnostic::IllegalParamAccess { def, expr, param } => {
-                let FileSpan { range, file } = self.expr_src(expr);
-                let (def_name, def_src) = self.lookup(def);
-                let (ref_name, ref_src) = self.lookup(param);
-
-                Report::error()
-                    .with_message(format!(
-                        "definition of '{}' references parameter '{}' defined afterwards",
-                        def_name, ref_name
-                    ))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: def_src.file,
-                        range: def_src.range.into(),
-                        message: format!("help: '{}' is defined here", def_name),
-                    }])
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "illegal reference".to_owned(),
-                    }])
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: ref_src.file,
-                        range: ref_src.range.into(),
-                        message: format!(".. to parameter '{}' defined here", ref_name),
-                    }])
-                    .with_notes(vec![
-                            "help: parameters may only refer to parameters (textually) defined before them"
-                            .to_owned(),
-                    ])
-            }
-            BodyValidationDiagnostic::IllegalCtxAccess(IllegalCtxAccess {
-                ref kind,
-                ctx,
-                expr,
-            }) => {
-                let FileSpan { range, file } = self.expr_src(expr);
-
-                let mut res = Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "not allowed here".to_owned(),
-                }]);
-
-                match kind {
-                    IllegalCtxAccessKind::NatureAccess => res
-                        .with_message(format!("nature access is not allowed in {}", ctx))
-                        .with_notes(vec![
-                            "help: nature access is only allowed in module-level analog blocks"
-                                .to_owned(),
-                        ]),
-                    IllegalCtxAccessKind::AnalogOperator {
-                        name,
-                        is_standard: _, // TODO add a note?
-                        non_const_dominator,
-                    } => {
-                        let notes = if ctx == BodyCtx::Conditional {
-                            vec![
-                                "help: analog operators are only allowed in non-conditional behaviour".to_owned(),
-                                "help: only constant and analysis functions are allowed in conditions".to_owned()
-                            ]
-                        } else {
-                            vec!["help: analog operators are only allowed in the main-analog block"
-                                .to_owned()]
-                        };
-
-                        res.labels.extend(non_const_dominator.iter().map(|expr| {
-                            let FileSpan { range, file } = self.expr_src(*expr);
-                            Label {
-                                style: LabelStyle::Secondary,
-                                file_id: file,
-                                range: range.into(),
-                                message: "help: this condition is not a constant".to_owned(),
-                            }
-                        }));
-
-                        res.with_message(format!(
-                            "analog operator '{}' is not allowed in {}",
-                            name, ctx
-                        ))
-                        .with_notes(notes)
+    fn verify_alias(&mut self, alias: AliasParamId) {
+        if self.db.resolve_alias(alias).is_none() {
+            let loc = alias.lookup(self.db.upcast());
+            let data = self.db.alias_data(alias);
+            if let Some(path) = data.src.as_ref() {
+                match loc.scope.resolve_path(self.db.upcast(), path) {
+                    // TODO: better errors for cycels
+                    Ok(found) => {
+                        let src = SyntaxNodePtr::new(
+                            loc.source(self.db.upcast()).src().unwrap().syntax(),
+                        );
+                        self.report(TypeDiagnostic::PathError {
+                            err: PathResolveError::ExpectedItemKind {
+                                name: path.segments.last().unwrap().clone(),
+                                expected: "parameter",
+                                found,
+                            },
+                            src,
+                        })
                     }
-                    IllegalCtxAccessKind::AnalysisFun { name } => res.with_message(format!(
-                        "analysis function '{}' is not allowed in constants",
-                        name
-                    )),
-                    IllegalCtxAccessKind::Var(var) => {
-                        let name = var.lookup(self.db.upcast()).name(self.db.upcast());
-                        let def = var.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).range();
-                        let FileSpan { range, file } = self.parse.to_file_span(def, self.sm);
-                        res.labels.push(Label {
-                            style: LabelStyle::Secondary,
-                            file_id: file,
-                            range: range.into(),
-                            message: format!("help: '{}' was declared here", name),
-                        });
-                        res.with_message(
-                            "constant expressions must not contain variable references".to_owned(),
-                        )
+                    Err(err) => {
+                        let src = SyntaxNodePtr::new(
+                            loc.source(self.db.upcast()).src().unwrap().syntax(),
+                        );
+                        self.report(TypeDiagnostic::PathError { err, src })
                     }
                 }
             }
-            BodyValidationDiagnostic::ConstSimparam { known, expr, .. } => {
-                let FileSpan { range, file } = self.expr_src(expr);
+        }
+    }
 
-                let mut res = Report::warning()
-                    .with_message(
-                        "call to $simparam in a constant is evaluated before the simulation"
-                            .to_owned(),
-                    )
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "call to $simparam in a constant".to_owned(),
-                    }]);
+    fn report(&mut self, diag: impl Into<TypeDiagnostic>) {
+        self.dst.push(diag.into())
+    }
 
-                if !known {
-                    res = res.with_notes(vec![
-                        "help: the value of paramaeters like \"gmin\' or \"sourceScaleFactor\" may vary between iterations"
-                            .to_owned(),
-                    ])
+    fn verify_branch(&mut self, branch_: BranchId) {
+        let branch_data = self.db.branch_data(branch_);
+        let kind = &branch_data.kind;
+        let branch = branch_.lookup(self.db.upcast());
+        let scope = branch.scope;
+        match kind {
+            hir_def::BranchKind::PortFlow(port) => {
+                if let Some(node) = self.resolve_node(port, scope, &branch) {
+                    let node_ = self.db.node_data(node);
+                    if !node_.is_input && !node_.is_output {
+                        let src = branch.ast_id(self.db.upcast()).into();
+                        self.report(TypeDiagnostic::ExpectedPort { node, src });
+                    }
                 }
-
-                res
             }
-            BodyValidationDiagnostic::UnsupportedFunction { expr, func } => {
-                let FileSpan { range, file } = self.expr_src(expr);
-
-                let mut res = Report::error()
-                    .with_message(format!(
-                        "function '{func:?}' is currently not supported by OpenVAF"
-                    ))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unsupported function".to_owned(),
-                    }]);
-
-                res = res.with_notes(vec![
-                        "This function is part of the Verilog-A standard but currently not implemented by OpenVAF\nIf this function is important to your application, create an issue:\nhttps://github.com/pascalkuthe/openvaf/issues/new".to_owned(),
-                    ]);
-
-                res
+            hir_def::BranchKind::NodeGnd(node) => {
+                self.resolve_node(node, scope, &branch);
             }
-            BodyValidationDiagnostic::IncompatibleNatureAccess {
-                ref candidates,
-                access_nature,
-                access_expr,
-                ref branch,
-            } => {
-                let FileSpan { range, file } = self.expr_src(access_expr);
-                let access_nature = access_nature.map(|nature| self.db.nature_data(nature));
-
-                let message = if let Some(access_nature) = access_nature {
-                    format!("'{}' is not a valid nature for this branch", access_nature.name)
+            hir_def::BranchKind::Nodes(node1, node2) => {
+                let node1 = self.resolve_node(node1, scope, &branch);
+                let node2 = self.resolve_node(node2, scope, &branch);
+                let (node1, node2) = if let (Some(node1), Some(node2)) = (node1, node2) {
+                    (node1, node2)
                 } else {
-                    "illegal access".to_owned()
+                    return;
                 };
 
-                let labels = vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message,
-                }];
-
-                let help_msg = match candidates {
-                    [None, None] => {
-                        "help: this branch has a natureless discipline and can't be accessed"
-                            .to_owned()
-                    }
-                    [None, Some((flow, flow_access))] => {
-                        format!("help: use '{}' to access '{}' (flow)", flow_access, flow)
-                    }
-                    [Some((pot, pot_access)), None] => {
-                        format!("help: use '{}' to access '{}' (potential)", pot_access, pot)
-                    }
-                    [Some((pot, pot_access)), Some((flow, flow_access))] => {
-                        format!(
-                            "help: use '{}' or '{}' to access '{}' (potential) or '{}' (flow)",
-                            pot_access, flow_access, pot, flow
-                        )
-                    }
-                };
-
-                let msg = format!("illegal access of branch '{branch}'");
-
-                Report::error().with_labels(labels).with_message(msg).with_notes(vec![help_msg])
-            }
-            BodyValidationDiagnostic::IllegalNatureAccess { is_pot, access_expr } => {
-                let name = if is_pot { "potential" } else { "flow" };
-                let src = self.expr_src(access_expr);
-                Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: format!("access of branch without {name}"),
-                    }])
-                    .with_message(format!("'{name}' access of branch without {name}"))
-                    .with_notes(vec![format!("help: this branches nodes have a discipline without the '{name}' attribute")])
-            }
-            BodyValidationDiagnostic::IncompatibleImplicitBranch { access, node1, node2 } => {
-                let node1_ = self.db.node_data(node1);
-                let node2_ = self.db.node_data(node2);
-                IncompatibleBranchDiagnostic {
-                    branch_span: self.expr_src(access),
-                    branch_name: format!("({},{})", node1_.name, node2_.name),
-                    node1,
-                    node2,
+                let discipline1 = self.db.node_discipline(node1);
+                let discipline2 = self.db.node_discipline(node2);
+                // fast path
+                if discipline1 == discipline2 {
+                    return;
                 }
-                .into_report(self.db, self.parse, self.map, self.sm)
+
+                let (discipline1, discipline2) =
+                    if let (Some(d1), Some(d2)) = (discipline1, discipline2) {
+                        (d1, d2)
+                    } else {
+                        return;
+                    };
+
+                if !self.db.discipline_info(discipline1).compatible(discipline2, self.db) {
+                    self.report(TypeDiagnostic::IncompatibleBranch {
+                        branch: branch_,
+                        node1,
+                        node2,
+                    })
+                }
             }
-            BodyValidationDiagnostic::TrivialBranchAccess { branch, expr, .. } => {
-                let FileSpan { range, file } = self.expr_src(expr);
-                let db = self.db.upcast();
-                let branch_name = match branch {
-                    BranchWrite::Named(branch) => {
-                        let branch = branch.lookup(db).name(db);
-                        branch.to_string()
-                    }
-                    BranchWrite::Unnamed { hi, lo: Some(lo) } => {
-                        format!("({}, {})", db.node_data(hi).name, db.node_data(lo).name)
-                    }
-                    BranchWrite::Unnamed { hi, lo: None } => {
-                        format!("({})", db.node_data(hi).name)
-                    }
-                };
-                let branch_probe = match branch {
-                    BranchWrite::Named(_) => &branch_name,
-                    BranchWrite::Unnamed { .. } => &branch_name[1..branch_name.len() - 1],
-                };
-
-                let mut res = Report::error()
-                    .with_message("Current probe always returns zero".to_owned())
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "always returns zero".to_owned(),
-                    }]);
-
-                res = res.with_notes(vec![
-                    format!("help: there are no contributions to branch {branch_name}",),
-                    format!("info: branches are open circuted by default: I({branch_probe}) <+ 0"),
-                ]);
-
-                res
-            }
-        }
+            hir_def::BranchKind::Missing => (),
+        };
     }
 
-    fn to_report(&self, root_file: FileId, db: &dyn BaseDB) -> Option<Report> {
-        if let Some((lint, lint_src)) = self.lint(root_file, db) {
-            let (lvl, is_default) = match lint_src.overwrite {
-                Some(lvl) => (lvl, false),
-                None => db.lint_lvl(lint, root_file, lint_src.ast),
-            };
-            let basedb::lints::LintData { name, documentation_id, .. } = db.lint_data(lint);
-
-            let seververity = match lvl {
-                basedb::lints::LintLevel::Deny => basedb::diagnostics::Severity::Error,
-                basedb::lints::LintLevel::Warn => basedb::diagnostics::Severity::Warning,
-                basedb::lints::LintLevel::Allow => return None,
-            };
-
-            let mut report = self.build_report(root_file, db);
-
-            if is_default {
-                let hint = format!("{} is set to {} by default", name, lvl);
-                report.notes.push(hint)
-            }
-
-            report.severity = seververity;
-            Some(report.with_code(format!("L{:03}", documentation_id)))
-        } else {
-            Some(self.build_report(root_file, db))
+    fn verify_node(&mut self, node: NodeId, module: ModuleLoc) {
+        let loc = node.lookup(self.db.upcast());
+        let node_ = &self.tree[module.id].nodes[loc.id];
+        if node_.decls.is_empty() {
+            self.report(TypeDiagnostic::PortWithoutDirection {
+                decl: node_.ast_id,
+                name: node_.name.clone(),
+            });
+            self.report(TypeDiagnostic::NodeWithoutDiscipline {
+                decl: node_.ast_id,
+                name: node_.name.clone(),
+            });
+            return; // Do not print other diagnostics here would just lead to duplications
         }
-    }
-}
-
-pub struct TypeValidationDiagnosticWrapped<'a> {
-    pub diag: &'a TypeValidationDiagnostic,
-    pub parse: &'a Parse<SourceFile>,
-    pub db: &'a dyn HirTyDB,
-    pub sm: &'a SourceMap,
-    pub map: &'a AstIdMap,
-    pub item_tree: &'a ItemTree,
-}
-
-impl TypeValidationDiagnosticWrapped<'_> {
-    fn build_duplicate_item<Def, Item: Copy>(
-        &self,
-        info: &DuplicateItem<Item, Def>,
-        mut to_loc: impl FnMut(Item) -> TextRange,
-    ) -> Vec<Label> {
-        let first = self.parse.to_file_span(to_loc(info.first), self.sm);
-
-        let mut labels = vec![Label {
-            style: LabelStyle::Secondary,
-            file_id: first.file,
-            range: first.range.into(),
-            message: "first declared here".to_owned(),
-        }];
-        let subsequent = info.subsequent.iter().map(|item| {
-            let loc = self.parse.to_file_span(to_loc(*item), self.sm);
-            Label {
-                style: LabelStyle::Primary,
-                file_id: loc.file,
-                range: loc.range.into(),
-                message: "redeclared here".to_owned(),
+        let mut directions = node_.decls.iter().filter_map(|decl| {
+            if let NodeTypeDecl::Port(p) = decl {
+                Some(self.tree[*p].ast_id)
+            } else {
+                None
             }
         });
-
-        labels.extend(subsequent);
-
-        labels
-    }
-}
-impl Diagnostic for TypeValidationDiagnosticWrapped<'_> {
-    fn build_report(&self, _root_file: basedb::FileId, _db: &dyn basedb::BaseDB) -> Report {
-        match *self.diag {
-            TypeValidationDiagnostic::PathError { ref err, src } => {
-                let src = self.parse.to_file_span(src.range(), self.sm);
-
-                Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: err.message(),
-                    }])
-                    .with_message(err.to_string())
+        if let Some(first) = directions.next() {
+            let duplicates: Vec<_> = directions.collect();
+            if !duplicates.is_empty() {
+                self.report(TypeDiagnostic::MultipleDirections(DuplicateItem {
+                    src: node,
+                    first,
+                    subsequent: duplicates,
+                }))
             }
-            TypeValidationDiagnostic::DuplicateDisciplineAttr(ref info) => {
-                let discipline = &self.item_tree[info.src.lookup(self.db.upcast()).id];
-                let labels = self.build_duplicate_item(info, |attr| {
-                    let id = u32::from(discipline.extra_attrs.start()) + u32::from(attr);
-                    let id = DisciplineAttr::lookup(self.item_tree, id.into()).ast_id();
-                    self.map.get(id).range()
-                });
+        } else if node_.decls[0].ast_id(self.tree) != node_.ast_id {
+            self.report(TypeDiagnostic::PortWithoutDirection {
+                decl: node_.ast_id,
+                name: node_.name.clone(),
+            })
+        }
 
-                let name = self.db.discipline_data(info.src).attrs[info.first].name.clone();
+        let mut disciplines = node_
+            .decls
+            .iter()
+            .filter_map(|it| it.discipline(self.tree).as_ref().map(|discipline| (it, discipline)));
 
-                Report::error().with_labels(labels).with_message(format!(
-                    "discipline attribute '{}' was defined multiple times",
-                    name
-                ))
-            }
-            TypeValidationDiagnostic::DuplicateNatureAttr(ref info) => {
-                let nature = &self.item_tree[info.src.lookup(self.db.upcast()).id];
-                let labels = self.build_duplicate_item(info, |attr| {
-                    let id = u32::from(nature.attrs.start()) + u32::from(attr);
-                    let id = NatureAttr::lookup(self.item_tree, id.into()).ast_id();
-                    self.map.get(id).range()
-                });
-
-                let name = self.db.nature_data(info.src).attrs[info.first].name.clone();
-
-                Report::error()
-                    .with_labels(labels)
-                    .with_message(format!("nature attribute '{}' was defined multiple times", name))
-            }
-            TypeValidationDiagnostic::MultipleDirections(ref info) => {
-                let labels = self.build_duplicate_item(info, |id| self.map.get(id).range());
-                let name = self.db.node_data(info.src).name.clone();
-
-                Report::error()
-                    .with_labels(labels)
-                    .with_message(format!("multiple direction declarations for port '{}'", name))
-            }
-            TypeValidationDiagnostic::MultipleDisciplines(ref info) => {
-                let labels = self.build_duplicate_item(info, |id| self.map.get_syntax(id).range());
-                let name = self.db.node_data(info.src).name.clone();
-
-                Report::error()
-                    .with_labels(labels)
-                    .with_message(format!("multiple discipline declarations for net '{}'", name))
-            }
-            TypeValidationDiagnostic::MultipleGnds(ref info) => {
-                let labels = self.build_duplicate_item(info, |id| self.map.get_syntax(id).range());
-                let name = self.db.node_data(info.src).name.clone();
-
-                Report::error()
-                    .with_labels(labels)
-                    .with_message(format!("multiple 'ground' declarations for net '{}'", name))
-            }
-            TypeValidationDiagnostic::PortWithoutDirection { decl, ref name } => {
-                let src = self.parse.to_file_span(self.map.get_syntax(decl).range(), self.sm);
-
-                Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: format!("'{}' is declared here without direction", name),
-                    }])
-                    .with_message(format!("no direction declared for port '{}'", name))
-                    .with_notes(vec![
-                        "if port_without_direction is set to warn/allow the direciton will be set to 'inout'.".to_owned(), 
-                        "note: port directions are always required by the language standard.".to_owned()])
-            }
-            TypeValidationDiagnostic::ExpectedPort { node, src } => {
-                let src = self.parse.to_file_span(self.map.get_syntax(src).range(), self.sm);
-                let decl = node.lookup(self.db.upcast()).ast_id(self.db.upcast());
-                let decl = self.parse.to_file_span(self.map.get_syntax(decl).range(), self.sm);
-                let node = self.db.node_data(node);
-                let name = &node.name;
-
-                Report::error()
-                    .with_labels(vec![
-                        Label {
-                            style: LabelStyle::Primary,
-                            file_id: src.file,
-                            range: src.range.into(),
-                            message: format!("'{}' is not a port", name),
-                        },
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: decl.file,
-                            range: decl.range.into(),
-                            message: format!("info: '{}' was declared here", name),
-                        },
-                    ])
-                    .with_notes(vec![
-                        "help: prefix one of the declarations with inout, input or output"
-                            .to_owned(),
-                    ])
-                    .with_message(format!(
-                        "expected a port reference but no direction was declared for net '{}",
-                        name
-                    ))
-            }
-            TypeValidationDiagnostic::NodeWithoutDiscipline { decl, ref name } => {
-                let src = self.parse.to_file_span(self.map.get_syntax(decl).range(), self.sm);
-
-                Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: format!("'{name}' is missing a discipline"),
-                    }])
-                    .with_message(format!("no discipline for net '{name}'"))
-                    .with_notes(vec![
-                        format!("info: disciplineless nets are digital and therefore not supported in Verilog-A"),
-                        format!("help: add a discipline with 'electrical {name}'"),
-                    ])
-            }
-            TypeValidationDiagnostic::IncompatibleBranch { branch, node1, node2 } => {
-                let branch = branch.lookup(self.db.upcast());
-                let branch_range = branch.ast_ptr(self.db.upcast()).range();
-                let branch_name = branch.name(self.db.upcast()).to_string();
-                IncompatibleBranchDiagnostic {
-                    branch_span: self.parse.to_file_span(branch_range, self.sm),
-                    branch_name,
-                    node1,
-                    node2,
+        if let Some((decl, discipline)) = disciplines.next() {
+            for (decl, discipline) in iter::once((decl, discipline)).chain(disciplines.clone()) {
+                if let Err(err) = self.def_map.resolve_local_item_in_scope::<DisciplineId>(
+                    self.def_map.root_scope(),
+                    discipline,
+                ) {
+                    self.report(TypeDiagnostic::PathError {
+                        err,
+                        src: SyntaxNodePtr::new(
+                            decl.discipline_src(self.db.upcast(), self.root_file).unwrap().syntax(),
+                        ),
+                    })
                 }
-                .into_report(self.db, self.parse, self.map, self.sm)
+            }
+
+            let duplicates: Vec<_> = disciplines.map(|(decl, _)| decl.ast_id(self.tree)).collect();
+            if !duplicates.is_empty() {
+                self.report(TypeDiagnostic::MultipleDisciplines(DuplicateItem {
+                    src: node,
+                    first: decl.ast_id(self.tree),
+                    subsequent: duplicates,
+                }))
+            }
+        } else {
+            self.report(TypeDiagnostic::NodeWithoutDiscipline {
+                decl: node_.ast_id,
+                name: node_.name.clone(),
+            });
+        }
+
+        let mut gnd_declarations = node_.decls.iter().filter(|it| it.is_gnd(self.tree));
+
+        if let Some(first) = gnd_declarations.next() {
+            let duplicates: Vec<_> = gnd_declarations.map(|it| it.ast_id(self.tree)).collect();
+            if !duplicates.is_empty() {
+                self.report(TypeDiagnostic::MultipleDisciplines(DuplicateItem {
+                    src: node,
+                    first: first.ast_id(self.tree),
+                    subsequent: duplicates,
+                }))
             }
         }
     }
 
-    fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
-        match *self.diag {
-            TypeValidationDiagnostic::PortWithoutDirection { decl, .. } => {
-                Some((lints::builtin::port_without_direction, LintSrc::item(decl)))
+    // TODO check natures/discipline (~dspom/OpenVAF#1)
+    fn verify_discipline(&mut self, discipline: DisciplineId) {
+        // let info = self.db.discipline_info(discipline);
+        let data = self.db.discipline_data(discipline);
+        self.verify_unique_attributes(
+            &data.attrs,
+            discipline,
+            TypeDiagnostic::DuplicateDisciplineAttr,
+        );
+    }
+
+    fn verify_nature(&mut self, nature: NatureId) {
+        // let info = self.db.nature_info(nature);
+        let data = self.db.nature_data(nature);
+
+        self.verify_unique_attributes(&data.attrs, nature, TypeDiagnostic::DuplicateNatureAttr);
+    }
+
+    fn verify_unique_attributes<Attr: From<usize> + PartialEq, Def: Copy>(
+        &mut self,
+        attrs: &TiSlice<Attr, impl PartialEq>,
+        def: Def,
+        wrap_err: impl Fn(DuplicateItem<Attr, Def>) -> TypeDiagnostic,
+    ) {
+        // This is quadratic (actually its n(n+1)/2). But disciplines and nature usually only have very few (below 5)
+        // attributes so this is probably faster than allocating a HashMap. If this ever becomes a
+        // problem just use a HashMap instead
+        for (id, attr) in attrs.iter_enumerated() {
+            let mut duplicates =
+                attrs.iter_enumerated().filter_map(
+                    |it| {
+                        if it.1 == attr {
+                            Some(it.0)
+                        } else {
+                            None
+                        }
+                    },
+                );
+
+            if duplicates.next().unwrap() != id {
+                continue;
             }
-            _ => None,
+
+            let duplicates: Vec<_> = duplicates.collect();
+
+            if !duplicates.is_empty() {
+                let err = DuplicateItem { src: def, first: id, subsequent: duplicates };
+                self.report(wrap_err(err))
+            }
         }
     }
 }

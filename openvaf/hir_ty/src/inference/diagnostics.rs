@@ -1,5 +1,5 @@
-use std::borrow::Cow;
-use std::ops::Deref;
+use stdx::iter::zip;
+use stdx::pretty;
 
 use basedb::diagnostics::{
     to_unified_span_list, to_unified_spans, Diagnostic, Label, LabelStyle, Report,
@@ -8,68 +8,41 @@ use basedb::lints::builtin::non_standard_code;
 use basedb::lints::{Lint, LintSrc};
 use basedb::{BaseDB, FileId};
 use hir_def::body::BodySourceMap;
-
-use hir_def::{ExprId, FunctionId, Lookup, Type};
-use stdx::iter::zip;
-use stdx::pretty::List;
-use stdx::{impl_display, pretty};
+use hir_def::Lookup;
 use syntax::ast::{self, AssignOp};
-use syntax::sourcemap::{FileSpan, SourceMap};
-use syntax::{Parse, SourceFile, TextSize};
-use typed_index_collections::TiSlice;
+use syntax::sourcemap::FileSpan;
+use syntax::TextSize;
 
 use crate::db::HirTyDB;
-use crate::inference::InferenceDiagnostic;
-use crate::types::{Signature, SignatureData, Ty, TyRequirement};
+use crate::inference::InferDiagnostic;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeMismatch {
-    pub expected: Cow<'static, [TyRequirement]>,
-    pub found_ty: Ty,
-    pub expr: ExprId,
-}
-
-impl_display! {
-    match TypeMismatch{
-        TypeMismatch{expected, ..} => "expected {}" , pretty::List::new(expected.deref());
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArrayTypeMismatch {
-    pub expected: Type,
-    pub found_ty: Type,
-    pub found_expr: ExprId,
-    pub expected_expr: ExprId,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SignatureMismatch {
-    pub type_mismatches: Box<[TypeMismatch]>,
-    pub signatures: Cow<'static, TiSlice<Signature, SignatureData>>,
-    pub src: Option<FunctionId>,
-    pub found: Box<[Ty]>,
-}
-
-pub struct InferenceDiagnosticWrapped<'a> {
-    pub body_sm: &'a BodySourceMap,
-    pub diag: &'a InferenceDiagnostic,
-    pub parse: &'a Parse<SourceFile>,
+pub struct InferDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
-    pub sm: &'a SourceMap,
+    pub diag: &'a InferDiagnostic,
+    pub body_sm: &'a BodySourceMap,
+    // pub parse: &'a Parse<SourceFile>,
+    // pub sm: &'a SourceMap,
 }
 
-impl Diagnostic for InferenceDiagnosticWrapped<'_> {
-    fn build_report(&self, _root_file: FileId, _db: &dyn BaseDB) -> Report {
+impl Diagnostic for InferDiagnosticWrapped<'_> {
+    fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
+        if let InferDiagnostic::NonStandardUnknown { stmt, .. } = *self.diag {
+            Some((non_standard_code, self.body_sm.lint_src(stmt, non_standard_code)))
+        } else {
+            None
+        }
+    }
+
+    fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
+        let sm = db.sourcemap(root_file);
+        let parse = db.parse(root_file);
+
         match *self.diag {
-            InferenceDiagnostic::InvalidAssignDst {
-                e,
-                maybe_different_operand,
-                assignment_kind,
-            } => {
-                let src = self
-                    .parse
-                    .to_file_span(self.body_sm.expr_map_back[e].as_ref().unwrap().range(), self.sm);
+            InferDiagnostic::InvalidAssignDst { e, maybe_different_operand, assignment_kind } => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    &sm,
+                );
 
                 let res = Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
@@ -101,10 +74,10 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     None => res,
                 }
             }
-            InferenceDiagnostic::PathResolveError { ref err, expr } => {
-                let src = self.parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().range(),
-                    self.sm,
+            InferDiagnostic::PathResolveError { ref err, expr } => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &sm,
                 );
 
                 Report::error()
@@ -116,10 +89,10 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     }])
                     .with_message(err.to_string())
             }
-            InferenceDiagnostic::ArgCntMismatch { expected, found, expr, exact } => {
-                let src = self.parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().range(),
-                    self.sm,
+            InferDiagnostic::ArgCntMismatch { expected, found, expr, exact } => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &sm,
                 );
 
                 let message = match (expected < found, exact) {
@@ -140,10 +113,10 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                         message,
                     }])
             }
-            InferenceDiagnostic::TypeMismatch(ref err) => {
-                let src = self.parse.to_file_span(
-                    self.body_sm.expr_map_back[err.expr].as_ref().unwrap().range(),
-                    self.sm,
+            InferDiagnostic::TypeMismatch(ref err) => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[err.expr].as_ref().unwrap().text_range(),
+                    &sm,
                 );
 
                 Report::error()
@@ -155,11 +128,11 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     }])
                     .with_message(format!("type mismatch: {} but found {}", &err, err.found_ty))
             }
-            InferenceDiagnostic::SignatureMismatch(ref err) => {
+            InferDiagnostic::SignatureMismatch(ref err) => {
                 let mut res = if let [ref ty_err] = *err.type_mismatches {
-                    let FileSpan { file, range } = self.parse.to_file_span(
-                        self.body_sm.expr_map_back[ty_err.expr].as_ref().unwrap().range(),
-                        self.sm,
+                    let FileSpan { file, range } = parse.to_file_span(
+                        self.body_sm.expr_map_back[ty_err.expr].as_ref().unwrap().text_range(),
+                        &sm,
                     );
 
                     Report::error()
@@ -179,14 +152,14 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                         .type_mismatches
                         .iter()
                         .map(|it| {
-                            self.parse.to_ctx_span(
-                                self.body_sm.expr_map_back[it.expr].as_ref().unwrap().range(),
-                                self.sm,
+                            parse.to_ctx_span(
+                                self.body_sm.expr_map_back[it.expr].as_ref().unwrap().text_range(),
+                                &sm,
                             )
                         })
                         .collect();
 
-                    let (file, ranges) = to_unified_span_list(self.sm, &mut spans);
+                    let (file, ranges) = to_unified_span_list(&sm, &mut spans);
                     let labels = zip(ranges, &*err.type_mismatches)
                         .map(|(range, ty_err)| Label {
                             style: LabelStyle::Primary,
@@ -212,8 +185,8 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                 if let Some(src) = err.src {
                     let fun = src.lookup(self.db.upcast());
                     let name = fun.item_tree(self.db.upcast())[fun.id].name.clone();
-                    let range = fun.ast_ptr(self.db.upcast()).range();
-                    let span = self.parse.to_file_span(range, self.sm);
+                    let range = fun.ast_ptr(self.db.upcast()).text_range();
+                    let span = parse.to_file_span(range, &sm);
                     res.labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: span.file,
@@ -224,21 +197,22 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
 
                 res
             }
-            InferenceDiagnostic::ArrayTypeMismatch(ArrayTypeMismatch {
+            InferDiagnostic::ArrayTypeMismatch {
                 ref expected,
                 ref found_ty,
                 found_expr,
                 expected_expr,
-            }) => {
-                let found_range = self.body_sm.expr_map_back[found_expr].as_ref().unwrap().range();
+            } => {
+                let found_range =
+                    self.body_sm.expr_map_back[found_expr].as_ref().unwrap().text_range();
                 let expected_range =
-                    self.body_sm.expr_map_back[expected_expr].as_ref().unwrap().range();
+                    self.body_sm.expr_map_back[expected_expr].as_ref().unwrap().text_range();
 
-                let expected_span = self.parse.to_ctx_span(expected_range, self.sm);
-                let found_span = self.parse.to_ctx_span(found_range, self.sm);
+                let expected_span = parse.to_ctx_span(expected_range, &sm);
+                let found_span = parse.to_ctx_span(found_range, &sm);
 
                 let (file, [found_range, expected_range]) =
-                    to_unified_spans(self.sm, [found_span, expected_span]);
+                    to_unified_spans(&sm, [found_span, expected_span]);
 
                 Report::error()
                     .with_labels(vec![
@@ -258,10 +232,11 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     .with_message(format!("type mismatch: {} but found {}", expected, found_ty))
                     .with_notes(vec!["help: all array elements must have the same type".to_owned()])
             }
-            InferenceDiagnostic::InvalidUnknown { e } => {
-                let src = self
-                    .parse
-                    .to_file_span(self.body_sm.expr_map_back[e].as_ref().unwrap().range(), self.sm);
+            InferDiagnostic::InvalidUnknown { e } => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    &sm,
+                );
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -275,10 +250,11 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                         "help: expected one of the following\nbranch current access: I(branch), I(a,b)\nnode voltage: V(x)\nexplicit voltage: V(x,y)\ntemperature: $temperature".to_owned(),
                     ])
             }
-            InferenceDiagnostic::NonStandardUnknown { e, .. } => {
-                let src = self
-                    .parse
-                    .to_file_span(self.body_sm.expr_map_back[e].as_ref().unwrap().range(), self.sm);
+            InferDiagnostic::NonStandardUnknown { e, .. } => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    &sm,
+                );
 
                 Report::warning()
                     .with_labels(vec![Label {
@@ -293,10 +269,11 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                         "help: expected one of the following\nbranch current access: I(branch), I(a,b)\nnode voltage: V(x)".to_owned(),
                     ])
             }
-            InferenceDiagnostic::ExpectedProbe { e } => {
-                let src = self
-                    .parse
-                    .to_file_span(self.body_sm.expr_map_back[e].as_ref().unwrap().range(), self.sm);
+            InferDiagnostic::ExpectedProbe { e } => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    &sm,
+                );
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -310,7 +287,7 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                         "help: expected nature access such as V(foo) or I(foo)".to_owned()
                     ])
             }
-            InferenceDiagnostic::InvalidLimitFunction {
+            InferDiagnostic::InvalidLimitFunction {
                 expr,
                 func,
                 invalid_arg0,
@@ -318,9 +295,9 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                 invalid_ret,
                 ref output_args,
             } => {
-                let src = self.parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().range(),
-                    self.sm,
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &sm,
                 );
 
                 let func = func.lookup(self.db.upcast());
@@ -330,8 +307,8 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                 let id_map = self.db.ast_id_map(func.scope.root_file);
 
                 let decl = tree[func.id].ast_id;
-                let decl = id_map.get_syntax(decl.into()).range();
-                let decl = self.parse.to_file_span(decl, self.sm);
+                let decl = id_map.get_erased(decl.into()).text_range();
+                let decl = parse.to_file_span(decl, &sm);
                 labels.push(Label {
                     style: LabelStyle::Primary,
                     file_id: decl.file,
@@ -348,8 +325,8 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
 
                 if invalid_arg0 {
                     let decl = tree[tree[func.id].args.raw[0].declarations[0]].ast_id;
-                    let decl = id_map.get_syntax(decl.into()).range();
-                    let decl = self.parse.to_file_span(decl, self.sm);
+                    let decl = id_map.get_erased(decl.into()).text_range();
+                    let decl = parse.to_file_span(decl, &sm);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: decl.file,
@@ -360,8 +337,8 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
 
                 if invalid_arg1 {
                     let decl = tree[tree[func.id].args.raw[1].declarations[0]].ast_id;
-                    let decl = id_map.get_syntax(decl.into()).range();
-                    let decl = self.parse.to_file_span(decl, self.sm);
+                    let decl = id_map.get_erased(decl.into()).text_range();
+                    let decl = parse.to_file_span(decl, &sm);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: decl.file,
@@ -372,8 +349,8 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
 
                 for arg in output_args {
                     let decl = tree[func.id].args[*arg].ast_ids[0];
-                    let decl = id_map.get_syntax(decl.into()).range();
-                    let decl = self.parse.to_file_span(decl, self.sm);
+                    let decl = id_map.get_erased(decl.into()).text_range();
+                    let decl = parse.to_file_span(decl, &sm);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: decl.file,
@@ -393,15 +370,14 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     .with_message(format!("{name} is not a valid function for use with $limit"))
                     .with_notes(notes)
             }
-            InferenceDiagnostic::DisplayTypeMismatch { ref err, fmt_lit, lit_range, .. } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().range();
-                let lit_src = self
-                    .parse
-                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), self.sm);
+            InferDiagnostic::DisplayTypeMismatch { ref err, fmt_lit, lit_range, .. } => {
+                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src =
+                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
 
-                let val_src = self.parse.to_file_span(
-                    self.body_sm.expr_map_back[err.expr].as_ref().unwrap().range(),
-                    self.sm,
+                let val_src = parse.to_file_span(
+                    self.body_sm.expr_map_back[err.expr].as_ref().unwrap().text_range(),
+                    &sm,
                 );
 
                 Report::error()
@@ -421,11 +397,10 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     ])
                     .with_message(format!("type mismatch: {} but found {}", &err, err.found_ty))
             }
-            InferenceDiagnostic::MissingFmtArg { fmt_lit, lit_range } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().range();
-                let lit_src = self
-                    .parse
-                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), self.sm);
+            InferDiagnostic::MissingFmtArg { fmt_lit, lit_range } => {
+                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src =
+                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -436,16 +411,15 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     }])
                     .with_message("$display system task is missing an argument")
             }
-            InferenceDiagnostic::InvalidFmtSpecifierChar {
+            InferDiagnostic::InvalidFmtSpecifierChar {
                 fmt_lit,
                 lit_range,
                 err_char,
                 candidates,
             } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().range();
-                let lit_src = self
-                    .parse
-                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), self.sm);
+                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src =
+                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -459,17 +433,16 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                     ))
                     .with_notes(vec![format!(
                         "help: expected {}",
-                        List::new(candidates)
+                        pretty::List::new(candidates)
                             .surround("'")
                             .with_first_break_after(15)
                             .with_break_after(18)
                     )])
             }
-            InferenceDiagnostic::InvalidFmtSpecifierEnd { fmt_lit, lit_range } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().range();
-                let lit_src = self
-                    .parse
-                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), self.sm);
+            InferDiagnostic::InvalidFmtSpecifierEnd { fmt_lit, lit_range } => {
+                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src =
+                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -482,14 +455,6 @@ impl Diagnostic for InferenceDiagnosticWrapped<'_> {
                         "failed to parse format specifier; unexpected end of literal".to_owned(),
                     )
             }
-        }
-    }
-
-    fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
-        if let InferenceDiagnostic::NonStandardUnknown { stmt, .. } = *self.diag {
-            Some((non_standard_code, self.body_sm.lint_src(stmt, non_standard_code)))
-        } else {
-            None
         }
     }
 }

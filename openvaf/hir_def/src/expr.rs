@@ -11,15 +11,12 @@
 //!
 //! See also a neighboring `body` module.
 
-use std::fmt::Debug;
+use stdx::{impl_debug, Ieee64};
 
 use arena::Idx;
-use stdx::{impl_debug, Ieee64};
-use syntax::ast::{self, BinaryOp, UnaryOp};
+use syntax::ast::{self, BinaryOp, LiteralKind, UnaryOp};
 
 use crate::Path;
-
-pub type ExprId = Idx<Expr>;
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum Literal {
@@ -28,8 +25,28 @@ pub enum Literal {
     Float(Ieee64),
     Inf,
 }
+impl_debug! {
+    match Literal{
+        Literal::String(_) => "\"<literal>\"";
+        Literal::Int(val) => "{}",val;
+        Literal::Float(val) => "{}",f64::from(*val);
+        Literal::Inf => "inf";
+    }
+}
+
+use LiteralKind::*;
 
 impl Literal {
+    pub fn new(ast: LiteralKind) -> Literal {
+        match ast {
+            StrLit(lit) => Literal::String(lit.unescaped_value().into_boxed_str()),
+            IntNumber(lit) => Literal::Int(lit.value()),
+            SiRealNumber(lit) => Literal::Float(lit.value().into()),
+            StdRealNumber(lit) => Literal::Float(lit.value().into()),
+            Inf => Literal::Inf, // TODO check if this is allowed somewhere?
+        }
+    }
+
     pub fn unwrap_str(&self) -> &str {
         if let Literal::String(lit) = self {
             lit
@@ -37,6 +54,7 @@ impl Literal {
             unreachable!("called unwrap str on {self:?}")
         }
     }
+
     pub fn is_zero(&self) -> bool {
         match self {
             Literal::Int(0) => true,
@@ -46,14 +64,7 @@ impl Literal {
     }
 }
 
-impl_debug! {
-    match Literal{
-        Literal::String(_) => "\"<literal>\"";
-        Literal::Int(val) => "{}",val;
-        Literal::Float(val) => "{}",f64::from(*val);
-        Literal::Inf => "inf";
-    }
-}
+pub type ExprId = Idx<Expr>;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr {
@@ -89,7 +100,7 @@ impl Expr {
     #[inline]
     pub fn walk_child_exprs(&self, mut f: impl FnMut(ExprId)) {
         match *self {
-            Expr::Missing | Expr::Path { .. } | Expr::Literal(_) => {}
+            Expr::Missing | Expr::Path { .. } | Expr::Literal(_) => (),
             Expr::BinaryOp { lhs, rhs, .. } => {
                 f(lhs);
                 f(rhs);
@@ -117,22 +128,6 @@ impl Expr {
     }
 }
 
-pub type StmtId = Idx<Stmt>;
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Stmt {
-    Missing,
-    Empty,
-    Expr(ExprId),
-    EventControl { event: Event, body: StmtId },
-    Assignment { dst: ExprId, val: ExprId, assignment_kind: ast::AssignOp },
-    Block { /*scope: Option<BlockId>,*/ body: Vec<StmtId> },
-    If { cond: ExprId, then_branch: StmtId, else_branch: StmtId },
-    ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
-    WhileLoop { cond: ExprId, body: StmtId },
-    Case { discr: ExprId, case_arms: Vec<Case> }, // TODO lint on unreachable
-}
-
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum GlobalEvent {
     InitialStep,
@@ -156,6 +151,24 @@ pub enum CaseCond {
 pub struct Case {
     pub cond: CaseCond,
     pub body: StmtId,
+}
+
+/* Statements */
+
+pub type StmtId = Idx<Stmt>;
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Stmt {
+    Missing,
+    Empty,
+    Expr(ExprId),
+    EventControl { event: Event, body: StmtId },
+    Assignment { dst: ExprId, val: ExprId, op_kind: ast::AssignOp },
+    Block { /*scope: Option<BlockId>,*/ body: Vec<StmtId> },
+    If { cond: ExprId, then_branch: StmtId, else_branch: StmtId },
+    ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
+    WhileLoop { cond: ExprId, body: StmtId },
+    Case { discr: ExprId, case_arms: Vec<Case> }, // TODO lint on unreachable
 }
 
 impl Stmt {

@@ -1,12 +1,10 @@
 use std::sync::Arc;
+use stdx::Ieee64;
 
 use ahash::AHashMap as HashMap;
 use arena::{Arena, ArenaMap};
-pub use ast::ConstraintKind;
 use basedb::lints::{Lint, LintSrc};
 use basedb::{AttrDiagnostic, LintAttrs};
-use lower::LowerCtx;
-use stdx::Ieee64;
 use syntax::{ast, AstNode, AstPtr};
 
 use crate::db::HirDefDB;
@@ -20,7 +18,7 @@ use crate::{
 mod lower;
 mod pretty;
 
-/// The body of an item
+/// The body of an item (functions, analog block, etc.)
 #[derive(Debug, Eq, PartialEq, Default)]
 pub struct Body {
     pub exprs: Arena<Expr>,
@@ -29,6 +27,13 @@ pub struct Body {
     pub entry_stmts: Box<[StmtId]>,
 }
 
+/// The mapping from AST nodes to HIR expression/statement IDs (and back).
+/// This is needed to go from e.g. a position in a file to the HIR expression/
+/// statement containing it.
+///
+/// But for type inference etc., we want to operate on a structure that is
+/// agnostic to the actual positions of expressions in the file, so that we
+/// don't recompute types whenever some whitespace is typed.
 #[derive(Default, Debug, Eq, PartialEq)]
 pub struct BodySourceMap {
     pub expr_map: HashMap<AstPtr<ast::Expr>, ExprId>,
@@ -51,30 +56,30 @@ impl BodySourceMap {
 impl Body {
     pub fn body_with_sourcemap_query(
         db: &dyn HirDefDB,
-        id: DefWithBodyId,
+        def: DefWithBodyId,
     ) -> (Arc<Body>, Arc<BodySourceMap>) {
         let mut body = Body::default();
         let mut source_map = BodySourceMap::default();
 
-        let root_file = id.file(db);
-        let tree = db.item_tree(root_file);
-        let ast_id_map = db.ast_id_map(root_file);
+        let root_file = def.file(db);
         let ast = db.parse(root_file).tree();
+        let item_tree = db.item_tree(root_file);
+        let ast_id_map = db.ast_id_map(root_file);
         let registry = db.lint_registry();
 
-        match id {
+        match def {
             DefWithBodyId::ParamId(param) => {
                 let (body, sm, _) = db.param_body_with_sourcemap(param);
                 return (body, sm);
             }
             DefWithBodyId::ModuleId { initial, module } => {
-                let ModuleLoc { scope, id: item_tree } = module.lookup(db);
+                let ModuleLoc { scope, id } = module.lookup(db);
 
-                let ast_id = tree[item_tree].ast_id();
-                let ast = ast_id_map.get(ast_id).to_node(ast.syntax());
+                let ast_id = item_tree[id].ast_id();
+                let ast_node = ast_id_map.get(ast_id).to_node(ast.syntax());
                 let curr_scope = (scope, ast_id.into());
 
-                let mut ctx = LowerCtx {
+                let mut ctx = lower::Ctx {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -83,27 +88,26 @@ impl Body {
                     registry: &registry,
                 };
                 body.entry_stmts = if initial {
-                    ast.analog_initial_behaviour().map(|stmt| ctx.collect_stmt(stmt)).collect()
+                    ast_node.analog_initial_behaviour().map(|stmt| ctx.collect_stmt(stmt)).collect()
                 } else {
-                    ast.analog_behaviour().map(|stmt| ctx.collect_stmt(stmt)).collect()
+                    ast_node.analog_behaviour().map(|stmt| ctx.collect_stmt(stmt)).collect()
                 };
             }
-
-            DefWithBodyId::FunctionId(id) => {
-                let FunctionLoc { id: item_tree, .. } = id.lookup(db);
+            DefWithBodyId::FunctionId(fun) => {
+                let FunctionLoc { id, .. } = fun.lookup(db);
 
                 let scope = ScopeId {
                     root_file,
                     local_scope: LocalScopeId::from(0u32),
-                    src: DefMapSource::Function(id),
+                    src: DefMapSource::Function(fun),
                 };
-                debug_assert_eq!(scope.local_scope, db.function_def_map(id).entry());
+                debug_assert_eq!(scope.local_scope, db.function_def_map(fun).entry_scope());
 
-                let ast_id = tree[item_tree].ast_id();
-                let ast = ast_id_map.get(ast_id).to_node(ast.syntax());
+                let ast_id = item_tree[id].ast_id();
+                let ast_node = ast_id_map.get(ast_id).to_node(ast.syntax());
                 let curr_scope = (scope, ast_id.into());
 
-                let mut ctx = LowerCtx {
+                let mut ctx = lower::Ctx {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -111,16 +115,16 @@ impl Body {
                     curr_scope,
                     registry: &registry,
                 };
-                body.entry_stmts = ast.body().map(|stmt| ctx.collect_stmt(stmt)).collect();
+                body.entry_stmts = ast_node.body().map(|stmt| ctx.collect_stmt(stmt)).collect();
             }
             DefWithBodyId::VarId(var) => {
-                let VarLoc { scope, id: item_tree } = var.lookup(db);
+                let VarLoc { scope, id } = var.lookup(db);
 
-                let ast_id = tree[item_tree].ast_id();
-                let ast = ast_id_map.get(ast_id).to_node(ast.syntax());
+                let ast_id = item_tree[id].ast_id();
+                let ast_node = ast_id_map.get(ast_id).to_node(ast.syntax());
 
                 let curr_scope = (scope, ast_id.into());
-                let mut ctx = LowerCtx {
+                let mut ctx = lower::Ctx {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -129,7 +133,7 @@ impl Body {
                     registry: &registry,
                 };
 
-                let expr = if let Some(expr) = ast.default() {
+                let expr = if let Some(expr) = ast_node.default() {
                     ctx.collect_expr(expr)
                 } else {
                     let default_val = match db.var_data(var).ty {
@@ -146,14 +150,14 @@ impl Body {
                 let NatureAttrLoc { nature, id } = attr.lookup(db);
                 let NatureLoc { root_file, id: discipline_id } = nature.lookup(db);
 
-                let nature = &tree[discipline_id];
+                let nature = &item_tree[discipline_id];
                 let idx = usize::from(nature.attrs.start()) + usize::from(id);
-                let attr = &tree[ItemTreeId::<NatureAttr>::from(idx)];
+                let attr = &item_tree[ItemTreeId::<NatureAttr>::from(idx)];
 
                 let ast = ast_id_map.get(attr.ast_id).to_node(ast.syntax());
                 let curr_scope = (ScopeId::root(root_file), attr.ast_id.into());
 
-                let mut ctx = LowerCtx {
+                let mut ctx = lower::Ctx {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -161,7 +165,7 @@ impl Body {
                     curr_scope,
                     registry: &registry,
                 };
-                let expr = ctx.collect_opt_expr(ast.val());
+                let expr = ctx.collect_expr_opt(ast.val());
                 let stmt = ctx.alloc_stmt_desugared(Stmt::Expr(expr));
                 body.entry_stmts = vec![stmt].into_boxed_slice();
             }
@@ -169,13 +173,13 @@ impl Body {
                 let DisciplineAttrLoc { discipline, id } = attr.lookup(db);
                 let DisciplineLoc { root_file, id: discipline_id } = discipline.lookup(db);
 
-                let discipline = &tree[discipline_id];
-                let idx = usize::from(discipline.extra_attrs.start()) + usize::from(id);
-                let attr = &tree[ItemTreeId::<DisciplineAttr>::from(idx)];
+                let discipline = &item_tree[discipline_id];
+                let idx = usize::from(discipline.attrs.start()) + usize::from(id);
+                let attr = &item_tree[ItemTreeId::<DisciplineAttr>::from(idx)];
                 let ast = ast_id_map.get(attr.ast_id).to_node(ast.syntax());
                 let curr_scope = (ScopeId::root(root_file), attr.ast_id.into());
 
-                let mut ctx = LowerCtx {
+                let mut ctx = lower::Ctx {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -183,7 +187,7 @@ impl Body {
                     curr_scope,
                     registry: &registry,
                 };
-                let expr = ctx.collect_opt_expr(ast.val());
+                let expr = ctx.collect_expr_opt(ast.val());
                 let stmt = ctx.alloc_stmt_desugared(Stmt::Expr(expr));
                 body.entry_stmts = vec![stmt].into_boxed_slice();
             }
@@ -209,7 +213,7 @@ impl Body {
         let ast = ast_id_map.get(ast_id).to_node(ast.syntax());
 
         let registry = db.lint_registry();
-        let mut ctx = LowerCtx {
+        let mut ctx = lower::Ctx {
             db,
             source_map: &mut source_map,
             body: &mut body,
@@ -218,7 +222,7 @@ impl Body {
             registry: &registry,
         };
 
-        let default = ctx.collect_opt_expr(ast.default());
+        let default = ctx.collect_expr_opt(ast.default());
         let mut entry_stmts = vec![ctx.alloc_stmt_desugared(Stmt::Expr(default))];
 
         let bounds = ast
@@ -233,11 +237,11 @@ impl Body {
                         ConstraintValue::Value(val)
                     }
                     ast::ConstraintValue::Range(range) => {
-                        let start = ctx.collect_opt_expr(range.start());
+                        let start = ctx.collect_expr_opt(range.start());
                         let stmt = ctx.alloc_stmt_desugared(Stmt::Expr(start));
                         entry_stmts.push(stmt);
 
-                        let end = ctx.collect_opt_expr(range.end());
+                        let end = ctx.collect_expr_opt(range.end());
                         let stmt = ctx.alloc_stmt_desugared(Stmt::Expr(end));
                         entry_stmts.push(stmt);
 
@@ -266,11 +270,9 @@ pub struct ParamExprs {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub struct Range {
-    pub start: ExprId,
-    pub start_inclusive: bool,
-    pub end: ExprId,
-    pub end_inclusive: bool,
+pub struct ParamConstraint {
+    pub kind: ast::ConstraintKind,
+    pub val: ConstraintValue,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
@@ -280,7 +282,9 @@ pub enum ConstraintValue {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub struct ParamConstraint {
-    pub kind: ConstraintKind,
-    pub val: ConstraintValue,
+pub struct Range {
+    pub start: ExprId,
+    pub start_inclusive: bool,
+    pub end: ExprId,
+    pub end_inclusive: bool,
 }

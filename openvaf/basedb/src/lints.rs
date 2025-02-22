@@ -3,12 +3,9 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use stdx::{impl_debug_display, impl_idx_from};
-use vfs::FileId;
 
-use crate::{BaseDB, ErasedAstId};
+use crate::{BaseDB, ErasedAstId, FileId};
 
-/// Lints can be set to different levels
-/// This enum represents these levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LintLevel {
     /// Lints set to allow will not be displayed
@@ -87,8 +84,6 @@ impl_idx_from!(Lint(u16));
 impl_debug_display!(c@Lint => "lint{}",c.0);
 
 /// The data associated with a lint
-/// Dont create and register this directly if you are writing a plugin
-/// use [`declare_plugin_lint!`](crate::declare_plugin_lint) instead
 #[derive(Copy, Clone, PartialEq, Debug, Eq)]
 pub struct LintData {
     pub name: &'static str,
@@ -96,7 +91,8 @@ pub struct LintData {
     pub default_lvl: LintLevel,
 }
 
-/// Contains all builtin OpenVAF lints plus any plugin lints from the database
+/// Contains all builtin OpenVAF lints plus any plugin lints from the database.
+///
 /// Can be used to map `str (lint name) -> Lint`, `Lint -> LintData`
 /// and `str (lint name) -> LintData`
 #[derive(Debug, Default, Eq, PartialEq)]

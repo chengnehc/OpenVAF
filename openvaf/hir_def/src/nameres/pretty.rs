@@ -48,11 +48,11 @@ impl<'a> Printer<'a> {
     }
 
     fn print_def_map_root(&mut self, map: &DefMap) {
-        self.print_scope(map, map.root())
+        self.print_scope(map, map.root_scope())
     }
 
     fn print_def_map(&mut self, map: &DefMap) {
-        self.print_scope(map, map.entry())
+        self.print_scope(map, map.entry_scope())
     }
 
     fn print_scope(&mut self, map: &DefMap, local_scope: LocalScopeId) {
@@ -75,7 +75,6 @@ impl<'a> Printer<'a> {
                     let def_map = self.db.function_def_map(fun);
                     self.indented(|s| s.print_def_map(&def_map));
                 }
-
                 _ => {
                     if let Some(child) = map.scopes[local_scope].children.get(&name) {
                         self.indented(|s| s.print_scope(map, *child))

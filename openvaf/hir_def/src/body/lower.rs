@@ -1,3 +1,6 @@
+//! Transforms `ast::Expr` and `ast::Stmt` into equivalent `hir_def::expr::Expr`
+//! and `hir_def::expr::Stmt` representation.
+
 use std::mem;
 
 use basedb::lints::LintRegistry;
@@ -6,14 +9,14 @@ use syntax::ast::{self, ArgListOwner, AttrIter, AttrsOwner, FunctionRef};
 use syntax::name::AsName;
 use syntax::AstPtr;
 
-// use tracing::debug;
-use super::{Body, BodySourceMap};
 use crate::db::HirDefDB;
 use crate::expr::{CaseCond, Event, GlobalEvent};
 use crate::nameres::DefMapSource;
 use crate::{BlockLoc, Case, Expr, ExprId, Intern, Literal, Path, ScopeId, Stmt, StmtId};
 
-pub(super) struct LowerCtx<'a> {
+use super::{Body, BodySourceMap};
+
+pub(super) struct Ctx<'a> {
     pub(super) db: &'a dyn HirDefDB,
     pub(super) body: &'a mut Body,
     pub(super) source_map: &'a mut BodySourceMap,
@@ -22,19 +25,18 @@ pub(super) struct LowerCtx<'a> {
     pub(super) registry: &'a LintRegistry,
 }
 
-impl LowerCtx<'_> {
-    pub fn collect_opt_expr(&mut self, expr: Option<ast::Expr>) -> ExprId {
-        if let Some(expr) = expr {
-            self.collect_expr(expr)
-        } else {
-            self.missing_expr()
+impl Ctx<'_> {
+    pub fn collect_expr_opt(&mut self, expr: Option<ast::Expr>) -> ExprId {
+        match expr {
+            Some(expr) => self.collect_expr(expr),
+            None => self.missing_expr(),
         }
     }
 
     pub fn collect_expr(&mut self, expr: ast::Expr) -> ExprId {
         let e = match &expr {
             ast::Expr::PrefixExpr(e) => {
-                let expr = self.collect_opt_expr(e.expr());
+                let expr = self.collect_expr_opt(e.expr());
                 if let Some(op) = e.op_kind() {
                     Expr::UnaryOp { expr, op }
                 } else {
@@ -43,12 +45,12 @@ impl LowerCtx<'_> {
             }
 
             ast::Expr::BinExpr(e) => {
-                let lhs = self.collect_opt_expr(e.lhs());
-                let rhs = self.collect_opt_expr(e.rhs());
+                let lhs = self.collect_expr_opt(e.lhs());
+                let rhs = self.collect_expr_opt(e.rhs());
                 Expr::BinaryOp { lhs, rhs, op: e.op_kind() }
             }
 
-            ast::Expr::ParenExpr(e) => return self.collect_opt_expr(e.expr()),
+            ast::Expr::ParenExpr(e) => return self.collect_expr_opt(e.expr()),
 
             ast::Expr::ArrayExpr(e) => {
                 let vals = e.exprs().map(|expr| self.collect_expr(expr)).collect();
@@ -71,14 +73,12 @@ impl LowerCtx<'_> {
             }
 
             ast::Expr::SelectExpr(e) => {
-                let cond = self.collect_opt_expr(e.condition());
-                let then_val = self.collect_opt_expr(e.then_val());
-                let else_val = self.collect_opt_expr(e.else_val());
+                let cond = self.collect_expr_opt(e.condition());
+                let then_val = self.collect_expr_opt(e.then_val());
+                let else_val = self.collect_expr_opt(e.else_val());
                 Expr::Select { cond, then_val, else_val }
             }
 
-            // TODO refactor with if let binding and default case is missing expression
-            // BLOCK
             ast::Expr::PathExpr(path) => {
                 if let Some(path) = path.path().and_then(Path::resolve) {
                     Expr::Path { path, port: false }
@@ -97,10 +97,11 @@ impl LowerCtx<'_> {
 
             ast::Expr::Literal(lit) => Expr::Literal(Literal::new(lit.kind())),
         };
+
         self.alloc_expr(e, AstPtr::new(&expr))
     }
 
-    pub fn collect_opt_stmt(&mut self, stmt: Option<ast::Stmt>) -> StmtId {
+    pub fn collect_stmt_opt(&mut self, stmt: Option<ast::Stmt>) -> StmtId {
         match stmt {
             Some(stmt) => self.collect_stmt(stmt),
             None => self.missing_stmt(),
@@ -112,63 +113,44 @@ impl LowerCtx<'_> {
             ast::Stmt::EmptyStmt(_) => Stmt::Empty,
             ast::Stmt::AssignStmt(stmt) => match stmt.assign() {
                 Some(a) => Stmt::Assignment {
-                    dst: self.collect_opt_expr(a.lval()),
-                    val: self.collect_opt_expr(a.rval()),
-                    assignment_kind: a.op().unwrap(),
+                    dst: self.collect_expr_opt(a.lval()),
+                    val: self.collect_expr_opt(a.rval()),
+                    op_kind: a.op().unwrap(),
                 },
                 None => {
-                    // debug!(
-                    //     tree = debug(stmt),
-                    //     src = display(stmt),
-                    //     "Assign Statement without assign?"
-                    // );
+                    // debug!(tree = debug(stmt), src = display(stmt), "Assign Statement without assign?");
                     Stmt::Missing
                 }
             },
-            ast::Stmt::ExprStmt(stmt) => Stmt::Expr(self.collect_opt_expr(stmt.expr())),
+            ast::Stmt::ExprStmt(stmt) => Stmt::Expr(self.collect_expr_opt(stmt.expr())),
             ast::Stmt::IfStmt(stmt) => {
-                let cond = self.collect_opt_expr(stmt.condition());
-                let then_branch = self.collect_opt_stmt(stmt.then_branch());
-                let else_branch = self.collect_opt_stmt(stmt.else_branch());
+                let cond = self.collect_expr_opt(stmt.condition());
+                let then_branch = self.collect_stmt_opt(stmt.then_branch());
+                let else_branch = self.collect_stmt_opt(stmt.else_branch());
                 Stmt::If { cond, then_branch, else_branch }
             }
             ast::Stmt::WhileStmt(stmt) => {
-                let cond = self.collect_opt_expr(stmt.condition());
-                let body = self.collect_opt_stmt(stmt.body());
+                let cond = self.collect_expr_opt(stmt.condition());
+                let body = self.collect_stmt_opt(stmt.body());
                 Stmt::WhileLoop { cond, body }
             }
             ast::Stmt::ForStmt(stmt) => {
-                let cond = self.collect_opt_expr(stmt.condition());
-                let init = self.collect_opt_stmt(stmt.init());
-                let incr = self.collect_opt_stmt(stmt.incr());
-                let body = self.collect_opt_stmt(stmt.for_body());
+                let cond = self.collect_expr_opt(stmt.condition());
+                let init = self.collect_stmt_opt(stmt.init());
+                let incr = self.collect_stmt_opt(stmt.incr());
+                let body = self.collect_stmt_opt(stmt.for_body());
                 Stmt::ForLoop { init, cond, incr, body }
             }
             ast::Stmt::CaseStmt(stmt) => self.collect_case_stmt(stmt),
             ast::Stmt::EventStmt(stmt) => return self.collect_event_stmt(stmt),
             ast::Stmt::BlockStmt(stmt) => self.collect_block(stmt),
         };
+
         self.alloc_stmt(s, AstPtr::new(&stmt), stmt.attrs())
     }
 
-    fn collect_event_stmt(&mut self, event_stmt: &ast::EventStmt) -> StmtId {
-        let kind = if event_stmt.initial_step_token().is_some() {
-            GlobalEvent::InitialStep
-        } else if event_stmt.final_step_token().is_some() {
-            GlobalEvent::FinalStep
-        } else {
-            return self.collect_opt_stmt(event_stmt.stmt());
-        };
-
-        let phases = event_stmt.sim_phases().map(|lit| lit.unescaped_value()).collect();
-        let event = Event::Global { kind, phases };
-        let stmt = Stmt::EventControl { event, body: self.collect_opt_stmt(event_stmt.stmt()) };
-
-        self.alloc_stmt(stmt, AstPtr::new(event_stmt).cast().unwrap(), event_stmt.attrs())
-    }
-
     fn collect_case_stmt(&mut self, case_stmt: &ast::CaseStmt) -> Stmt {
-        let discr = self.collect_opt_expr(case_stmt.discriminant());
+        let discr = self.collect_expr_opt(case_stmt.discriminant());
         let case_arms = case_stmt
             .cases()
             .map(|case| {
@@ -179,15 +161,31 @@ impl LowerCtx<'_> {
                     let vals = case.exprs().map(|e| self.collect_expr(e)).collect();
                     CaseCond::Vals(vals)
                 };
-                Case { cond, body: self.collect_opt_stmt(case.stmt()) }
+                Case { cond, body: self.collect_stmt_opt(case.stmt()) }
             })
             .collect();
 
         Stmt::Case { discr, case_arms }
     }
 
+    fn collect_event_stmt(&mut self, event_stmt: &ast::EventStmt) -> StmtId {
+        let kind = if event_stmt.initial_step_token().is_some() {
+            GlobalEvent::InitialStep
+        } else if event_stmt.final_step_token().is_some() {
+            GlobalEvent::FinalStep
+        } else {
+            return self.collect_stmt_opt(event_stmt.stmt());
+        };
+
+        let phases = event_stmt.sim_phases().map(|lit| lit.unescaped_value()).collect();
+        let event = Event::Global { kind, phases };
+        let stmt = Stmt::EventControl { event, body: self.collect_stmt_opt(event_stmt.stmt()) };
+
+        self.alloc_stmt(stmt, AstPtr::new(event_stmt).cast().unwrap(), event_stmt.attrs())
+    }
+
     pub fn collect_block(&mut self, block: &ast::BlockStmt) -> Stmt {
-        let ast = self.ast_id_map.ast_id(block);
+        let ast = self.ast_id_map.ast_id_of(block);
         let id = BlockLoc { ast, parent: self.curr_scope.0 }.intern(self.db);
         let scope = self.db.block_def_map(id);
 
@@ -195,7 +193,7 @@ impl LowerCtx<'_> {
             Some(def_map) => {
                 let scope = ScopeId {
                     root_file: self.curr_scope.0.root_file,
-                    local_scope: def_map.entry(),
+                    local_scope: def_map.entry_scope(),
                     src: DefMapSource::Block(id),
                 };
 
@@ -218,8 +216,7 @@ impl LowerCtx<'_> {
         self.source_map.expr_map.insert(ptr, id);
         id
     }
-    // desugared exprs don't have ptr, that's wrong and should be fixed
-    // somehow.
+
     pub(super) fn alloc_expr_desugared(&mut self, expr: Expr) -> ExprId {
         self.make_expr(expr, None)
     }
@@ -247,8 +244,6 @@ impl LowerCtx<'_> {
         id
     }
 
-    // desugared stmts don't have ptr, that's wrong and should be fixed
-    // somehow.
     pub(super) fn alloc_stmt_desugared(&mut self, stmt: Stmt) -> StmtId {
         self.make_stmt(stmt, None, LintAttrs::empty(self.curr_scope.1))
     }
@@ -270,22 +265,5 @@ impl LowerCtx<'_> {
         debug_assert_eq!(id2, id3);
         self.source_map.stmt_map_back.insert(id, src);
         id
-    }
-}
-
-impl Literal {
-    pub fn new(ast: ast::LiteralKind) -> Literal {
-        match ast {
-            ast::LiteralKind::String(lit) => {
-                Literal::String(lit.unescaped_value().into_boxed_str())
-            }
-            ast::LiteralKind::IntNumber(lit) => Literal::Int(lit.value()),
-            ast::LiteralKind::SiRealNumber(lit) => Literal::Float(lit.value().into()),
-            ast::LiteralKind::StdRealNumber(lit) => Literal::Float(lit.value().into()),
-            ast::LiteralKind::Inf => {
-                // TODO check that this allowed somewhere?
-                Literal::Inf
-            }
-        }
     }
 }

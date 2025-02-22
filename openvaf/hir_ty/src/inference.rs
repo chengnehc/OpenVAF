@@ -1,22 +1,22 @@
 use std::borrow::Cow;
 use std::mem;
 use std::sync::Arc;
+use stdx::iter::zip;
 
 use ahash::AHashMap;
 use arena::ArenaMap;
-use hir_def::body::Body;
-use hir_def::db::HirDefDB;
-use hir_def::expr::{CaseCond, Literal};
-use hir_def::nameres::diagnostics::PathResolveError;
-use hir_def::nameres::{NatureAccess, ResolvedPath, ScopeDefItem, ScopeDefItemKind};
 use hir_def::{
+    body::Body,
+    db::HirDefDB,
+    expr::{CaseCond, Literal},
+    nameres::{NatureAccess, PathResolveError, ResolvedPath, ScopeDefItem, ScopeDefItemKind},
     BranchId, BuiltIn, DefWithBodyId, Expr, ExprId, FunctionArgLoc, FunctionId, LocalFunctionArgId,
     Lookup, NatureId, NodeId, ParamSysFun, Path, Stmt, StmtId, Type, VarId,
 };
-use stdx::impl_from;
-use stdx::iter::zip;
-use syntax::ast::{self, BinaryOp, UnaryOp};
-use syntax::{TextRange, TextSize};
+use syntax::{
+    ast::{self, BinaryOp, UnaryOp},
+    {TextRange, TextSize},
+};
 use typed_index_collections::{TiSlice, TiVec};
 
 use crate::builtin::{
@@ -24,12 +24,16 @@ use crate::builtin::{
     NATURE_ACCESS_BRANCH, NATURE_ACCESS_NODES, NATURE_ACCESS_NODE_GND, NATURE_ACCESS_PORT_FLOW,
 };
 use crate::db::{Alias, HirTyDB};
-use crate::diagnostics::{ArrayTypeMismatch, SignatureMismatch, TypeMismatch};
-use crate::inference::fmt_parser::parse_real_fmt_spec;
 use crate::lower::{BranchTy, DisciplineAccess};
 use crate::types::{default_return_ty, BuiltinInfo, Signature, SignatureData, Ty, TyRequirement};
 
+mod diagnostics;
+mod error;
 mod fmt_parser;
+
+pub use diagnostics::InferDiagnosticWrapped;
+pub use error::{InferDiagnostic, SignatureMismatch, TypeMismatch};
+use fmt_parser::parse_real_fmt_spec;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum ResolvedFun {
@@ -72,10 +76,11 @@ pub struct InferenceResult {
     pub resolved_signatures: AHashMap<ExprId, Signature>,
     pub assignment_destination: AHashMap<StmtId, AssignDst>,
     pub casts: AHashMap<ExprId, Type>,
-    pub diagnostics: Vec<InferenceDiagnostic>,
+    pub diagnostics: Vec<InferDiagnostic>,
 }
 
 impl InferenceResult {
+    /// The entry point of type inference.
     pub fn infere_body_query(db: &dyn HirTyDB, id: DefWithBodyId) -> Arc<InferenceResult> {
         let body = db.body(id);
         let result = InferenceResult {
@@ -122,7 +127,7 @@ impl Ctx<'_> {
                 // TODO lint for side effect free expressions
                 self.infere_assignment(stmt, expr, self.expr_stmt_ty.clone());
             }
-            Stmt::Assignment { dst, val, assignment_kind } => {
+            Stmt::Assignment { dst, val, op_kind: assignment_kind } => {
                 let dst_ty = self.infere_assignment_dst(stmt, dst, assignment_kind);
                 self.infere_assignment(stmt, val, dst_ty);
             }
@@ -219,7 +224,7 @@ impl Ctx<'_> {
                     }
 
                     NATURE_ACCESS_PORT_FLOW => {
-                        self.result.diagnostics.push(InferenceDiagnostic::InvalidAssignDst {
+                        self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
                             e: expr,
                             maybe_different_operand: None,
                             assignment_kind,
@@ -237,7 +242,7 @@ impl Ctx<'_> {
                 (dst, Type::Real)
             }
             _ => {
-                self.result.diagnostics.push(InferenceDiagnostic::InvalidAssignDst {
+                self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
                     e: expr,
                     maybe_different_operand: None,
                     assignment_kind,
@@ -249,14 +254,14 @@ impl Ctx<'_> {
         // check that the correct operator is used
         match (&dst, assignment_kind) {
             (AssignDst::Var(_) | AssignDst::FunVar { .. }, ast::AssignOp::Contribute) => {
-                self.result.diagnostics.push(InferenceDiagnostic::InvalidAssignDst {
+                self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
                     e: expr,
                     maybe_different_operand: Some(ast::AssignOp::Assign),
                     assignment_kind,
                 });
             }
             (AssignDst::Flow(_) | AssignDst::Potential(_), ast::AssignOp::Assign) => {
-                self.result.diagnostics.push(InferenceDiagnostic::InvalidAssignDst {
+                self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
                     e: expr,
                     maybe_different_operand: Some(ast::AssignOp::Contribute),
                     assignment_kind,
@@ -291,7 +296,7 @@ impl Ctx<'_> {
                 ScopeDefItem::VarId(var) => Ty::Var(self.db.var_data(var).ty.clone(), var),
                 ScopeDefItem::ParamId(param) => Ty::Param(self.db.param_ty(param), param),
                 ScopeDefItem::AliasParamId(param) => match self.db.resolve_alias(param)? {
-                    Alias::Cycel => return None,
+                    Alias::Cycle => return None,
                     Alias::Param(param) => Ty::Param(self.db.param_ty(param), param),
                     Alias::ParamSysFun(param) => {
                         self.result.resolved_calls.insert(expr, ResolvedFun::Param(param));
@@ -430,7 +435,7 @@ impl Ctx<'_> {
             ScopeDefItem::ParamSysFun(param) => {
                 self.result.resolved_calls.insert(expr, ResolvedFun::Param(param));
                 if !args.is_empty() {
-                    let err = InferenceDiagnostic::ArgCntMismatch {
+                    let err = InferDiagnostic::ArgCntMismatch {
                         expected: 0,
                         found: args.len(),
                         expr,
@@ -441,7 +446,7 @@ impl Ctx<'_> {
                 Some(Ty::Val(Type::Real))
             }
             found => {
-                self.result.diagnostics.push(InferenceDiagnostic::PathResolveError {
+                self.result.diagnostics.push(InferDiagnostic::PathResolveError {
                     err: PathResolveError::ExpectedItemKind {
                         expected: "a function",
                         found: ResolvedPath::ScopeDefItem(found),
@@ -464,7 +469,7 @@ impl Ctx<'_> {
         self.result.resolved_calls.insert(expr, ResolvedFun::User { func, limit: false });
         let fun_info = self.db.function_data(func);
         if fun_info.args.len() != args.len() {
-            self.result.diagnostics.push(InferenceDiagnostic::ArgCntMismatch {
+            self.result.diagnostics.push(InferDiagnostic::ArgCntMismatch {
                 expected: fun_info.args.len(),
                 found: args.len(),
                 expr,
@@ -570,7 +575,7 @@ impl Ctx<'_> {
 
         let exact = Some(info.min_args) == info.max_args;
         if args.len() < info.min_args {
-            let err = InferenceDiagnostic::ArgCntMismatch {
+            let err = InferDiagnostic::ArgCntMismatch {
                 expected: info.min_args,
                 found: args.len(),
                 expr,
@@ -581,7 +586,7 @@ impl Ctx<'_> {
         }
 
         if info.max_args.map_or(false, |max_args| max_args < args.len()) {
-            self.result.diagnostics.push(InferenceDiagnostic::ArgCntMismatch {
+            self.result.diagnostics.push(InferDiagnostic::ArgCntMismatch {
                 expected: info.min_args,
                 found: args.len(),
                 expr,
@@ -646,7 +651,7 @@ impl Ctx<'_> {
         let arg = if let Some(arg) = arg {
             arg
         } else {
-            self.result.diagnostics.push(InferenceDiagnostic::MissingFmtArg {
+            self.result.diagnostics.push(InferDiagnostic::MissingFmtArg {
                 fmt_lit: fmt_expr,
                 lit_range: TextRange::at(off, 1u32.into()),
             });
@@ -659,7 +664,7 @@ impl Ctx<'_> {
             Some(ty) if ty.is_convertible_to(&Type::Integer) => {
                 self.result.casts.insert(arg, Type::Integer);
             }
-            _ => self.result.diagnostics.push(InferenceDiagnostic::DisplayTypeMismatch {
+            _ => self.result.diagnostics.push(InferDiagnostic::DisplayTypeMismatch {
                 err: TypeMismatch {
                     expected: Cow::Borrowed(&[TyRequirement::Val(Type::Integer)]),
                     found_ty: self.result.expr_types[arg].clone(),
@@ -685,7 +690,7 @@ impl Ctx<'_> {
         } else {
             self.result
                 .diagnostics
-                .push(InferenceDiagnostic::MissingFmtArg { fmt_lit: fmt_expr, lit_range });
+                .push(InferDiagnostic::MissingFmtArg { fmt_lit: fmt_expr, lit_range });
 
             return;
         };
@@ -698,7 +703,7 @@ impl Ctx<'_> {
 
             Some(ty_) if ty_.is_assignable_to(&ty) => {
                 self.result.casts.insert(arg, ty.clone());
-                self.result.diagnostics.push(InferenceDiagnostic::DisplayTypeMismatch {
+                self.result.diagnostics.push(InferDiagnostic::DisplayTypeMismatch {
                     err: TypeMismatch {
                         expected: Cow::Owned(vec![TyRequirement::Val(ty)]),
                         found_ty: self.result.expr_types[arg].clone(),
@@ -709,7 +714,7 @@ impl Ctx<'_> {
                     lint_ctx: Some(stmt),
                 })
             }
-            _ => self.result.diagnostics.push(InferenceDiagnostic::DisplayTypeMismatch {
+            _ => self.result.diagnostics.push(InferDiagnostic::DisplayTypeMismatch {
                 err: TypeMismatch {
                     expected: Cow::Owned(vec![TyRequirement::Val(ty)]),
                     found_ty: self.result.expr_types[arg].clone(),
@@ -786,7 +791,7 @@ impl Ctx<'_> {
                 Some(ResolvedFun::BuiltIn(BuiltIn::potential | BuiltIn::flow))
             )
         {
-            self.result.diagnostics.push(InferenceDiagnostic::ExpectedProbe { e: probe })
+            self.result.diagnostics.push(InferDiagnostic::ExpectedProbe { e: probe })
         }
 
         if args.len() == 1 {
@@ -798,7 +803,7 @@ impl Ctx<'_> {
             // user-function needs two extra arguments but $limit also accepts two arguments that are
             // not passed directly to the function so these must just be equal
             if fun_info.args.len() != args.len() {
-                self.result.diagnostics.push(InferenceDiagnostic::ArgCntMismatch {
+                self.result.diagnostics.push(InferDiagnostic::ArgCntMismatch {
                     expected: fun_info.args.len(),
                     found: args.len(),
                     expr,
@@ -818,7 +823,7 @@ impl Ctx<'_> {
             let invalid_arg1 = !matches!(fun_info.args.raw[1].ty, Type::Real | Type::Err);
 
             if invalid_ret || invalid_arg0 || invalid_arg1 || !output_args.is_empty() {
-                self.result.diagnostics.push(InferenceDiagnostic::InvalidLimitFunction {
+                self.result.diagnostics.push(InferDiagnostic::InvalidLimitFunction {
                     expr,
                     func,
                     invalid_arg0,
@@ -873,9 +878,7 @@ impl Ctx<'_> {
                 (*fun, *signature)
             } else {
                 if !matches!(&self.body.exprs[expr], Expr::Call { .. }) {
-                    self.result
-                        .diagnostics
-                        .push(InferenceDiagnostic::InvalidUnknown { e: unknown });
+                    self.result.diagnostics.push(InferDiagnostic::InvalidUnknown { e: unknown });
                 }
                 return;
             };
@@ -884,7 +887,7 @@ impl Ctx<'_> {
                 (BuiltIn::potential, NATURE_ACCESS_NODES) => {
                     self.result
                         .diagnostics
-                        .push(InferenceDiagnostic::NonStandardUnknown { e: unknown, stmt });
+                        .push(InferDiagnostic::NonStandardUnknown { e: unknown, stmt });
                     DDX_POT_DIFF
                 }
                 (BuiltIn::potential, NATURE_ACCESS_NODE_GND) => DDX_POT,
@@ -892,13 +895,11 @@ impl Ctx<'_> {
                 (BuiltIn::temperature, _) => {
                     self.result
                         .diagnostics
-                        .push(InferenceDiagnostic::NonStandardUnknown { e: unknown, stmt });
+                        .push(InferDiagnostic::NonStandardUnknown { e: unknown, stmt });
                     DDX_TEMP
                 }
                 _ => {
-                    self.result
-                        .diagnostics
-                        .push(InferenceDiagnostic::InvalidUnknown { e: unknown });
+                    self.result.diagnostics.push(InferDiagnostic::InvalidUnknown { e: unknown });
                     return;
                 }
             };
@@ -946,7 +947,7 @@ impl Ctx<'_> {
                 Some(ty) => ty,
                 None => {
                     self.result.diagnostics.push(
-                        ArrayTypeMismatch {
+                        InferDiagnostic::ArrayTypeMismatch {
                             expected: ty.clone(),
                             found_ty: arg_ty,
                             found_expr: *arg,
@@ -1154,13 +1155,13 @@ impl Ctx<'_> {
         let resolved_path = match self.body.stmt_scopes[stmt].resolve_path(self.db.upcast(), path) {
             Ok(resolved_path) => resolved_path,
             Err(err) => {
-                self.result.diagnostics.push(InferenceDiagnostic::PathResolveError { err, expr });
+                self.result.diagnostics.push(InferDiagnostic::PathResolveError { err, expr });
                 return None;
             }
         };
 
         let attr = match resolved_path {
-            ResolvedPath::FlowAttriubte { branch, ref name } => {
+            ResolvedPath::FlowAttribute { branch, ref name } => {
                 BranchTy::flow_attr(self.db, branch, name)?
             }
 
@@ -1174,7 +1175,7 @@ impl Ctx<'_> {
         match attr {
             Ok(attr) => Some(attr.into()),
             Err(err) => {
-                self.result.diagnostics.push(InferenceDiagnostic::PathResolveError { err, expr });
+                self.result.diagnostics.push(InferDiagnostic::PathResolveError { err, expr });
                 None
             }
         }
@@ -1189,7 +1190,7 @@ impl Ctx<'_> {
         match self.body.stmt_scopes[stmt].resolve_item_path(self.db.upcast(), path) {
             Ok(item) => Some(item),
             Err(err) => {
-                self.result.diagnostics.push(InferenceDiagnostic::PathResolveError { err, expr });
+                self.result.diagnostics.push(InferDiagnostic::PathResolveError { err, expr });
                 None
             }
         }
@@ -1199,72 +1200,3 @@ impl Ctx<'_> {
     //     self.body
     // }
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InferenceDiagnostic {
-    InvalidAssignDst {
-        e: ExprId,
-        maybe_different_operand: Option<ast::AssignOp>,
-        assignment_kind: ast::AssignOp,
-    },
-    PathResolveError {
-        err: PathResolveError,
-        expr: ExprId,
-    },
-    ArgCntMismatch {
-        expected: usize,
-        found: usize,
-        expr: ExprId,
-        exact: bool,
-    },
-
-    ExpectedProbe {
-        e: ExprId,
-    },
-
-    InvalidLimitFunction {
-        expr: ExprId,
-        func: FunctionId,
-        invalid_arg0: bool,
-        invalid_arg1: bool,
-        invalid_ret: bool,
-        output_args: Vec<LocalFunctionArgId>,
-    },
-
-    DisplayTypeMismatch {
-        err: TypeMismatch,
-        fmt_lit: ExprId,
-        lit_range: TextRange,
-        lint_ctx: Option<StmtId>,
-    },
-
-    MissingFmtArg {
-        fmt_lit: ExprId,
-        lit_range: TextRange,
-    },
-
-    InvalidFmtSpecifierChar {
-        fmt_lit: ExprId,
-        lit_range: TextRange,
-        err_char: char,
-        candidates: &'static [char],
-    },
-
-    InvalidFmtSpecifierEnd {
-        fmt_lit: ExprId,
-        lit_range: TextRange,
-    },
-
-    TypeMismatch(TypeMismatch),
-    SignatureMismatch(SignatureMismatch),
-    ArrayTypeMismatch(ArrayTypeMismatch),
-    InvalidUnknown {
-        e: ExprId,
-    },
-    NonStandardUnknown {
-        e: ExprId,
-        stmt: StmtId,
-    },
-}
-
-impl_from!(TypeMismatch,SignatureMismatch, ArrayTypeMismatch for InferenceDiagnostic);

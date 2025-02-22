@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-pub use diagnostics::AttrDiagnostic;
 use syntax::ast::{self, AstToken, AttrIter, LiteralKind};
 use syntax::{AstNode, TextRange};
-use vfs::FileId;
 
 use crate::lints::{Lint, LintLevel, LintRegistry, LintSrc};
-use crate::{AstIdMap, BaseDB, ErasedAstId};
+use crate::{AstIdMap, BaseDB, ErasedAstId, FileId};
 
 mod diagnostics;
+pub use diagnostics::AttrDiagnostic;
 
 // #[cfg(test)]
 // mod tests;
@@ -74,7 +73,7 @@ pub fn resolve_overwrites(
         src: ErasedAstId,
     ) {
         match lit.kind() {
-            LiteralKind::String(lit) => {
+            LiteralKind::StrLit(lit) => {
                 let lint_name = lit.unescaped_value();
                 let range = lit.syntax().text_range();
                 let lint = if let Some(lint) = registry.lint_from_name(&lint_name) {
@@ -112,7 +111,7 @@ pub fn resolve_overwrites(
         };
 
         match attr.val() {
-            Some(ast::Expr::Literal(lit)) if matches!(lit.kind(), LiteralKind::String(_)) => {
+            Some(ast::Expr::Literal(lit)) if matches!(lit.kind(), LiteralKind::StrLit(_)) => {
                 insert_lint(lit, err, registry, &mut overwrites, lvl, src)
             }
 

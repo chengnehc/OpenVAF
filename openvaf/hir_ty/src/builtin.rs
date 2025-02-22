@@ -1,10 +1,18 @@
-#[rustfmt::skip]
-mod generated;
+use std::borrow::Cow;
 
-use generated::builtin_info;
 use hir_def::{BuiltIn, Type};
 
 use crate::types::{BuiltinInfo, Signature, SignatureData, TyRequirement};
+
+#[rustfmt::skip]
+mod generated;
+use generated::builtin_info;
+
+impl From<BuiltIn> for BuiltinInfo {
+    fn from(builtin: BuiltIn) -> Self {
+        builtin_info(builtin)
+    }
+}
 
 impl BuiltinInfo {
     const fn new(signatures: &'static [SignatureData], has_side_effects: bool) -> BuiltinInfo {
@@ -43,7 +51,7 @@ impl BuiltinInfo {
         BuiltinInfo::new(signatures, false)
     }
 
-    const fn special_cased_pure(min_args: usize, max_args: Option<usize>) -> BuiltinInfo {
+    const fn special_pure_fn(min_args: usize, max_args: Option<usize>) -> BuiltinInfo {
         BuiltinInfo { signatures: &[], min_args, max_args, has_side_effects: false }
     }
 
@@ -72,20 +80,13 @@ impl BuiltinInfo {
     }
 }
 
-impl From<BuiltIn> for BuiltinInfo {
-    fn from(builtin: BuiltIn) -> Self {
-        builtin_info(builtin)
-    }
-}
-
-use std::borrow::Cow;
-
 use TyRequirement::*;
 use Type::*;
 
-macro_rules! bultins {
+/// generate func `Signature`s and `BuiltinInfo`
+macro_rules! bultin_info {
     {
-         $name: ident = $($const: ident)? {
+        $name: ident = $($const: ident)? {
             $(fn $signature: ident($($args: expr),*) -> $ty: ident;)*
         }
         $($rem: tt)*
@@ -95,12 +96,13 @@ macro_rules! bultins {
                 args: Cow::Borrowed(&[$($args),*]),
                 return_ty: Type::$ty,
             }),*],
-            bultins!(@is_pure $($const)?)
+            bultin_info!(@is_pure $($const)?)
         );
-        bultins!(@SIGNATURES [$(stringify!($signature)),*].len(); $($signature),*);
-        bultins!($($rem)*);
+        bultin_info!(@SIGNATURES [$(stringify!($signature)),*].len(); $($signature),*);
+        bultin_info!($($rem)*);
     };
 
+    // func with possible side effects
     {
         fn $name: ident ($($args: expr),*) -> $ty: ident;
         $($rem: tt)*
@@ -111,9 +113,10 @@ macro_rules! bultins {
                 return_ty: Type::$ty,
             }],
         );
-        bultins!($($rem)*);
+        bultin_info!($($rem)*);
     };
 
+    // const func without side effects
     {
         const fn $name: ident ($($args: expr),*) -> $ty: ident;
         $($rem: tt)*
@@ -124,30 +127,23 @@ macro_rules! bultins {
                 return_ty: Type::$ty,
             }],
         );
-        bultins!($($rem)*);
+        bultin_info!($($rem)*);
     };
-
-
 
     { @is_pure const} => {
         true
     };
-
-
     { @is_pure} => {
         false
     };
 
     { @SIGNATURES $cnt:expr; $name: ident $(,$rem:ident)+} => {
         pub const $name: Signature = Signature(($cnt - [$(stringify!($rem)),*].len() - 1) as u32);
-        bultins!(@SIGNATURES $cnt; $($rem),*);
+        bultin_info!(@SIGNATURES $cnt; $($rem),*);
     };
-
-
     { @SIGNATURES $cnt:expr; $name: ident } => {
         pub const $name: Signature = Signature($cnt as u32 - 1);
     };
-
 
     {} => {};
 }
@@ -155,7 +151,7 @@ macro_rules! bultins {
 // WARNING: THE ORDER OF THE SIGNATURES IS IMPORTANT AND RELIED UPON TO BE STABLE
 // ALWAYS ADD NEW SIGNATURES AT THE END!
 
-bultins! {
+bultin_info! {
     FLOW = const {
         fn NATURE_ACCESS_BRANCH(Branch) -> Real;
         fn NATURE_ACCESS_NODES(Node,Node) -> Real;
@@ -173,6 +169,8 @@ bultins! {
         fn ABS_REAL(Val(Real)) -> Real;
     }
 
+    // JW: according to LRM, `$analysis` should be able to a list of strings
+    // and return Bool type
     ANALYSIS = const {
         fn ANALYSIS_SIG(Val(String)) -> Integer;
     }
@@ -189,7 +187,6 @@ bultins! {
     const fn REAL_MATH_2(Val(Real),Val(Real)) -> Real;
     const fn INT_MATH_2(Val(Integer),Val(Integer)) -> Integer;
 
-
     VT = const {
         fn VT_TEMP() -> Real;
         fn VT_ARG(Val(Real)) -> Real;
@@ -204,7 +201,6 @@ bultins! {
         fn WHITE_NOISE_NO_NAME(Val(Real)) -> Real;
         fn WHITE_NOISE_NAME(Val(Real),Literal(String)) -> Real;
     }
-
 
     NOISE_TABLE = const {
         fn NOISE_TABLE_INLINE(ArrayAnyLength{ty: Real}) -> Real;
@@ -261,7 +257,6 @@ bultins! {
         fn SLEW_NEG_MAX(Val(Real),Val(Real),Val(Real)) -> Real;
     }
 
-
     TRANSITION = const {
         fn TRANSITION_NO_ARGS(Val(Integer)) -> Real;
         fn TRANSITION_DELAY(Val(Integer),Val(Real)) -> Real;
@@ -270,7 +265,6 @@ bultins! {
         fn TRANSITION_DELAY_RISET_FALLT_TOL(Val(Integer),Val(Real),Val(Real), Val(Real)) -> Real;
     }
 
-
     LAST_CROSSING = const{
         fn LAST_CROSSING_NO_DIRECTION(Val(Real)) -> Real;
         fn LAST_CROSSING_DIRECTION(Val(Real),Val(Integer)) -> Real;
@@ -278,7 +272,7 @@ bultins! {
 
     fn BASIC_IO(Val(Integer)) -> Integer;
 
-     FOPEN = {
+    FOPEN = {
         fn FOPEN_NO_MODE(Val(String)) -> Integer;
         fn FOPEN_MODE(Val(String), Val(String)) -> Integer;
     }
@@ -303,7 +297,9 @@ bultins! {
         fn SIMPARAM_DEFAULT(Literal(String),Val(Real)) -> Real;
     }
 
-    const fn SIMPARAM_STR(Literal(String)) -> Real;
+    // Jw: changed the return type from `Real` to `String` according to LRM
+    // `cagro test` passed. Don't know if other bugs still exist.
+    const fn SIMPARAM_STR(Literal(String)) -> String;
 
     RANDOM = const {
         fn RANDOM_NO_SEED() -> Integer;
@@ -318,7 +314,6 @@ bultins! {
         fn ARNADOM_CONST_SEED_NAME(Param(Integer),Literal(String)) -> Integer;
     }
 
-
     RDIST_1_ARG = const {
         fn RDIST_1_ARG_SEED(Var(Integer),Val(Real)) -> Real;
         fn RDIST_1_ARG_CONST_SEED(Param(Integer),Val(Real)) -> Real;
@@ -332,7 +327,6 @@ bultins! {
         fn RDIST_2_ARG_CONST_NAME(Var(Integer),Val(Real),Val(Real),Literal(String)) -> Real;
         fn RDIST_2_ARG_CONST_SEED_NAME(Param(Integer),Val(Real),Val(Real),Literal(String)) -> Real;
     }
-
 
     DIST_1_ARG = const {
         fn DIST_1_ARG_SEED(Var(Integer),Val(Integer)) -> Real;
@@ -372,21 +366,17 @@ bultins! {
 
 // TODO TABLE_MODEL
 
-const DDX: BuiltinInfo = BuiltinInfo::special_cased_pure(2, Some(2));
+// Builtins that need special treatment: `special_pure_fn` and `varargs`
+
 pub const DDX_TEMP: Signature = Signature(0);
 pub const DDX_POT_DIFF: Signature = Signature(1);
 pub const DDX_POT: Signature = Signature(2);
 pub const DDX_FLOW: Signature = Signature(3);
-
-const DISPLAY_FUN: BuiltinInfo = BuiltinInfo::varargs(
-    &[SignatureData { args: Cow::Borrowed(&[]), return_ty: Type::Void }],
-    true,
-);
+const DDX: BuiltinInfo = BuiltinInfo::special_pure_fn(2, Some(2));
 
 pub const LIMIT_BUILTIN_FUNCTION: Signature = Signature(0);
 pub const LIMIT_USER_FUNCTION: Signature = Signature(1);
 pub const LIMIT_NO_ARG: Signature = Signature(2);
-
 const LIMIT: BuiltinInfo = BuiltinInfo::varargs(
     &[
         SignatureData { args: Cow::Borrowed(&[Val(Real), Literal(String)]), return_ty: Type::Real },
@@ -394,6 +384,11 @@ const LIMIT: BuiltinInfo = BuiltinInfo::varargs(
         SignatureData { args: Cow::Borrowed(&[Val(Real)]), return_ty: Type::Real },
     ],
     false,
+);
+
+const DISPLAY_FUN: BuiltinInfo = BuiltinInfo::varargs(
+    &[SignatureData { args: Cow::Borrowed(&[]), return_ty: Type::Void }],
+    true,
 );
 const FDISPLAY_FUN: BuiltinInfo = BuiltinInfo::varargs(
     &[SignatureData { args: Cow::Borrowed(&[Val(Integer)]), return_ty: Type::Void }],
@@ -412,38 +407,41 @@ const FATAL: BuiltinInfo = BuiltinInfo::varargs(
     true,
 );
 
-macro_rules! copied_builtins {
+macro_rules! copy_builtin_info {
     {$($name: ident = $val: ident)*}=> {
         $(const $name: BuiltinInfo = $val;)*
     };
 }
 
-copied_builtins! {
-    ACOS = REAL_MATH_1
-    ACOSH = REAL_MATH_1
-    ASIN = REAL_MATH_1
-    ASINH = REAL_MATH_1
-    ATAN = REAL_MATH_1
-    ATANH = REAL_MATH_1
-    COS = REAL_MATH_1
-    COSH = REAL_MATH_1
-    EXP = REAL_MATH_1
-    FLOOR = REAL_MATH_1
+copy_builtin_info! {
     LN = REAL_MATH_1
     LOG = REAL_MATH_1
-    CLOG2 = INT_MATH_2
-    LOG10 = REAL_MATH_1
-    CEIL = REAL_MATH_1
-    LIMEXP = REAL_MATH_1
-    SIN = REAL_MATH_1
-    SINH = REAL_MATH_1
+    EXP = REAL_MATH_1
     SQRT = REAL_MATH_1
+    POW = REAL_MATH_2
+    FLOOR = REAL_MATH_1
+    CEIL = REAL_MATH_1
+    SIN = REAL_MATH_1
+    COS = REAL_MATH_1
     TAN = REAL_MATH_1
-    TANH = REAL_MATH_1
-
+    ASIN = REAL_MATH_1
+    ACOS = REAL_MATH_1
+    ATAN = REAL_MATH_1
     ATAN2 = REAL_MATH_2
     HYPOT = REAL_MATH_2
-    POW = REAL_MATH_2
+    SINH = REAL_MATH_1
+    COSH = REAL_MATH_1
+    TANH = REAL_MATH_1
+    ASINH = REAL_MATH_1
+    ACOSH = REAL_MATH_1
+    ATANH = REAL_MATH_1
+    CLOG2 = INT_MATH_2
+    LOG10 = REAL_MATH_1
+    LIMEXP = REAL_MATH_1
+
+    MIN = MAX
+
+    POTENTIAL = FLOW
 
     NOISE_TABLE_LOG = NOISE_TABLE
 
@@ -456,9 +454,6 @@ copied_builtins! {
     ZI_NP = ZI_FILTER
     ZI_ZD = ZI_FILTER
     ZI_ZP = ZI_FILTER
-
-    // Types are special cased
-    MIN = MAX
 
     DISPLAY = DISPLAY_FUN
     STROBE = DISPLAY_FUN
@@ -506,6 +501,4 @@ copied_builtins! {
     DIST_NORMAL = DIST_2_ARG
 
     ANALOG_PORT_ALIAS = ANALOG_NODE_ALIAS
-
-    POTENTIAL = FLOW
 }

@@ -1,16 +1,16 @@
+use std::path::Path;
+use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
+
 use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
-use basedb::{BaseDB, BaseDatabase, VfsPath, VfsStorage};
+use basedb::{BaseDB, SourceDatabase, VfsPath, VfsStorage};
 use codespan_reporting::term::termcolor::Buffer;
 use expect_test::expect_file;
 use mini_harness::{harness, Result};
 use parking_lot::RwLock;
-use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 use syntax::{Parse, SourceFile};
 use vfs::{AbsPathBuf, FileId, Vfs, VfsEntry};
 
-use std::path::Path;
-
-#[salsa::database(BaseDatabase)]
+#[salsa::database(SourceDatabase)]
 pub struct TestDataBase {
     storage: salsa::Storage<TestDataBase>,
     vfs: Option<RwLock<Vfs>>,
@@ -42,7 +42,7 @@ impl TestDataBase {
     }
     pub fn parse_and_check(&self) -> (Parse<SourceFile>, String) {
         let root_file = self.root_file();
-        let preprocessor_diagnostics = self.preprocess(root_file).diagnostics;
+        let preprocess = self.preprocess(root_file);
         let parse = self.parse(root_file);
         let attr_tree = self.lint_attr_tree(root_file);
 
@@ -50,7 +50,7 @@ impl TestDataBase {
         {
             let mut sink = ConsoleSink::buffer(self, &mut buf);
             sink.annonymize_paths();
-            sink.add_diagnostics(&*preprocessor_diagnostics, root_file, self);
+            sink.add_diagnostics(preprocess.errors(), root_file, self);
             sink.add_diagnostics(parse.errors(), root_file, self);
             sink.add_diagnostics(&*attr_tree.diagnostics, root_file, self);
         }
@@ -62,6 +62,7 @@ impl TestDataBase {
 
 /// This impl tells salsa where to find the salsa runtime.
 impl salsa::Database for TestDataBase {}
+
 impl VfsStorage for TestDataBase {
     fn vfs(&self) -> &RwLock<Vfs> {
         self.vfs()

@@ -35,7 +35,7 @@ pub struct BodyRef<'a> {
 }
 
 impl<'a> BodyRef<'a> {
-    pub fn entry(&self) -> &'a [StmtId] {
+    pub fn entry_stmts(&self) -> &'a [StmtId] {
         &self.body.entry_stmts
     }
 
@@ -86,7 +86,7 @@ impl<'a> BodyRef<'a> {
     }
 
     // AB: get integer literal
-    pub fn as_literalint(&self, &expr1: &ExprId) -> Option<i32> {
+    pub fn as_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
         match &self.body.exprs[expr1] {
             hir_def::Expr::Literal(lit) => match &lit {
                 Literal::Int(ii) => Some(*ii), // Int literal
@@ -97,7 +97,7 @@ impl<'a> BodyRef<'a> {
     }
 
     // AB: get integer literal with optional negative sign
-    pub fn as_literalsignedint(&self, &expr1: &ExprId) -> Option<i32> {
+    pub fn as_signed_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
         match &self.body.exprs[expr1] {
             hir_def::Expr::Literal(lit) => match &lit {
                 // Literal
@@ -107,7 +107,7 @@ impl<'a> BodyRef<'a> {
             hir_def::Expr::UnaryOp { expr, op } => {
                 // UnaryOp
                 match op {
-                    UnaryOp::Neg => match self.as_literalint(expr) {
+                    UnaryOp::Neg => match self.as_int_literal(expr) {
                         // Neg
                         Some(ii) => Some(-ii), // Neg Int literal
                         _ => None,             // Neg anything else
@@ -157,7 +157,7 @@ impl<'a> BodyRef<'a> {
                     // to be called like functions (but its the same as direct access)
                     // we hide that detail from downstream users here
                     inference::ResolvedFun::Param(param) => {
-                        return Expr::Read(Ref::ParamSysFun(param))
+                        return Expr::Read(Ref::ParamSysFun(param));
                     }
                     inference::ResolvedFun::InvalidNatureAccess(_) => {
                         panic!("invalid HIR: invalid nature access {:?}", self.body.exprs[expr])
@@ -169,14 +169,6 @@ impl<'a> BodyRef<'a> {
             hir_def::Expr::Literal(ref literal) => Expr::Literal(literal),
             _ => panic!("invalid HIR: {:?}", self.body.exprs[expr]),
         }
-    }
-
-    pub fn get_entry_stmt(&self, i: usize) -> Option<Stmt<'a>> {
-        self.get_stmt(self.entry()[i])
-    }
-
-    pub fn get_entry_expr(&self, i: usize) -> ExprId {
-        self.get_stmt(self.entry()[i]).unwrap().unwrap_expr()
     }
 
     pub fn get_stmt(&self, stmnt: StmtId) -> Option<Stmt<'a>> {
@@ -222,6 +214,14 @@ impl<'a> BodyRef<'a> {
             hir_def::Stmt::WhileLoop { cond, body } => Some(Stmt::WhileLoop { cond, body }),
             hir_def::Stmt::Case { discr, ref case_arms } => Some(Stmt::Case { discr, case_arms }),
         }
+    }
+
+    pub fn get_entry_stmt(&self, i: usize) -> Option<Stmt<'a>> {
+        self.get_stmt(self.entry_stmts()[i])
+    }
+
+    pub fn get_entry_expr(&self, i: usize) -> ExprId {
+        self.get_entry_stmt(i).unwrap().unwrap_expr()
     }
 }
 
@@ -294,10 +294,10 @@ impl Expr<'_> {
 pub enum Ref {
     Variable(Variable),
     Parameter(Parameter),
+    ParamSysFun(ParamSysFun),
     FunctionArg(FunctionArg),
     FunctionReturn(Function),
     NatureAttr(NatureAttribute),
-    ParamSysFun(ParamSysFun),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]

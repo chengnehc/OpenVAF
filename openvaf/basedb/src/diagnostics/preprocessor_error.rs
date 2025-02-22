@@ -1,17 +1,16 @@
 use std::fmt::Write;
+use stdx::iter::zip;
 
 use ahash::AHashSet;
-use stdx::iter::zip;
-use syntax::PreprocessorDiagnostic;
-use vfs::FileId;
+use syntax::PreprocessError;
 
-use crate::diagnostics::{to_unified_spans, Diagnostic, Label, LabelStyle, Report};
+use super::{to_unified_spans, Diagnostic, Label, LabelStyle, Report};
 use crate::lints::{self, Lint, LintSrc};
-use crate::BaseDB;
+use crate::{BaseDB, FileId};
 
-impl Diagnostic for PreprocessorDiagnostic {
+impl Diagnostic for PreprocessError {
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
-        if let PreprocessorDiagnostic::MacroOverwritten { .. } = self {
+        if let PreprocessError::MacroOverwritten { .. } = self {
             Some((lints::builtin::macro_overwritten, LintSrc::GLOBAL))
         } else {
             None
@@ -21,17 +20,17 @@ impl Diagnostic for PreprocessorDiagnostic {
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
         let sm = db.sourcemap(root_file);
         let report = match *self {
-            PreprocessorDiagnostic::MacroArgumentCountMismatch { expected, span, .. } => {
+            PreprocessError::MacroArgCountMismatch { expected, found, span } => {
                 let span = span.to_file_span(&sm);
 
                 Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
                     file_id: span.file,
                     range: span.range.into(),
-                    message: format!("expected {} arguments", expected),
+                    message: format!("expected {} arguments, but found {}", expected, found),
                 }])
             }
-            PreprocessorDiagnostic::MacroNotFound { span, .. } => {
+            PreprocessError::MacroNotFound { span, .. } => {
                 let span = span.to_file_span(&sm);
 
                 Report::error().with_labels(vec![Label {
@@ -41,7 +40,7 @@ impl Diagnostic for PreprocessorDiagnostic {
                     message: "macro not found here".to_owned(),
                 }])
             }
-            PreprocessorDiagnostic::MacroNotDefined { span, .. } => {
+            PreprocessError::MacroNotDefined { span, .. } => {
                 let span = span.to_file_span(&sm);
 
                 Report::warning().with_labels(vec![Label {
@@ -51,8 +50,10 @@ impl Diagnostic for PreprocessorDiagnostic {
                     message: "macro not defined here".to_owned(),
                 }])
             }
-            PreprocessorDiagnostic::MacroRecursion { .. } => todo!(),
-            PreprocessorDiagnostic::UnsupportedCompDir { span, .. } => {
+            PreprocessError::MacroRecursion { .. } => {
+                todo!("macro recursion diagnosis is not supported")
+            }
+            PreprocessError::UnsupportedCompDir { span, .. } => {
                 let span = span.to_file_span(&sm);
 
                 Report::warning().with_labels(vec![Label {
@@ -62,7 +63,7 @@ impl Diagnostic for PreprocessorDiagnostic {
                     message: "directive ignored".to_owned(),
                 }])
             }
-            PreprocessorDiagnostic::FileNotFound { span, .. } => {
+            PreprocessError::FileNotFound { span, .. } => {
                 let labels = if let Some(span) = span {
                     let span = span.to_file_span(&sm);
                     vec![Label {
@@ -76,19 +77,18 @@ impl Diagnostic for PreprocessorDiagnostic {
                 };
                 Report::error().with_labels(labels)
             }
-            PreprocessorDiagnostic::InvalidTextFormat { span, ref file, ref err, .. } => {
+            PreprocessError::InvalidTextFormat { span, ref file, ref err, .. } => {
                 let file = db.vfs().read().file_id(file).unwrap();
                 let mut labels: Vec<_> = err
                     .pos
                     .iter()
-                    .map(|span| Label {
+                    .map(|range| Label {
                         style: LabelStyle::Primary,
                         file_id: file,
-                        range: span.clone(),
+                        range: range.clone(),
                         message: "invalid text format!".to_owned(),
                     })
                     .collect();
-
                 if let Some(span) = span {
                     let span = span.to_file_span(&sm);
                     labels.push(Label {
@@ -98,13 +98,15 @@ impl Diagnostic for PreprocessorDiagnostic {
                         message: "file was read here".to_owned(),
                     })
                 };
+
                 Report::error()
                     .with_labels(labels)
                     .with_notes(vec!["only UTF-8 files are accepted".to_owned()])
                     .with_notes(vec!["help: use --encode-lossy to use the file as-is".to_owned()])
             }
-            PreprocessorDiagnostic::UnexpectedEof { expected, span } => {
+            PreprocessError::UnexpectedEof { expected, span } => {
                 let span = span.to_file_span(&sm);
+
                 Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
                     file_id: span.file,
@@ -112,13 +114,15 @@ impl Diagnostic for PreprocessorDiagnostic {
                     message: format!("expected {}", expected),
                 }])
             }
-            PreprocessorDiagnostic::MissingOrUnexpectedToken { expected, expected_at, span } => {
-                let (file, [expected_at, span]) = to_unified_spans(&sm, [expected_at, span]);
+            PreprocessError::MissingOrUnexpectedToken { expected, expected_at, found_at } => {
+                let (file, [expected_at, found_at]) =
+                    to_unified_spans(&sm, [expected_at, found_at]);
+
                 Report::error().with_labels(vec![
                     Label {
                         style: LabelStyle::Primary,
                         file_id: file,
-                        range: span.into(),
+                        range: found_at.into(),
                         message: "unexpected token".to_owned(),
                     },
                     Label {
@@ -129,7 +133,7 @@ impl Diagnostic for PreprocessorDiagnostic {
                     },
                 ])
             }
-            PreprocessorDiagnostic::UnexpectedToken(span) => {
+            PreprocessError::UnexpectedToken(span) => {
                 let span = span.to_file_span(&sm);
                 let text = db.file_text(span.file).unwrap();
                 let src = &text[span.range];
@@ -252,9 +256,10 @@ impl Diagnostic for PreprocessorDiagnostic {
                     }])
                     .with_notes(notes)
             }
-            PreprocessorDiagnostic::MacroOverwritten { old, new, ref name } => {
+            PreprocessError::MacroOverwritten { old, new, ref name } => {
                 let new = new.to_file_span(&sm);
                 let old = old.to_file_span(&sm);
+
                 Report::warning().with_labels(vec![
                     Label {
                         style: LabelStyle::Secondary,

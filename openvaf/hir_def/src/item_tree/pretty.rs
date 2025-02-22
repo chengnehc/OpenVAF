@@ -56,7 +56,7 @@ impl<'a> Printer<'a> {
         }
 
         for discipline in &self.tree.data.disciplines {
-            wln!(self, "discipline {}", discipline.name);
+            w!(self, "discipline {}", discipline.name);
             self.indented(|s| s.print_discipline(discipline))
         }
 
@@ -81,7 +81,7 @@ impl<'a> Printer<'a> {
         wln!(self, "potential = {:?}", discipline.potential);
         wln!(self, "flow = {:?}", discipline.flow);
         wln!(self, "domain = {:?}", discipline.domain);
-        for attr in discipline.extra_attrs.clone() {
+        for attr in discipline.attrs.clone() {
             wln!(
                 self,
                 "attr{}: {} ({:?})",
@@ -128,29 +128,8 @@ impl<'a> Printer<'a> {
         }
     }
 
-    fn print_function(&mut self, function: &Function) {
-        for item in &function.items {
-            match *item {
-                FunctionItem::Scope(block) => self.print_scope(block),
-                FunctionItem::Parameter(param) => self.print_parameter(param),
-                FunctionItem::Variable(var) => self.print_var(var),
-                FunctionItem::FunctionArg(arg) => {
-                    let arg = &function.args[arg];
-                    wln!(
-                        self,
-                        "arg {:?} {} = {{ is_input = {}, is_output = {}}}",
-                        arg.ty(self.tree),
-                        arg.name,
-                        arg.is_input,
-                        arg.is_output
-                    );
-                }
-            }
-        }
-    }
-
     fn print_scope(&mut self, block: AstId<ast::BlockStmt>) {
-        let block = self.tree.block_scope(block);
+        let block = &self.tree[block];
         wln!(self, "block {:?}", block.name);
         self.indented(|s| s.print_scope_items(&block.scope_items));
     }
@@ -171,6 +150,27 @@ impl<'a> Printer<'a> {
                 BlockScopeItem::Scope(block) => self.print_scope(block),
                 BlockScopeItem::Parameter(param) => self.print_parameter(param),
                 BlockScopeItem::Variable(var) => self.print_var(var),
+            }
+        }
+    }
+
+    fn print_function(&mut self, function: &Function) {
+        for item in &function.items {
+            match *item {
+                FunctionItem::Scope(block) => self.print_scope(block),
+                FunctionItem::Parameter(param) => self.print_parameter(param),
+                FunctionItem::Variable(var) => self.print_var(var),
+                FunctionItem::FunctionArg(arg) => {
+                    let arg = &function.args[arg];
+                    wln!(
+                        self,
+                        "arg {:?} {} = {{ is_input = {}, is_output = {}}}",
+                        arg.ty(self.tree),
+                        arg.name,
+                        arg.is_input,
+                        arg.is_output
+                    );
+                }
             }
         }
     }

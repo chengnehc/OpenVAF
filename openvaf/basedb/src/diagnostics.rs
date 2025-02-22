@@ -1,18 +1,17 @@
-pub use sink::{print_all, ConsoleSink, DiagnosticSink};
+pub use codespan_reporting::diagnostic::{LabelStyle, Severity};
+pub type Report = codespan_reporting::diagnostic::Diagnostic<FileId>;
+pub type Label = codespan_reporting::diagnostic::Label<FileId>;
+use syntax::sourcemap::{CtxSpan, FileSpan, SourceMap};
+use syntax::{Parse, SourceFile, TextRange};
 
 use crate::lints::{Lint, LintData, LintLevel, LintSrc};
 use crate::{BaseDB, FileId};
 
 mod preprocessor_error;
-pub mod sink;
 mod syntax_error;
 
-pub type Report = codespan_reporting::diagnostic::Diagnostic<FileId>;
-pub type Label = codespan_reporting::diagnostic::Label<FileId>;
-
-pub use codespan_reporting::diagnostic::{LabelStyle, Severity};
-use syntax::sourcemap::{CtxSpan, FileSpan, SourceMap};
-use syntax::{Parse, SourceFile, TextRange};
+pub mod sink;
+pub use sink::{print_all, ConsoleSink, DiagnosticSink};
 
 pub trait Diagnostic {
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
@@ -26,7 +25,7 @@ pub trait Diagnostic {
             let (lvl, is_default) = lint_src.lvl(lint, root_file, db);
             let LintData { name, documentation_id, .. } = db.lint_data(lint);
 
-            let seververity = match lvl {
+            let severity = match lvl {
                 LintLevel::Deny => Severity::Error,
                 LintLevel::Warn => Severity::Warning,
                 LintLevel::Allow => return None,
@@ -42,7 +41,7 @@ pub trait Diagnostic {
                 report.notes.push(hint)
             }
 
-            report.severity = seververity;
+            report.severity = severity;
             Some(report.with_code(format!("L{:03}", documentation_id)))
         } else {
             Some(self.build_report(root_file, db))
@@ -52,7 +51,7 @@ pub trait Diagnostic {
 
 pub const HINT_UNSUPPORTED: &str = "this is allowed by VerilogAMS language spec but was purposefully excluded from the supported language subset\nmore details can be found in the OpenVAF documentation";
 
-// TODO support expansion backtrace
+// TODO support (macro) expansion span backtrace
 
 pub fn to_unified_spans<const N: usize>(
     sm: &SourceMap,
@@ -74,6 +73,7 @@ pub fn to_unified_span_list(sm: &SourceMap, spans: &mut [CtxSpan]) -> (FileId, V
     }
 }
 
+// TODO(JW) refactor these functions to methods of `Parse<T>`?
 pub fn text_ranges_to_unified_spans<const N: usize>(
     sm: &SourceMap,
     parse: &Parse<SourceFile>,

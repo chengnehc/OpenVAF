@@ -1,3 +1,5 @@
+//! Item data and queries.
+
 use std::sync::Arc;
 
 use arena::Arena;
@@ -10,20 +12,6 @@ use crate::{
     AliasParamId, BranchId, DisciplineId, FunctionId, Intern, ItemTree, LocalFunctionArgId,
     LocalNatureAttrId, Lookup, ModuleId, NatureId, NodeId, NodeLoc, ParamId, Path, Type, VarId,
 };
-
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct AliasParamData {
-    pub name: Name,
-    pub src: Option<Path>,
-}
-
-impl AliasParamData {
-    pub fn alias_data_query(db: &dyn HirDefDB, param: AliasParamId) -> Arc<AliasParamData> {
-        let loc = param.lookup(db);
-        let tree = &loc.item_tree(db)[loc.id];
-        Arc::new(AliasParamData { name: tree.name.clone(), src: tree.src.clone() })
-    }
-}
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct DisciplineAttrData {
@@ -46,7 +34,7 @@ impl DisciplineData {
         let tree = &loc.item_tree(db);
         let discipline = &tree[loc.id];
         let attrs: Vec<_> = discipline
-            .extra_attrs
+            .attrs
             .clone()
             .map(|attr| {
                 let attr = &tree[attr];
@@ -85,12 +73,14 @@ pub struct NatureAttrData {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NatureData {
+    // Predefined attributes
     pub name: Name,
     pub parent: Option<NatureRef>,
     pub idt_nature: Option<NatureRef>,
     pub ddt_nature: Option<NatureRef>,
     pub units: Option<String>,
     pub abstol: Option<LocalNatureAttrId>,
+    // (?) User-defined attributes
     pub attrs: Arena<NatureAttrData>,
 }
 
@@ -142,6 +132,20 @@ impl ParamData {
         let loc = id.lookup(db);
         let param = &loc.item_tree(db)[loc.id];
         Arc::new(ParamData { name: param.name.clone(), ty: param.ty.clone() })
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct AliasParamData {
+    pub name: Name,
+    pub src: Option<Path>,
+}
+
+impl AliasParamData {
+    pub fn alias_data_query(db: &dyn HirDefDB, id: AliasParamId) -> Arc<AliasParamData> {
+        let loc = id.lookup(db);
+        let param = &loc.item_tree(db)[loc.id];
+        Arc::new(AliasParamData { name: param.name.clone(), src: param.src.clone() })
     }
 }
 

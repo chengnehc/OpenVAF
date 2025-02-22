@@ -1,11 +1,10 @@
 use std::ops::Deref;
+use stdx::{impl_display, pretty};
 
 use basedb::diagnostics::{Diagnostic, Label, LabelStyle, Report};
-use basedb::{AstIdMap, BaseDB, FileId};
-use stdx::{impl_display, pretty};
+use basedb::{BaseDB, FileId};
 use syntax::name::Name;
-use syntax::sourcemap::{FileSpan, SourceMap};
-use syntax::{Parse, SourceFile};
+use syntax::sourcemap::FileSpan;
 
 use crate::db::HirDefDB;
 
@@ -17,30 +16,28 @@ pub enum PathResolveError {
     NotFoundIn { name: Name, scope: Name },
     ExpectedScope { name: Name, found: ScopeDefItem },
     ExpectedItemKind { name: Name, expected: &'static str, found: ResolvedPath },
-    ExpectedNatureAttributeIdent { found: Box<[Name]> },
+    ExpectedNatureAttrIdent { found: Box<[Name]> },
 }
 
+use PathResolveError::*;
 impl_display! {
     match PathResolveError{
-        PathResolveError::NotFound {name} => "'{}' was not found in the current scope", name;
-        PathResolveError::NotFoundIn {name, scope} => "'{}' was not found in '{}'", name, scope;
-        PathResolveError::ExpectedScope {name, found} => "expected a scope but found {} '{}'", found.item_kind(), name;
-        PathResolveError::ExpectedItemKind{name, expected, found} => "expected {} but found {} '{}'", expected, found, name;
-        PathResolveError::ExpectedNatureAttributeIdent{found} => "expected a nature attribute identifier found path {}",  pretty::List::path(found.deref());
+        NotFound{name} => "'{}' was not found in the current scope", name;
+        NotFoundIn{name, scope} => "'{}' was not found in '{}'", name, scope;
+        ExpectedScope{name, found} => "expected a scope but found {} '{}'", found.item_kind(), name;
+        ExpectedItemKind{name, expected, found} => "expected {} but found {} '{}'", expected, found, name;
+        ExpectedNatureAttrIdent{found} => "expected a nature attribute identifier found path {}", pretty::List::path(found.deref());
     }
 }
 
 impl PathResolveError {
     pub fn message(&self) -> String {
         match self {
-            PathResolveError::NotFound { .. } | PathResolveError::NotFoundIn { .. } => {
-                "not found".to_owned()
-            }
-            PathResolveError::ExpectedScope { .. }
-            | PathResolveError::ExpectedNatureAttributeIdent { .. } => {
+            NotFound { .. } | NotFoundIn { .. } => "not found".to_owned(),
+            ExpectedScope { .. } | ExpectedNatureAttrIdent { .. } => {
                 "failed to resolve path".to_owned()
             }
-            PathResolveError::ExpectedItemKind { expected, .. } => format!("expected {}", expected),
+            ExpectedItemKind { expected, .. } => format!("expected {}", expected),
         }
     }
 }
@@ -50,22 +47,31 @@ pub enum DefDiagnostic {
     AlreadyDeclared { old: ScopeDefItem, new: ScopeDefItem, name: Name },
 }
 
+impl_display! {
+    match DefDiagnostic {
+        DefDiagnostic::AlreadyDeclared{name, ..} => "'{}' was already declared in this scope", name;
+    }
+}
+
+// This wrapper is needed since the methods provided by `Diagnostic` trait
+// takes argument type `&dyn BaseDB` but `DefDiagnostic` requires data from
+// `&dyn HirDefDB`.
+// TODO(JW) can we make the `Diagnostic` trait accept upcasted BaseDB like `HirDefDB`?
 pub struct DefDiagnosticWrapped<'a> {
     pub db: &'a dyn HirDefDB,
     pub diag: &'a DefDiagnostic,
-    pub parse: &'a Parse<SourceFile>,
-    pub sm: &'a SourceMap,
-    pub ast_id_map: &'a AstIdMap,
 }
 
 impl Diagnostic for DefDiagnosticWrapped<'_> {
-    fn build_report(&self, _root_file: FileId, _db: &dyn BaseDB) -> Report {
-        match self.diag {
+    fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
+        let sm = db.sourcemap(root_file);
+        let parse = db.parse(root_file);
+        let ast_id_map = db.ast_id_map(root_file);
+
+        let report = match self.diag {
             DefDiagnostic::AlreadyDeclared { old, new, name } => {
-                let FileSpan { range, file } = self.parse.to_file_span(
-                    new.text_range(self.db, self.ast_id_map, self.parse).unwrap(),
-                    self.sm,
-                );
+                let FileSpan { range, file } =
+                    parse.to_file_span(new.text_range(self.db, &ast_id_map, &parse).unwrap(), &sm);
 
                 let mut labels = vec![Label {
                     style: LabelStyle::Primary,
@@ -74,19 +80,20 @@ impl Diagnostic for DefDiagnosticWrapped<'_> {
                     message: "already declared in this scope".to_owned(),
                 }];
 
-                if let Some(def) = old.text_range(self.db, self.ast_id_map, self.parse) {
-                    let FileSpan { range, file } = self.parse.to_file_span(def, self.sm);
+                if let Some(def) = old.text_range(self.db, &ast_id_map, &parse) {
+                    let FileSpan { range, file } = parse.to_file_span(def, &sm);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: file,
                         range: range.into(),
-                        message: format!("help '{}' was first declared here", name),
+                        message: format!("help: '{}' was first declared here", name),
                     })
                 }
-                Report::error()
-                    .with_message(format!("'{}' was already declared in this scope", name))
-                    .with_labels(labels)
+
+                Report::error().with_labels(labels)
             }
-        }
+        };
+
+        report.with_message(self.diag.to_string())
     }
 }

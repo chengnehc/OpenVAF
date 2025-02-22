@@ -1,7 +1,7 @@
 use std::sync::Arc;
+use stdx::Upcast;
 
 use basedb::{BaseDB, FileId};
-use stdx::Upcast;
 
 use crate::body::{Body, BodySourceMap, ParamExprs};
 use crate::data::{
@@ -52,8 +52,8 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     #[salsa::invoke(ItemTree::file_item_tree_query)]
     fn item_tree(&self, root_file: FileId) -> Arc<ItemTree>;
 
-    #[salsa::invoke(DefMap::def_map_query)]
-    fn def_map(&self, root_file: FileId) -> Arc<DefMap>;
+    #[salsa::invoke(DefMap::root_def_map_query)]
+    fn root_def_map(&self, root_file: FileId) -> Arc<DefMap>;
 
     #[salsa::invoke(DefMap::block_def_map_query)]
     fn block_def_map(&self, block: BlockId) -> Option<Arc<DefMap>>;
@@ -68,12 +68,14 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     fn param_body_with_sourcemap(&self, id: ParamId)
         -> (Arc<Body>, Arc<BodySourceMap>, ParamExprs);
 
-    fn param_exprs(&self, id: ParamId) -> ParamExprs;
-
+    #[salsa::transparent]
     fn body(&self, id: DefWithBodyId) -> Arc<Body>;
 
     #[salsa::transparent]
     fn body_source_map(&self, def: DefWithBodyId) -> Arc<BodySourceMap>;
+
+    #[salsa::transparent]
+    fn param_exprs(&self, id: ParamId) -> ParamExprs;
 
     #[salsa::invoke(DisciplineData::discipline_data_query)]
     fn discipline_data(&self, discipline: DisciplineId) -> Arc<DisciplineData>;
@@ -106,12 +108,12 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     fn find_module(&self, root_file: FileId) -> ModuleId;
 }
 
-fn body_source_map(db: &dyn HirDefDB, def: DefWithBodyId) -> Arc<BodySourceMap> {
-    db.body_with_sourcemap(def).1
-}
-
 fn body(db: &dyn HirDefDB, def: DefWithBodyId) -> Arc<Body> {
     db.body_with_sourcemap(def).0
+}
+
+fn body_source_map(db: &dyn HirDefDB, def: DefWithBodyId) -> Arc<BodySourceMap> {
+    db.body_with_sourcemap(def).1
 }
 
 fn param_exprs(db: &dyn HirDefDB, param: ParamId) -> ParamExprs {
@@ -119,9 +121,9 @@ fn param_exprs(db: &dyn HirDefDB, param: ParamId) -> ParamExprs {
 }
 
 pub fn find_module(db: &dyn HirDefDB, root_file: FileId) -> ModuleId {
-    let def_map = db.def_map(root_file);
-    let root = def_map.entry();
-    def_map[root]
+    let def_map = db.root_def_map(root_file);
+    let root_scope = def_map.entry_scope();
+    def_map[root_scope]
         .children
         .values()
         .find_map(|scope| {

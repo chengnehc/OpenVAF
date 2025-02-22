@@ -10,18 +10,14 @@
 //! In general, any item in the `ItemTree` stores its `AstId`, which allows mapping it back to its
 //! surface syntax.
 
-mod lower;
-mod pretty;
-
-use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Index;
 use std::sync::Arc;
+use stdx::impl_from_typed;
 
 use ahash::AHashMap;
 use arena::{Arena, Idx, IdxRange};
 use basedb::{AstId, ErasedAstId, FileId};
-use stdx::impl_from_typed;
 use syntax::ast::{self, BlockStmt, NameRef};
 use syntax::name::Name;
 use syntax::AstNode;
@@ -32,6 +28,9 @@ use crate::{
     LocalDisciplineAttrId, LocalFunctionArgId, LocalNatureAttrId, LocalNodeId, Path, Type,
 };
 
+mod lower;
+mod pretty;
+
 /// The item tree of a source file.
 #[derive(Debug, Eq, PartialEq)]
 pub struct ItemTree {
@@ -39,19 +38,18 @@ pub struct ItemTree {
     pub(crate) data: ItemTreeData,
     pub(crate) blocks: AHashMap<AstId<BlockStmt>, Block>,
 }
-
 impl Default for ItemTree {
     fn default() -> Self {
         Self { top_level: Default::default(), data: Default::default(), blocks: AHashMap::new() }
     }
 }
-
 impl ItemTree {
     pub(crate) fn file_item_tree_query(db: &dyn HirDefDB, file: FileId) -> Arc<ItemTree> {
         let syntax_tree = db.parse(file).tree();
         let ctx = lower::Ctx::new(db, file);
         let mut item_tree = ctx.lower_root_items(&syntax_tree);
         item_tree.shrink_to_fit();
+
         Arc::new(item_tree)
     }
 
@@ -84,20 +82,27 @@ impl ItemTree {
         nature_attrs.shrink_to_fit();
         discipline_attrs.shrink_to_fit();
     }
-
-    pub fn block_scope(&self, block: AstId<BlockStmt>) -> &Block {
-        &self.blocks[&block]
-    }
 }
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum RootItem {
+    Module(ItemTreeId<Module>),
+    Nature(ItemTreeId<Nature>),
+    Discipline(ItemTreeId<Discipline>),
+}
+impl_from_typed! (
+    Module(ItemTreeId<Module>),
+    Nature(ItemTreeId<Nature>),
+    Discipline(ItemTreeId<Discipline>) for RootItem
+);
 
 #[derive(Default, Debug, Eq, PartialEq)]
 pub(crate) struct ItemTreeData {
     pub modules: Arena<Module>,
     pub disciplines: Arena<Discipline>,
+    pub discipline_attrs: Arena<DisciplineAttr>,
     pub natures: Arena<Nature>,
     pub nature_attrs: Arena<NatureAttr>,
-    pub discipline_attrs: Arena<DisciplineAttr>,
-
     pub variables: Arena<Var>,
     pub parameters: Arena<Param>,
     pub alias_parameters: Arena<AliasParam>,
@@ -107,6 +112,8 @@ pub(crate) struct ItemTreeData {
     pub functions: Arena<Function>,
 }
 
+pub type ItemTreeId<N> = Idx<N>;
+
 /// Trait implemented by all item nodes in the item tree.
 pub trait ItemTreeNode: Clone {
     type Source: AstNode;
@@ -114,100 +121,62 @@ pub trait ItemTreeNode: Clone {
     fn name(&self) -> &Name;
 
     fn ast_id(&self) -> AstId<Self::Source>;
-
-    /// Looks up an instance of `Self` in an item tree.
-    fn lookup(tree: &ItemTree, index: Idx<Self>) -> &Self;
-
-    /// Downcasts a `ScopeItem` to a `FileItemTreeId` specific to this type.
-    fn id_from_mod_item(mod_item: ScopeItem) -> Option<ItemTreeId<Self>>;
-
-    /// Upcasts a `FileItemTreeId` to a generic `ScopeItem`.
-    fn id_to_mod_item(id: ItemTreeId<Self>) -> ScopeItem;
+    /// Looks up a node of `Self` in an item tree.
+    fn lookup(tree: &ItemTree, index: ItemTreeId<Self>) -> &Self;
+    /// Downcasts a generic `ScopeItem` to a `ItemTreeId`, if possible.
+    fn id_from_scope_item(mod_item: ScopeItem) -> Option<ItemTreeId<Self>>;
+    /// Upcasts a `ItemTreeId` to a generic `ScopeItem`.
+    fn id_to_scope_item(id: ItemTreeId<Self>) -> ScopeItem;
 }
 
-pub type ItemTreeId<N> = Idx<N>;
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum RootItem {
-    Module(ItemTreeId<Module>),
-    Nature(ItemTreeId<Nature>),
-    Discipline(ItemTreeId<Discipline>),
-}
-
-impl_from_typed! (
-    Module(ItemTreeId<Module>),
-    Nature(ItemTreeId<Nature>),
-    Discipline(ItemTreeId<Discipline>) for RootItem
-);
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum BlockScopeItem {
-    Scope(AstId<BlockStmt>),
-    Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>),
-}
-
-impl_from_typed! (
-    Scope(AstId<BlockStmt>),
-    Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>) for BlockScopeItem
-);
-
+/// Marco that implements trait `ItemTreeNode` and its index access
 macro_rules! item_tree_nodes {
     ( $( $typ:ident in $fld:ident -> $ast:ty ),+ $(,)? ) => {
         #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
         pub enum ScopeItem {
-            $(
-                $typ(ItemTreeId<$typ>),
-            )+
+            $( $typ(ItemTreeId<$typ>), )+
         }
 
         $(
-            impl From<ItemTreeId<$typ>> for ScopeItem {
-                fn from(id: ItemTreeId<$typ>) -> ScopeItem {
-                    ScopeItem::$typ(id)
-                }
+        impl From<ItemTreeId<$typ>> for ScopeItem {
+            fn from(id: ItemTreeId<$typ>) -> ScopeItem {
+                ScopeItem::$typ(id)
             }
+        }
         )+
 
         $(
-            impl ItemTreeNode for $typ {
-                type Source = $ast;
+        impl ItemTreeNode for $typ {
+            type Source = $ast;
 
-
-                fn name(&self) -> &Name {
-                    &self.name
-                }
-
-                fn ast_id(&self) -> AstId<Self::Source> {
-                    self.ast_id
-                }
-
-
-                fn lookup(tree: &ItemTree, index: Idx<Self>) -> &Self {
-                    &tree.data.$fld[index]
-                }
-
-                fn id_from_mod_item(mod_item: ScopeItem) -> Option<ItemTreeId<Self>> {
-                    if let ScopeItem::$typ(id) = mod_item {
-                        Some(id)
-                    } else {
-                        None
-                    }
-                }
-
-                fn id_to_mod_item(id: ItemTreeId<Self>) -> ScopeItem {
-                    ScopeItem::$typ(id)
+            fn name(&self) -> &Name {
+                &self.name
+            }
+            fn ast_id(&self) -> AstId<Self::Source> {
+                self.ast_id
+            }
+            fn lookup(tree: &ItemTree, index: Idx<Self>) -> &Self {
+                &tree.data.$fld[index]
+            }
+            fn id_from_scope_item(mod_item: ScopeItem) -> Option<ItemTreeId<Self>> {
+                if let ScopeItem::$typ(id) = mod_item {
+                    Some(id)
+                } else {
+                    None
                 }
             }
-
-            impl Index<Idx<$typ>> for ItemTree {
-                type Output = $typ;
-
-                fn index(&self, index: Idx<$typ>) -> &Self::Output {
-                    &self.data.$fld[index]
-                }
+            fn id_to_scope_item(id: ItemTreeId<Self>) -> ScopeItem {
+                ScopeItem::$typ(id)
             }
+        }
+
+        impl Index<Idx<$typ>> for ItemTree {
+            type Output = $typ;
+
+            fn index(&self, index: Idx<$typ>) -> &Self::Output {
+                &self.data.$fld[index]
+            }
+        }
         )+
     };
 }
@@ -216,7 +185,6 @@ item_tree_nodes! {
     Module in modules -> ast::ModuleDecl,
     Discipline in disciplines -> ast::DisciplineDecl,
     Nature in natures -> ast::NatureDecl,
-
     Var in variables -> ast::Var,
     Param in parameters -> ast::Param,
     AliasParam in alias_parameters -> ast::AliasParam,
@@ -236,7 +204,6 @@ pub struct Module {
     pub items: Vec<ModuleItem>,
     pub ast_id: AstId<ast::ModuleDecl>,
 }
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ModuleItem {
     Scope(AstId<BlockStmt>),
@@ -244,19 +211,76 @@ pub enum ModuleItem {
     AliasParameter(ItemTreeId<AliasParam>),
     Variable(ItemTreeId<Var>),
     Branch(ItemTreeId<Branch>),
-    Node(LocalNodeId),
     Function(ItemTreeId<Function>),
+    Node(LocalNodeId),
 }
-
 impl_from_typed! (
     Scope(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
     AliasParameter(ItemTreeId<AliasParam>),
     Variable(ItemTreeId<Var>),
     Branch(ItemTreeId<Branch>),
-    Node(LocalNodeId),
-    Function(ItemTreeId<Function>) for ModuleItem
+    Function(ItemTreeId<Function>),
+    Node(LocalNodeId) for ModuleItem
 );
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Nature {
+    pub name: Name,
+    pub parent: Option<NatureRef>,
+    pub units: Option<(String, LocalNatureAttrId)>,
+    pub access: Option<(Name, LocalNatureAttrId)>,
+    pub ddt_nature: Option<(NatureRef, LocalNatureAttrId)>,
+    pub idt_nature: Option<(NatureRef, LocalNatureAttrId)>,
+    pub abstol: Option<LocalNatureAttrId>,
+    pub attrs: IdxRange<NatureAttr>,
+    pub ast_id: AstId<ast::NatureDecl>,
+}
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct NatureRef {
+    pub name: Name,
+    pub kind: NatureRefKind,
+}
+#[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
+pub enum NatureRefKind {
+    Nature,
+    DisciplinePotential,
+    DisciplineFlow,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct NatureAttr {
+    pub name: Name,
+    pub ast_id: AstId<ast::NatureAttr>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Discipline {
+    pub name: Name,
+    pub potential: Option<(NatureRef, LocalDisciplineAttrId)>,
+    pub flow: Option<(NatureRef, LocalDisciplineAttrId)>,
+    pub domain: Option<(Domain, LocalDisciplineAttrId)>,
+    pub attrs: IdxRange<DisciplineAttr>,
+    pub ast_id: AstId<ast::DisciplineDecl>,
+}
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+pub enum Domain {
+    Discrete,
+    Continuous,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct DisciplineAttr {
+    pub name: Name,
+    pub kind: DisciplineAttrKind,
+    pub ast_id: AstId<ast::DisciplineAttr>,
+}
+#[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
+pub enum DisciplineAttrKind {
+    FlowOverwrite,
+    PotentialOverwrite,
+    UserDefined,
+}
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Port {
@@ -302,78 +326,6 @@ pub struct AliasParam {
     pub ast_id: AstId<ast::AliasParam>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct NatureRef {
-    pub name: Name,
-    pub kind: NatureRefKind,
-}
-#[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
-pub enum NatureRefKind {
-    Nature,
-    DisciplinePotential,
-    DisciplineFlow,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Nature {
-    pub name: Name,
-    pub parent: Option<NatureRef>,
-    pub access: Option<(Name, LocalNatureAttrId)>,
-    pub ddt_nature: Option<(NatureRef, LocalNatureAttrId)>,
-    pub idt_nature: Option<(NatureRef, LocalNatureAttrId)>,
-    pub abstol: Option<LocalNatureAttrId>,
-    pub units: Option<(String, LocalNatureAttrId)>,
-    pub attrs: IdxRange<NatureAttr>,
-    pub ast_id: AstId<ast::NatureDecl>,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct NatureAttr {
-    pub name: Name,
-    pub ast_id: AstId<ast::NatureAttr>,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
-pub enum DisciplineAttrKind {
-    FlowOverwrite,
-    PotentialOverwrite,
-    UserDefined,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct DisciplineAttr {
-    pub name: Name,
-    pub kind: DisciplineAttrKind,
-    pub ast_id: AstId<ast::DisciplineAttr>,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub enum Domain {
-    Discrete,
-    Continuous,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Discipline {
-    pub name: Name,
-
-    pub potential: Option<(NatureRef, LocalDisciplineAttrId)>,
-    pub flow: Option<(NatureRef, LocalDisciplineAttrId)>,
-    pub domain: Option<(Domain, LocalDisciplineAttrId)>,
-
-    pub extra_attrs: IdxRange<DisciplineAttr>,
-
-    pub ast_id: AstId<ast::DisciplineDecl>,
-}
-
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum BranchKind {
-    PortFlow(Path),
-    NodeGnd(Path),
-    Nodes(Path, Path),
-    Missing,
-}
-
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Branch {
     pub name: Name,
@@ -381,11 +333,12 @@ pub struct Branch {
     pub kind: BranchKind,
     pub ast_id: AstId<ast::BranchDecl>,
 }
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Block {
-    pub name: Option<Name>,
-    pub scope_items: Vec<BlockScopeItem>,
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum BranchKind {
+    PortFlow(Path),
+    NodeGnd(Path),
+    Nodes(Path, Path),
+    Missing,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -396,7 +349,6 @@ pub struct Function {
     pub items: Vec<FunctionItem>,
     pub ast_id: AstId<ast::Function>,
 }
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum FunctionItem {
     Scope(AstId<BlockStmt>),
@@ -404,7 +356,6 @@ pub enum FunctionItem {
     Variable(ItemTreeId<Var>),
     FunctionArg(LocalFunctionArgId),
 }
-
 impl_from_typed! (
     Scope(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
@@ -421,10 +372,42 @@ pub struct FunctionArg {
     pub declarations: Vec<ItemTreeId<Var>>,
     pub ast_ids: Vec<AstId<ast::FunctionArg>>,
 }
-
 impl FunctionArg {
     pub fn ty(&self, tree: &ItemTree) -> Type {
         self.declarations.first().map_or(Type::Err, |decl| tree[*decl].ty.clone())
+    }
+}
+
+/// `Node` is an abstraction over `Net` and `Port`.
+///
+/// A `Node` can be declared as `Net` or `Port` multiple times.
+/// A `Port` requires direction specification, while a `Net` doesn't.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Node {
+    pub name: Name,
+    pub is_port: bool,
+    // A node can have multiple declarations
+    pub decls: Vec<NodeTypeDecl>, // TODO small vec?
+    pub ast_id: ErasedAstId,      // TODO use AstId<T>?
+}
+impl Node {
+    pub fn discipline(&self, tree: &ItemTree) -> Option<Name> {
+        self.decls.iter().find_map(|decl| decl.discipline(tree).clone())
+    }
+
+    pub fn is_gnd(&self, tree: &ItemTree) -> bool {
+        self.decls.iter().any(|decl| decl.is_gnd(tree))
+    }
+
+    pub fn direction(&self, tree: &ItemTree) -> (bool, bool) {
+        match self.decls.iter().find_map(|decl| decl.direction(tree)) {
+            Some(direction) => direction,
+            // default to inout to avoid confusing error messages
+            // and to allow omitting direction specification
+            // for backwards compatibility with cadence, see issue #40
+            None if self.is_port => (true, true),
+            None => (false, false),
+        }
     }
 }
 
@@ -433,7 +416,10 @@ pub enum NodeTypeDecl {
     Net(ItemTreeId<Net>),
     Port(ItemTreeId<Port>),
 }
-
+impl_from_typed!(
+    Net(ItemTreeId<Net>),
+    Port(ItemTreeId<Port>) for NodeTypeDecl
+);
 impl NodeTypeDecl {
     pub fn discipline(self, tree: &ItemTree) -> &Option<Name> {
         match self {
@@ -474,48 +460,40 @@ impl NodeTypeDecl {
             NodeTypeDecl::Port(port) => tree[port].ast_id.into(),
         }
     }
+    /*
+        pub fn name<'a>(&self, tree: &'a ItemTree) -> &'a Name {
+            match *self {
+                NodeTypeDecl::Net(net) => &tree[net].name,
+                NodeTypeDecl::Port(port) => &tree[port].name,
+            }
+        }
+    */
 }
 
-impl_from_typed!(
-    Net(ItemTreeId<Net>),
-    Port(ItemTreeId<Port>) for NodeTypeDecl
+/// A block (or scope) that is marked with 'begin'/'end' pair.
+///
+/// `Block` is not an item-tree node.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Block {
+    pub name: Option<Name>,
+    pub scope_items: Vec<BlockScopeItem>,
+}
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum BlockScopeItem {
+    Scope(AstId<BlockStmt>),
+    Parameter(ItemTreeId<Param>),
+    Variable(ItemTreeId<Var>),
+}
+impl_from_typed! (
+    Scope(AstId<BlockStmt>),
+    Parameter(ItemTreeId<Param>),
+    Variable(ItemTreeId<Var>) for BlockScopeItem
 );
 
-impl NodeTypeDecl {
-    pub fn name<'a>(&self, tree: &'a ItemTree) -> &'a Name {
-        match *self {
-            NodeTypeDecl::Net(net) => &tree[net].name,
-            NodeTypeDecl::Port(port) => &tree[port].name,
-        }
-    }
-}
+impl Index<AstId<BlockStmt>> for ItemTree {
+    type Output = Block;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Node {
-    pub name: Name,
-    pub is_port: bool,
-    pub ast_id: ErasedAstId,
-    // TODO small vec?
-    pub decls: Vec<NodeTypeDecl>,
-}
-
-impl Node {
-    pub fn direction(&self, tree: &ItemTree) -> (bool, bool) {
-        match self.decls.iter().find_map(|decl| decl.direction(tree)) {
-            Some(direction) => direction,
-            // default to inout to avoid confusing error messages
-            // and to allow omitting direction specification
-            // for backwards compatibility with cadence, see #40
-            None if self.is_port => (true, true),
-            None => (false, false),
-        }
-    }
-
-    pub fn is_gnd(&self, tree: &ItemTree) -> bool {
-        self.decls.iter().any(|decl| decl.is_gnd(tree))
-    }
-
-    pub fn discipline(&self, tree: &ItemTree) -> Option<Name> {
-        self.decls.iter().find_map(|decl| decl.discipline(tree).clone())
+    fn index(&self, index: AstId<BlockStmt>) -> &Self::Output {
+        &self.blocks[&index]
     }
 }

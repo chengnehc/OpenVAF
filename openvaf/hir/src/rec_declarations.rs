@@ -39,8 +39,7 @@ impl<'a> RecDeclarations<'a> {
         RecDeclarations { path: Vec::new(), stack: vec![Scope::new(def_map, scope_id, None)], db }
     }
 
-    /// crates a path in the current scope with the final
-    /// component given by `name`
+    /// Creates a path in the current scope with the final segment given by `name`
     pub fn to_path(&self, name: Name) -> SmolStr {
         if self.path.is_empty() {
             // fast path
@@ -64,7 +63,7 @@ impl Iterator for RecDeclarations<'_> {
                 let def = match item {
                     ScopeDefItem::BlockId(id) => {
                         if let Some(def_map) = self.db.block_def_map(id) {
-                            let entry = def_map.entry();
+                            let entry = def_map.entry_scope();
                             self.stack.push(Scope::new(
                                 def_map,
                                 entry,

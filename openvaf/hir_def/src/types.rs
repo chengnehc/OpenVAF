@@ -1,8 +1,9 @@
-use std::iter::successors;
+//! Type definitions for HIR type inference.
+//!
+//! Refer to LRM Chapter 3 and Annex C.4
 
-// use std::iter::successors;
+use std::iter::successors;
 use stdx::impl_display;
-// use stdx::impl_display;
 use syntax::ast;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -37,8 +38,8 @@ impl Type {
     }
 
     pub fn is_convertible_to(&self, dst: &Type) -> bool {
-        match (dst, self) {
-            (Type::Real, Type::Integer | Type::Bool)
+        match (self, dst) {
+            (Type::Integer | Type::Bool, Type::Real)
             | (Type::Integer, Type::Bool)
             | (Type::Bool, Type::Integer)
             | (Type::Err, _)
@@ -49,23 +50,24 @@ impl Type {
             (Type::Array { .. }, Type::Array { .. }) => {
                 self.dim() == dst.dim() && self.base_type().is_convertible_to(dst.base_type())
             }
+
             _ => dst == self,
         }
     }
 
-    pub fn is_semantically_equivalent(&self, dst: &Type) -> bool {
-        match (dst, self) {
+    pub fn is_semantically_equivalent(&self, other: &Type) -> bool {
+        match (self, other) {
             (Type::Integer, Type::Bool)
+            | (Type::Bool, Type::Integer)
             | (Type::EmptyArray, Type::Array { len: 0, .. })
-            | (Type::Array { len: 0, .. }, Type::EmptyArray)
-            | (Type::Bool, Type::Integer) => true,
+            | (Type::Array { len: 0, .. }, Type::EmptyArray) => true,
 
             (Type::Array { .. }, Type::Array { .. }) => {
-                self.dim() == dst.dim()
-                    && self.base_type().is_semantically_equivalent(dst.base_type())
+                self.dim() == other.dim()
+                    && self.base_type().is_semantically_equivalent(other.base_type())
             }
 
-            _ => dst == self,
+            _ => other == self,
         }
     }
 
@@ -101,15 +103,7 @@ impl Type {
         curr
     }
 
-    #[must_use]
-    pub fn to_dim(self, dim: &[u32]) -> Type {
-        let mut ty = self;
-        for len in dim.iter().rev().copied() {
-            ty = Type::Array { ty: Box::new(ty), len };
-        }
-        ty
-    }
-
+    /// dimension of Array
     pub fn dim(&self) -> Vec<u32> {
         if let Type::Array { ref ty, len } = *self {
             let mut dims: Vec<_> = successors(Some((ty, len)), |(ty, _)| {
@@ -133,6 +127,16 @@ impl Type {
             || (self.base_type().is_numeric()
                 && dst.base_type().is_numeric()
                 && self.dim() == dst.dim())
+    }
+
+    /// convert Array to a specified dimension
+    #[must_use]
+    pub fn to_dim(self, dim: &[u32]) -> Type {
+        let mut ty = self;
+        for len in dim.iter().rev().copied() {
+            ty = Type::Array { ty: Box::new(ty), len };
+        }
+        ty
     }
 }
 

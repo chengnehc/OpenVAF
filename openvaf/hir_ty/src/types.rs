@@ -1,23 +1,27 @@
 use std::borrow::Cow;
 use std::ops::Deref;
+use stdx::{impl_display, impl_idx_from, pretty};
 
 use hir_def::{
     BranchId, DisciplineId, FunctionId, LocalFunctionArgId, NatureAttrId, NatureId, NodeId,
     ParamId, Type, VarId,
 };
-use stdx::{impl_display, impl_idx_from, pretty};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TyRequirement {
     Val(Type),
     Condition,
+    /// Any type of `Val`, when type is not what we care about
     AnyVal,
-    ArrayAnyLength { ty: Type },
+    ArrayAnyLength {
+        ty: Type,
+    },
     Node,
     PortFlow,
     Nature,
     Var(Type),
     Param(Type),
+    /// Any type of `Param`, when type is not what we care about
     AnyParam,
     Branch,
     Literal(Type),
@@ -31,6 +35,24 @@ impl TyRequirement {
             TyRequirement::Condition if src != &Type::Bool => Some(Type::Bool),
             _ => None,
         }
+    }
+}
+
+impl_display! {
+    match TyRequirement{
+        TyRequirement::Val(ty) => "{} value",ty;
+        TyRequirement::Condition => "{} value", Type::Bool;
+        TyRequirement::AnyVal => "value";
+        TyRequirement::ArrayAnyLength{ty} => "array ({})", ty;
+        TyRequirement::Node => "net reference";
+        TyRequirement::Nature => "nature reference";
+        TyRequirement::Var(ty) => "{} variable reference", ty;
+        TyRequirement::Param(ty) => "{} parameter ref", ty;
+        TyRequirement::AnyParam => "parameter reference";
+        TyRequirement::Literal(ty) => "{} literal", ty;
+        TyRequirement::PortFlow => "port-flow reference";
+        TyRequirement::Branch => "branch reference";
+        TyRequirement::Function => "function";
     }
 }
 
@@ -49,25 +71,6 @@ impl TyEquivalence {
             TyEquivalence::Exact => ty1 == ty2,
         }
     }
-}
-
-impl_display! {
-    match TyRequirement{
-        TyRequirement::Val(ty) => "{} value",ty;
-        TyRequirement::Condition => "{} value", Type::Bool;
-        TyRequirement::AnyVal => "value";
-        TyRequirement::ArrayAnyLength{ty} => "array ({})", ty;
-        TyRequirement::Node => "net reference";
-        TyRequirement:: Nature => "nature reference";
-        TyRequirement::Var(ty) => "{} variable reference", ty;
-        TyRequirement::Param(ty) => "{} parameter ref", ty;
-        TyRequirement::AnyParam => "parameter reference";
-        TyRequirement::Literal(ty) => "{} literal", ty;
-        TyRequirement::PortFlow => "port-flow reference";
-        TyRequirement::Branch => "branch reference";
-        TyRequirement::Function => "function";
-    }
-
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,7 +119,7 @@ impl Ty {
         if let Ty::Branch(id) = *self {
             id
         } else {
-            unreachable!("expected branch found {:?}", self)
+            unreachable!("expected branch, found {:?}", self)
         }
     }
 
@@ -124,14 +127,14 @@ impl Ty {
         if let Ty::PortFlow(id) = *self {
             id
         } else {
-            unreachable!("expected node found {:?}", self)
+            unreachable!("expected port, found {:?}", self)
         }
     }
     pub fn unwrap_node(&self) -> NodeId {
         if let Ty::Node(id) = *self {
             id
         } else {
-            unreachable!("expected node found {:?}", self)
+            unreachable!("expected node, found {:?}", self)
         }
     }
 
@@ -139,7 +142,7 @@ impl Ty {
         if let Ty::Param(_, id) = *self {
             id
         } else {
-            unreachable!("expected node found {:?}", self)
+            unreachable!("expected parameter, found {:?}", self)
         }
     }
 
@@ -268,11 +271,12 @@ impl SignatureData {
         args: Cow::Borrowed(&[TyRequirement::Val(Type::Bool), TyRequirement::Val(Type::Bool)]),
         return_ty: Type::Bool,
     };
-
     pub const CONDITIONAL_BIN_OP: SignatureData = SignatureData {
         args: Cow::Borrowed(&[TyRequirement::Condition, TyRequirement::Condition]),
         return_ty: Type::Bool,
     };
+    pub const NUMERIC_BIN_OP: &'static [SignatureData] =
+        &[SignatureData::INT_BIN_OP, SignatureData::REAL_BIN_OP];
 
     pub const REAL_COMPARISON: SignatureData = SignatureData {
         args: Cow::Borrowed(&[TyRequirement::Val(Type::Real), TyRequirement::Val(Type::Real)]),
@@ -285,19 +289,14 @@ impl SignatureData {
         ]),
         return_ty: Type::Bool,
     };
-
     pub const STR_COMPARISON: SignatureData = SignatureData {
         args: Cow::Borrowed(&[TyRequirement::Val(Type::String), TyRequirement::Val(Type::String)]),
         return_ty: Type::Bool,
     };
-
     pub const BOOL_COMPARISON: SignatureData = SignatureData {
         args: Cow::Borrowed(&[TyRequirement::Val(Type::Bool), TyRequirement::Val(Type::Bool)]),
         return_ty: Type::Bool,
     };
-
-    pub const NUMERIC_BIN_OP: &'static [SignatureData] =
-        &[SignatureData::INT_BIN_OP, SignatureData::REAL_BIN_OP];
     pub const NUMERIC_COMPARISON: &'static [SignatureData] =
         &[SignatureData::INT_COMPARISON, SignatureData::REAL_COMPARISON];
     pub const ANY_COMPARISON: &'static [SignatureData] = &[
@@ -311,6 +310,10 @@ impl SignatureData {
         &[SignatureData::BOOL_BIN_OP, SignatureData::REAL_BIN_OP, SignatureData::INT_BIN_OP];
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Signature(pub u32);
+impl_idx_from!(Signature(u32));
+
 pub const BOOL_EQ: Signature = Signature(0);
 pub const INT_EQ: Signature = Signature(1);
 pub const REAL_EQ: Signature = Signature(2);
@@ -318,11 +321,6 @@ pub const STR_EQ: Signature = Signature(3);
 
 pub const INT_OP: Signature = Signature(0);
 pub const REAL_OP: Signature = Signature(1);
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Signature(pub u32);
-
-impl_idx_from!(Signature(u32));
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub(crate) struct BuiltinInfo {

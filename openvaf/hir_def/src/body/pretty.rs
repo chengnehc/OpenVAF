@@ -1,11 +1,12 @@
 use core::fmt;
 use std::fmt::Write;
 
-use super::Body;
 use crate::db::HirDefDB;
 use crate::expr::CaseCond;
 use crate::nameres::DefMapSource;
 use crate::{Expr, ExprId, Lookup, Stmt, StmtId};
+
+use super::Body;
 
 macro_rules! wln {
     ($dst:expr) => {
@@ -68,9 +69,9 @@ impl Printer<'_> {
                 wln!(self, "@({:?})", event);
                 self.pretty_print_stmt(body)
             }
-            Stmt::Assignment { dst, val, assignment_kind } => {
+            Stmt::Assignment { dst, val, op_kind } => {
                 self.pretty_print_expr(dst);
-                w!(self, "{:?}", assignment_kind);
+                w!(self, " {:?} ", op_kind);
                 self.pretty_print_expr(val);
                 wln!(self, ";");
             }
@@ -84,7 +85,6 @@ impl Printer<'_> {
                         w!(self, ": ({:?})", self.body.stmt_scopes[s].src);
                     }
                 }
-
                 wln!(self);
                 self.indented(|sel| {
                     for stmt in body {
@@ -140,6 +140,7 @@ impl Printer<'_> {
             }
         }
     }
+
     pub fn pretty_print_expr(&mut self, e: ExprId) {
         match self.body.exprs[e] {
             Expr::Missing => w!(self, "<missing>"),

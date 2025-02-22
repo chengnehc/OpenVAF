@@ -3,7 +3,7 @@ use std::str::CharIndices;
 use hir_def::ExprId;
 use syntax::{TextRange, TextSize};
 
-use crate::inference::InferenceDiagnostic;
+use crate::inference::InferDiagnostic;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
 enum ParserState {
@@ -47,7 +47,7 @@ impl ParserState {
 
 pub struct ParseResult {
     pub dynamic_args: Vec<TextSize>,
-    pub err: Option<InferenceDiagnostic>,
+    pub err: Option<InferDiagnostic>,
     pub end: TextSize,
 }
 
@@ -90,7 +90,7 @@ pub fn parse_real_fmt_spec(
                     break;
                 }
                 _ => {
-                    err = Some(InferenceDiagnostic::InvalidFmtSpecifierChar {
+                    err = Some(InferDiagnostic::InvalidFmtSpecifierChar {
                         fmt_lit: fmt_expr,
                         lit_range: TextRange::new(off.try_into().unwrap(), end.try_into().unwrap()),
                         err_char: c,
@@ -102,7 +102,7 @@ pub fn parse_real_fmt_spec(
 
             pos = chars.next();
         } else {
-            err = Some(InferenceDiagnostic::InvalidFmtSpecifierEnd {
+            err = Some(InferDiagnostic::InvalidFmtSpecifierEnd {
                 fmt_lit: fmt_expr,
                 lit_range: TextRange::new(start.try_into().unwrap(), end.try_into().unwrap()),
             });

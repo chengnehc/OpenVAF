@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use hir_def::nameres::diagnostics::PathResolveError;
-use hir_def::nameres::DefMap;
 use hir_def::{
+    nameres::{DefMap, PathResolveError},
     BranchId, DisciplineId, Intern, Lookup, NatureAttrId, NatureAttrLoc, NatureId, NatureRef,
     NatureRefKind, NodeId,
 };
@@ -21,12 +20,22 @@ pub struct NatureTy {
 
 impl NatureTy {
     pub fn nature_info_query(db: &dyn HirTyDB, nature: NatureId) -> Arc<NatureTy> {
-        NatureTy::obtain(db, nature, true)
+        Self::obtain(db, nature, true)
     }
-    pub fn obtain(db: &dyn HirTyDB, nature: NatureId, resolve_parent: bool) -> Arc<NatureTy> {
+
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub(crate) fn nature_info_recover(
+        db: &dyn HirTyDB,
+        _cycle: &salsa::Cycle,
+        nature: &NatureId,
+    ) -> Arc<NatureTy> {
+        Self::obtain(db, *nature, false)
+    }
+
+    fn obtain(db: &dyn HirTyDB, nature: NatureId, resolve_parent: bool) -> Arc<NatureTy> {
         let data = db.nature_data(nature);
         let loc = nature.lookup(db.upcast());
-        let def_map = db.def_map(loc.root_file);
+        let def_map = db.root_def_map(loc.root_file);
 
         let parent =
             data.parent.as_ref().and_then(|parent| lookup_nature(&def_map, parent, db).ok());
@@ -61,28 +70,19 @@ impl NatureTy {
         })
     }
 
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub(crate) fn nature_info_recover(
-        db: &dyn HirTyDB,
-        _cycle: &salsa::Cycle,
-        nature: &NatureId,
-    ) -> Arc<NatureTy> {
-        NatureTy::obtain(db, *nature, false)
-    }
-
-    pub fn compatible(db: &dyn HirTyDB, nature1: NatureId, nature2: NatureId) -> bool {
+    fn compatible(db: &dyn HirTyDB, nature1: NatureId, nature2: NatureId) -> bool {
         let nature1_info = db.nature_info(nature1);
         let nature2_info = db.nature_info(nature2);
         nature1_info.units == nature2_info.units
     }
-
-    pub fn related(db: &dyn HirTyDB, nature1: NatureId, nature2: NatureId) -> bool {
-        let nature1_info = db.nature_info(nature1);
-        let nature2_info = db.nature_info(nature2);
-        nature1_info.base_nature == nature2_info.base_nature
-    }
-
-    pub fn lookup_attr(
+    /*
+        fn related(db: &dyn HirTyDB, nature1: NatureId, nature2: NatureId) -> bool {
+            let nature1_info = db.nature_info(nature1);
+            let nature2_info = db.nature_info(nature2);
+            nature1_info.base_nature == nature2_info.base_nature
+        }
+    */
+    fn lookup_attr(
         db: &dyn HirTyDB,
         nature: NatureId,
         name: &Name,
@@ -122,16 +122,16 @@ pub fn lookup_nature(
 ) -> Result<NatureId, PathResolveError> {
     let (nature, attr) = match nature_ref.kind {
         NatureRefKind::Nature => {
-            return def_map.resolve_local_item_in_scope(def_map.root(), &nature_ref.name)
+            return def_map.resolve_local_item_in_scope(def_map.root_scope(), &nature_ref.name)
         }
         NatureRefKind::DisciplinePotential => {
             let discipline =
-                def_map.resolve_local_item_in_scope(def_map.root(), &nature_ref.name)?;
+                def_map.resolve_local_item_in_scope(def_map.root_scope(), &nature_ref.name)?;
             (db.discipline_info(discipline).potential, kw::potential)
         }
         NatureRefKind::DisciplineFlow => {
             let discipline =
-                def_map.resolve_local_item_in_scope(def_map.root(), &nature_ref.name)?;
+                def_map.resolve_local_item_in_scope(def_map.root_scope(), &nature_ref.name)?;
             (db.discipline_info(discipline).flow, kw::flow)
         }
     };
@@ -155,7 +155,7 @@ pub enum DisciplineAccess {
 impl DisciplineTy {
     pub fn discipline_info_query(db: &dyn HirTyDB, discipline: DisciplineId) -> Arc<DisciplineTy> {
         let data = db.discipline_data(discipline);
-        let def_map = db.def_map(discipline.lookup(db.upcast()).root_file);
+        let def_map = db.root_def_map(discipline.lookup(db.upcast()).root_file);
         Arc::new(DisciplineTy {
             flow: data.flow.as_ref().and_then(|flow| lookup_nature(&def_map, flow, db).ok()),
             potential: data

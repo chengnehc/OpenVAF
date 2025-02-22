@@ -2,7 +2,7 @@ use std::path::Path;
 
 use basedb::diagnostics::sink::Buffer;
 use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
-use basedb::{AbsPathBuf, BaseDB, BaseDatabase, FileId, Vfs, VfsEntry, VfsPath, VfsStorage};
+use basedb::{AbsPathBuf, BaseDB, FileId, SourceDatabase, Vfs, VfsEntry, VfsPath, VfsStorage};
 use expect_test::expect_file;
 use hir_def::db::{HirDefDB, HirDefDatabase, InternDatabase};
 use hir_def::nameres::{DefMap, LocalScopeId, ScopeDefItem, ScopeOrigin};
@@ -12,7 +12,7 @@ use parking_lot::RwLock;
 use stdx::Upcast;
 use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 
-#[salsa::database(BaseDatabase, InternDatabase, HirDefDatabase)]
+#[salsa::database(SourceDatabase, InternDatabase, HirDefDatabase)]
 pub struct TestDataBase {
     storage: salsa::Storage<TestDataBase>,
     vfs: Option<RwLock<Vfs>>,
@@ -45,12 +45,12 @@ impl TestDataBase {
 
     pub fn lower_and_check(&self) -> String {
         let root_file = self.root_file();
-        let def_map = self.def_map(root_file);
+        let def_map = self.root_def_map(root_file);
         let mut buf = Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(self, &mut buf);
             sink.annonymize_paths();
-            let root_scope = def_map.entry();
+            let root_scope = def_map.entry_scope();
             self.lower_and_check_rec(root_scope, &def_map, &mut sink);
         }
         let data = buf.into_inner();
@@ -67,7 +67,7 @@ impl TestDataBase {
             }
             if let ScopeDefItem::FunctionId(fun) = *declaration {
                 let def_map = self.function_def_map(fun);
-                let entry = self.function_def_map(fun).entry();
+                let entry = self.function_def_map(fun).entry_scope();
                 self.lower_and_check_rec(entry, &def_map, dst)
             }
         }
@@ -80,11 +80,13 @@ impl TestDataBase {
 
 /// This impl tells salsa where to find the salsa runtime.
 impl salsa::Database for TestDataBase {}
+
 impl VfsStorage for TestDataBase {
     fn vfs(&self) -> &RwLock<Vfs> {
         self.vfs()
     }
 }
+
 impl Upcast<dyn BaseDB> for TestDataBase {
     fn upcast(&self) -> &(dyn BaseDB + 'static) {
         self
@@ -104,10 +106,10 @@ fn integration_test(dir: &Path) -> Result {
 
 fn body_test(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
-    let def_map = db.def_map(db.root_file());
+    let def_map = db.root_def_map(db.root_file());
 
     let mut actual = String::new();
-    for (_, scope) in &def_map[def_map.entry()].children {
+    for (_, scope) in &def_map[def_map.entry_scope()].children {
         if let ScopeOrigin::Module(module) = def_map[*scope].origin {
             let analog_block = DefWithBodyId::ModuleId { initial: false, module };
             actual.push_str(&db.body(analog_block).dump(&db));
@@ -132,7 +134,7 @@ fn item_tree_test(file: &Path) -> Result {
 
 fn def_map_test(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
-    let actual = db.def_map(db.root_file()).dump(&db);
+    let actual = db.root_def_map(db.root_file()).dump(&db);
     expect_file![file.with_extension("def_map")].assert_eq(&actual);
     Ok(())
 }

@@ -5,6 +5,7 @@ use syntax::TextRange;
 use crate::diagnostics::{text_ranges_to_unified_spans, Diagnostic, Label, LabelStyle, Report};
 use crate::lints::builtin::{lint_level_overwrite, lint_not_found};
 use crate::lints::{Lint, LintSrc};
+use crate::ErasedAstId;
 use crate::{BaseDB, FileId};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -16,9 +17,6 @@ pub enum AttrDiagnostic {
 }
 
 use AttrDiagnostic::*;
-
-use crate::ErasedAstId;
-
 impl_display! {
     match AttrDiagnostic{
         ExpectedArrayOrLiteral{attr,..} => "'{}' attribute exptects a string literal or and array of literals",attr;

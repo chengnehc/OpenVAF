@@ -1,8 +1,7 @@
-//! HIR (previously known as descriptors) provides a high-level object oriented
-//! access to Verilog-A code.
+//! HIR provides a high-level object oriented access to Verilog-A code.
 //!
 //! HIR is the public API of all the compiler logic above syntax trees.
-//! It is written in "OO" style. Each type is self contained (as in, it knows it's
+//! It is written in "OO" style. Each type is self contained (as in, it knows its
 //! parents and full context). It should be "clean code".
 //!
 //! `hir_*` crates are the implementation of the compiler logic.
@@ -13,20 +12,14 @@ use std::sync::Arc;
 
 use basedb::diagnostics::sink::Buffer;
 use basedb::diagnostics::ConsoleSink;
-use basedb::BaseDB;
-use basedb::FileId;
+use basedb::{BaseDB, FileId};
 use hir_def::db::HirDefDB;
 use hir_def::nameres::{DefMap, LocalScopeId, ScopeDefItem};
-use hir_def::DefWithBodyId;
-use hir_def::DisciplineId;
-use hir_def::LocalFunctionArgId;
-use hir_def::NatureAttrId;
-use hir_def::NatureId;
 use hir_def::{
-    AliasParamId, BlockId, BlockLoc, BranchId, FunctionId, Lookup, ModuleId, ModuleLoc, NodeId,
-    ParamId, VarId,
+    AliasParamId, BlockId, BranchId, DefWithBodyId, DisciplineId, FunctionId, LocalFunctionArgId,
+    Lookup, ModuleId, ModuleLoc, NatureAttrId, NatureId, NodeId, ParamId, VarId,
 };
-use hir_ty::db::HirTyDB as HirDatabase;
+use hir_ty::db::HirTyDB as HirDB;
 use hir_ty::inference;
 use salsa::InternKey;
 use smol_str::SmolStr;
@@ -35,7 +28,7 @@ use syntax::ast;
 pub use basedb::diagnostics::DiagnosticSink;
 pub use hir_def::body::{ConstraintValue, ParamConstraint};
 pub use hir_def::expr::CaseCond;
-pub use hir_def::nameres::diagnostics::PathResolveError;
+pub use hir_def::nameres::PathResolveError;
 pub use hir_def::{BuiltIn, Case, Literal, ParamSysFun, Path, Type};
 pub use hir_ty::builtin;
 pub use rec_declarations::RecDeclarations;
@@ -64,25 +57,26 @@ pub mod signatures {
     pub use hir_ty::types::{BOOL_EQ, INT_EQ, INT_OP, REAL_EQ, REAL_OP, STR_EQ};
 }
 
-/// A root file represents a compilation root file.
-/// A phsical file may be part of multiple root filer trough
-/// include statements. This is however not the case here
+/// A compilation unit is represented as a root file.
+///
+/// A physical file may be part of multiple root files through
+/// `include` statements. This is however not the case here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompilationUnit {
     root_file: FileId,
 }
 
 impl CompilationUnit {
+    pub fn root_file(self) -> FileId {
+        self.root_file
+    }
+
     pub fn name(self, db: &CompilationDB) -> String {
         db.file_path(self.root_file).name().unwrap_or_else(|| String::from("~.va"))
     }
 
     pub fn diagnostics(self, db: &CompilationDB, sink: &mut impl DiagnosticSink) {
         diagnostics::collect(db, self.root_file, sink)
-    }
-
-    pub fn root_file(self) -> FileId {
-        self.root_file
     }
 
     pub fn test_diagnostics(&self, db: &CompilationDB) -> String {
@@ -97,8 +91,8 @@ impl CompilationUnit {
     }
 
     pub fn modules(self, db: &CompilationDB) -> Vec<Module> {
-        let root_def_map = db.def_map(self.root_file);
-        root_def_map[root_def_map.entry()]
+        let root_def_map = db.root_def_map(self.root_file);
+        root_def_map[root_def_map.entry_scope()]
             .declarations
             .iter()
             .filter_map(|(_, def)| {
@@ -136,6 +130,14 @@ impl Module {
         db.module_data(self.id).name.to_string()
     }
 
+    pub fn ports(self, db: &CompilationDB) -> Vec<Node> {
+        db.module_data(self.id).ports.iter().map(|&id| Node { id }).collect()
+    }
+
+    pub fn internal_nodes(self, db: &CompilationDB) -> Vec<Node> {
+        db.module_data(self.id).internal_nodes.iter().map(|&id| Node { id }).collect()
+    }
+
     pub fn uuid(self, _db: &CompilationDB) -> u32 {
         self.id.as_intern_id().as_u32()
     }
@@ -143,25 +145,17 @@ impl Module {
     fn lookup(self, db: &CompilationDB) -> ModuleLoc {
         self.id.lookup(db)
     }
+    /* JW: not used
+        /// list of all child scopes.
+        pub fn child_scopes(self, db: &CompilationDB) -> Vec<Scope> {
+            Scope::Module(self).children(db)
+        }
 
-    /// list of all child scopes.
-    pub fn child_scopes(self, db: &CompilationDB) -> Vec<Scope> {
-        Scope::Module(self).children(db)
-    }
-
-    /// list of all declarations.
-    pub fn declarations(self, db: &CompilationDB) -> Vec<Scope> {
-        Scope::Module(self).children(db)
-    }
-
-    pub fn internal_nodes(self, db: &CompilationDB) -> Vec<Node> {
-        db.module_data(self.id).internal_nodes.iter().map(|&id| Node { id }).collect()
-    }
-
-    pub fn ports(self, db: &CompilationDB) -> Vec<Node> {
-        db.module_data(self.id).ports.iter().map(|&id| Node { id }).collect()
-    }
-
+        /// list of all declarations.
+        pub fn declarations(self, db: &CompilationDB) -> Vec<(Name, ScopeDef)> {
+            Scope::Module(self).declarations(db)
+        }
+    */
     pub fn rec_declarations(self, db: &CompilationDB) -> RecDeclarations<'_> {
         RecDeclarations::new(Scope::Module(self), db)
     }
@@ -174,7 +168,7 @@ impl Module {
         Body::new(DefWithBodyId::ModuleId { initial: false, module: self.id }, db)
     }
 
-    // todo: just temporary for VAE, this needs to be cleaned up
+    // JW: for VerilogAE
     pub fn lookup_var(
         &self,
         db: &CompilationDB,
@@ -185,6 +179,7 @@ impl Module {
     }
 }
 
+/// A *named* block
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Block {
     id: BlockId,
@@ -198,11 +193,7 @@ stdx::impl_debug! {
 
 impl Block {
     pub fn name(self, db: &CompilationDB) -> String {
-        self.lookup(db).name(db).to_string()
-    }
-
-    fn lookup(self, db: &CompilationDB) -> BlockLoc {
-        self.id.lookup(db)
+        self.id.lookup(db).name(db).to_string()
     }
 }
 
@@ -226,14 +217,15 @@ impl Function {
         db.function_data(self.id).return_ty.clone()
     }
 
+    pub fn args(self, db: &CompilationDB) -> impl Iterator<Item = FunctionArg> + Clone {
+        let args = db.function_data(self.id).args.len();
+        (0..args).map(move |i| FunctionArg { fun_id: self.id, arg_id: i.into() })
+    }
+
     pub fn arg(self, idx: usize, db: &CompilationDB) -> FunctionArg {
         // AB: debug assertion should be > because length>index
         debug_assert!(db.function_data(self.id).args.len() > idx);
         FunctionArg { fun_id: self.id, arg_id: idx.into() }
-    }
-    pub fn args(self, db: &CompilationDB) -> impl Iterator<Item = FunctionArg> + Clone {
-        let args = db.function_data(self.id).args.len();
-        (0..args).map(move |i| FunctionArg { fun_id: self.id, arg_id: i.into() })
     }
 
     pub fn body(&self, db: &CompilationDB) -> Body {
@@ -310,69 +302,71 @@ impl Scope {
     fn def_map_and_scope(self, db: &CompilationDB) -> (LocalScopeId, Arc<DefMap>) {
         match self {
             Scope::Module(module) => {
-                let id = module.lookup(db);
-                (id.scope.local_scope, id.def_map(db))
+                let loc = module.lookup(db);
+                (loc.scope.local_scope, loc.def_map(db))
             }
             Scope::Block(block) => {
                 let def_map = db.block_def_map(block.id).expect("block is named");
-                (def_map.entry(), def_map)
+                (def_map.entry_scope(), def_map)
             }
             Scope::Function(func) => {
                 let def_map = db.function_def_map(func.id);
-                (def_map.entry(), def_map)
+                (def_map.entry_scope(), def_map)
             }
         }
     }
 
-    /// Iterates over all child modules.
-    pub fn children(self, db: &CompilationDB) -> Vec<Scope> {
-        let (scope, def_map) = self.def_map_and_scope(db);
-        def_map[scope]
-            .children
-            .values()
-            .map(|&scope| match def_map[scope].origin {
-                hir_def::nameres::ScopeOrigin::Root => {
-                    unreachable!("Root scope can not be a child scope")
-                }
-                hir_def::nameres::ScopeOrigin::Module(id) => Scope::Module(Module { id }),
-                hir_def::nameres::ScopeOrigin::Block(id) => Scope::Block(Block { id }),
-                hir_def::nameres::ScopeOrigin::Function(id) => Scope::Function(Function { id }),
-            })
-            .collect()
-    }
-
-    /// Iterates over all child modules.
-    pub fn declarations(self, db: &CompilationDB) -> Vec<(Name, ScopeDef)> {
-        let (scope, def_map) = self.def_map_and_scope(db);
-        def_map[scope]
-            .declarations
-            .iter()
-            .filter_map(|(name, &def)| {
-                let res = match def {
-                    ScopeDefItem::ModuleId(id) => ScopeDef::ModuleInstance(Module { id }),
-                    ScopeDefItem::BlockId(id) => ScopeDef::Block(Block { id }),
-                    ScopeDefItem::NodeId(id) => ScopeDef::Node(Node { id }),
-                    ScopeDefItem::VarId(id) => ScopeDef::Variable(Variable { id }),
-                    ScopeDefItem::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
-                    ScopeDefItem::AliasParamId(id) => {
-                        ScopeDef::AliasParameter(AliasParameter { id })
+    /*
+        /// Iterates over all child modules.
+        pub fn children(self, db: &CompilationDB) -> Vec<Scope> {
+            let (scope, def_map) = self.def_map_and_scope(db);
+            def_map[scope]
+                .children
+                .values()
+                .map(|&scope| match def_map[scope].origin {
+                    hir_def::nameres::ScopeOrigin::Root => {
+                        unreachable!("Root scope can not be a child scope")
                     }
-                    ScopeDefItem::BranchId(id) => ScopeDef::Branch(Branch { id }),
-                    ScopeDefItem::FunctionId(id) => ScopeDef::Function(Function { id }),
-                    // implementation details
-                    ScopeDefItem::BuiltIn(_)
-                    | ScopeDefItem::NatureId(_)
-                    | ScopeDefItem::NatureAccess(_)
-                    | ScopeDefItem::DisciplineId(_)
-                    | ScopeDefItem::ParamSysFun(_)
-                    | ScopeDefItem::FunctionReturn(_)
-                    | ScopeDefItem::FunctionArgId(_)
-                    | ScopeDefItem::NatureAttrId(_) => return None,
-                };
-                Some((name.to_owned(), res))
-            })
-            .collect()
-    }
+                    hir_def::nameres::ScopeOrigin::Module(id) => Scope::Module(Module { id }),
+                    hir_def::nameres::ScopeOrigin::Block(id) => Scope::Block(Block { id }),
+                    hir_def::nameres::ScopeOrigin::Function(id) => Scope::Function(Function { id }),
+                })
+                .collect()
+        }
+
+        // Iterates over all child declarations.
+        pub fn declarations(self, db: &CompilationDB) -> Vec<(Name, ScopeDef)> {
+            let (scope, def_map) = self.def_map_and_scope(db);
+            def_map[scope]
+                .declarations
+                .iter()
+                .filter_map(|(name, &def)| {
+                    let res = match def {
+                        ScopeDefItem::ModuleId(id) => ScopeDef::ModuleInstance(Module { id }),
+                        ScopeDefItem::BlockId(id) => ScopeDef::Block(Block { id }),
+                        ScopeDefItem::NodeId(id) => ScopeDef::Node(Node { id }),
+                        ScopeDefItem::VarId(id) => ScopeDef::Variable(Variable { id }),
+                        ScopeDefItem::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
+                        ScopeDefItem::AliasParamId(id) => {
+                            ScopeDef::AliasParameter(AliasParameter { id })
+                        }
+                        ScopeDefItem::BranchId(id) => ScopeDef::Branch(Branch { id }),
+                        ScopeDefItem::FunctionId(id) => ScopeDef::Function(Function { id }),
+                        // implementation details
+                        ScopeDefItem::BuiltIn(_)
+                        | ScopeDefItem::NatureId(_)
+                        | ScopeDefItem::NatureAccess(_)
+                        | ScopeDefItem::DisciplineId(_)
+                        | ScopeDefItem::ParamSysFun(_)
+                        | ScopeDefItem::FunctionReturn(_)
+                        | ScopeDefItem::FunctionArgId(_)
+                        | ScopeDefItem::NatureAttrId(_) => return None,
+                    };
+                    Some((name.to_owned(), res))
+                })
+                .collect()
+        }
+    */
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -444,7 +438,7 @@ impl Variable {
     }
 
     pub fn get_attr(&self, db: &CompilationDB, ast: &AstCache, name: &str) -> Option<ast::Attr> {
-        ast.resolve_attribute(name, self.id.lookup(db).ast_id(db).erased())
+        ast.resolve_attr(name, self.id.lookup(db).ast_id(db))
     }
 }
 
@@ -456,6 +450,10 @@ pub struct Parameter {
 impl Parameter {
     pub fn name(self, db: &CompilationDB) -> String {
         db.param_data(self.id).name.to_string()
+    }
+
+    pub fn ty(self, db: &CompilationDB) -> Type {
+        db.param_ty(self.id)
     }
 
     pub fn default(self, db: &CompilationDB) -> ExprId {
@@ -470,12 +468,8 @@ impl Parameter {
         Body::new(self.id.into(), db)
     }
 
-    pub fn ty(self, db: &CompilationDB) -> Type {
-        db.param_ty(self.id)
-    }
-
     pub fn get_attr(&self, db: &CompilationDB, ast: &AstCache, name: &str) -> Option<ast::Attr> {
-        ast.resolve_attribute(name, self.id.lookup(db).ast_id(db).erased())
+        ast.resolve_attr(name, self.id.lookup(db).ast_id(db))
     }
 }
 
@@ -494,21 +488,20 @@ impl AliasParameter {
     pub fn name(self, db: &CompilationDB) -> String {
         db.alias_data(self.id).name.to_string()
     }
-    pub fn resolve(self, db: &CompilationDB) -> Option<ResolvedAliasParameter> {
+
+    pub fn resolve(self, db: &CompilationDB) -> Option<ResolvedAliasParam> {
         db.resolve_alias(self.id).and_then(|alias| match alias {
-            hir_ty::db::Alias::Cycel => None,
-            hir_ty::db::Alias::Param(id) => {
-                Some(ResolvedAliasParameter::Parameter(Parameter { id }))
-            }
+            hir_ty::db::Alias::Cycle => None,
+            hir_ty::db::Alias::Param(id) => Some(ResolvedAliasParam::Parameter(Parameter { id })),
             hir_ty::db::Alias::ParamSysFun(param) => {
-                Some(ResolvedAliasParameter::SystemParameter(param))
+                Some(ResolvedAliasParam::SystemParameter(param))
             }
         })
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub enum ResolvedAliasParameter {
+pub enum ResolvedAliasParam {
     Parameter(Parameter),
     SystemParameter(ParamSysFun),
 }
@@ -519,6 +512,7 @@ pub enum BranchKind {
     NodeGnd(Node),
     Nodes(Node, Node),
 }
+
 impl BranchKind {
     pub fn unwrap_hi_node(self) -> Node {
         match self {
@@ -567,7 +561,7 @@ impl Branch {
     }
 
     pub fn get_attr(&self, db: &CompilationDB, ast: &AstCache, name: &str) -> Option<ast::Attr> {
-        ast.resolve_attribute(name, self.id.lookup(db).ast_id(db).erased())
+        ast.resolve_attr(name, self.id.lookup(db).ast_id(db))
     }
 }
 
@@ -614,9 +608,7 @@ impl NatureAttribute {
     pub fn value(&self, db: &CompilationDB) -> Body {
         Body::new(self.id.into(), db)
     }
-}
 
-impl NatureAttribute {
     pub fn name(self, db: &CompilationDB) -> String {
         let loc = self.id.lookup(db);
         db.nature_data(loc.nature).attrs[loc.id].name.to_string()

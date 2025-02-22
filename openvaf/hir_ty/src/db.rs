@@ -1,12 +1,14 @@
 use std::sync::Arc;
-
-use hir_def::db::HirDefDB;
-use hir_def::nameres::{ResolvedPath, ScopeDefItem};
-use hir_def::{
-    AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup, NatureAttrId, NatureId, NodeId,
-    ParamId, ParamSysFun, Type,
-};
 use stdx::Upcast;
+
+use hir_def::{
+    db::HirDefDB,
+    nameres::{ResolvedPath, ScopeDefItem},
+    {
+        AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup, NatureAttrId, NatureId,
+        NodeId, ParamId, ParamSysFun, Type,
+    },
+};
 
 use crate::inference::InferenceResult;
 use crate::lower::{BranchTy, DisciplineTy, NatureTy};
@@ -22,8 +24,10 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     #[salsa::invoke(NatureTy::nature_info_query)]
     #[salsa::cycle(NatureTy::nature_info_recover)]
     fn nature_info(&self, nature: NatureId) -> Arc<NatureTy>;
+
     #[salsa::invoke(DisciplineTy::discipline_info_query)]
     fn discipline_info(&self, nature: DisciplineId) -> Arc<DisciplineTy>;
+
     #[salsa::invoke(BranchTy::branch_info_query)]
     fn branch_info(&self, branch: BranchId) -> Option<Arc<BranchTy>>;
 
@@ -52,7 +56,7 @@ fn nature_attr_ty(db: &dyn HirTyDB, id: NatureAttrId) -> Option<Type> {
     db.inference_result(id.into()).expr_types.get(expr).and_then(|ty| ty.to_value())
 }
 
-// TODO proper cycel revery
+// TODO proper cycle recovery
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn nature_attr_ty_recover(
     _db: &dyn HirTyDB,
@@ -68,12 +72,12 @@ fn resolve_alias_recover(
     _cycel: &salsa::Cycle,
     _id: &AliasParamId,
 ) -> Option<Alias> {
-    Some(Alias::Cycel)
+    Some(Alias::Cycle)
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Alias {
-    Cycel,
+    Cycle,
     Param(ParamId),
     ParamSysFun(ParamSysFun),
 }
@@ -93,11 +97,11 @@ fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Option<Alias> {
     }
 }
 
-fn node_discipline(db: &dyn HirTyDB, node: NodeId) -> Option<DisciplineId> {
-    let def_map = node.lookup(db.upcast()).module.lookup(db.upcast()).scope.def_map(db.upcast());
-    let node = db.node_data(node);
+fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
+    let def_map = id.lookup(db.upcast()).module.lookup(db.upcast()).scope.def_map(db.upcast());
+    let node = db.node_data(id);
     let discipline = node.discipline.as_ref()?;
-    def_map.resolve_local_item_in_scope(def_map.root(), discipline).ok()
+    def_map.resolve_local_item_in_scope(def_map.root_scope(), discipline).ok()
 }
 
 fn param_ty(db: &dyn HirTyDB, param: ParamId) -> Type {

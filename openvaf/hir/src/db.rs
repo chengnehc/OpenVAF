@@ -1,23 +1,22 @@
 use std::intrinsics::transmute;
-use std::iter::{self, once};
 use std::ops::Deref;
 use std::sync::Arc;
-use std::{fs, io};
+use std::{fs, io, iter};
+use stdx::Upcast;
 
 use anyhow::{bail, Result};
 use basedb::lints::{Lint, LintLevel};
-use basedb::AbsPathBuf;
-use basedb::{BaseDB, BaseDatabase, FileId, Vfs, VfsPath, VfsStorage, STANDARD_FLAGS};
+use basedb::{
+    AbsPathBuf, BaseDB, FileId, SourceDatabase, Vfs, VfsPath, VfsStorage, PREDEFINED_MACROS,
+};
 use hir_def::db::{HirDefDB, HirDefDatabase, InternDatabase};
 use hir_ty::db::HirTyDatabase;
 use parking_lot::RwLock;
-use salsa::ParallelDatabase;
-use stdx::Upcast;
 use typed_index_collections::TiSlice;
 
 use crate::CompilationUnit;
 
-#[salsa::database(BaseDatabase, InternDatabase, HirDefDatabase, HirTyDatabase)]
+#[salsa::database(SourceDatabase, InternDatabase, HirDefDatabase, HirTyDatabase)]
 pub struct CompilationDB {
     storage: salsa::Storage<CompilationDB>,
     vfs: Arc<RwLock<Vfs>>,
@@ -29,10 +28,29 @@ impl Upcast<dyn HirDefDB> for CompilationDB {
         self
     }
 }
-
 impl Upcast<dyn BaseDB> for CompilationDB {
     fn upcast(&self) -> &(dyn BaseDB + 'static) {
         self
+    }
+}
+impl VfsStorage for CompilationDB {
+    fn vfs(&self) -> &RwLock<Vfs> {
+        &self.vfs
+    }
+}
+
+/// This impl tells salsa where to find the salsa runtime.
+impl salsa::Database for CompilationDB {}
+
+impl salsa::ParallelDatabase for CompilationDB {
+    fn snapshot(&self) -> salsa::Snapshot<Self> {
+        let db = CompilationDB {
+            storage: self.storage.snapshot(),
+            vfs: self.vfs.clone(),
+            root_file: self.root_file,
+        };
+
+        salsa::Snapshot::new(db)
     }
 }
 
@@ -53,8 +71,9 @@ impl CompilationDB {
         )
     }
 
-    /// Utility function to create a database with default settings
-    /// and a single virtual root file
+    /// Utility function for testing.
+    ///
+    /// Create a database with default settings and a single virtual root file.
     pub fn new_virtual(contents: &str) -> Result<Self> {
         CompilationDB::new(
             VfsPath::new_virtual_path("/root.va".to_owned()),
@@ -63,10 +82,6 @@ impl CompilationDB {
             iter::empty(),
             iter::empty(),
         )
-    }
-
-    pub fn compilation_unit(&self) -> CompilationUnit {
-        CompilationUnit { root_file: self.root_file }
     }
 
     pub fn new<'a>(
@@ -82,20 +97,22 @@ impl CompilationDB {
         let root_file = vfs.ensure_file_id(root_file);
         vfs.set_file_contents(root_file, contents.into());
 
-        let mut res =
+        let mut db =
             Self { storage: salsa::Storage::default(), vfs: Arc::new(RwLock::new(vfs)), root_file };
 
         let include_dirs: Result<Arc<[_]>> =
-            once(Ok(VfsPath::new_virtual_path("/std".to_owned()))).chain(include_dirs).collect();
-        res.set_include_dirs(root_file, include_dirs?);
+            iter::once(Ok(VfsPath::new_virtual_path("/std".to_owned())))
+                .chain(include_dirs)
+                .collect();
+        db.set_include_dirs(root_file, include_dirs?);
 
         let macro_flags: Arc<[_]> =
-            STANDARD_FLAGS.into_iter().chain(macro_flags).map(Arc::from).collect();
-        res.set_macro_flags(root_file, macro_flags);
+            PREDEFINED_MACROS.into_iter().chain(macro_flags).map(Arc::from).collect();
+        db.set_macro_flags(root_file, macro_flags);
 
-        res.set_plugin_lints(&[]);
-        let mut overwrites = res.empty_global_lint_overwrites();
-        let registry = res.lint_registry();
+        db.set_plugin_lints(&[]);
+        let mut overwrites = db.empty_global_lint_overwrites();
+        let registry = db.lint_registry();
 
         fn replace_lvl(
             overwrites: &mut TiSlice<Lint, Option<LintLevel>>,
@@ -130,28 +147,12 @@ impl CompilationDB {
         let overwrites = unsafe {
             transmute::<Arc<[Option<LintLevel>]>, Arc<TiSlice<Lint, Option<LintLevel>>>>(overwrites)
         };
+        db.set_global_lint_overwrites(root_file, overwrites);
 
-        res.set_global_lint_overwrites(root_file, overwrites);
-        Ok(res)
+        Ok(db)
     }
-}
 
-impl ParallelDatabase for CompilationDB {
-    fn snapshot(&self) -> salsa::Snapshot<Self> {
-        let db = CompilationDB {
-            storage: self.storage.snapshot(),
-            vfs: self.vfs.clone(),
-            root_file: self.root_file,
-        };
-
-        salsa::Snapshot::new(db)
-    }
-}
-
-/// This impl tells salsa where to find the salsa runtime.
-impl salsa::Database for CompilationDB {}
-impl VfsStorage for CompilationDB {
-    fn vfs(&self) -> &RwLock<Vfs> {
-        &self.vfs
+    pub fn compilation_unit(&self) -> CompilationUnit {
+        CompilationUnit { root_file: self.root_file }
     }
 }

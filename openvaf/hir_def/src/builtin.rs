@@ -10,32 +10,32 @@ use crate::nameres::ScopeDefItem;
 #[allow(nonstandard_style, unreachable_pub)]
 #[repr(u8)]
 pub enum BuiltIn {
-    abs = 0u8,
-    acos = 1u8,
-    acosh = 2u8,
-    asin = 3u8,
-    asinh = 4u8,
-    atan = 5u8,
-    atan2 = 6u8,
-    atanh = 7u8,
-    ceil = 8u8,
-    cos = 9u8,
-    cosh = 10u8,
-    exp = 11u8,
-    floor = 12u8,
-    flow = 13u8,
-    potential = 14u8,
-    hypot = 15u8,
-    ln = 16u8,
-    log = 17u8,
-    max = 18u8,
-    min = 19u8,
-    pow = 20u8,
-    sin = 21u8,
-    sinh = 22u8,
-    sqrt = 23u8,
-    tan = 24u8,
-    tanh = 25u8,
+    ln = 0u8,
+    log = 1u8,
+    exp = 2u8,
+    sqrt = 3u8,
+    min = 4u8,
+    max = 5u8,
+    abs = 6u8,
+    pow = 7u8,
+    floor = 8u8,
+    ceil = 9u8,
+    sin = 10u8,
+    cos = 11u8,
+    tan = 12u8,
+    asin = 13u8,
+    acos = 14u8,
+    atan = 15u8,
+    atan2 = 16u8,
+    hypot = 17u8,
+    sinh = 18u8,
+    cosh = 19u8,
+    tanh = 20u8,
+    asinh = 21u8,
+    acosh = 22u8,
+    atanh = 23u8,
+    flow = 24u8,
+    potential = 25u8,
     display = 26u8,
     strobe = 27u8,
     write = 28u8,
@@ -66,37 +66,37 @@ pub enum BuiltIn {
     error = 53u8,
     info = 54u8,
     abstime = 55u8,
-    dist_chi_square = 56u8,
-    dist_exponential = 57u8,
-    dist_poisson = 58u8,
-    dist_uniform = 59u8,
-    dist_erlang = 60u8,
-    dist_normal = 61u8,
-    dist_t = 62u8,
-    random = 63u8,
-    arandom = 64u8,
-    rdist_chi_square = 65u8,
-    rdist_exponential = 66u8,
-    rdist_poisson = 67u8,
-    rdist_uniform = 68u8,
-    rdist_erlang = 69u8,
-    rdist_normal = 70u8,
-    rdist_t = 71u8,
-    clog2 = 72u8,
-    log10 = 73u8,
-    temperature = 74u8,
-    vt = 75u8,
-    simparam = 76u8,
-    simparam_str = 77u8,
-    simprobe = 78u8,
-    discontinuity = 79u8,
-    param_given = 80u8,
-    port_connected = 81u8,
-    analog_node_alias = 82u8,
-    analog_port_alias = 83u8,
-    test_plusargs = 84u8,
-    value_plusargs = 85u8,
-    bound_step = 86u8,
+    test_plusargs = 56u8,
+    value_plusargs = 57u8,
+    dist_chi_square = 58u8,
+    dist_exponential = 59u8,
+    dist_poisson = 60u8,
+    dist_uniform = 61u8,
+    dist_erlang = 62u8,
+    dist_normal = 63u8,
+    dist_t = 64u8,
+    random = 65u8,
+    arandom = 66u8,
+    rdist_chi_square = 67u8,
+    rdist_exponential = 68u8,
+    rdist_poisson = 69u8,
+    rdist_uniform = 70u8,
+    rdist_erlang = 71u8,
+    rdist_normal = 72u8,
+    rdist_t = 73u8,
+    clog2 = 74u8,
+    log10 = 75u8,
+    temperature = 76u8,
+    vt = 77u8,
+    simparam = 78u8,
+    simparam_str = 79u8,
+    simprobe = 80u8,
+    discontinuity = 81u8,
+    bound_step = 82u8,
+    param_given = 83u8,
+    port_connected = 84u8,
+    analog_node_alias = 85u8,
+    analog_port_alias = 86u8,
     analysis = 87u8,
     ac_stim = 88u8,
     noise_table = 89u8,
@@ -104,61 +104,45 @@ pub enum BuiltIn {
     white_noise = 91u8,
     flicker_noise = 92u8,
     limit = 93u8,
-    absdelay = 94u8,
-    ddt = 95u8,
+    ddt = 94u8,
+    ddx = 95u8,
     idt = 96u8,
     idtmod = 97u8,
-    ddx = 98u8,
-    zi_nd = 99u8,
-    zi_np = 100u8,
-    zi_zd = 101u8,
-    zi_zp = 102u8,
+    absdelay = 98u8,
+    transition = 99u8,
+    slew = 100u8,
+    last_crossing = 101u8,
+    limexp = 102u8,
     laplace_nd = 103u8,
     laplace_np = 104u8,
     laplace_zd = 105u8,
     laplace_zp = 106u8,
-    limexp = 107u8,
-    last_crossing = 108u8,
-    slew = 109u8,
-    transition = 110u8,
-}
-#[derive(Eq, PartialEq, Copy, Clone, Hash, Debug)]
-#[allow(nonstandard_style, unreachable_pub)]
-pub enum ParamSysFun {
-    mfactor,
-    xposition,
-    yposition,
-    angle,
-    hflip,
-    vflip,
-}
-impl ParamSysFun {
-    pub fn iter() -> impl Iterator<Item = Self> {
-        [Self::mfactor, Self::xposition, Self::yposition, Self::angle, Self::hflip, Self::vflip]
-            .into_iter()
-    }
+    zi_zp = 107u8,
+    zi_zd = 108u8,
+    zi_np = 109u8,
+    zi_nd = 110u8,
 }
 impl BuiltIn {
     #[allow(clippy::match_like_matches_macro)]
     pub fn is_analog_operator(self) -> bool {
         match self {
-            BuiltIn::absdelay
-            | BuiltIn::ddt
+            BuiltIn::ddt
+            | BuiltIn::ddx
             | BuiltIn::idt
             | BuiltIn::idtmod
-            | BuiltIn::ddx
-            | BuiltIn::zi_nd
-            | BuiltIn::zi_np
-            | BuiltIn::zi_zd
-            | BuiltIn::zi_zp
+            | BuiltIn::absdelay
+            | BuiltIn::transition
+            | BuiltIn::slew
+            | BuiltIn::last_crossing
+            | BuiltIn::limexp
             | BuiltIn::laplace_nd
             | BuiltIn::laplace_np
             | BuiltIn::laplace_zd
             | BuiltIn::laplace_zp
-            | BuiltIn::limexp
-            | BuiltIn::last_crossing
-            | BuiltIn::slew
-            | BuiltIn::transition => true,
+            | BuiltIn::zi_zp
+            | BuiltIn::zi_zd
+            | BuiltIn::zi_np
+            | BuiltIn::zi_nd => true,
             _ => false,
         }
     }
@@ -238,33 +222,55 @@ impl BuiltIn {
         }
     }
 }
+#[derive(Eq, PartialEq, Copy, Clone, Hash, Debug)]
+#[allow(nonstandard_style, unreachable_pub)]
+pub enum ParamSysFun {
+    mfactor,
+    xposition,
+    yposition,
+    angle,
+    hflip,
+    vflip,
+}
+impl ParamSysFun {
+    pub fn iter() -> impl Iterator<Item = Self> {
+        [Self::mfactor, Self::xposition, Self::yposition, Self::angle, Self::hflip, Self::vflip]
+            .into_iter()
+    }
+    pub fn default_value(self) -> f64 {
+        match self {
+            ParamSysFun::vflip | ParamSysFun::hflip | ParamSysFun::mfactor => 1f64,
+            ParamSysFun::xposition | ParamSysFun::yposition | ParamSysFun::angle => 0f64,
+        }
+    }
+}
 pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeDefItem, RandomState>) {
-    dst.insert(kw::abs, BuiltIn::abs.into());
-    dst.insert(kw::acos, BuiltIn::acos.into());
-    dst.insert(kw::acosh, BuiltIn::acosh.into());
-    dst.insert(kw::asin, BuiltIn::asin.into());
-    dst.insert(kw::asinh, BuiltIn::asinh.into());
-    dst.insert(kw::atan, BuiltIn::atan.into());
-    dst.insert(kw::atan2, BuiltIn::atan2.into());
-    dst.insert(kw::atanh, BuiltIn::atanh.into());
-    dst.insert(kw::ceil, BuiltIn::ceil.into());
-    dst.insert(kw::cos, BuiltIn::cos.into());
-    dst.insert(kw::cosh, BuiltIn::cosh.into());
-    dst.insert(kw::exp, BuiltIn::exp.into());
-    dst.insert(kw::floor, BuiltIn::floor.into());
-    dst.insert(kw::flow, BuiltIn::flow.into());
-    dst.insert(kw::potential, BuiltIn::potential.into());
-    dst.insert(kw::hypot, BuiltIn::hypot.into());
     dst.insert(kw::ln, BuiltIn::ln.into());
     dst.insert(kw::log, BuiltIn::log.into());
-    dst.insert(kw::max, BuiltIn::max.into());
-    dst.insert(kw::min, BuiltIn::min.into());
-    dst.insert(kw::pow, BuiltIn::pow.into());
-    dst.insert(kw::sin, BuiltIn::sin.into());
-    dst.insert(kw::sinh, BuiltIn::sinh.into());
+    dst.insert(kw::exp, BuiltIn::exp.into());
     dst.insert(kw::sqrt, BuiltIn::sqrt.into());
+    dst.insert(kw::min, BuiltIn::min.into());
+    dst.insert(kw::max, BuiltIn::max.into());
+    dst.insert(kw::abs, BuiltIn::abs.into());
+    dst.insert(kw::pow, BuiltIn::pow.into());
+    dst.insert(kw::floor, BuiltIn::floor.into());
+    dst.insert(kw::ceil, BuiltIn::ceil.into());
+    dst.insert(kw::sin, BuiltIn::sin.into());
+    dst.insert(kw::cos, BuiltIn::cos.into());
     dst.insert(kw::tan, BuiltIn::tan.into());
+    dst.insert(kw::asin, BuiltIn::asin.into());
+    dst.insert(kw::acos, BuiltIn::acos.into());
+    dst.insert(kw::atan, BuiltIn::atan.into());
+    dst.insert(kw::atan2, BuiltIn::atan2.into());
+    dst.insert(kw::hypot, BuiltIn::hypot.into());
+    dst.insert(kw::sinh, BuiltIn::sinh.into());
+    dst.insert(kw::cosh, BuiltIn::cosh.into());
     dst.insert(kw::tanh, BuiltIn::tanh.into());
+    dst.insert(kw::asinh, BuiltIn::asinh.into());
+    dst.insert(kw::acosh, BuiltIn::acosh.into());
+    dst.insert(kw::atanh, BuiltIn::atanh.into());
+    dst.insert(kw::flow, BuiltIn::flow.into());
+    dst.insert(kw::potential, BuiltIn::potential.into());
     dst.insert(sysfun::display, BuiltIn::display.into());
     dst.insert(sysfun::strobe, BuiltIn::strobe.into());
     dst.insert(sysfun::write, BuiltIn::write.into());
@@ -295,6 +301,8 @@ pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeDefItem, RandomState>)
     dst.insert(sysfun::error, BuiltIn::error.into());
     dst.insert(sysfun::info, BuiltIn::info.into());
     dst.insert(sysfun::abstime, BuiltIn::abstime.into());
+    dst.insert(sysfun::test_plusargs, BuiltIn::test_plusargs.into());
+    dst.insert(sysfun::value_plusargs, BuiltIn::value_plusargs.into());
     dst.insert(sysfun::dist_chi_square, BuiltIn::dist_chi_square.into());
     dst.insert(sysfun::dist_exponential, BuiltIn::dist_exponential.into());
     dst.insert(sysfun::dist_poisson, BuiltIn::dist_poisson.into());
@@ -339,13 +347,11 @@ pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeDefItem, RandomState>)
     dst.insert(sysfun::simparam_str, BuiltIn::simparam_str.into());
     dst.insert(sysfun::simprobe, BuiltIn::simprobe.into());
     dst.insert(sysfun::discontinuity, BuiltIn::discontinuity.into());
+    dst.insert(sysfun::bound_step, BuiltIn::bound_step.into());
     dst.insert(sysfun::param_given, BuiltIn::param_given.into());
     dst.insert(sysfun::port_connected, BuiltIn::port_connected.into());
     dst.insert(sysfun::analog_node_alias, BuiltIn::analog_node_alias.into());
     dst.insert(sysfun::analog_port_alias, BuiltIn::analog_port_alias.into());
-    dst.insert(sysfun::test_plusargs, BuiltIn::test_plusargs.into());
-    dst.insert(sysfun::value_plusargs, BuiltIn::value_plusargs.into());
-    dst.insert(sysfun::bound_step, BuiltIn::bound_step.into());
     dst.insert(kw::analysis, BuiltIn::analysis.into());
     dst.insert(kw::ac_stim, BuiltIn::ac_stim.into());
     dst.insert(kw::noise_table, BuiltIn::noise_table.into());
@@ -353,23 +359,23 @@ pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeDefItem, RandomState>)
     dst.insert(kw::white_noise, BuiltIn::white_noise.into());
     dst.insert(kw::flicker_noise, BuiltIn::flicker_noise.into());
     dst.insert(sysfun::limit, BuiltIn::limit.into());
-    dst.insert(kw::absdelay, BuiltIn::absdelay.into());
     dst.insert(kw::ddt, BuiltIn::ddt.into());
+    dst.insert(kw::ddx, BuiltIn::ddx.into());
     dst.insert(kw::idt, BuiltIn::idt.into());
     dst.insert(kw::idtmod, BuiltIn::idtmod.into());
-    dst.insert(kw::ddx, BuiltIn::ddx.into());
-    dst.insert(kw::zi_nd, BuiltIn::zi_nd.into());
-    dst.insert(kw::zi_np, BuiltIn::zi_np.into());
-    dst.insert(kw::zi_zd, BuiltIn::zi_zd.into());
-    dst.insert(kw::zi_zp, BuiltIn::zi_zp.into());
+    dst.insert(kw::absdelay, BuiltIn::absdelay.into());
+    dst.insert(kw::transition, BuiltIn::transition.into());
+    dst.insert(kw::slew, BuiltIn::slew.into());
+    dst.insert(kw::last_crossing, BuiltIn::last_crossing.into());
+    dst.insert(kw::limexp, BuiltIn::limexp.into());
     dst.insert(kw::laplace_nd, BuiltIn::laplace_nd.into());
     dst.insert(kw::laplace_np, BuiltIn::laplace_np.into());
     dst.insert(kw::laplace_zd, BuiltIn::laplace_zd.into());
     dst.insert(kw::laplace_zp, BuiltIn::laplace_zp.into());
-    dst.insert(kw::limexp, BuiltIn::limexp.into());
-    dst.insert(kw::last_crossing, BuiltIn::last_crossing.into());
-    dst.insert(kw::slew, BuiltIn::slew.into());
-    dst.insert(kw::transition, BuiltIn::transition.into());
+    dst.insert(kw::zi_zp, BuiltIn::zi_zp.into());
+    dst.insert(kw::zi_zd, BuiltIn::zi_zd.into());
+    dst.insert(kw::zi_np, BuiltIn::zi_np.into());
+    dst.insert(kw::zi_nd, BuiltIn::zi_nd.into());
 }
 pub fn insert_module_builtin_scope(dst: &mut IndexMap<Name, ScopeDefItem, RandomState>) {
     dst.insert(sysfun::mfactor, ParamSysFun::mfactor.into());

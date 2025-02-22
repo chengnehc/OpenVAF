@@ -1,15 +1,17 @@
 use std::fmt::Display;
 use std::sync::Arc;
 
-use codespan_reporting::diagnostic::Severity;
-use codespan_reporting::files::Files;
-pub use codespan_reporting::term::termcolor::{Ansi, Buffer, ColorChoice, NoColor};
-use codespan_reporting::term::termcolor::{StandardStream, WriteColor};
-use codespan_reporting::term::{emit, Chars, Config};
-use vfs::VfsPath;
+use codespan_reporting::{
+    diagnostic::Severity,
+    files::Files,
+    term::termcolor::{StandardStream, WriteColor},
+    term::{self, Chars, Config},
+};
 
-use crate::diagnostics::{Diagnostic, Report};
-use crate::{BaseDB, FileId};
+pub use codespan_reporting::term::termcolor::{Buffer, ColorChoice};
+
+use super::{Diagnostic, Report};
+use crate::{BaseDB, FileId, VfsPath};
 
 pub trait DiagnosticSink {
     fn add_report(&mut self, report: Report);
@@ -123,7 +125,7 @@ impl<'a> ConsoleSink<'a> {
     }
 
     pub fn print_simple_message(&mut self, severity: Severity, msg: String) {
-        emit(
+        term::emit(
             &mut self.dst,
             &self.config,
             &FileSrc { db: self.db, anon_paths: self.anon_paths },
@@ -181,7 +183,7 @@ impl DiagnosticSink for ConsoleSink<'_> {
             _ => (),
         }
 
-        emit(
+        term::emit(
             &mut self.dst,
             &self.config,
             &FileSrc { db: self.db, anon_paths: self.anon_paths },
