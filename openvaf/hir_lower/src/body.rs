@@ -1,11 +1,10 @@
-use hir::Node;
+use stdx::iter::zip;
+
 use hir::{BodyRef, ExprId};
 use mir::builder::InstBuilder;
 use mir::{Block, Value};
-use stdx::iter::zip;
 
 use crate::ctx::LoweringCtx;
-use crate::ParamKind;
 
 pub struct BodyLoweringCtx<'a, 'c1, 'c2> {
     pub ctx: &'a mut LoweringCtx<'c1, 'c2>,
@@ -15,19 +14,9 @@ pub struct BodyLoweringCtx<'a, 'c1, 'c2> {
 
 impl<'c1, 'c2> BodyLoweringCtx<'_, 'c1, 'c2> {
     pub fn lower_entry_stmts(&mut self) {
-        for &stmnt in self.body.entry() {
-            self.lower_stmt(stmnt)
+        for &stmt in self.body.entry_stmts() {
+            self.lower_stmt(stmt)
         }
-    }
-
-    pub fn nodes_from_args(
-        &mut self,
-        args: &[ExprId],
-        kind: impl Fn(Node, Option<Node>) -> ParamKind,
-    ) -> Value {
-        let hi = self.body.into_node(args[0]);
-        let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-        self.ctx.nodes(hi, lo, kind)
     }
 
     pub fn lower_select(

@@ -14,11 +14,17 @@ use crate::{
 
 pub struct LoweringCtx<'a, 'c> {
     pub db: &'a CompilationDB,
+
     pub func: FunctionBuilder<'c>,
+
     pub no_equations: bool,
+
     pub intern: &'a mut HirInterner,
+    /// mutable memory locations for values
     pub places: TiSet<Place, PlaceKind>,
+
     tagged_vars: AHashSet<Variable>,
+
     pub inside_lim: bool,
     /// We create a dedicated callback for each noise source
     /// by giving each callback a unique index. Kind of ineffcient
@@ -51,8 +57,7 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         self
     }
 
-    /// This function should be used for reading variables to correctly
-    /// handle value tagging
+    /// This function should be used for reading variables to correctly handle tagging.
     pub fn read_variable(&mut self, var: Variable) -> Value {
         let place = self.dec_place(PlaceKind::Var(var));
         let mut val = self.func.use_var(place);
@@ -63,16 +68,18 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         val
     }
 
-    /// Defclares a mutable memory locations (places) which will
-    /// be translated to SSA (phi stmts where necessary) automatically.
-    /// If the requested memory location already exists then that place
-    /// will be returned. Otherwise a new memory slot is created an
-    /// the place is initialized in the function entry (if necessary)
+    /// Declare a mutable memory location (place) which will be translated to SSA
+    /// (phi stmts where necessary) automatically.
+    ///
+    /// If the requested place already exists, then simply return it.
+    /// Otherwise, a new memory slot is created, and the place is initialized
+    /// in the entry block of MIR function (if necessary).
     pub fn dec_place(&mut self, kind: PlaceKind) -> Place {
         let (place, inserted) = self.places.ensure(kind);
         if inserted {
+            // initialize the place
             let init = match kind {
-                // always initialized
+                // place kind that is always initialized
                 PlaceKind::FunctionReturn { .. }
                 | PlaceKind::FunctionArg { .. }
                 | PlaceKind::Param(_)
@@ -82,7 +89,7 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
                 PlaceKind::Var(var) => self.use_param(ParamKind::HiddenState(var)),
                 PlaceKind::ImplicitResidual { .. } | PlaceKind::Contribute { .. } => F_ZERO,
                 PlaceKind::CollapseImplicitEquation(_) => TRUE,
-                PlaceKind::IsVoltageSrc(_) => FALSE,
+                PlaceKind::IsPotential(_) => FALSE,
                 PlaceKind::BoundStep => INFINITY,
             };
             let entry = self.func.func.layout.entry_block().unwrap();
@@ -101,33 +108,29 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         self.func.use_var(place)
     }
 
-    /// Determines if a mutable memory location (places) exists.
-    /// If that location exists the corresponding place is returned
-    /// otherwise returns `None`
     pub fn get_place(&self, kind: PlaceKind) -> Option<Place> {
         self.places.index(&kind)
-    }
-
-    /// Defines a new parameter (if not already present) and returns its value
-    pub fn use_param(&mut self, kind: ParamKind) -> Value {
-        let len = self.intern.params.len();
-        let entry = self.intern.params.raw.entry(kind);
-        *entry.or_insert_with(|| self.func.func.dfg.make_param(len.into()))
     }
 
     pub fn def_param(&mut self, kind: ParamKind, val: Value) {
         self.intern.params.insert(kind, val);
     }
 
-    pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
-        self.intern.outputs.insert(kind, val.into());
+    pub fn use_param(&mut self, kind: ParamKind) -> Value {
+        let len = self.intern.params.len();
+        let entry = self.intern.params.raw.entry(kind);
+        *entry.or_insert_with(|| self.func.make_param(len.into()))
     }
 
     pub fn get_param(&mut self, kind: ParamKind) -> Option<Value> {
         self.intern.params.get(&kind).copied()
     }
 
-    pub fn unwrap_node(&mut self, val: Value) -> Node {
+    pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
+        self.intern.outputs.insert(kind, val.into());
+    }
+
+    pub fn unwrap_pot_node(&mut self, val: Value) -> Node {
         let param = self.dfg().value_def(val).unwrap_param();
         self.intern.params.get_index(param).unwrap().0.unwrap_pot_node()
     }
@@ -147,12 +150,14 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         res
     }
 
+    /// Declare a callback function. If it already exists then simply return it,
+    /// otherwise a new callback is created.
     pub fn dec_callback(&mut self, kind: CallBackKind) -> FuncRef {
         let data = kind.signature();
         let (func_ref, changed) = self.intern.callbacks.ensure(kind);
         if changed {
             self.intern.callback_uses.push(Vec::new());
-            let sig = self.func.func.import_function(data);
+            let sig = self.func.import_function(data);
             debug_assert_eq!(func_ref, sig);
         }
         func_ref
@@ -180,7 +185,6 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
                 let lo = self.use_param(kind(lo, None));
                 self.func.ins().fneg(lo)
             }
-            // TODO refactor to nice if let binding when stable
             (Some(hi), Some(lo)) => {
                 if let Some(inverted) = self.get_param(kind(lo, Some(hi))) {
                     self.func.ins().fneg(inverted)
@@ -299,6 +303,14 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         ((then_tail, then_val), (else_tail, else_val))
     }
 
+    pub(crate) fn dfg(&self) -> &DataFlowGraph {
+        &self.func.func.dfg
+    }
+
+    pub(crate) fn dfg_mut(&mut self) -> &mut DataFlowGraph {
+        &mut self.func.func.dfg
+    }
+
     pub(crate) fn get_srcloc(&self) -> SourceLoc {
         self.func.get_srcloc()
     }
@@ -333,14 +345,6 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
 
     pub(crate) fn seal_block(&mut self, bb: Block) {
         self.func.seal_block(bb)
-    }
-
-    pub(crate) fn dfg(&self) -> &DataFlowGraph {
-        &self.func.func.dfg
-    }
-
-    pub(crate) fn dfg_mut(&mut self) -> &mut DataFlowGraph {
-        &mut self.func.func.dfg
     }
 
     pub(crate) fn ensured_sealed(&mut self) {

@@ -1,4 +1,10 @@
+//! `hir_lower` actually lowers the HIR to build MIR.
+//!
+//! This is the only bridge between various MIR crates and the HIR.
+
 use std::iter::FilterMap;
+use stdx::packed_option::PackedOption;
+use stdx::{impl_debug_display, impl_idx_from};
 
 use ahash::{AHashMap, AHashSet};
 use bitset::HybridBitSet;
@@ -10,217 +16,147 @@ use lasso::Rodeo;
 use mir::builder::InstBuilder;
 use mir::{DataFlowGraph, FuncRef, Function, Inst, KnownDerivatives, Param, Unknown, Value};
 use mir_build::{FunctionBuilder, FunctionBuilderContext, RetBuilder};
-use stdx::packed_option::PackedOption;
-use stdx::{impl_debug_display, impl_idx_from};
 use typed_index_collections::TiVec;
 use typed_indexmap::{map, TiMap, TiSet};
-
-pub use callbacks::{CallBackKind, NoiseTable, ParamInfoKind};
-
-use crate::body::BodyLoweringCtx;
-use crate::ctx::LoweringCtx;
-
-macro_rules! match_signature {
-    ($signature:ident: $($case:ident $(| $extra_case:ident)* => $res:expr),*) => {
-        match $signature {
-            $($case $(|$extra_case)* => $res,)*
-            signature => unreachable!("invalid signature {:?}",signature)
-        }
-
-    };
-}
 
 mod body;
 mod callbacks;
 mod ctx;
 mod expr;
-pub mod fmt;
 mod parameters;
 mod state;
 mod stmt;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ImplicitEquationKind {
-    Ddt,
-    NoiseSrc,
-    Idt(IdtKind),
+pub mod fmt;
+
+use body::BodyLoweringCtx;
+use ctx::LoweringCtx;
+
+pub use callbacks::{CallBackKind, NoiseTable};
+pub use parameters::ParamInfoKind;
+
+/// A builder to lower HIR into MIR
+pub struct MirBuilder<'a> {
+    db: &'a CompilationDB,
+
+    module: Module,
+    // predicate indicating whether A `Place` should be treated as output
+    is_output: &'a dyn Fn(PlaceKind) -> bool,
+    // for required output variables
+    required_vars: &'a mut dyn Iterator<Item = Variable>,
+    // for VerilogAE parameter extraction backend
+    tagged_reads: AHashSet<Variable>,
+    // for simulator backend
+    tag_writes: bool,
+
+    ctx: Option<&'a mut FunctionBuilderContext>,
+    // for simulator backend
+    lower_equations: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum CurrentKind {
-    Branch(Branch),
-    Unnamed { hi: Node, lo: Option<Node> },
-    Port(Node),
-}
-
-impl From<BranchWrite> for CurrentKind {
-    fn from(kind: BranchWrite) -> Self {
-        match kind {
-            BranchWrite::Named(branch) => CurrentKind::Branch(branch),
-            BranchWrite::Unnamed { hi, lo } => CurrentKind::Unnamed { hi, lo },
-        }
-    }
-}
-
-impl TryFrom<CurrentKind> for BranchWrite {
-    type Error = ();
-    fn try_from(kind: CurrentKind) -> Result<BranchWrite, ()> {
-        match kind {
-            CurrentKind::Branch(branch) => Ok(BranchWrite::Named(branch)),
-            CurrentKind::Unnamed { hi, lo } => Ok(BranchWrite::Unnamed { hi, lo }),
-            CurrentKind::Port(_) => Err(()),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ParamKind {
-    Param(Parameter),
-    Abstime,
-    EnableIntegration,
-    EnableLim,
-    PrevState(LimitState),
-    NewState(LimitState),
-    Voltage { hi: Node, lo: Option<Node> },
-    Current(CurrentKind),
-    Temperature,
-    ParamGiven { param: Parameter },
-    PortConnected { port: Node },
-    ParamSysFun(ParamSysFun),
-    HiddenState(Variable),
-    ImplicitUnknown(ImplicitEquation),
-}
-
-impl ParamKind {
-    fn unwrap_pot_node(&self) -> Node {
-        match self {
-            ParamKind::Voltage { hi, lo: None } => *hi,
-            _ => unreachable!("called unwrap_pot_node on {:?}", self),
+impl<'a> MirBuilder<'a> {
+    pub fn new(
+        db: &'a CompilationDB,
+        module: Module,
+        is_output: &'a dyn Fn(PlaceKind) -> bool,
+        required_vars: &'a mut dyn Iterator<Item = Variable>,
+    ) -> MirBuilder<'a> {
+        MirBuilder {
+            db,
+            module,
+            tagged_reads: AHashSet::new(),
+            is_output,
+            required_vars,
+            ctx: None,
+            lower_equations: false,
+            tag_writes: false,
         }
     }
 
-    pub fn op_dependent(&self) -> bool {
-        matches!(
-            self,
-            ParamKind::Voltage { .. }
-                | ParamKind::Current(_)
-                | ParamKind::ImplicitUnknown(_)
-                | ParamKind::Abstime
-                | ParamKind::EnableIntegration
-                | ParamKind::HiddenState(_)
-                | ParamKind::PrevState(_)
-                | ParamKind::NewState(_)
-                | ParamKind::EnableLim
-        )
+    pub fn tag_reads(&mut self, var: Variable) -> bool {
+        self.tagged_reads.insert(var)
     }
-}
+    pub fn with_tagged_reads(mut self, tagged_vars: AHashSet<Variable>) -> Self {
+        self.tagged_reads = tagged_vars;
+        self
+    }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum IdtKind {
-    Basic,
-    Ic,
-    Assert,
-    Modulus,
-    ModulusOffset,
-}
+    pub fn tag_writes(&mut self) {
+        self.tag_writes = true;
+    }
+    pub fn with_tagged_writes(mut self) -> Self {
+        self.tag_writes = true;
+        self
+    }
 
-impl IdtKind {
-    pub const fn num_params(self) -> u16 {
-        match self {
-            IdtKind::Basic => 1,
-            IdtKind::Ic => 2,
-            IdtKind::Assert | IdtKind::Modulus => 3,
-            IdtKind::ModulusOffset => 4,
+    pub fn lower_equations(&mut self) {
+        self.lower_equations = true;
+    }
+    pub fn with_equations(mut self) -> Self {
+        self.lower_equations = true;
+        self
+    }
+
+    pub fn with_builder_ctx(mut self, ctx: &'a mut FunctionBuilderContext) -> Self {
+        self.ctx = Some(ctx);
+        self
+    }
+
+    /// Build all MIR functions by lowering, consuming the builder.
+    pub fn build(self, literals: &mut Rodeo) -> (Function, HirInterner) {
+        let mut func = Function::default();
+        let mut interner = HirInterner::default();
+
+        let mut new_ctx;
+        let ctx = if let Some(ctx) = self.ctx {
+            ctx
+        } else {
+            new_ctx = FunctionBuilderContext::new();
+            &mut new_ctx
+        };
+        let builder: FunctionBuilder<'_> =
+            FunctionBuilder::new(&mut func, literals, ctx, self.tag_writes);
+
+        let path = self.module.name(self.db);
+        let analog_initial_body = self.module.analog_initial_block(self.db);
+        let analog_body = self.module.analog_block(self.db);
+        let mut ctx = LoweringCtx::new(self.db, builder, !self.lower_equations, &mut interner)
+            .with_tagged_vars(self.tagged_reads);
+        let mut body_ctx =
+            BodyLoweringCtx { ctx: &mut ctx, body: analog_initial_body.borrow(), path: &path };
+
+        // lower analog initial blocks first
+        body_ctx.lower_entry_stmts();
+        // and then normal analog blocks
+        body_ctx.body = analog_body.borrow();
+        body_ctx.lower_entry_stmts();
+
+        for var in self.required_vars {
+            ctx.dec_place(PlaceKind::Var(var));
         }
-    }
-    pub const fn has_ic(self) -> bool {
-        !matches!(self, IdtKind::Basic)
-    }
+        let is_output = self.is_output;
+        ctx.intern.outputs = ctx
+            .places
+            .iter_enumerated()
+            .map(|(place, kind)| {
+                if is_output(*kind) {
+                    let mut val = ctx.func.use_var(place);
+                    val = ctx.func.ins().ensure_optbarrier(val);
+                    (*kind, val.into())
+                } else {
+                    (*kind, None.into())
+                }
+            })
+            .collect();
+        ctx.func.ins().ret();
+        ctx.func.finalize();
 
-    pub const fn has_assert(self) -> bool {
-        matches!(self, IdtKind::Assert)
-    }
-
-    pub const fn has_modulus(self) -> bool {
-        matches!(self, IdtKind::Modulus | IdtKind::ModulusOffset)
-    }
-
-    pub const fn has_offset(self) -> bool {
-        matches!(self, IdtKind::ModulusOffset)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum PlaceKind {
-    Var(Variable),
-    FunctionReturn(hir::Function),
-    FunctionArg(hir::FunctionArg),
-    Contribute {
-        dst: BranchWrite,
-        reactive: bool,
-        voltage_src: bool,
-    },
-    ImplicitResidual {
-        equation: ImplicitEquation,
-        reactive: bool,
-    },
-    CollapseImplicitEquation(ImplicitEquation),
-    IsVoltageSrc(BranchWrite),
-    /// A parameter during param initiliztion is mutable (write default in case its not given)
-    Param(Parameter),
-    ParamMin(Parameter),
-    ParamMax(Parameter),
-    BoundStep,
-}
-
-impl PlaceKind {
-    pub fn ty(&self, db: &CompilationDB) -> Type {
-        match *self {
-            PlaceKind::Var(var) => var.ty(db),
-            PlaceKind::FunctionReturn(fun) => fun.return_ty(db),
-            PlaceKind::FunctionArg(arg) => arg.ty(db),
-
-            PlaceKind::ImplicitResidual { .. }
-            | PlaceKind::Contribute { .. }
-            | PlaceKind::BoundStep => Type::Real,
-            PlaceKind::ParamMin(param) | PlaceKind::ParamMax(param) | PlaceKind::Param(param) => {
-                param.ty(db)
-            }
-            PlaceKind::IsVoltageSrc(_) | PlaceKind::CollapseImplicitEquation(_) => Type::Bool,
-        }
-    }
-
-    pub fn is_init_only(&self) -> bool {
-        matches!(self, Self::CollapseImplicitEquation(_))
+        (func, interner)
     }
 }
 
-impl From<hir::AssignmentLhs> for PlaceKind {
-    fn from(hir: hir::AssignmentLhs) -> Self {
-        match hir {
-            hir::AssignmentLhs::Variable(var) => PlaceKind::Var(var),
-            hir::AssignmentLhs::FunctionReturn(fun) => PlaceKind::FunctionReturn(fun),
-            hir::AssignmentLhs::FunctionArg(arg) => PlaceKind::FunctionArg(arg),
-        }
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ImplicitEquation(u32);
-impl_idx_from!(ImplicitEquation(u32));
-impl_debug_display! {
-    match ImplicitEquation {ImplicitEquation(i) => "inode{}", i;}
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LimitState(u32);
-impl_idx_from!(LimitState(u32));
-impl_debug_display! {
-    match LimitState {LimitState(i) => "lim_state{}", i;}
-}
-
-/// A mapping between abstractions used in the MIR and the corresponding
-/// information from the HIR. This allows the MIR to remain independent of the frontend/HIR
+/// A mapping between abstractions used in the MIR and the corresponding information
+/// from the HIR，which allows the MIR to remain independent of the frontend/HIR.
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct HirInterner {
     pub outputs: IndexMap<PlaceKind, PackedOption<Value>, ahash::RandomState>,
@@ -232,10 +168,12 @@ pub struct HirInterner {
     pub lim_state: TiMap<LimitState, Value, Vec<(Value, bool)>>,
 }
 
+/*
 pub type LiveParams<'a> = FilterMap<
     map::Iter<'a, Param, ParamKind, Value>,
-    fn((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)>,
+    impl FnMut((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)>,
 >;
+*/
 
 impl HirInterner {
     fn contains_ddx(
@@ -397,121 +335,177 @@ impl HirInterner {
     }
 }
 
-pub struct MirBuilder<'a> {
-    db: &'a CompilationDB,
-    module: Module,
-    is_output: &'a dyn Fn(PlaceKind) -> bool,
-    required_vars: &'a mut dyn Iterator<Item = Variable>,
-    tagged_reads: AHashSet<Variable>,
-    tag_writes: bool,
-    ctx: Option<&'a mut FunctionBuilderContext>,
-    lower_equations: bool,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CurrentKind {
+    Branch(Branch),
+    Unnamed { hi: Node, lo: Option<Node> },
+    Port(Node),
+}
+impl From<BranchWrite> for CurrentKind {
+    fn from(kind: BranchWrite) -> Self {
+        match kind {
+            BranchWrite::Named(branch) => CurrentKind::Branch(branch),
+            BranchWrite::Unnamed { hi, lo } => CurrentKind::Unnamed { hi, lo },
+        }
+    }
+}
+impl TryFrom<CurrentKind> for BranchWrite {
+    type Error = ();
+    fn try_from(kind: CurrentKind) -> Result<BranchWrite, ()> {
+        match kind {
+            CurrentKind::Branch(branch) => Ok(BranchWrite::Named(branch)),
+            CurrentKind::Unnamed { hi, lo } => Ok(BranchWrite::Unnamed { hi, lo }),
+            CurrentKind::Port(_) => Err(()),
+        }
+    }
 }
 
-impl<'a> MirBuilder<'a> {
-    pub fn new(
-        db: &'a CompilationDB,
-        module: Module,
-        is_output: &'a dyn Fn(PlaceKind) -> bool,
-        required_vars: &'a mut dyn Iterator<Item = Variable>,
-    ) -> MirBuilder<'a> {
-        MirBuilder {
-            db,
-            module,
-            tagged_reads: AHashSet::new(),
-            is_output,
-            required_vars,
-            ctx: None,
-            lower_equations: false,
-            tag_writes: false,
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ImplicitEquation(u32);
+impl_idx_from!(ImplicitEquation(u32));
+impl_debug_display! {
+    match ImplicitEquation {ImplicitEquation(i) => "inode{}", i;}
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LimitState(u32);
+impl_idx_from!(LimitState(u32));
+impl_debug_display! {
+    match LimitState {LimitState(i) => "lim_state{}", i;}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ImplicitEquationKind {
+    Ddt,
+    NoiseSrc,
+    Idt(IdtKind),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum IdtKind {
+    Basic,
+    Ic,
+    Assert,
+    Modulus,
+    ModulusOffset,
+}
+impl IdtKind {
+    pub const fn num_params(self) -> u16 {
+        match self {
+            IdtKind::Basic => 1,
+            IdtKind::Ic => 2,
+            IdtKind::Assert | IdtKind::Modulus => 3,
+            IdtKind::ModulusOffset => 4,
+        }
+    }
+    pub const fn has_ic(self) -> bool {
+        !matches!(self, IdtKind::Basic)
+    }
+
+    pub const fn has_assert(self) -> bool {
+        matches!(self, IdtKind::Assert)
+    }
+
+    pub const fn has_modulus(self) -> bool {
+        matches!(self, IdtKind::Modulus | IdtKind::ModulusOffset)
+    }
+
+    pub const fn has_offset(self) -> bool {
+        matches!(self, IdtKind::ModulusOffset)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ParamKind {
+    Param(Parameter),
+    Abstime,
+    EnableIntegration,
+    EnableLim,
+    PrevState(LimitState),
+    NewState(LimitState),
+    Voltage { hi: Node, lo: Option<Node> },
+    Current(CurrentKind),
+    Temperature,
+    ParamGiven { param: Parameter },
+    PortConnected { port: Node },
+    ParamSysFun(ParamSysFun),
+    HiddenState(Variable),
+    ImplicitUnknown(ImplicitEquation),
+}
+impl ParamKind {
+    /// Unwrap potential node `n` from access functions like `V(n)`.
+    fn unwrap_pot_node(&self) -> Node {
+        match self {
+            ParamKind::Voltage { hi, lo: None } => *hi,
+            _ => unreachable!("called unwrap_pot_node on {:?}", self),
         }
     }
 
-    pub fn tag_reads(&mut self, var: Variable) -> bool {
-        self.tagged_reads.insert(var)
+    pub fn op_dependent(&self) -> bool {
+        matches!(
+            self,
+            ParamKind::Voltage { .. }
+                | ParamKind::Current(_)
+                | ParamKind::ImplicitUnknown(_)
+                | ParamKind::Abstime
+                | ParamKind::EnableIntegration
+                | ParamKind::HiddenState(_)
+                | ParamKind::PrevState(_)
+                | ParamKind::NewState(_)
+                | ParamKind::EnableLim
+        )
     }
+}
 
-    pub fn with_tagged_reads(mut self, tagged_vars: AHashSet<Variable>) -> Self {
-        self.tagged_reads = tagged_vars;
-        self
-    }
-
-    pub fn tag_writes(&mut self) {
-        self.tag_writes = true;
-    }
-
-    pub fn with_tagged_writes(mut self) -> Self {
-        self.tag_writes = true;
-        self
-    }
-
-    pub fn lower_equations(&mut self) {
-        self.lower_equations = true;
-    }
-
-    pub fn with_equations(mut self) -> Self {
-        self.lower_equations = true;
-        self
-    }
-
-    pub fn with_ctx(mut self, ctx: &'a mut FunctionBuilderContext) -> Self {
-        self.ctx = Some(ctx);
-        self
-    }
-
-    pub fn with_builder_ctx(mut self, ctx: &'a mut FunctionBuilderContext) -> Self {
-        self.ctx = Some(ctx);
-        self
-    }
-
-    pub fn build(self, literals: &mut Rodeo) -> (Function, HirInterner) {
-        let mut func = Function::default();
-        let mut interner = HirInterner::default();
-
-        let mut ctx_;
-        let ctx = if let Some(ctx) = self.ctx {
-            ctx
-        } else {
-            ctx_ = FunctionBuilderContext::new();
-            &mut ctx_
-        };
-
-        let builder: FunctionBuilder<'_> =
-            FunctionBuilder::new(&mut func, literals, ctx, self.tag_writes);
-        let path = self.module.name(self.db);
-        let analog_initial_body = self.module.analog_initial_block(self.db);
-        let analog_body = self.module.analog_block(self.db);
-
-        let mut ctx = LoweringCtx::new(self.db, builder, !self.lower_equations, &mut interner)
-            .with_tagged_vars(self.tagged_reads);
-        let mut body_ctx =
-            BodyLoweringCtx { ctx: &mut ctx, body: analog_initial_body.borrow(), path: &path };
-
-        // lower analog initial blocks first
-        body_ctx.lower_entry_stmts();
-        // ... and normal analog blocks afterwards
-        body_ctx.body = analog_body.borrow();
-        body_ctx.lower_entry_stmts();
-
-        for var in self.required_vars {
-            ctx.dec_place(PlaceKind::Var(var));
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PlaceKind {
+    Var(Variable),
+    FunctionReturn(hir::Function),
+    FunctionArg(hir::FunctionArg),
+    Contribute {
+        dst: BranchWrite,
+        reactive: bool,
+        potential: bool,
+    },
+    ImplicitResidual {
+        equation: ImplicitEquation,
+        reactive: bool,
+    },
+    CollapseImplicitEquation(ImplicitEquation),
+    IsPotential(BranchWrite),
+    /// A parameter during initializtion is mutable (write default in case it's not given)
+    Param(Parameter),
+    ParamMin(Parameter),
+    ParamMax(Parameter),
+    BoundStep,
+}
+impl PlaceKind {
+    pub fn ty(&self, db: &CompilationDB) -> Type {
+        match *self {
+            PlaceKind::Var(var) => var.ty(db),
+            PlaceKind::FunctionReturn(fun) => fun.return_ty(db),
+            PlaceKind::FunctionArg(arg) => arg.ty(db),
+            PlaceKind::ParamMin(param) | PlaceKind::ParamMax(param) | PlaceKind::Param(param) => {
+                param.ty(db)
+            }
+            PlaceKind::IsPotential(_) | PlaceKind::CollapseImplicitEquation(_) => Type::Bool,
+            PlaceKind::ImplicitResidual { .. }
+            | PlaceKind::Contribute { .. }
+            | PlaceKind::BoundStep => Type::Real,
         }
-        let is_output = self.is_output;
-        ctx.intern.outputs = ctx
-            .places
-            .iter_enumerated()
-            .map(|(place, kind)| {
-                if is_output(*kind) {
-                    let mut val = ctx.func.use_var(place);
-                    val = ctx.func.ins().ensure_optbarrier(val);
-                    (*kind, val.into())
-                } else {
-                    (*kind, None.into())
-                }
-            })
-            .collect();
-        ctx.func.ins().ret();
-        ctx.func.finalize();
-        (func, interner)
+    }
+
+    /// ???
+    pub fn is_init_only(&self) -> bool {
+        matches!(self, Self::CollapseImplicitEquation(_))
+    }
+}
+impl From<hir::AssignmentLhs> for PlaceKind {
+    fn from(hir: hir::AssignmentLhs) -> Self {
+        match hir {
+            hir::AssignmentLhs::Variable(var) => PlaceKind::Var(var),
+            hir::AssignmentLhs::FunctionReturn(fun) => PlaceKind::FunctionReturn(fun),
+            hir::AssignmentLhs::FunctionArg(arg) => PlaceKind::FunctionArg(arg),
+        }
     }
 }

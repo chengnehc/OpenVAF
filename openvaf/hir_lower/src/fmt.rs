@@ -35,6 +35,13 @@ pub struct FmtArg {
 }
 
 impl BodyLoweringCtx<'_, '_, '_> {
+    pub fn resolved_ty(&self, expr: ExprId) -> Type {
+        self.body
+            .needs_cast(expr)
+            .map(|(_, dst)| dst.to_owned())
+            .unwrap_or_else(|| self.body.expr_type(expr))
+    }
+
     pub fn ins_display(&mut self, kind: DisplayKind, newline: bool, args: &[ExprId]) {
         let mut fmt_lit = String::new();
         let mut call_args = vec![GRAVESTONE];

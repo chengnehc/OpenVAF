@@ -7,7 +7,6 @@ use crate::{CallBackKind, CurrentKind, ParamKind, PlaceKind};
 
 impl BodyLoweringCtx<'_, '_, '_> {
     pub(super) fn lower_stmt(&mut self, stmnt: StmtId) {
-        // TODO(msrv): let .. else
         let stmnt = if let Some(stmnt) = self.body.get_stmt(stmnt) {
             stmnt
         } else {
@@ -26,9 +25,8 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 self.ctx.def_place(lhs.into(), val_);
             }
             Stmt::Contribute { kind, branch, rhs } => {
-                self.contribute(kind == ContributeKind::Potential, branch, rhs)
+                self.lower_contribute(kind == ContributeKind::Potential, branch, rhs)
             }
-
             Stmt::Block { body } => {
                 for stmt in body {
                     self.lower_stmt(*stmt)
@@ -36,7 +34,6 @@ impl BodyLoweringCtx<'_, '_, '_> {
             }
             Stmt::If { cond, then_branch, else_branch } => {
                 let cond_ = self.lower_expr(cond);
-
                 self.ctx.make_cond(cond_, |ctx, branch| {
                     let stmt = if branch { then_branch } else { else_branch };
                     BodyLoweringCtx { body: self.body, path: self.path, ctx }.lower_stmt(stmt);
@@ -141,25 +138,29 @@ impl BodyLoweringCtx<'_, '_, '_> {
         self.ctx.switch_to_block(loop_end);
     }
 
-    fn contribute(&mut self, voltage_src: bool, mut write: BranchWrite, rhs: ExprId) {
+    fn lower_contribute(&mut self, potential: bool, mut dst: BranchWrite, rhs: ExprId) {
         let mut negate = false;
-        if let BranchWrite::Unnamed { hi, lo } = &mut write {
-            self.lower_contribute_unnamed_branch(&mut negate, hi, lo, voltage_src)
+        if let BranchWrite::Unnamed { hi, lo } = &mut dst {
+            self.lower_contribute_unnamed_branch(&mut negate, hi, lo, potential)
         }
-        self.ctx.def_place(PlaceKind::IsVoltageSrc(write), voltage_src.into());
+        self.ctx.def_place(PlaceKind::IsPotential(dst), potential.into());
 
-        let (mut hi, mut lo) = write.nodes(self.ctx.db);
+        // node collapse:
+        // - `V(n1, n2) <+ 0`
+        // - `V(b1) <+ 0`
+        let (mut hi, mut lo) = dst.nodes(self.ctx.db);
         let is_zero = self.body.get_expr(rhs).is_zero();
-        if voltage_src && is_zero {
-            if matches!(write, BranchWrite::Named(_)) {
-                self.lower_contribute_unnamed_branch(&mut negate, &mut hi, &mut lo, voltage_src)
+        if potential && is_zero {
+            // FIXME(JW): may be wrong?
+            if matches!(dst, BranchWrite::Named(_)) {
+                self.lower_contribute_unnamed_branch(&mut negate, &mut hi, &mut lo, potential)
             }
-            // TODO: make this a place instead?
+            // TODO: make this a 'place' instead?
             self.ctx.call(CallBackKind::CollapseHint(hi, lo), &[]);
         }
 
         self.ctx.def_place(
-            PlaceKind::Contribute { dst: write, reactive: false, voltage_src: !voltage_src },
+            PlaceKind::Contribute { dst, reactive: false, potential: !potential },
             F_ZERO,
         );
 
@@ -168,7 +169,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
             return;
         }
 
-        let place = PlaceKind::Contribute { dst: write, reactive: false, voltage_src };
+        let place = PlaceKind::Contribute { dst, reactive: false, potential };
         let old = self.ctx.use_place(place);
         let new = if negate {
             self.ctx.ins().fsub(old, rhs)
@@ -185,7 +186,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
         negate: &mut bool,
         hi: &mut Node,
         lo: &mut Option<Node>,
-        voltage_src: bool,
+        potential: bool,
     ) {
         let hi_ = self.ctx.node(*hi);
         let lo_ = lo.and_then(|lo| self.ctx.node(lo));
@@ -201,14 +202,14 @@ impl BodyLoweringCtx<'_, '_, '_> {
                     .get_place(PlaceKind::Contribute {
                         dst: BranchWrite::Unnamed { hi: lo, lo: Some(hi) },
                         reactive: false,
-                        voltage_src,
+                        potential,
                     })
                     .is_some();
                 if negate_known {
                     *negate = true;
                     (lo, Some(hi))
                 } else {
-                    let param_kind = if voltage_src {
+                    let param_kind = if potential {
                         ParamKind::Voltage { hi, lo: Some(lo) }
                     } else {
                         ParamKind::Current(CurrentKind::Unnamed { hi, lo: Some(lo) })

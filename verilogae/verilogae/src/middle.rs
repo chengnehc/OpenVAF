@@ -86,7 +86,7 @@ pub fn build_module_mir(
 
     // remove unused sideeffects
     for (id, _) in intern.callbacks.iter_enumerated() {
-        func.dfg.signatures[id].has_sideeffects = false;
+        func.dfg.signatures[id].has_side_effects = false;
     }
 
     let mut output_values = BitSet::new_empty(func.dfg.num_values());

@@ -4,16 +4,8 @@ use mir::{FunctionSignature, Param};
 use stdx::Ieee64;
 
 use crate::fmt::{DisplayKind, FmtArg};
+use crate::parameters::ParamInfoKind;
 use crate::LimitState;
-
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-pub enum ParamInfoKind {
-    Invalid,
-    MinInclusive,
-    MaxInclusive,
-    MinExclusive,
-    MaxExclusive,
-}
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum CallBackKind {
@@ -42,91 +34,91 @@ impl CallBackKind {
                 name: "simparam".to_owned(),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::SimParamOpt => FunctionSignature {
                 name: "simparam_opt".to_owned(),
                 params: 2,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::SimParamStr => FunctionSignature {
                 name: "simparam_str".to_owned(),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::Derivative(param) => FunctionSignature {
                 name: format!("ddx_{}", param),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::NodeDerivative(node) => FunctionSignature {
                 name: format!("ddx_node_{:?}", node),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::ParamInfo(kind, param) => FunctionSignature {
                 name: format!("set_{:?}({:?})", kind, param),
                 params: 0,
                 returns: 0,
-                has_sideeffects: true,
+                has_side_effects: true,
             },
             CallBackKind::CollapseHint(hi, lo) => FunctionSignature {
                 name: format!("collapse_{:?}_{:?}", hi, lo),
                 params: 0,
                 returns: 0,
-                has_sideeffects: true,
+                has_side_effects: true,
             },
             CallBackKind::Print { kind, arg_tys: args } => FunctionSignature {
                 name: format!("{:?})", kind),
                 params: args.len() as u16 + 1,
                 returns: 0,
-                has_sideeffects: true,
+                has_side_effects: true,
             },
             CallBackKind::BuiltinLimit { name, num_args } => FunctionSignature {
                 name: format!("$limit[{name:?}]"),
                 params: *num_args as u16,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::StoreLimit(state) => FunctionSignature {
                 name: format!("$store[{state:?}]"),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::LimDiscontinuity => FunctionSignature {
                 name: "$discontinuty[-1]".to_owned(),
                 params: 0,
                 returns: 0,
-                has_sideeffects: true,
+                has_side_effects: true,
             },
             CallBackKind::Analysis => FunctionSignature {
                 name: "analysis".to_owned(),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::TimeDerivative => FunctionSignature {
                 name: "ddt".to_string(),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::WhiteNoise { name, .. } => FunctionSignature {
                 name: format!("white_noise({name:?})"),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::FlickerNoise { name, .. } => FunctionSignature {
                 name: format!("flickr_noise({name:?})"),
                 params: 2,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
             CallBackKind::NoiseTable(table) => FunctionSignature {
                 name: format!(
@@ -137,7 +129,7 @@ impl CallBackKind {
                 ),
                 params: 1,
                 returns: 1,
-                has_sideeffects: false,
+                has_side_effects: false,
             },
         }
     }

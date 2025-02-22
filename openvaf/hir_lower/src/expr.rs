@@ -1,3 +1,5 @@
+use stdx::iter::zip;
+
 use hir::builtin::{
     FLICKER_NOISE_NAME, NOISE_TABLE_FILE_NAME, NOISE_TABLE_INLINE_NAME, WHITE_NOISE_NAME,
 };
@@ -13,7 +15,6 @@ use hir::{Body, BuiltIn, Expr, ExprId, Literal, /*ParamSysFun,*/ Ref, ResolvedFu
 use mir::builder::InstBuilder;
 use mir::{Opcode, Value, FALSE, F_ZERO, GRAVESTONE, INFINITY, TRUE, ZERO};
 use mir_build::RetBuilder;
-use stdx::iter::zip;
 use syntax::ast::{BinaryOp, UnaryOp};
 
 use crate::body::BodyLoweringCtx;
@@ -22,22 +23,29 @@ use crate::{
     CallBackKind, CurrentKind, IdtKind, ImplicitEquationKind, NoiseTable, ParamKind, PlaceKind,
 };
 
+macro_rules! match_signature {
+    ($signature:ident: $($case:ident $(| $extra_case:ident)* => $res:expr),*) => {
+        match $signature {
+            $($case $(|$extra_case)* => $res,)*
+            signature => unreachable!("invalid signature {:?}",signature)
+        }
+    };
+}
+
 impl BodyLoweringCtx<'_, '_, '_> {
     pub fn lower_expr(&mut self, expr: ExprId) -> Value {
         let old_loc = self.ctx.get_srcloc();
         self.ctx.set_srcloc(mir::SourceLoc::new(u32::from(expr) as i32 + 1));
 
         let mut res = match self.body.get_expr(expr) {
-            Expr::Read(Ref::Variable(var)) => self.ctx.read_variable(var),
-            Expr::Read(Ref::ParamSysFun(param)) => {
-                self.ctx.use_param(ParamKind::ParamSysFun(param))
-            }
-            Expr::Read(Ref::Parameter(param)) => self.ctx.use_param(ParamKind::Param(param)),
-            Expr::Read(Ref::FunctionReturn(fun)) => {
-                self.ctx.use_place(PlaceKind::FunctionReturn(fun))
-            }
-            Expr::Read(Ref::FunctionArg(fun)) => self.ctx.use_place(PlaceKind::FunctionArg(fun)),
-            Expr::Read(Ref::NatureAttr(attr)) => self.lower_body(attr.value(self.ctx.db), 0),
+            Expr::Read(reference) => match reference {
+                Ref::Variable(var) => self.ctx.read_variable(var),
+                Ref::Parameter(param) => self.ctx.use_param(ParamKind::Param(param)),
+                Ref::ParamSysFun(param) => self.ctx.use_param(ParamKind::ParamSysFun(param)),
+                Ref::FunctionArg(fun) => self.ctx.use_place(PlaceKind::FunctionArg(fun)),
+                Ref::FunctionReturn(fun) => self.ctx.use_place(PlaceKind::FunctionReturn(fun)),
+                Ref::NatureAttr(attr) => self.lower_body(attr.value(self.ctx.db), 0),
+            },
             Expr::BinaryOp { lhs, rhs, op } => self.lower_bin_op(expr, lhs, rhs, op),
             Expr::UnaryOp { expr: arg, op } => self.lower_unary_op(expr, arg, op),
             Expr::Select { cond, then_val, else_val } => {
@@ -76,10 +84,16 @@ impl BodyLoweringCtx<'_, '_, '_> {
         res
     }
 
+    fn lower_body(&mut self, body: Body, i: usize) -> Value {
+        let expr = body.borrow().get_entry_expr(i);
+        BodyLoweringCtx { ctx: self.ctx, body: body.borrow(), path: self.path }.lower_expr(expr)
+    }
+
     fn lower_unary_op(&mut self, expr: ExprId, arg: ExprId, op: UnaryOp) -> Value {
         let is_inf = self.body.as_literal(arg) == Some(&Literal::Inf);
         let arg_ = self.lower_expr(arg);
         match op {
+            // FIXME: incorrect bit negate?
             UnaryOp::BitNegate => self.ctx.ins().ineg(arg_),
             UnaryOp::Not => self.ctx.ins().bnot(arg_),
             UnaryOp::Neg => {
@@ -101,17 +115,13 @@ impl BodyLoweringCtx<'_, '_, '_> {
         }
     }
 
-    fn lower_array(&mut self, _expr: ExprId, _args: &[ExprId]) -> Value {
-        todo!("arrays")
-    }
     fn lower_bin_op(&mut self, expr: ExprId, lhs: ExprId, rhs: ExprId, op: BinaryOp) -> Value {
         let signature = self.body.get_call_signature(expr);
-        let op = match op {
+        let opcode = match op {
             BinaryOp::BooleanOr => {
                 // lhs || rhs if lhs { true } else { rhs }
                 return self.lower_select(lhs, |_| TRUE, |mut s| s.lower_expr(rhs));
             }
-
             BinaryOp::BooleanAnd => {
                 // lhs && rhs if lhs { rhs } else { false }
                 return self.lower_select(lhs, |mut s| s.lower_expr(rhs), |_| FALSE);
@@ -143,6 +153,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
             BinaryOp::LesserTest => {
                 match_signature!(signature: INT_OP => Opcode::Ilt, REAL_OP => Opcode::Flt)
             }
+
             BinaryOp::Addition => {
                 match_signature!(signature: INT_OP => Opcode::Iadd, REAL_OP => Opcode::Fadd)
             }
@@ -176,7 +187,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
 
         let lhs_ = self.lower_expr(lhs);
         let rhs_ = self.lower_expr(rhs);
-        self.ctx.ins().binary1(op, lhs_, rhs_)
+        self.ctx.ins().binary1(opcode, lhs_, rhs_)
     }
 
     fn lower_user_fun(&mut self, fun: hir::Function, lim: bool, args: &[ExprId]) -> Value {
@@ -263,23 +274,15 @@ impl BodyLoweringCtx<'_, '_, '_> {
     fn lower_builtin(&mut self, expr: ExprId, builtin: BuiltIn, args: &[ExprId]) -> Value {
         let signature = self.body.get_call_signature(expr);
         match builtin {
+            // Math functions
             BuiltIn::abs => {
                 let (negate, comparison, zero) = match_signature!(signature:
-                    ABS_REAL => (Opcode::Fneg, Opcode::Flt,  F_ZERO),
+                    ABS_REAL => (Opcode::Fneg, Opcode::Flt, F_ZERO),
                     ABS_INT => (Opcode::Ineg, Opcode::Ilt, ZERO)
                 );
                 let val = self.lower_expr(args[0]);
-                let (inst, dfg) = self.ctx.ins().binary(comparison, val, zero);
-                let cond = dfg.first_result(inst);
-
-                self.lower_select_with(
-                    cond,
-                    |sel| {
-                        let (inst, dfg) = sel.ctx.ins().unary(negate, val);
-                        dfg.first_result(inst)
-                    },
-                    |_| val,
-                )
+                let cond = self.ctx.ins().binary1(comparison, val, zero);
+                self.lower_select_with(cond, |sel| sel.ctx.ins().unary1(negate, val), |_| val)
             }
             BuiltIn::acos => {
                 let arg0 = self.lower_expr(args[0]);
@@ -318,29 +321,9 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 let arg0 = self.lower_expr(args[0]);
                 self.ctx.ins().cosh(arg0)
             }
-            // TODO implement limexp properly
             BuiltIn::exp => {
                 let arg0 = self.lower_expr(args[0]);
                 self.ctx.ins().exp(arg0)
-            }
-
-            BuiltIn::limexp => {
-                let arg0 = self.lower_expr(args[0]);
-                // let (state, store) = self.stateful_callback(CallBackKind::StoreState);
-                let cut_off = self.ctx.fconst(1e30f64.ln());
-                let off = self.ctx.fconst(1e30f64);
-
-                // let change = self.ctx.ins().fsub(arg0, state);
-                let linearize = self.ctx.ins().fgt(arg0, cut_off);
-                self.ctx.make_select(linearize, |func, linearize| {
-                    if linearize {
-                        let delta = func.ins().fsub(arg0, cut_off);
-                        let lin = func.ins().fmul(off, delta);
-                        func.ins().fadd(off, lin)
-                    } else {
-                        func.ins().exp(arg0)
-                    }
-                })
             }
             BuiltIn::floor => {
                 let arg0 = self.lower_expr(args[0]);
@@ -387,7 +370,6 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 let arg0 = self.lower_expr(args[0]);
                 self.ctx.ins().ceil(arg0)
             }
-
             BuiltIn::max => {
                 let comparison = match_signature!(signature: MAX_REAL => InstBuilder::fgt, MAX_INT => InstBuilder::igt);
                 let arg0 = self.lower_expr(args[0]);
@@ -408,155 +390,16 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 self.ctx.ins().pow(arg0, arg1)
             }
 
-            BuiltIn::write => {
-                self.ins_display(DisplayKind::Display, false, args);
-                GRAVESTONE
-            }
-            BuiltIn::display | BuiltIn::strobe | BuiltIn::monitor => {
-                self.ins_display(DisplayKind::Display, true, args);
-                GRAVESTONE
-            }
-            BuiltIn::debug => {
-                self.ins_display(DisplayKind::Debug, true, args);
-                GRAVESTONE
-            }
-
-            BuiltIn::warning => {
-                self.ins_display(DisplayKind::Warn, true, args);
-                GRAVESTONE
-            }
-            BuiltIn::error => {
-                self.ins_display(DisplayKind::Error, true, args);
-                GRAVESTONE
-            }
-            BuiltIn::info => {
-                self.ins_display(DisplayKind::Info, true, args);
-                GRAVESTONE
-            }
-
-            BuiltIn::fatal => {
-                self.ins_display(DisplayKind::Fatal, true, args);
-                self.ctx.ins().ret();
-
-                let unreachable_bb = self.ctx.create_block();
-                self.ctx.switch_to_block(unreachable_bb);
-                self.ctx.seal_block(unreachable_bb);
-                GRAVESTONE
-            }
-            BuiltIn::analysis => {
-                let arg = self.lower_expr(args[0]);
-                self.ctx.call1(CallBackKind::Analysis, &[arg])
-            }
-
-            BuiltIn::noise_table
-            | BuiltIn::noise_table_log
-            | BuiltIn::white_noise
-            | BuiltIn::ac_stim
-            | BuiltIn::flicker_noise
-                if self.ctx.no_equations =>
-            {
-                F_ZERO
-            }
-
-            BuiltIn::white_noise => {
-                // we create a dedicated callback for each noise source
-                // by giving every source a unique index. Kind of ineffcient
-                // but necessary to avoid accidental correlation/opimization
-                // (for example white_noise(x) - white_noise(x) is not zero)
-                let idx = self.ctx.num_noise_sources;
-                self.ctx.num_noise_sources += 1;
-                let name = if signature == WHITE_NOISE_NAME {
-                    let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
-                    self.ctx.func.interner.get_or_intern(name)
-                } else {
-                    let name = format!("unnamed{idx}");
-                    self.ctx.func.interner.get_or_intern(name)
-                };
-                let pwr = self.lower_expr(args[0]);
-                self.ctx.call1(CallBackKind::WhiteNoise { name, idx }, &[pwr])
-            }
-            BuiltIn::flicker_noise => {
-                // see above
-                let idx = self.ctx.num_noise_sources;
-                self.ctx.num_noise_sources += 1;
-                let name = if signature == FLICKER_NOISE_NAME {
-                    let name = self.body.as_literal(args[2]).unwrap().unwrap_str();
-                    self.ctx.func.interner.get_or_intern(name)
-                } else {
-                    let name = format!("unnamed{idx}");
-                    self.ctx.func.interner.get_or_intern(name)
-                };
-                let pwr = self.lower_expr(args[0]);
-                let exp = self.lower_expr(args[1]);
-                self.ctx.call1(CallBackKind::FlickerNoise { name, idx }, &[pwr, exp])
-            }
-            BuiltIn::noise_table | BuiltIn::noise_table_log => {
-                // see above
-                let idx = self.ctx.num_noise_sources;
-                self.ctx.num_noise_sources += 1;
-                let name = if matches!(signature, NOISE_TABLE_INLINE_NAME | NOISE_TABLE_FILE_NAME) {
-                    let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
-                    self.ctx.func.interner.get_or_intern(name)
-                } else {
-                    let name = format!("unnamed{idx}");
-                    self.ctx.func.interner.get_or_intern(name)
-                };
-                let log = builtin == BuiltIn::noise_table_log;
-                let noise_table = NoiseTable::new([(0.0, 0.0)], log, name, idx);
-                self.ctx.call1(CallBackKind::NoiseTable(Box::new(noise_table)), &[])
-            }
-
-            BuiltIn::abstime => self.ctx.use_param(ParamKind::Abstime),
-
-            BuiltIn::ddt => {
-                if self.ctx.no_equations {
-                    return F_ZERO;
-                }
-                let arg = self.lower_expr(args[0]);
-                self.ctx.call1(CallBackKind::TimeDerivative, &[arg])
-            }
-
-            BuiltIn::idt | BuiltIn::idtmod if self.ctx.no_equations => {
-                match signature {
-                    IDT_NO_IC => F_ZERO, // fair enough approximation
-                    _ => self.lower_expr(args[1]),
-                }
-            }
-
-            BuiltIn::idt => {
-                let kind = match_signature! {
-                    signature:
-                        IDT_NO_IC => IdtKind::Basic,
-                        IDT_IC => IdtKind::Ic,
-                        // we currently do not support tolerance
-                        IDT_IC_ASSERT | IDT_IC_ASSERT_TOL | IDT_IC_ASSERT_NATURE => IdtKind::Assert
-                };
-
-                self.lower_integral(kind, args)
-            }
-
-            BuiltIn::idtmod => {
-                let kind = match_signature! {
-                    signature:
-                        IDTMOD_NO_IC => IdtKind::Basic,
-                        IDTMOD_IC => IdtKind::Ic,
-                        IDTMOD_IC_MODULUS => IdtKind::Modulus,
-                        // we currently do not support tolerance
-                        IDTMOD_IC_MODULUS_OFFSET
-                        | IDTMOD_IC_MODULUS_OFFSET_TOL
-                        | IDTMOD_IC_MODULUS_OFFSET_NATURE => IdtKind::ModulusOffset
-                };
-
-                self.lower_integral(kind, args)
-            }
-
+            // Signal access functions
             BuiltIn::flow => {
                 let res = match_signature! {
                     signature:
-                        NATURE_ACCESS_NODES|NATURE_ACCESS_NODE_GND => self.nodes_from_args(
-                            args,
-                            |hi, lo| ParamKind::Current(CurrentKind::Unnamed{hi,lo})
-                        ),
+                        NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
+                            let hi = self.body.into_node(args[0]);
+                            let lo = args.get(1).map(|&arg| self.body.into_node(arg));
+                            self.ctx.nodes(hi, lo,
+                            |hi, lo| ParamKind::Current(CurrentKind::Unnamed{hi, lo})
+                        )},
                         NATURE_ACCESS_BRANCH => self.ctx.use_param(ParamKind::Current(
                             CurrentKind::Branch(self.body.into_branch(args[0]))
                         )),
@@ -575,15 +418,190 @@ impl BodyLoweringCtx<'_, '_, '_> {
             BuiltIn::potential => {
                 match_signature! {
                     signature:
-                        NATURE_ACCESS_NODES|NATURE_ACCESS_NODE_GND => self.nodes_from_args( args, |hi,lo|ParamKind::Voltage{hi,lo}),
+                        NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
+                            let hi = self.body.into_node(args[0]);
+                            let lo = args.get(1).map(|&arg| self.body.into_node(arg));
+                            self.ctx.nodes(hi, lo, |hi, lo| ParamKind::Voltage{hi, lo})
+                        },
                         NATURE_ACCESS_BRANCH => {
                             let branch = self.body.into_branch(args[0]).kind(self.ctx.db);
-                            self.ctx.nodes(branch.unwrap_hi_node(), branch.lo_node(), |hi, lo| ParamKind::Voltage{ hi, lo })
+                            self.ctx.nodes(branch.unwrap_hi_node(), branch.lo_node(),
+                            |hi, lo| ParamKind::Voltage{hi, lo})
                         }
                 }
             }
+
+            // Analog operators
+            BuiltIn::ddt => {
+                if self.ctx.no_equations {
+                    return F_ZERO;
+                }
+                // JW: it seems that tolerance is currently not supported.
+                let arg = self.lower_expr(args[0]);
+                self.ctx.call1(CallBackKind::TimeDerivative, &[arg])
+            }
+            BuiltIn::ddx => {
+                let val = self.lower_expr(args[0]);
+                let unknown = self.lower_expr(args[1]);
+                let call = if signature == DDX_POT {
+                    // TODO how to handle gnd nodes?
+                    let node = self.ctx.unwrap_pot_node(unknown);
+                    CallBackKind::NodeDerivative(node)
+                } else {
+                    CallBackKind::Derivative(self.ctx.dfg().value_def(unknown).unwrap_param())
+                };
+                self.ctx.call1(call, &[val])
+            }
+            BuiltIn::idt | BuiltIn::idtmod if self.ctx.no_equations => {
+                match signature {
+                    IDT_NO_IC => F_ZERO,           // fair enough approximation
+                    _ => self.lower_expr(args[1]), // get ic
+                }
+            }
+            BuiltIn::idt => {
+                let kind = match_signature! {
+                    signature:
+                        IDT_NO_IC => IdtKind::Basic,
+                        IDT_IC => IdtKind::Ic,
+                        // we currently do not support tolerance
+                        IDT_IC_ASSERT | IDT_IC_ASSERT_TOL | IDT_IC_ASSERT_NATURE => IdtKind::Assert
+                };
+
+                self.lower_integral(kind, args)
+            }
+            BuiltIn::idtmod => {
+                let kind = match_signature! {
+                    signature:
+                        IDTMOD_NO_IC => IdtKind::Basic,
+                        IDTMOD_IC => IdtKind::Ic,
+                        IDTMOD_IC_MODULUS => IdtKind::Modulus,
+                        // we currently do not support tolerance
+                        IDTMOD_IC_MODULUS_OFFSET
+                        | IDTMOD_IC_MODULUS_OFFSET_TOL
+                        | IDTMOD_IC_MODULUS_OFFSET_NATURE => IdtKind::ModulusOffset
+                };
+
+                self.lower_integral(kind, args)
+            }
+            BuiltIn::limexp => {
+                let arg0 = self.lower_expr(args[0]);
+                let cut_off = self.ctx.fconst(1e30f64.ln());
+                let off = self.ctx.fconst(1e30f64);
+                let linearize = self.ctx.ins().fgt(arg0, cut_off);
+                self.ctx.make_select(linearize, |func, linearize| {
+                    if linearize {
+                        let delta = func.ins().fsub(arg0, cut_off);
+                        let lin = func.ins().fmul(off, delta);
+                        func.ins().fadd(off, lin)
+                    } else {
+                        func.ins().exp(arg0)
+                    }
+                })
+            }
+
+            // Analysis dependent functions
+            BuiltIn::analysis => {
+                let arg = self.lower_expr(args[0]);
+                self.ctx.call1(CallBackKind::Analysis, &[arg])
+            }
+            BuiltIn::noise_table
+            | BuiltIn::noise_table_log
+            | BuiltIn::white_noise
+            | BuiltIn::flicker_noise
+            | BuiltIn::ac_stim
+                if self.ctx.no_equations =>
+            {
+                F_ZERO
+            }
+            BuiltIn::white_noise => {
+                // we create a dedicated callback for each noise source
+                // by giving every source a unique index. Kind of ineffcient
+                // but necessary to avoid accidental correlation/opimization
+                // (for example white_noise(x) - white_noise(x) is not zero)
+                let idx = self.ctx.num_noise_sources;
+                self.ctx.num_noise_sources += 1;
+                let pwr = self.lower_expr(args[0]);
+                let name = if signature == WHITE_NOISE_NAME {
+                    let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
+                    self.ctx.func.interner.get_or_intern(name)
+                } else {
+                    let name = format!("unnamed{idx}");
+                    self.ctx.func.interner.get_or_intern(name)
+                };
+                self.ctx.call1(CallBackKind::WhiteNoise { name, idx }, &[pwr])
+            }
+            BuiltIn::flicker_noise => {
+                // see above
+                let idx = self.ctx.num_noise_sources;
+                self.ctx.num_noise_sources += 1;
+                let pwr = self.lower_expr(args[0]);
+                let exp = self.lower_expr(args[1]);
+                let name = if signature == FLICKER_NOISE_NAME {
+                    let name = self.body.as_literal(args[2]).unwrap().unwrap_str();
+                    self.ctx.func.interner.get_or_intern(name)
+                } else {
+                    let name = format!("unnamed{idx}");
+                    self.ctx.func.interner.get_or_intern(name)
+                };
+                self.ctx.call1(CallBackKind::FlickerNoise { name, idx }, &[pwr, exp])
+            }
+            BuiltIn::noise_table | BuiltIn::noise_table_log => {
+                // see above
+                // JW: currently not supported
+                let idx = self.ctx.num_noise_sources;
+                self.ctx.num_noise_sources += 1;
+                let name = if matches!(signature, NOISE_TABLE_INLINE_NAME | NOISE_TABLE_FILE_NAME) {
+                    let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
+                    self.ctx.func.interner.get_or_intern(name)
+                } else {
+                    let name = format!("unnamed{idx}");
+                    self.ctx.func.interner.get_or_intern(name)
+                };
+                let log = builtin == BuiltIn::noise_table_log;
+                let noise_table = NoiseTable::new([(0.0, 0.0)], log, name, idx);
+                self.ctx.call1(CallBackKind::NoiseTable(Box::new(noise_table)), &[])
+            }
+
+            // System tasks and functions
+            BuiltIn::write => {
+                self.ins_display(DisplayKind::Display, false, args);
+                GRAVESTONE
+            }
+            BuiltIn::display | BuiltIn::strobe | BuiltIn::monitor => {
+                self.ins_display(DisplayKind::Display, true, args);
+                GRAVESTONE
+            }
+            BuiltIn::debug => {
+                self.ins_display(DisplayKind::Debug, true, args);
+                GRAVESTONE
+            }
+            BuiltIn::warning => {
+                self.ins_display(DisplayKind::Warn, true, args);
+                GRAVESTONE
+            }
+            BuiltIn::error => {
+                self.ins_display(DisplayKind::Error, true, args);
+                GRAVESTONE
+            }
+            BuiltIn::info => {
+                self.ins_display(DisplayKind::Info, true, args);
+                GRAVESTONE
+            }
+            BuiltIn::fatal => {
+                self.ins_display(DisplayKind::Fatal, true, args);
+                self.ctx.ins().ret();
+
+                let unreachable_bb = self.ctx.create_block();
+                self.ctx.switch_to_block(unreachable_bb);
+                self.ctx.seal_block(unreachable_bb);
+                GRAVESTONE
+            }
+            BuiltIn::finish | BuiltIn::stop => GRAVESTONE,
+            BuiltIn::abstime => self.ctx.use_param(ParamKind::Abstime),
+            BuiltIn::temperature => self.ctx.use_param(ParamKind::Temperature),
             BuiltIn::vt => {
-                // TODO make this a database input
+                // TODO: make this a database input
+                // According to NIST2010
                 const KB: f64 = 1.3806488e-23;
                 const Q: f64 = 1.602176565e-19;
 
@@ -595,20 +613,6 @@ impl BodyLoweringCtx<'_, '_, '_> {
 
                 self.ctx.ins().fmul(fac, temp)
             }
-
-            BuiltIn::ddx => {
-                let val = self.lower_expr(args[0]);
-                let unknown = self.lower_expr(args[1]);
-                let call = if signature == DDX_POT {
-                    // TODO how to handle gnd nodes?
-                    let node = self.ctx.unwrap_node(unknown);
-                    CallBackKind::NodeDerivative(node)
-                } else {
-                    CallBackKind::Derivative(self.ctx.dfg().value_def(unknown).unwrap_param())
-                };
-                self.ctx.call1(call, &[val])
-            }
-            BuiltIn::temperature => self.ctx.use_param(ParamKind::Temperature),
             BuiltIn::simparam => {
                 let arg0 = self.lower_expr(args[0]);
                 match_signature! {signature:
@@ -634,41 +638,16 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 self.ctx.def_place(PlaceKind::BoundStep, step_size);
                 GRAVESTONE
             }
-
-            BuiltIn::limit if signature == LIMIT_BUILTIN_FUNCTION && !self.ctx.no_equations => {
-                let new_val = self.lower_expr(args[0]);
-                let state = self.ctx.start_limit(new_val);
-                let prev_val = self.ctx.use_param(ParamKind::PrevState(state));
-                let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
-                let name = self.ctx.func.interner.get_or_intern(name);
-                let mut call_args = vec![new_val, prev_val];
-                call_args.extend(args[2..].iter().map(|arg| self.lower_expr(*arg)));
-
-                let enable_lim = self.ctx.use_param(ParamKind::EnableLim);
-                let res = self.ctx.make_select(enable_lim, |func, lim| {
-                    if lim {
-                        func.call1(
-                            CallBackKind::BuiltinLimit { name, num_args: args.len() as u32 },
-                            &call_args,
-                        )
-                    } else {
-                        new_val
-                    }
-                });
-
-                self.ctx.finish_limit(state, res)
-            }
             BuiltIn::discontinuity => {
                 // AB: Negative literals are represented as UnaryOp::Neg(Literal)
                 //     We have a function for that now.
-                if self.ctx.inside_lim && Some(-1) == self.body.as_literalsignedint(&args[0]) {
+                if self.ctx.inside_lim && Some(-1) == self.body.as_signed_int_literal(&args[0]) {
                     self.ctx.call(CallBackKind::LimDiscontinuity, &[]);
                 } else {
                     // TODO implement support for discontinuity?
                 }
                 GRAVESTONE
             }
-            BuiltIn::finish | BuiltIn::stop => GRAVESTONE,
 
             /* TODO: absdelay
             BuiltIn::absdelay => {
@@ -697,6 +676,31 @@ impl BodyLoweringCtx<'_, '_, '_> {
 
                 res
             }*/
+            // Special case for $limit(), a sysfunc that can be used as analog operator.
+            BuiltIn::limit if signature == LIMIT_BUILTIN_FUNCTION && !self.ctx.no_equations => {
+                let new_val = self.lower_expr(args[0]);
+                let state = self.ctx.start_limit(new_val);
+                let prev_val = self.ctx.use_param(ParamKind::PrevState(state));
+                let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
+                let name = self.ctx.func.interner.get_or_intern(name);
+                let mut call_args = vec![new_val, prev_val];
+                call_args.extend(args[2..].iter().map(|arg| self.lower_expr(*arg)));
+
+                let enable_lim = self.ctx.use_param(ParamKind::EnableLim);
+                let res = self.ctx.make_select(enable_lim, |func, lim| {
+                    if lim {
+                        func.call1(
+                            CallBackKind::BuiltinLimit { name, num_args: args.len() as u32 },
+                            &call_args,
+                        )
+                    } else {
+                        new_val
+                    }
+                });
+
+                self.ctx.finish_limit(state, res)
+            }
+
             BuiltIn::slew | BuiltIn::transition | BuiltIn::limit | BuiltIn::absdelay => {
                 self.lower_expr(args[0])
             }
@@ -767,15 +771,8 @@ impl BodyLoweringCtx<'_, '_, '_> {
         val
     }
 
-    pub fn resolved_ty(&self, expr: ExprId) -> Type {
-        self.body
-            .needs_cast(expr)
-            .map(|(_, dst)| dst.to_owned())
-            .unwrap_or_else(|| self.body.expr_type(expr))
-    }
-
-    pub fn lower_body(&mut self, body: Body, i: usize) -> Value {
-        let expr = body.borrow().get_entry_expr(i);
-        BodyLoweringCtx { ctx: self.ctx, body: body.borrow(), path: self.path }.lower_expr(expr)
+    /// TODO: arrays
+    fn lower_array(&mut self, _expr: ExprId, _args: &[ExprId]) -> Value {
+        todo!("arrays")
     }
 }

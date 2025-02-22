@@ -1,4 +1,5 @@
 use std::path::Path;
+use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 
 use basedb::AbsPathBuf;
 use expect_test::expect_file;
@@ -7,7 +8,6 @@ use hir_lower::{MirBuilder, PlaceKind};
 use lasso::Rodeo;
 use mini_harness::{harness, Result};
 use mir_build::FunctionBuilderContext;
-use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 
 fn lower(db: &CompilationDB) {
     let unit = db.compilation_unit();
@@ -22,10 +22,11 @@ fn lower(db: &CompilationDB) {
             },
             &mut required_vars,
         )
-        .with_ctx(&mut ctx)
+        .with_builder_ctx(&mut ctx)
         .build(&mut Rodeo::new());
     }
 }
+
 fn integration_test(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
     let main_file = dir.join(format!("{name}.va")).canonicalize().unwrap();
