@@ -1,3 +1,6 @@
+use stdx::packed_option::PackedOption;
+use stdx::{impl_debug_display, impl_idx_from};
+
 use ahash::{AHashMap, AHashSet, RandomState};
 use bitset::{BitSet, SparseBitMatrix};
 use hir::{CompilationDB, Type};
@@ -10,8 +13,6 @@ use mir::{
     InstructionData, Opcode, Value, FALSE,
 };
 use mir_opt::{aggressive_dead_code_elimination, simplify_cfg, ClassId, GVN};
-use stdx::packed_option::PackedOption;
-use stdx::{impl_debug_display, impl_idx_from};
 use typed_indexmap::TiMap;
 
 use crate::context::Context;

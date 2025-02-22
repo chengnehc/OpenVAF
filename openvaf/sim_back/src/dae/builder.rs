@@ -1,5 +1,4 @@
 use std::mem::replace;
-use std::vec;
 
 use ahash::AHashMap;
 use bitset::BitSet;
@@ -24,7 +23,6 @@ use crate::SimUnknownKind;
 
 impl Residual {
     fn add(&mut self, cursor: &mut FuncCursor, negate: bool, mut val: Value) {
-        // Cursor points at MIR function
         // Go back and skip all optbarriers to get the first actual instruction producing val
         val = strip_optbarrier(&cursor, val);
         // Add or subtract val to resistive residual value, replace resistive value by result
@@ -33,7 +31,6 @@ impl Residual {
 
     fn add_contribution(&mut self, contrib: &Contribution, cursor: &mut FuncCursor, negate: bool) {
         let mut add = |residual: &mut Value, contrib| {
-            // Cursor points at MIR function
             // Go back and skip all optbarriers to get the first actual instruction producing contrib
             let contrib = strip_optbarrier(&mut *cursor, contrib);
             // Add/subtract contrib to/from residual, replace residual with result
@@ -90,12 +87,13 @@ impl<'a> Builder<'a> {
         builder
     }
 
+    /// Consume the builder and generate the DAE system
     pub(super) fn finish(mut self) -> DaeSystem {
         let sim_unknown_reads = self.sim_unknown_reads();
         let derivative_info = self.intern.unknowns(&self.cursor, true);
         let extra_derivatives = self
             .jacobian_derivatives(sim_unknown_reads.iter().map(|&(_, val)| val), &derivative_info);
-        // TODO(pref): incrementially update dom_tree (for switch branches) instead
+        // TODO(perf): incrementally update dom_tree (for switch branches) instead
         self.dom_tree.compute(self.cursor.func, self.cfg, true, false, true);
         let derivatives =
             auto_diff(&mut *self.cursor.func, self.dom_tree, &derivative_info, &extra_derivatives);
@@ -110,7 +108,7 @@ impl<'a> Builder<'a> {
     }
 
     pub(super) fn build_node(&mut self, node: Node) {
-        self.ensure_unknown(SimUnknownKind::KirchoffLaw(node));
+        self.ensure_unknown(SimUnknownKind::KirchhoffLaw(node));
     }
 
     pub(super) fn with_small_signal_network(
@@ -255,9 +253,9 @@ impl<'a> Builder<'a> {
                 let unknown = match kind {
                     ParamKind::Voltage { hi, lo } => {
                         if let Some(lo) = lo {
-                            add_residual(SimUnknownKind::KirchoffLaw(lo), val, true);
+                            add_residual(SimUnknownKind::KirchhoffLaw(lo), val, true);
                         }
-                        SimUnknownKind::KirchoffLaw(hi)
+                        SimUnknownKind::KirchhoffLaw(hi)
                     }
                     ParamKind::ImplicitUnknown(equation) => SimUnknownKind::Implicit(equation),
                     ParamKind::Current(kind) => SimUnknownKind::Current(kind),
@@ -335,7 +333,7 @@ impl<'a> Builder<'a> {
         let current = branch.into();
         // contributions.is_voltage_src is a Value that is used for choosing the branch type (voltage, current)
         match contributions.is_voltage_src {
-            // If it is constant FALSE; this is a current branch
+            // current branch
             FALSE => {
                 // if the current of the branch is probed we need to create an extra
                 // branch
@@ -354,7 +352,7 @@ impl<'a> Builder<'a> {
                     // self.add_kirchoff_law(&contributions.current_src, branch);
                 }
             }
-            // If it is constant TRUE; this is a voltage branch
+            // voltage branch
             TRUE => {
                 // branches only used for node collapsing look like pure current
                 // sources, make sure to ignore these branches
@@ -369,9 +367,10 @@ impl<'a> Builder<'a> {
                     );
                 }
             }
-
-            // Otherwise this is a switch branch
+            // switch branch
             _ => {
+                // In most cases, what looks like a switch branch is just node collapse hint.
+                // Make sure we don't create switch branches when they aren't needed.
                 let requires_current_unknown = !self
                     .cursor
                     .as_ref()
@@ -383,8 +382,7 @@ impl<'a> Builder<'a> {
                     self.op_dependent_insts,
                     self.intern,
                 );
-                // most cases that look like switch branches are just node collapsing
-                // so make sure we don't crate switch branches when they aren't needed
+
                 if op_dependent
                     || requires_current_unknown
                     || !contributions.voltage_src.is_trivial()
@@ -393,7 +391,7 @@ impl<'a> Builder<'a> {
                     let start_bb = self.cursor.current_block().unwrap();
                     let voltage_src_bb = self.cursor.layout_mut().append_new_block();
                     let next_block = self.cursor.layout_mut().append_new_block();
-                    self.cfg.ensure_bb(next_block);
+                    self.cfg.ensure_block(next_block);
                     self.cfg.add_edge(start_bb, voltage_src_bb);
                     self.cfg.add_edge(start_bb, next_block);
                     self.cfg.add_edge(voltage_src_bb, next_block);
@@ -616,8 +614,8 @@ impl<'a> Builder<'a> {
 
     fn add_kirchoff_law(&mut self, contrib: &Contribution, dst: BranchWrite) {
         let (hi, lo) = dst.nodes(self.db);
-        let hi = SimUnknownKind::KirchoffLaw(hi);
-        let lo = lo.map(SimUnknownKind::KirchoffLaw);
+        let hi = SimUnknownKind::KirchhoffLaw(hi);
+        let lo = lo.map(SimUnknownKind::KirchhoffLaw);
         get_residual!(self, hi).add_contribution(contrib, &mut self.cursor, false);
         if let Some(lo) = lo {
             get_residual!(self, lo).add_contribution(contrib, &mut self.cursor, true);
@@ -634,8 +632,8 @@ impl<'a> Builder<'a> {
         self.add_noise(contrib, SimUnknownKind::Current(dst.into()), None);
 
         let (hi, lo) = dst.nodes(self.db);
-        let hi = SimUnknownKind::KirchoffLaw(hi);
-        let lo = lo.map(SimUnknownKind::KirchoffLaw);
+        let hi = SimUnknownKind::KirchhoffLaw(hi);
+        let lo = lo.map(SimUnknownKind::KirchhoffLaw);
         get_residual!(self, hi).add(&mut self.cursor, false, eq_val);
         if let Some(lo) = lo {
             get_residual!(self, lo).add(&mut self.cursor, true, eq_val);
@@ -664,7 +662,7 @@ impl<'a> Builder<'a> {
             residual.react_small_signal = F_ZERO;
             residual.react_small_signal = F_ZERO;
             let is_kirchoff =
-                matches!(self.system.unknowns[unknown], SimUnknownKind::KirchoffLaw(_));
+                matches!(self.system.unknowns[unknown], SimUnknownKind::KirchhoffLaw(_));
             residual.map_vals(|val| ensure_optbarrier(val, is_kirchoff));
         }
         ensure_optbarrier(mfactor, false);
@@ -675,7 +673,7 @@ impl<'a> Builder<'a> {
 
         for entry in &mut self.system.jacobian {
             let is_kirchoff =
-                matches!(self.system.unknowns[entry.row], SimUnknownKind::KirchoffLaw(_));
+                matches!(self.system.unknowns[entry.row], SimUnknownKind::KirchhoffLaw(_));
             entry.resist = ensure_optbarrier(entry.resist, is_kirchoff);
             entry.react = ensure_optbarrier(entry.react, is_kirchoff);
         }

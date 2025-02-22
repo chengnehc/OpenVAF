@@ -1,5 +1,4 @@
-use std::iter::once;
-use std::mem::take;
+use std::{iter, mem};
 
 use hir::Node;
 use indexmap::IndexMap;
@@ -82,7 +81,7 @@ impl Builder<'_> {
                     }
                     changed = true;
                 } else if let Some(node) = candidate.as_node() {
-                    self.topology.small_signal_vals.remove(&node);
+                    self.topology.small_signal_vals.swap_remove(&node);
                 }
                 set == FlatSet::Bottom
             });
@@ -254,7 +253,7 @@ impl Builder<'_> {
         postorder.clear();
         scratch_buf.clear();
         let mut transversal =
-            func.dfg.uses_postorder_with(unknown, (take(scratch_buf), Vec::new()), |_| true);
+            func.dfg.uses_postorder_with(unknown, (mem::take(scratch_buf), Vec::new()), |_| true);
         (&mut transversal).for_each(|_| ());
         *scratch_buf = transversal.visited;
         let mut found_linear = false;
@@ -275,7 +274,7 @@ impl Builder<'_> {
     pub(super) fn prune_small_signal(&mut self) {
         let mut candidates = self.collect_candidates();
         self.solve(&mut candidates);
-        let small_signal_vals = take(&mut self.topology.small_signal_vals);
+        let small_signal_vals = mem::take(&mut self.topology.small_signal_vals);
         for &val in &small_signal_vals {
             if let Some(contributes) = self.collect_linear_contributes(val) {
                 // create placeholder since all uses of val will be replaced with 0
@@ -366,10 +365,10 @@ impl Builder<'_> {
             }
             valid.then_some(candidate)
         }));
-        let implice_eq = take(&mut self.topology.implicit_equations);
+        let implice_eq = mem::take(&mut self.topology.implicit_equations);
         candidates.extend(implice_eq.iter().filter_map(|contrib| {
             let unknown = contrib.unknown?;
-            let valid = self.has_linear_dependency(once(contrib.resist), unknown);
+            let valid = self.has_linear_dependency(iter::once(contrib.resist), unknown);
             valid.then_some(Candidate {
                 kind: CandidateKind::Node { potential: unknown },
                 resist: vec![contrib.resist],
@@ -390,7 +389,7 @@ impl Builder<'_> {
         postorder.clear();
         scratch_buf.clear();
         let mut transversal =
-            func.dfg.uses_postorder_with(val, (take(scratch_buf), Vec::new()), |_| true);
+            func.dfg.uses_postorder_with(val, (mem::take(scratch_buf), Vec::new()), |_| true);
         postorder.extend(&mut transversal);
         *scratch_buf = transversal.visited;
 

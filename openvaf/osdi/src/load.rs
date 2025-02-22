@@ -1,3 +1,5 @@
+use stdx::iter::zip;
+
 use llvm::{
     LLVMAppendBasicBlockInContext, LLVMBuildCall2, LLVMBuildFAdd, LLVMBuildFDiv, LLVMBuildFMul,
     LLVMBuildFSub, LLVMBuildGEP2, LLVMBuildRetVoid, LLVMBuildStore, LLVMCreateBuilderInContext,
@@ -5,7 +7,6 @@ use llvm::{
     LLVMSetPartialFastMath, UNNAMED,
 };
 use sim_back::dae::NoiseSourceKind;
-use stdx::iter::zip;
 use typed_index_collections::TiVec;
 
 use crate::compilation_unit::OsdiCompilationUnit;

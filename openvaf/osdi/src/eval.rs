@@ -115,9 +115,9 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                                 .into()
                         }
                         ParamKind::Voltage { hi, lo } => {
-                            let hi = get_prev_solve(SimUnknownKind::KirchoffLaw(hi));
+                            let hi = get_prev_solve(SimUnknownKind::KirchhoffLaw(hi));
                             if let Some(lo) = lo {
-                                let lo = get_prev_solve(SimUnknownKind::KirchoffLaw(lo));
+                                let lo = get_prev_solve(SimUnknownKind::KirchhoffLaw(lo));
                                 llvm::LLVMBuildFSub(builder.llbuilder, hi, lo, UNNAMED)
                             } else {
                                 hi
@@ -170,7 +170,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                             let id = module
                                 .dae_system
                                 .unknowns
-                                .unwrap_index(&SimUnknownKind::KirchoffLaw(port));
+                                .unwrap_index(&SimUnknownKind::KirchhoffLaw(port));
                             let id = cx.const_unsigned_int(id.into());
                             builder.int_cmp(id, connected_ports, IntULT)
                         }

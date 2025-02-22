@@ -1,3 +1,8 @@
+//! OSDI (Open Source Device Interface)
+
+use std::ffi::CString;
+use stdx::{impl_debug_display, impl_idx_from};
+
 use base_n::CASE_INSENSITIVE;
 use camino::{Utf8Path, Utf8PathBuf};
 use hir::{CompilationDB, ParamSysFun, Type};
@@ -7,15 +12,8 @@ use llvm::{LLVMDisposeTargetData, OptLevel};
 use mir_llvm::{CodegenCx, LLVMBackend};
 use salsa::ParallelDatabase;
 use sim_back::{CompiledModule, ModuleInfo};
-use stdx::{impl_debug_display, impl_idx_from};
 use target::spec::Target;
 use typed_indexmap::TiSet;
-
-use std::ffi::CString;
-
-use crate::compilation_unit::{new_codegen, OsdiCompilationUnit, OsdiModule};
-use crate::metadata::osdi_0_3::OsdiTys;
-use crate::metadata::OsdiLimFunction;
 
 mod access;
 mod bitfield;
@@ -28,6 +26,10 @@ mod eval;
 mod load;
 mod noise;
 mod setup;
+
+use compilation_unit::{new_codegen, OsdiCompilationUnit, OsdiModule};
+use metadata::osdi_0_3::OsdiTys;
+use metadata::OsdiLimFunction;
 
 const OSDI_VERSION: (u32, u32) = (0, 3);
 
@@ -235,7 +237,7 @@ pub fn compile(
 
 impl OsdiModule<'_> {
     fn intern_names(&self, literals: &mut Rodeo, db: &CompilationDB) {
-        literals.get_or_intern(&*self.info.module.name(db));
+        literals.get_or_intern(&self.info.module.name(db));
         self.intern_node_strs(literals, db);
         literals.get_or_intern_static("Multiplier (Verilog-A $mfactor)");
         literals.get_or_intern_static("deg");
@@ -246,15 +248,14 @@ impl OsdiModule<'_> {
             for alias in &param.alias {
                 literals.get_or_intern(&**alias);
             }
-
-            literals.get_or_intern(&*param.name);
+            literals.get_or_intern(&param.name);
             literals.get_or_intern(&param.unit);
             literals.get_or_intern(&param.description);
             literals.get_or_intern(&param.group);
         }
 
         for (var, opvar_info) in self.info.op_vars.iter() {
-            literals.get_or_intern(&*var.name(db));
+            literals.get_or_intern(&var.name(db));
             literals.get_or_intern(&opvar_info.unit);
             literals.get_or_intern(&opvar_info.description);
         }

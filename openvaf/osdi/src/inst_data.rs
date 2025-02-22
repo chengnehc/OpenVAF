@@ -1,3 +1,6 @@
+use stdx::packed_option::PackedOption;
+use stdx::{impl_debug_display, impl_idx_from};
+
 use ahash::RandomState;
 use hir::{CompilationDB, ParamSysFun, Parameter, Variable};
 use hir_lower::{HirInterner, LimitState, ParamKind, PlaceKind};
@@ -11,8 +14,6 @@ use mir::{strip_optbarrier, Const, Function, Param, ValueDef, F_ZERO};
 use mir_llvm::{CodegenCx, MemLoc};
 use sim_back::dae::{self, MatrixEntryId, SimUnknown};
 use sim_back::init::CacheSlot;
-use stdx::packed_option::PackedOption;
-use stdx::{impl_debug_display, impl_idx_from};
 use typed_index_collections::TiVec;
 use typed_indexmap::TiMap;
 

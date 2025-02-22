@@ -147,11 +147,11 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     inst_data.residual_off(id, false, target_data).unwrap_or(u32::MAX);
                 let react_residual_off =
                     inst_data.residual_off(id, true, target_data).unwrap_or(u32::MAX);
-
                 let resist_limit_rhs_off =
                     inst_data.lim_rhs_off(id, false, target_data).unwrap_or(u32::MAX);
                 let react_limit_rhs_off =
                     inst_data.lim_rhs_off(id, true, target_data).unwrap_or(u32::MAX);
+
                 OsdiNode {
                     name,
                     units,
@@ -244,12 +244,10 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 LLVMOffsetOfElement(target_data, inst_data.ty, NODE_MAPPING) as u32;
             let jacobian_ptr_resist_offset =
                 LLVMOffsetOfElement(target_data, inst_data.ty, JACOBIAN_PTR_RESIST) as u32;
-
             let collapsed_offset = LLVMOffsetOfElement(target_data, inst_data.ty, COLLAPSED) as u32;
             let bound_step_offset = inst_data.bound_step_elem().map_or(u32::MAX, |elem| {
                 LLVMOffsetOfElement(target_data, inst_data.ty, elem) as u32
             });
-
             let state_idx_off = LLVMOffsetOfElement(target_data, inst_data.ty, STATE_IDX) as u32;
 
             let instance_size = LLVMABISizeOfType(target_data, inst_data.ty) as u32;
@@ -269,17 +267,18 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
             OsdiDescriptor {
                 name: module.info.module.name(db),
+
                 num_nodes: module.dae_system.unknowns.len() as u32,
                 num_terminals: module.info.module.ports(db).len() as u32,
                 nodes: self.nodes(target_data, db),
+
                 num_jacobian_entries: module.dae_system.jacobian.len() as u32,
                 jacobian_entries: self.jacobian_entries(target_data),
+
                 num_collapsible: collapsible.len() as u32,
                 collapsible,
                 collapsed_offset,
-                bound_step_offset,
 
-                // TODO noise
                 num_noise_src: noise_sources.len() as u32,
                 noise_sources,
 
@@ -290,9 +289,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
                 node_mapping_offset,
                 jacobian_ptr_resist_offset,
+                bound_step_offset,
                 state_idx_off,
+
                 instance_size,
                 model_size,
+
                 access: self.access_function_prototype(),
                 setup_model: self.setup_model_prototype(),
                 setup_instance: self.setup_instance_prototype(),
@@ -314,11 +316,11 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 }
 
 impl OsdiModule<'_> {
-    pub fn intern_node_strs(&self, intern: &mut Rodeo, db: &CompilationDB) {
+    pub fn intern_node_strs(&self, interner: &mut Rodeo, db: &CompilationDB) {
         for &unknown in self.dae_system.unknowns.iter() {
             let (name, units, _) = sim_unknown_info(unknown, db);
-            intern.get_or_intern(&name);
-            intern.get_or_intern(&units);
+            interner.get_or_intern(&name);
+            interner.get_or_intern(&units);
         }
     }
 }
@@ -329,12 +331,11 @@ fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, Str
     let is_flow;
 
     match unknown {
-        SimUnknownKind::KirchoffLaw(node) => {
+        SimUnknownKind::KirchhoffLaw(node) => {
             name = node.name(db).to_string();
             discipline = Some(node.discipline(db));
             is_flow = false;
         }
-
         SimUnknownKind::Current(CurrentKind::Unnamed { hi, lo }) => {
             name = if let Some(lo) = lo {
                 format!("flow({},{})", &hi.name(db), &lo.name(db))

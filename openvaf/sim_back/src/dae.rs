@@ -1,17 +1,19 @@
+use stdx::{impl_debug_display, impl_idx_from};
+
 use indexmap::IndexSet;
 use mir::{strip_optbarrier, Value, F_ZERO};
-use stdx::{impl_debug_display, impl_idx_from};
 use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
 use crate::context::Context;
-use crate::dae::builder::Builder;
 pub use crate::noise::{NoiseSource, NoiseSourceKind};
 use crate::{topology, SimUnknownKind};
 
 mod builder;
 #[cfg(test)]
 mod tests;
+
+use builder::Builder;
 
 /// An unknown in the system of DAE equations
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -34,11 +36,10 @@ pub struct DaeSystem {
     /// The unknowns of the DAE system which are solved (x)
     pub unknowns: TiSet<SimUnknown, SimUnknownKind>,
     /// The cost function of the DAE system (resistive: I, reactive: Q).
-    /// Additionally contains
     pub residual: TiVec<SimUnknown, Residual>,
     /// The jacobian of the DAE system J_ij = (ddx(I_i, x_j), ddx(Q_i, x_j))
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,
-    /// list of parameter which are known to be small signal values (always zero during
+    /// list of parameters which are known to be small signal values (always zero during
     /// large signal simulation).
     pub small_signal_parameters: IndexSet<Value, ahash::RandomState>,
     /// noise
@@ -63,10 +64,12 @@ impl DaeSystem {
         let mut sparsify = |val| {
             let stripped = strip_optbarrier(&ctx.func, val);
             if ctx.func.dfg.value_def(stripped).inst().is_some() {
+                // value is used somewhere beyond opt barrier
                 val
             } else {
                 ctx.output_values.remove(val);
                 if let Some(inst) = ctx.func.dfg.value_def(val).inst() {
+                    // value is only locally used
                     if ctx.func.dfg.instr_safe_to_remove(inst) {
                         ctx.func.dfg.zap_inst(inst);
                         ctx.func.layout.remove_inst(inst);
@@ -75,6 +78,7 @@ impl DaeSystem {
                 stripped
             }
         };
+
         for residual in &mut self.residual {
             residual.map_vals(&mut sparsify)
         }

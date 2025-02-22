@@ -36,9 +36,9 @@ impl NodeCollapse {
         }
         for kind in init.intern.callbacks.iter() {
             if let CallBackKind::CollapseHint(hi, lo) = *kind {
-                let hi = dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchoffLaw(hi));
-                let lo =
-                    lo.map(|lo| dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchoffLaw(lo)));
+                let hi = dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
+                let lo = lo
+                    .map(|lo| dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
                 pairs.insert((hi, lo));
             }
         }
@@ -50,9 +50,9 @@ impl NodeCollapse {
                 } else {
                     continue;
                 };
-                let lo =
-                    lo.map(|lo| dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchoffLaw(lo)));
-                let hi = dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchoffLaw(hi));
+                let lo = lo
+                    .map(|lo| dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
+                let hi = dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
                 let source_pair: Option<CollapsePair> = pairs.index(&(hi, lo)).or_else(|| {
                     let lo = lo?;
                     pairs.index(&(lo, Some(hi)))

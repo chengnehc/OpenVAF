@@ -293,7 +293,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         }
 
         for (node_id, unknown) in module.dae_system.unknowns.iter_enumerated() {
-            if let SimUnknownKind::KirchoffLaw(node) = unknown {
+            if let SimUnknownKind::KirchhoffLaw(node) = unknown {
                 if let Some((dst, val)) =
                     intern.params.index_and_val(&ParamKind::PortConnected { port: *node })
                 {
@@ -353,9 +353,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     let node1 = module
                         .dae_system
                         .unknowns
-                        .unwrap_index(&SimUnknownKind::KirchoffLaw(*node1));
+                        .unwrap_index(&SimUnknownKind::KirchhoffLaw(*node1));
                     let node2 = node2.map(|node2| {
-                        module.dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchoffLaw(node2))
+                        module
+                            .dae_system
+                            .unknowns
+                            .unwrap_index(&SimUnknownKind::KirchhoffLaw(node2))
                     });
                     let mut state = vec![];
                     module.node_collapse.hint(node1, node2, |pair| {
@@ -409,8 +412,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 let llcx = cx.llcx;
                 let llbuilder = &*builder.llbuilder;
                 unsafe {
-                    let else_bb = LLVMAppendBasicBlockInContext(llcx, builder.fun, UNNAMED);
-                    let then_bb = LLVMAppendBasicBlockInContext(llcx, builder.fun, UNNAMED);
+                    let else_bb = LLVMAppendBasicBlockInContext(llcx, builder.ll_func, UNNAMED);
+                    let then_bb = LLVMAppendBasicBlockInContext(llcx, builder.ll_func, UNNAMED);
                     let should_collapse = builder.values[should_collapse].get(&builder);
                     LLVMBuildCondBr(llbuilder, should_collapse, then_bb, else_bb);
                     LLVMPositionBuilderAtEnd(llbuilder, then_bb);

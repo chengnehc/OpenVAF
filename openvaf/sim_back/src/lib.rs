@@ -1,41 +1,41 @@
+//! Simulator backend
+
+use stdx::impl_debug_display;
+
 use hir::{BranchWrite, CompilationDB, Node};
 use hir_lower::{CurrentKind, HirInterner, ImplicitEquation, ParamKind};
 use lasso::Rodeo;
 use mir::Function;
 use mir_opt::{simplify_cfg, sparse_conditional_constant_propagation};
-use stdx::impl_debug_display;
+
+pub mod dae;
+pub mod init;
+pub mod node_collapse;
+
+mod context;
+mod module_info;
+mod noise;
+mod topology;
+mod util;
 
 pub use module_info::{collect_modules, ModuleInfo};
 
-use crate::context::{Context, OptimiziationStage};
-use crate::dae::DaeSystem;
-use crate::init::Initialization;
-use crate::node_collapse::NodeCollapse;
-use crate::topology::Topology;
-
-mod context;
-pub mod dae;
-pub mod init;
-mod module_info;
-pub mod node_collapse;
-mod noise;
-mod topology;
-
-mod util;
-
-// #[cfg(test)]
-// mod tests;
+use context::{Context, OptimizationStage};
+use dae::DaeSystem;
+use init::Initialization;
+use node_collapse::NodeCollapse;
+use topology::Topology;
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub enum SimUnknownKind {
-    KirchoffLaw(Node),
+    KirchhoffLaw(Node),
     Current(CurrentKind),
     Implicit(ImplicitEquation),
 }
 
 impl_debug_display! {
     match SimUnknownKind{
-        SimUnknownKind::KirchoffLaw(node) => "{node:?}";
+        SimUnknownKind::KirchhoffLaw(node) => "{node:?}";
         SimUnknownKind::Current(curr) => "br[{curr:?}]";
         SimUnknownKind::Implicit(node) => "{node}";
     }
@@ -61,7 +61,7 @@ impl<'a> CompiledModule<'a> {
         let mut cx = Context::new(db, literals, module);
         cx.compute_outputs(true);
         cx.compute_cfg();
-        cx.optimize(OptimiziationStage::Initial);
+        cx.optimize(OptimizationStage::Initial);
         debug_assert!(cx.func.validate());
 
         let topology = Topology::new(&mut cx);
@@ -69,7 +69,7 @@ impl<'a> CompiledModule<'a> {
         let mut dae_system = DaeSystem::new(&mut cx, topology);
         debug_assert!(cx.func.validate());
         cx.compute_cfg();
-        let gvn = cx.optimize(OptimiziationStage::PostDerivative);
+        let gvn = cx.optimize(OptimizationStage::PostDerivative);
         dae_system.sparsify(&mut cx);
 
         // For debugging purposes - print parameters

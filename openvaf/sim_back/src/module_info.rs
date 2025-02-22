@@ -2,7 +2,7 @@ use ahash::AHashSet;
 use hir::diagnostics::{BaseDB, ConsoleSink, Diagnostic, FileId, Label, LabelStyle, Report};
 use hir::{
     CompilationDB, CompilationUnit, DiagnosticSink, Module, ParamSysFun, Parameter,
-    ResolvedAliasParameter, ScopeDef, Variable,
+    ResolvedAliasParam, ScopeDef, Variable,
 };
 use indexmap::IndexMap;
 use smol_str::SmolStr;
@@ -22,7 +22,6 @@ pub fn collect_modules(
     let name = cu.name(db);
 
     cu.diagnostics(db, sink);
-
     if sink.summary(&name) {
         return None;
     }
@@ -32,7 +31,6 @@ pub fn collect_modules(
         .into_iter()
         .map(|module| ModuleInfo::collect(db, cu, module, sink, all_vars_opvars))
         .collect();
-
     if sink.summary(&name) {
         return None;
     }
@@ -84,7 +82,6 @@ impl ModuleInfo {
                     if units.is_none() && desc.is_none() && !all_vars_opvars {
                         continue;
                     }
-
                     // check that we are not in a block
                     let name_len = name.len();
                     let path = declarations.to_path(name);
@@ -109,6 +106,7 @@ impl ModuleInfo {
                             lit
                         })
                         .unwrap_or_default();
+
                     op_vars.insert(var, OpVar { unit: units, description: desc });
                 }
 
@@ -135,6 +133,8 @@ impl ModuleInfo {
                         })
                         .unwrap_or_default();
 
+                    // "group" is not a standard attribute, but is used by VerilogAE
+                    // for parameter extraction
                     let group = param
                         .get_attr(db, &ast, "group")
                         .and_then(|attr| {
@@ -146,7 +146,8 @@ impl ModuleInfo {
                         })
                         .unwrap_or_default();
 
-                    let type_attr = param.get_attr(db, &ast, "type");
+                    // "type" is not a standard attribute, but is used by compact models
+                    // comprehensively to distinguish between instance and model params.
                     let type_ = param.get_attr(db, &ast, "type").and_then(|attr| {
                         let lit = attr.val().and_then(|e| e.as_str_literal());
                         if lit.is_none() {
@@ -158,7 +159,7 @@ impl ModuleInfo {
                         Some("instance") => true,
                         Some("model") | None => false,
                         Some(found) => {
-                            let attr = type_attr.unwrap();
+                            let attr = param.get_attr(db, &ast, "type").unwrap();
                             add_diagnostic(
                                 attr.clone(),
                                 &UnknownType { expr: attr.val().unwrap(), found },
@@ -181,10 +182,10 @@ impl ModuleInfo {
                 }
 
                 ScopeDef::AliasParameter(alias) => match alias.resolve(db).unwrap() {
-                    ResolvedAliasParameter::Parameter(param) => {
+                    ResolvedAliasParam::Parameter(param) => {
                         params.entry(param).or_default().alias.push(declarations.to_path(name))
                     }
-                    ResolvedAliasParameter::SystemParameter(sys_fun) => {
+                    ResolvedAliasParam::SystemParameter(sys_fun) => {
                         sys_fun_alias.entry(sys_fun).or_default().push(declarations.to_path(name))
                     }
                 },
@@ -195,6 +196,24 @@ impl ModuleInfo {
 
         ModuleInfo { module, params, op_vars, sys_fun_alias }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ParamInfo {
+    pub name: SmolStr,
+    pub alias: Vec<SmolStr>,
+    pub unit: String,
+    pub description: String,
+    pub group: String,
+    // TODO: add standard attribute 'multiplicity'. See also: LRM 2.9.2
+    // pub multiplicity
+    pub is_instance: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpVar {
+    pub unit: String,
+    pub description: String,
 }
 
 struct IllegalAttr {
@@ -243,20 +262,4 @@ impl Diagnostic for UnknownType<'_> {
                 message: "unknown type".to_owned(),
             }])
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ParamInfo {
-    pub name: SmolStr,
-    pub alias: Vec<SmolStr>,
-    pub unit: String,
-    pub description: String,
-    pub group: String,
-    pub is_instance: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpVar {
-    pub unit: String,
-    pub description: String,
 }

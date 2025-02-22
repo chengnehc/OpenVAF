@@ -45,22 +45,29 @@ pub fn update_optbarrier(
     }
 }
 
+/// Create MIR instruction that adds or subtracts `val` to `dst`.
+///
+/// Sets dst to this new value.
 pub fn add(cursor: &mut FuncCursor, dst: &mut Value, val: Value, negate: bool) {
-    // Create MIR instruction that takes the destination value and adds or subtracts val.
-    // Returns the resulting value produced by fadd/fsub.
-    // Sets dst to this new value.
     match (*dst, val) {
-        // val is zero, nothing to do
+        // val is zero, do nothing
         (_, F_ZERO) => (),
-        // dst is zero, negate val by creating "fneg val"
+
+        // dst is zero, with negation, create "fneg val"
         (F_ZERO, _) if negate => *dst = cursor.ins().fneg(val),
-        // dst is zero, no negate, create optbarrier
-        // If not a node with only a voltage noise contribution will produce a singular Jacobian
-        // The KCL entry of the node in the Jacobian will be missing the branch current contribution
+
+        // dst is zero, without negation, create optbarrier,
+        // otherwise a node with only one voltage noise contribution will produce a singular Jacobian.
+        // The KCL entry of the node in the Jacobian will be missing the branch current contribution.
+        // Refer to: https://github.com/pascalkuthe/OpenVAF/issues/135
+        //
+        // buggy code:
         // (F_ZERO, _) => *dst = val,
         (F_ZERO, _) => *dst = cursor.ins().optbarrier(val),
+
         // negate, create "fsub dst, val"
         (old, _) if negate => *dst = cursor.ins().fsub(old, val),
+
         // do not negate, create "fadd dst, val"
         (old, _) => *dst = cursor.ins().fadd(old, val),
     }

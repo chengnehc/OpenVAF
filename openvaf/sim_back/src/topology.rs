@@ -1,5 +1,5 @@
 //! This module is responsible for building a set of coherent branch
-//! defininations from the raw lowering results. These can be
+//! definations from the raw lowering results. These can be
 //! used to build the model topology (residual, matrix, noise sources)
 //! without significant additional analyze.
 //!
@@ -7,13 +7,13 @@
 //! implicit and don't quite match our topology model. In particular this
 //! module will:
 //!
-//! * Turn function calls like `ddt` and `whitle_noise` either into direct
-//!   contributions if possible (lineraization) or into an implicit node/
-//!   intenal equation if not.
+//! * Turn function calls like `ddt` and `white_noise` either into direct
+//!   contributions if possible (lineraization), or into an implicit node/
+//!   intenal equation.
 //! * Determine all nodes which are statically known to always have a large signal
 //!   voltage of zero (small_signal_network).
-//! * Separate contributionsi made form the small signal network to the large
-//!   signal network into separate values where possible (prune). Prevents the
+//! * Separate contributions made form the small signal network to the large
+//!   signal network into separate values where possible (prune). Prevent the
 //!   generation of unnecessary derivatives.
 //!
 
@@ -207,7 +207,7 @@ impl Topology {
                             ContributeKind::ImplicitEquation { equation, is_reactive: true },
                         );
                     }
-                    PlaceKind::IsVoltageSrc(branch) => {
+                    PlaceKind::IsPotential(branch) => {
                         let id: BranchId = branches.next_index();
                         let (hi, lo) = branch.nodes(ctx.db);
                         let is_voltage_src = val;
@@ -237,7 +237,7 @@ impl Topology {
                                 .get(&PlaceKind::Contribute {
                                     dst: branch,
                                     reactive: is_reactive,
-                                    voltage_src: is_voltage_src,
+                                    potential: is_voltage_src,
                                 })
                                 .and_then(|it| it.expand())
                                 .map(|mut val| {
