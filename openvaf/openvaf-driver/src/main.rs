@@ -6,17 +6,15 @@ use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
 use clap::ArgMatches;
 use mimalloc::MiMalloc;
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-
-use cli_def::{main_command, INPUT};
 use openvaf::{compile, expand, CompilationDestination, CompilationTermination, Opts};
-
-use crate::cli_def::{DUMP_JSON, PRINT_EXPANSION};
-use crate::cli_process::matches_to_opts;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 mod cli_def;
 mod cli_process;
 mod crash_report;
+
+use cli_def::{main_command, DUMP_JSON, INPUT, PRINT_EXPANSION};
+use cli_process::matches_to_opts;
 
 static ARGS: Mutex<Option<Opts>> = Mutex::new(None);
 #[global_allocator]

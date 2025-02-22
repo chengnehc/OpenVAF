@@ -7,7 +7,7 @@ use hir::CompilationDB;
 
 use crate::Opts;
 
-// TODO: use high level hir API instead of low leve database API
+// TODO: use high level hir API instead of low level database API
 fn hash(db: &CompilationDB, defines: &[String]) -> md5::Digest {
     let mut hash_builder = md5::Context::new();
     let cu = db.compilation_unit();
@@ -36,9 +36,9 @@ fn hash(db: &CompilationDB, defines: &[String]) -> md5::Digest {
     // Hash the full preprocessor result
     let preprocess = cu.preprocess(db);
     let vfs = db.vfs().read();
-    for token in &*preprocess.ts {
+    for token in &*preprocess.tokens {
         if !token.kind.is_trivia() {
-            let filespan = token.span.to_file_span(&preprocess.sm);
+            let filespan = token.span.to_file_span(&preprocess.source_map);
             let src = vfs.file_contents_unchecked(filespan.file);
             hash_builder.consume(&src[filespan.range]);
             hash_builder.consume(" ");

@@ -104,6 +104,7 @@ pub struct Opts {
 //     Ok(CompilationTermination::Compiled { lib_file: Utf8PathBuf::default() })
 // }
 
+/// Print expansions after preprocessing.
 pub fn expand(opts: &Opts) -> Result<CompilationTermination> {
     let start = Instant::now();
 
@@ -114,11 +115,11 @@ pub fn expand(opts: &Opts) -> Result<CompilationTermination> {
     let cu = db.compilation_unit();
 
     let preprocess = cu.preprocess(&db);
-    for token in preprocess.ts.iter() {
-        let span = token.span.to_file_span(&preprocess.sm);
+    for token in preprocess.tokens.iter() {
+        let span = token.span.to_file_span(&preprocess.source_map);
         let text = db.file_text(span.file).unwrap();
         match token.kind {
-            tokens::parser::SyntaxKind::COMMENT => {
+            tokens::SyntaxKind::COMMENT => {
                 // Block comments are ok
                 // Line comments should be dumped with a newline
                 if !text[span.range].starts_with("/*") {
@@ -136,7 +137,7 @@ pub fn expand(opts: &Opts) -> Result<CompilationTermination> {
     println!();
 
     let mut sink = ConsoleSink::new(&db);
-    sink.add_diagnostics(&*preprocess.diagnostics, cu.root_file(), &db);
+    sink.add_diagnostics(&*preprocess.errors, cu.root_file(), &db);
 
     if sink.summary(&opts.input.file_name().unwrap()) {
         return Ok(CompilationTermination::FatalDiagnostic);
