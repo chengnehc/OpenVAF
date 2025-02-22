@@ -1,3 +1,5 @@
+//! LLVM IR Builder
+
 use std::slice;
 
 use arrayvec::ArrayVec;
@@ -38,6 +40,7 @@ impl<'ll> MemLoc<'ll> {
             indices: vec![cx.const_unsigned_int(0), cx.const_unsigned_int(idx)].into_boxed_slice(),
         }
     }
+
     /// # Safety
     ///
     /// ptr_ty, ty and indices must be valid for ptr
@@ -125,7 +128,7 @@ impl<'ll> BuilderVal<'ll> {
     pub unsafe fn get_ty(&self, builder: &Builder<'_, '_, 'll>) -> Option<&'ll llvm::Type> {
         let ty = match self {
             BuilderVal::Undef => return None,
-            BuilderVal::Eager(val) => builder.cx.val_ty(val),
+            BuilderVal::Eager(val) => builder.cx.ty_of(val),
             BuilderVal::Load(loc) => loc.ty,
             BuilderVal::Call(call) => LLVMGetReturnType(call.fun_ty),
         };
@@ -133,19 +136,19 @@ impl<'ll> BuilderVal<'ll> {
     }
 }
 
-// All Builders must have an llfn associated with them
+// A `Builder` must have an associative `ll_func`
 #[must_use]
 pub struct Builder<'a, 'cx, 'll> {
     pub llbuilder: &'a mut llvm::Builder<'ll>,
     pub cx: &'a CodegenCx<'cx, 'll>,
-    pub func: &'a Function,
+    pub mir_func: &'a Function,
     pub blocks: TiVec<Block, Option<&'ll llvm::BasicBlock>>,
     pub values: TiVec<Value, BuilderVal<'ll>>,
     pub params: TiVec<Param, BuilderVal<'ll>>,
     pub callbacks: TiVec<FuncRef, Option<CallbackFun<'ll>>>,
     pub prepend_pos: &'ll llvm::BasicBlock,
     pub unfinished_phis: Vec<(PhiNode, &'ll llvm::Value)>,
-    pub fun: &'ll llvm::Value,
+    pub ll_func: &'ll llvm::Value,
 }
 
 impl Drop for Builder<'_, '_, '_> {
@@ -166,26 +169,26 @@ impl<'a, 'cx, 'll> Builder<'a, 'cx, 'll> {
     pub fn new(
         cx: &'a CodegenCx<'cx, 'll>,
         mir_func: &'a Function,
-        llfunc: &'ll llvm::Value,
+        ll_func: &'ll llvm::Value,
     ) -> Self {
-        let entry = unsafe { llvm::LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED) };
+        let entry = unsafe { llvm::LLVMAppendBasicBlockInContext(cx.llcx, ll_func, UNNAMED) };
         let llbuilder = unsafe { llvm::LLVMCreateBuilderInContext(cx.llcx) };
         let mut blocks: TiVec<_, _> = vec![None; mir_func.layout.num_blocks()].into();
         for bb in mir_func.layout.blocks() {
             blocks[bb] =
-                unsafe { Some(llvm::LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED)) };
+                unsafe { Some(llvm::LLVMAppendBasicBlockInContext(cx.llcx, ll_func, UNNAMED)) };
         }
         unsafe { llvm::LLVMPositionBuilderAtEnd(llbuilder, entry) };
 
         Builder {
             llbuilder,
             cx,
-            func: mir_func,
+            mir_func,
             blocks,
             values: vec![BuilderVal::Undef; mir_func.dfg.num_values()].into(),
             params: Default::default(),
             callbacks: Default::default(),
-            fun: llfunc,
+            ll_func,
             prepend_pos: entry,
             unfinished_phis: Vec::new(),
         }
@@ -194,15 +197,15 @@ impl<'a, 'cx, 'll> Builder<'a, 'cx, 'll> {
 
 impl<'ll> Builder<'_, '_, 'll> {
     /// # Safety
-    /// Must not be called when a block that already contains a terminator is selected
-    /// Must be called in the entry block of the function
+    /// * Must not be called when a block that already contains a terminator is selected.
+    /// * Must be called in the entry block of the function
     pub unsafe fn alloca(&self, ty: &'ll llvm::Type) -> &'ll llvm::Value {
         llvm::LLVMBuildAlloca(self.llbuilder, ty, UNNAMED)
     }
 
     /// # Safety
-    /// Only correct llvm api calls must be performed within build_then and build_else
-    /// Their return types must match and cond must be a bool
+    /// * Only correct llvm api calls must be performed within build_then and build_else
+    /// * Their return types must match and cond must be a bool
     pub unsafe fn add_branching_select(
         &mut self,
         cond: &'ll llvm::Value,
@@ -210,14 +213,14 @@ impl<'ll> Builder<'_, '_, 'll> {
         build_else: impl FnOnce(&mut Self) -> &'ll llvm::Value,
     ) -> &'ll llvm::Value {
         let start = self.prepend_pos;
-        let exit = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.fun, UNNAMED);
-        let then_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.fun, UNNAMED);
+        let exit = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.ll_func, UNNAMED);
+        let then_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.ll_func, UNNAMED);
         llvm::LLVMPositionBuilderAtEnd(self.llbuilder, then_bb);
         self.prepend_pos = then_bb;
         let then_val = build_then(self);
         llvm::LLVMBuildBr(self.llbuilder, exit);
 
-        let else_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.fun, UNNAMED);
+        let else_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.ll_func, UNNAMED);
         llvm::LLVMPositionBuilderAtEnd(self.llbuilder, else_bb);
         self.prepend_pos = else_bb;
         let else_val = build_else(self);
@@ -331,8 +334,8 @@ impl<'ll> Builder<'_, '_, 'll> {
     }
 
     pub fn build_consts(&mut self) {
-        for val in self.func.dfg.values() {
-            match self.func.dfg.value_def(val) {
+        for val in self.mir_func.dfg.values() {
+            match self.mir_func.dfg.value_def(val) {
                 ValueDef::Result(_, _) | ValueDef::Invalid => (),
                 ValueDef::Param(param) => self.values[val] = self.params[param].clone(),
                 ValueDef::Const(const_val) => {
@@ -347,11 +350,11 @@ impl<'ll> Builder<'_, '_, 'll> {
     /// Must not be called if any block already contain any non-phi instruction (eg must not be
     /// called twice)
     pub unsafe fn build_func(&mut self) {
-        let entry = self.func.layout.entry_block().unwrap();
+        let entry = self.mir_func.layout.entry_block().unwrap();
         llvm::LLVMBuildBr(self.llbuilder, self.blocks[entry].unwrap());
         let mut cfg = ControlFlowGraph::new();
-        cfg.compute(self.func);
-        let po: Vec<_> = cfg.postorder(self.func).collect();
+        cfg.compute(self.mir_func);
+        let po: Vec<_> = cfg.postorder(self.mir_func).collect();
         drop(cfg);
         for bb in po.into_iter().rev() {
             self.build_bb(bb)
@@ -359,7 +362,7 @@ impl<'ll> Builder<'_, '_, 'll> {
 
         for (phi, llval) in self.unfinished_phis.iter() {
             let (blocks, vals): (Vec<_>, Vec<_>) = self
-                .func
+                .mir_func
                 .dfg
                 .phi_edges(phi)
                 .map(|(bb, val)| {
@@ -395,8 +398,8 @@ impl<'ll> Builder<'_, '_, 'll> {
     pub unsafe fn build_bb(&mut self, bb: Block) {
         self.select_bb(bb);
 
-        for inst in self.func.layout.block_insts(bb) {
-            let fast_math = self.func.srclocs.get(inst).map_or(false, |loc| loc.0 < 0);
+        for inst in self.mir_func.layout.block_insts(bb) {
+            let fast_math = self.mir_func.srclocs.get(inst).map_or(false, |loc| loc.0 < 0);
             self.build_inst(
                 inst,
                 if fast_math { FastMathMode::Partial } else { FastMathMode::Disabled },
@@ -423,7 +426,7 @@ impl<'ll> Builder<'_, '_, 'll> {
     /// Not Phis may be constructed for the current block after this function has been called
     /// Must not be called when the builder has selected a block that already contains a terminator
     pub unsafe fn build_inst(&mut self, inst: Inst, fast_math_mode: FastMathMode) {
-        let (opcode, args) = match self.func.dfg.insts[inst] {
+        let (opcode, args) = match self.mir_func.dfg.insts[inst] {
             mir::InstructionData::Unary { opcode, ref arg } => (opcode, slice::from_ref(arg)),
             mir::InstructionData::Binary { opcode, ref args } => (opcode, args.as_slice()),
             mir::InstructionData::Branch { cond, then_dst, else_dst, .. } => {
@@ -438,14 +441,14 @@ impl<'ll> Builder<'_, '_, 'll> {
             mir::InstructionData::PhiNode(ref phi) => {
                 // TODO does this always produce a valid value?
                 let ty = self
-                    .func
+                    .mir_func
                     .dfg
                     .phi_edges(phi)
                     .find_map(|(_, val)| self.values[val].get_ty(self))
                     .unwrap();
                 let llval = llvm::LLVMBuildPhi(self.llbuilder, ty, UNNAMED);
                 self.unfinished_phis.push((phi.clone(), llval));
-                let res = self.func.dfg.first_result(inst);
+                let res = self.mir_func.dfg.first_result(inst);
                 self.values[res] = llval.into();
                 return;
             }
@@ -460,7 +463,7 @@ impl<'ll> Builder<'_, '_, 'll> {
                     return; // assume nooop
                 };
 
-                let args = args.as_slice(&self.func.dfg.insts.value_lists);
+                let args = args.as_slice(&self.mir_func.dfg.insts.value_lists);
                 let args = args.iter().map(|operand| self.values[*operand].get(self));
 
                 if callback.num_state != 0 {
@@ -475,12 +478,12 @@ impl<'ll> Builder<'_, '_, 'll> {
                             .chain(args.iter().copied())
                             .collect();
                         self.call(callback.fun_ty, callback.fun, &operands);
-                        debug_assert!(self.func.dfg.inst_results(inst).is_empty());
+                        debug_assert!(self.mir_func.dfg.inst_results(inst).is_empty());
                     }
                 } else {
                     let operands: Vec<_> = callback.state.iter().copied().chain(args).collect();
                     let res = self.call(callback.fun_ty, callback.fun, &operands);
-                    let inst_res = self.func.dfg.inst_results(inst);
+                    let inst_res = self.mir_func.dfg.inst_results(inst);
 
                     match inst_res {
                         [] => (),
@@ -503,7 +506,6 @@ impl<'ll> Builder<'_, '_, 'll> {
                 let arg = self.values[args[0]].get(self);
                 llvm::LLVMBuildNot(self.llbuilder, arg, UNNAMED)
             }
-
             Opcode::Ineg => {
                 let arg = self.values[args[0]].get(self);
                 llvm::LLVMBuildNeg(self.llbuilder, arg, UNNAMED)
@@ -591,8 +593,8 @@ impl<'ll> Builder<'_, '_, 'll> {
                 if matches!(self.values[args[0]], BuilderVal::Undef) {
                     panic!(
                         "{} {}",
-                        self.func.dfg.display_inst(inst),
-                        self.func.layout.inst_block(inst).unwrap()
+                        self.mir_func.dfg.display_inst(inst),
+                        self.mir_func.layout.inst_block(inst).unwrap()
                     );
                 }
                 let lhs = self.values[args[0]].get(self);
@@ -654,7 +656,7 @@ impl<'ll> Builder<'_, '_, 'll> {
             Opcode::Br | Opcode::Jmp | Opcode::Call | Opcode::Phi => unreachable!(),
         };
 
-        let res = self.func.dfg.first_result(inst);
+        let res = self.mir_func.dfg.first_result(inst);
         self.values[res] = val.into();
 
         if matches!(

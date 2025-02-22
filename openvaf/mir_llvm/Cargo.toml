@@ -8,7 +8,6 @@ license = "GPL-3.0"
 [lib]
 doctest = false
 
-
 [dependencies]
 llvm = { version = "0.0.0", path = "../llvm" }
 mir = { version = "0.0.0", path = "../mir" }

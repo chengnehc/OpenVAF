@@ -94,22 +94,23 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             Opcode::Bnot => Opcode::Bnot,
             Opcode::Fneg => return self.simplify_sub_inst::<FP>(F_ZERO, arg),
             Opcode::Ineg => return self.simplify_sub_inst::<i32>(ZERO, arg),
+            // lossless inverse operation
             Opcode::FIcast => Opcode::IFcast,
-            // When the inverse is lossy not transofmration is possible
+            Opcode::IBcast => Opcode::BIcast,
+            Opcode::FBcast => Opcode::BFcast,
+            // lossy inverse operation, no transformation is possible
             Opcode::IFcast
             | Opcode::BIcast
             | Opcode::BFcast
             | Opcode::OptBarrier
             | Opcode::Clog2 => return None,
-            Opcode::IBcast => Opcode::BIcast,
-            Opcode::FBcast => Opcode::BFcast,
+
             Opcode::Sqrt => {
                 if let Some([x, y]) = self.as_binary(arg, Opcode::Fmul) {
                     if x == y {
                         return Some(x);
                     }
                 }
-
                 if let Some([x, y]) = self.as_binary(arg, Opcode::Pow) {
                     if y == F_TWO {
                         return Some(x);
@@ -320,6 +321,8 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         self.simplify_assoc_binop(A::ADD, lhs, rhs)
     }
 
+    /// Given operands for an `A::SUB` instruction, see if we can fold the result.
+    /// If not, this returns None.
     fn simplify_sub_inst<A: Arithmetic>(
         &mut self,
         mut lhs: Value,
@@ -339,8 +342,6 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         self.recurse(|sel| sel.simplify_sub_inst_inner::<A>(lhs, rhs))
     }
 
-    /// Given operands for an `A::SUB` instruction, see if we can fold the result.
-    /// If not, this returns None.
     fn simplify_sub_inst_inner<A: Arithmetic>(&mut self, lhs: Value, rhs: Value) -> Option<Value> {
         // (X + Y) - Z -> X + (Y - Z) or Y + (X - Z) if everything simplifies.
         // For example, (X + Y) - Y -> X; (Y + X) - Y -> X

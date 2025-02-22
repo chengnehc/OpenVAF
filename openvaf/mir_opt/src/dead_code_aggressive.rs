@@ -25,7 +25,7 @@ pub fn aggressive_dead_code_elimination(
 
     for inst in func.dfg.insts.iter() {
         if func.layout.inst_block(inst).is_some()
-            && (func.dfg.has_sideeffects(inst, false)
+            && (func.dfg.has_side_effects(inst, false)
                 || func.dfg.inst_results(inst).iter().any(|val| is_live(*val, func)))
         {
             adce.mark_inst_live(inst);

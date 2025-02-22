@@ -148,7 +148,7 @@ impl GVNExpression {
             }
 
             InstructionData::Call { func_ref, args }
-                if !func.dfg.signatures[func_ref].has_sideeffects =>
+                if !func.dfg.signatures[func_ref].has_side_effects =>
             {
                 let mut args = args.deep_clone(&mut func.dfg.insts.value_lists);
                 for i in 0..args.len(&func.dfg.insts.value_lists) {

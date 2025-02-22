@@ -233,10 +233,10 @@ impl<'a> SimplifyCfg<'a> {
 
     fn merge_block_into_predecessor(&mut self, bb: Block) -> bool {
         let pred =
-            if let Some(pred) = self.cfg.single_predecessor(bb) { pred } else { return false };
+            if let Some(pred) = self.cfg.single_predecessor_of(bb) { pred } else { return false };
 
         if self.cfg.self_loop(bb)
-            || self.cfg.unique_succ(pred).is_none()
+            || self.cfg.unique_successor_of(pred).is_none()
             || self
                 .func
                 .layout
@@ -424,7 +424,7 @@ impl<'a> SimplifyCfg<'a> {
     /// If a block only contains phis and a unconditional jump the used phis can be merged with
     /// their
     fn simplify_unconditional_jmp_term(&mut self, src: Block, dst: Block) {
-        if self.cfg.single_predecessor(dst).is_some() {
+        if self.cfg.single_predecessor_of(dst).is_some() {
             // trivial case let `merge_block_into_predecessor` handle this
             return;
         }

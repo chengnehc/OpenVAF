@@ -25,6 +25,7 @@ pub fn inst_combine(func: &mut Function) {
     }
 }
 
+/// Turn a value into an alias of another.
 fn replace_uses(func: &mut Function, workque: &mut Vec<Inst>, inst: Inst, replace: Value) {
     let old = func.dfg.first_result(inst);
     for use_ in func.dfg.uses(old) {

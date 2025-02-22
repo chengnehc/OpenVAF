@@ -20,7 +20,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         val: &'ll llvm::Value,
     ) -> CallbackFun<'ll> {
         let name = self.local_callback_name();
-        let fun_ty = self.ty_func(args, self.val_ty(val));
+        let fun_ty = self.ty_func(args, self.ty_of(val));
         let fun = self.declare_int_fn(&name, fun_ty);
         unsafe {
             let bb = llvm::LLVMAppendBasicBlockInContext(self.llcx, fun, UNNAMED);

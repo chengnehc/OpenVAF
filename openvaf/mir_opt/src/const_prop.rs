@@ -1,5 +1,5 @@
 use bitset::BitSet;
-use mir::flowgraph::Successors;
+use mir::cfg::Successors;
 use mir::{
     Block, ControlFlowGraph, Function, Inst, InstructionData, Opcode, PhiNode, Value, ValueDef,
     FALSE, TRUE,

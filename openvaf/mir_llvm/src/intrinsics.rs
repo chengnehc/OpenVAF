@@ -54,6 +54,8 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
         ifn!("asinh", fn(t_f64) -> t_f64);
         ifn!("atanh", fn(t_f64) -> t_f64);
 
+        // hypotenuse
+        // double hypot(double x, double y)
         if name == "hypot" {
             let name = if self.target.options.is_like_windows { "_hypot" } else { "hypot" };
             return Some(self.insert_intrinsic(name, &[t_f64], t_f64, false));
@@ -62,6 +64,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
         ifn!("strcmp", fn(t_str, t_str) -> t_i32);
         ifn!("llvm.lround.i32.f64", fn(t_f64) -> t_i32);
 
+        // int snprintf (char *str, size_t size, const char *format)
         if name == "snprintf" {
             return Some(self.insert_intrinsic("snprintf", &[t_str, t_isize, t_str], t_i32, true));
         }

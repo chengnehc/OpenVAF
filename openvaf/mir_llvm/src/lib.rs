@@ -1,3 +1,10 @@
+//! Convert from MIR into LLVM IR, and then from LLVM IR into machine code.
+//! In general it contains code that runs towards the end of the compilation process.
+//!
+//! See Also:
+//!
+//! https://github.com/rust-lang/rust/tree/master/compiler/rustc_codegen_llvm
+
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::os::raw::c_char;
@@ -7,22 +14,22 @@ use std::ptr;
 use lasso::Rodeo;
 use libc::c_void;
 use llvm::support::LLVMString;
-pub use llvm::OptLevel;
+use llvm::OptLevel;
 use llvm::{
     LLVMDisposeMessage, LLVMGetDiagInfoDescription, LLVMGetDiagInfoSeverity,
     LLVMGetHostCPUFeatures, LLVMGetHostCPUName, LLVMPassManagerBuilderDispose,
 };
 use target::spec::Target;
 
+// #[cfg(test)]
+// mod tests;
+
 mod builder;
+mod callbacks;
 mod context;
 mod declarations;
 mod intrinsics;
 mod types;
-
-mod callbacks;
-#[cfg(test)]
-mod tests;
 
 pub use builder::{Builder, BuilderVal, MemLoc};
 pub use callbacks::CallbackFun;
@@ -94,7 +101,7 @@ impl<'t> LLVMBackend<'t> {
         features.extend(target_features.iter().cloned());
 
         // TODO add target options here if we ever have any
-        llvm::initialization::init(cg_opts, &[]);
+        llvm::init(cg_opts, &[]);
         LLVMBackend { target, target_cpu, features: features.join(",") }
     }
 
@@ -143,7 +150,8 @@ extern "C" fn diagnostic_handler(info: &llvm::DiagnosticInfo, _: *mut c_void) {
 
 pub struct ModuleLlvm {
     llcx: &'static mut llvm::Context,
-    // must be a raw pointer because the reference must not outlife self/the context
+    // FIXME:
+    // must be a raw pointer because the reference must not outlive self/the context
     llmod_raw: *const llvm::Module,
     tm: &'static mut llvm::TargetMachine,
     opt_lvl: OptLevel,
@@ -158,14 +166,12 @@ impl ModuleLlvm {
         opt_lvl: OptLevel,
     ) -> Result<ModuleLlvm, LLVMString> {
         let llcx = llvm::LLVMContextCreate();
-        let target_data_layout = target.data_layout.clone();
-
         llvm::LLVMContextSetDiagnosticHandler(llcx, Some(diagnostic_handler), ptr::null_mut());
 
         let name = CString::new(name).unwrap();
         let llmod = llvm::LLVMModuleCreateWithNameInContext(name.as_ptr(), llcx);
 
-        let data_layout = CString::new(&*target_data_layout).unwrap();
+        let data_layout = CString::new(&*target.data_layout.clone()).unwrap();
         llvm::LLVMSetDataLayout(llmod, data_layout.as_ptr());
         llvm::set_normalized_target(llmod, &target.llvm_target);
 
@@ -212,7 +218,7 @@ impl ModuleLlvm {
         }
     }
 
-    /// Verifies this module and prints out  any errors
+    /// Verifies this module and prints out any errors to `stderr`
     ///
     /// # Returns
     /// Whether this module is valid (true if valid)
@@ -223,7 +229,7 @@ impl ModuleLlvm {
         }
     }
 
-    /// Verifies this module and prints out an error for any errors
+    /// Verifies this module and retrieve error messages.
     ///
     /// # Returns
     /// An error messages in case the module invalid
@@ -243,6 +249,7 @@ impl ModuleLlvm {
         }
     }
 
+    /// Emits an object file for the given module to `dst` file path.
     pub fn emit_object(&self, dst: &Path) -> Result<(), LLVMString> {
         let path = CString::new(dst.to_str().unwrap()).unwrap();
 

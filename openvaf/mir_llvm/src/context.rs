@@ -21,6 +21,7 @@ pub struct CodegenCx<'a, 'll> {
     // pub target_cpu: &'a str,
     pub literals: &'a Rodeo,
     str_lit_cache: RefCell<AHashMap<Spur, &'ll Value>>,
+
     pub(crate) intrinsics: RefCell<AHashMap<&'static str, (&'ll Type, &'ll Value)>>,
     pub(crate) local_gen_sym_counter: Cell<u32>,
     pub(crate) tys: Types<'ll>,
@@ -31,19 +32,19 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
         literals: &'a Rodeo,
         llvm_module: &'ll crate::ModuleLlvm,
         target: &'a Target,
-        // target_cpu: &'a str,
+        // target_cpu: &'a str,  // This is handled by LLVMBackend.
     ) -> CodegenCx<'a, 'll> {
         // let ty_isize =
         //     unsafe { llvm::LLVMIntTypeInContext(llvm_module.llcx, target.pointer_width) };
         CodegenCx {
             llmod: llvm_module.llmod(),
             llcx: llvm_module.llcx,
-            str_lit_cache: RefCell::new(AHashMap::with_capacity(literals.len())),
+            target,
+            // target_cpu,
             literals,
+            str_lit_cache: RefCell::new(AHashMap::with_capacity(literals.len())),
             intrinsics: RefCell::new(AHashMap::new()),
             local_gen_sym_counter: Cell::new(0),
-            // target_cpu,
-            target,
             tys: Types::new(llvm_module.llcx, target.pointer_width),
         }
     }
@@ -85,14 +86,12 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
     }
 
     pub fn const_str(&self, lit: Spur) -> &'ll Value {
+        // check if literal is in cache
         if let Some(val) = self.str_lit_cache.borrow().get(&lit) {
             return val;
         }
 
         let val = self.literals.resolve(&lit).as_bytes().to_owned();
-
-        // assert!(!val.contains(&b'\0'));
-        // val.push(b'\0');
         let val = unsafe {
             llvm::LLVMConstStringInContext(
                 self.llcx,
@@ -102,7 +101,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
             )
         };
         let sym = self.generate_local_symbol_name("str");
-        let ty = self.val_ty(val);
+        let ty = self.ty_of(val);
         let global = self
             .define_global(&sym, ty)
             .unwrap_or_else(|| unreachable!("symbol {} already defined", sym));
@@ -113,12 +112,13 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
             llvm::LLVMSetLinkage(global, llvm::Linkage::Internal);
         }
         self.str_lit_cache.borrow_mut().insert(lit, global);
+
         global
     }
 }
 
 impl CodegenCx<'_, '_> {
-    /// Generates a new symbol name with the given prefix. This symbol name must
+    /// Generates a new symbol name with `prefix`. This symbol name must
     /// only be used for definitions with `internal` or `private` linkage.
     pub fn generate_local_symbol_name(&self, prefix: &str) -> String {
         let idx = self.local_gen_sym_counter.get();
@@ -129,6 +129,7 @@ impl CodegenCx<'_, '_> {
         name.push_str(prefix);
         name.push('.');
         base_n::push_str(idx as u128, base_n::ALPHANUMERIC_ONLY, &mut name);
+
         name
     }
 }

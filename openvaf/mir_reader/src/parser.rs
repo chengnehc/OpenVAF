@@ -479,7 +479,7 @@ impl<'a> Parser<'a> {
             name: self.parse_external_name()?,
             params: 0,
             returns: 0,
-            has_sideeffects,
+            has_side_effects: has_sideeffects,
         };
 
         self.match_token(Token::LPar, "expected function signature: ( args... )")?;

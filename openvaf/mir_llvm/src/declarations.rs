@@ -7,21 +7,21 @@ use crate::CodegenCx;
 
 /// Declare a function.
 ///
-/// If there’s a value with the same name already declared, the function will
+/// If there’s a value with the same name already declared,
 /// update the declaration and return existing Value instead.
 pub fn declare_raw_fn<'ll>(
     cx: &CodegenCx<'_, 'll>,
     name: &str,
     callconv: llvm::CallConv,
     unnamed: llvm::UnnamedAddr,
-    ty: &'ll Type,
+    func_ty: &'ll Type,
 ) -> &'ll Value {
     let name = CString::new(name).unwrap();
     unsafe {
-        let llfn = llvm::LLVMAddFunction(cx.llmod, name.as_ptr() as *const c_char, ty);
-
+        let llfn = llvm::LLVMAddFunction(cx.llmod, name.as_ptr() as *const c_char, func_ty);
         llvm::LLVMSetFunctionCallConv(llfn, callconv);
         llvm::LLVMSetUnnamedAddress(llfn, unnamed);
+
         llfn
     }
 }

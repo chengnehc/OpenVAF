@@ -8,8 +8,7 @@ use crate::simplify_cfg;
 
 fn expect_test(raw: &str, expect: Expect) {
     let (mut func, _) = parse_function(raw).unwrap();
-    let mut cfg = ControlFlowGraph::new();
-    cfg.compute(&func);
+    let mut cfg = ControlFlowGraph::with_function(&func);
     simplify_cfg(&mut func, &mut cfg);
 
     expect.assert_eq(&func.to_debug_string())

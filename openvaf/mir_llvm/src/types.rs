@@ -26,12 +26,11 @@ impl<'ll> Types<'ll> {
             // means always using char pointers, with newer llvm version the
             // type is ignored anyway
             let ptr = llvm::LLVMPointerType(char, llvm::AddressSpace::DATA);
-            let size = llvm::LLVMIntTypeInContext(llcx, pointer_width);
             Types {
                 double: llvm::LLVMDoubleTypeInContext(llcx),
                 char,
                 int: llvm::LLVMInt32TypeInContext(llcx),
-                size,
+                size: llvm::LLVMIntTypeInContext(llcx, pointer_width),
                 ptr,
                 fat_ptr: ty_struct(llcx, "fat_ptr", &[ptr, llvm::LLVMInt64TypeInContext(llcx)]),
                 bool: llvm::LLVMInt1TypeInContext(llcx),
@@ -51,6 +50,7 @@ fn ty_struct<'ll>(llcx: &'ll llvm::Context, name: &str, elements: &[&'ll Type]) 
     }
 }
 
+/// wrappers for llvm::Type
 impl<'a, 'll> CodegenCx<'a, 'll> {
     #[inline(always)]
     pub fn ty_double(&self) -> &'ll Type {
@@ -88,6 +88,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
     pub fn ty_fat_ptr(&self) -> &'ll Type {
         self.tys.fat_ptr
     }
+
     pub fn ty_aint(&self, bits: u32) -> &'ll Type {
         unsafe { llvm::LLVMIntTypeInContext(self.llcx, bits) }
     }
@@ -108,13 +109,20 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
         unsafe { llvm::LLVMArrayType(ty, len) }
     }
 
+    pub fn ty_of(&self, v: &'ll Value) -> &'ll Type {
+        unsafe { llvm::LLVMTypeOf(v) }
+    }
+}
+
+/// wrappers for constant llvm::Value
+impl<'a, 'll> CodegenCx<'a, 'll> {
     pub fn const_val(&self, val: &Const) -> &'ll Value {
         match *val {
             Const::Float(val) => self.const_real(val.into()),
             Const::Int(val) => self.const_int(val),
             Const::Bool(val) => self.const_bool(val),
-            // Const::Complex(ref val) => self.const_cmplx(val),
             Const::Str(val) => self.const_str(val),
+            // Const::Complex(ref val) => self.const_cmplx(val),
         }
     }
 
@@ -180,9 +188,5 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
 
     pub fn const_undef(&self, t: &'ll Type) -> &'ll Value {
         unsafe { llvm::LLVMGetUndef(t) }
-    }
-
-    pub fn val_ty(&self, v: &'ll Value) -> &'ll Type {
-        unsafe { llvm::LLVMTypeOf(v) }
     }
 }

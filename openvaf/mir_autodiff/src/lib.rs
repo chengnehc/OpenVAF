@@ -1,17 +1,18 @@
+use ahash::AHashMap;
+use mir::{
+    DataFlowGraph, DominatorTree, Function, Inst, InstructionData, KnownDerivatives, Opcode, Value,
+};
+
 mod builder;
 mod intern;
 mod live_derivatives;
 mod postorder;
 mod subgraph;
 
-use ahash::AHashMap;
+use intern::{Derivative, DerivativeIntern};
+
 pub use builder::build_derivatives;
 pub use live_derivatives::LiveDerivatives;
-use mir::{
-    DataFlowGraph, DominatorTree, Function, Inst, InstructionData, KnownDerivatives, Opcode, Value,
-};
-
-use crate::intern::{Derivative, DerivativeIntern};
 
 pub fn auto_diff(
     mut func: impl AsMut<Function>,
@@ -32,6 +33,7 @@ fn is_zero_call(dfg: &DataFlowGraph, inst: Inst, intern: &DerivativeIntern) -> b
         false
     }
 }
+
 fn zero_derivative(dfg: &DataFlowGraph, inst: Inst) -> bool {
     let opcode = dfg.insts[inst].opcode();
     matches!(

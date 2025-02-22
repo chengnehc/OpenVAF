@@ -27,7 +27,7 @@ fn process(
     func: &mut Function,
     output_values: &BitSet<Value>,
 ) {
-    if func.dfg.inst_dead(inst, true)
+    if func.dfg.instr_dead(inst, true)
         && !func.dfg.inst_results(inst).iter().any(|res| output_values.contains(*res))
     {
         func.dfg.zap_inst(inst);

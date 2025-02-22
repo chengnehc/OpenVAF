@@ -1,28 +1,28 @@
 use std::fmt::Debug;
 use std::iter;
 use std::mem::take;
+use stdx::{impl_debug, impl_idx_from};
 
 use ahash::AHashMap;
 use bitset::HybridBitSet;
 use mir::Unknown;
 use mir::{FuncRef, KnownDerivatives, Value};
-use stdx::{impl_debug, impl_idx_from};
 use typed_indexmap::TiSet;
 
+/// An opaque reference to a derivative.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Derivative(u32);
 impl_idx_from!(Derivative(u32));
+impl_debug! {match Derivative{
+    Derivative(raw) => "derivative{}",raw;
+}}
 
 impl Derivative {
     pub fn assert_first_order(self) -> Unknown {
         self.0.into()
     }
 }
-
-impl_debug! {match Derivative{
-    Derivative(raw) => "derivative{}",raw;
-}}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DerivativeInfo {
@@ -38,20 +38,6 @@ pub struct DerivativeIntern<'a> {
 }
 
 impl<'a> DerivativeIntern<'a> {
-    pub fn num_derivatives(&self) -> usize {
-        self.derivatives.len()
-    }
-
-    pub fn num_unknowns(&self) -> usize {
-        self.unknowns.len()
-    }
-
-    pub fn ensure_unknown(&mut self, val: Value) -> Unknown {
-        let unknown = self.unknowns.ensure(val).0;
-        self.derivatives.ensure(DerivativeInfo { previous_order: None, base: unknown });
-        unknown
-    }
-
     pub fn new(known: &'a KnownDerivatives) -> DerivativeIntern<'a> {
         let derivatives = known
             .unknowns
@@ -67,6 +53,24 @@ impl<'a> DerivativeIntern<'a> {
             // don't expect more than 8. th order derivative in most code
             buf: Vec::with_capacity(8),
         }
+    }
+
+    pub fn num_derivatives(&self) -> usize {
+        self.derivatives.len()
+    }
+
+    pub fn num_unknowns(&self) -> usize {
+        self.unknowns.len()
+    }
+
+    pub fn ensure_unknown(&mut self, val: Value) -> Unknown {
+        let unknown = self.unknowns.ensure(val).0;
+        self.derivatives.ensure(DerivativeInfo { previous_order: None, base: unknown });
+        unknown
+    }
+
+    pub fn intern(&mut self, derivative: DerivativeInfo) -> (Derivative, bool) {
+        self.derivatives.ensure(derivative)
     }
 
     pub fn previous_order(&self, derivative: Derivative) -> Option<Derivative> {
@@ -102,17 +106,13 @@ impl<'a> DerivativeIntern<'a> {
         self.raise_order_with(derivative, next_unknown, |_| true).unwrap().0
     }
 
-    pub fn intern(&mut self, derivative: DerivativeInfo) -> (Derivative, bool) {
-        self.derivatives.ensure(derivative)
-    }
-
     pub fn raise_order_with(
         &mut self,
         derivative: Derivative,
         next_unknown: Unknown,
         f: impl Fn(Derivative) -> bool,
     ) -> Option<(Derivative, bool)> {
-        // This is save since we never hand out a reference
+        // This is safe since we never hand out a reference
 
         let mut changed = false;
         let mut prev_orders = take(&mut self.buf);
