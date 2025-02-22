@@ -1,13 +1,13 @@
+//! See Also:
+//!
+//! https://docs.rs/itertools/0.14.0/itertools/fn.multiunzip.html
+
 /// Converts an iterator of tuples into a tuple of containers.
 ///
 /// `unzip()` consumes an entire iterator of n-ary tuples, producing `n` collections, one for each
 /// column.
 ///
-/// This function is, in some sense, the opposite of [`multizip`].
-///
 /// ```
-/// use itertools::multiunzip;
-///
 /// let inputs = vec![(1, 2, 3), (4, 5, 6), (7, 8, 9)];
 ///
 /// let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(inputs);
@@ -17,7 +17,6 @@
 /// assert_eq!(c, vec![3, 6, 9]);
 /// ```
 ///
-/// [`multizip`]: crate::multizip
 pub fn multiunzip<FromI, I>(i: I) -> FromI
 where
     I: IntoIterator,
@@ -28,7 +27,6 @@ where
 
 /// An iterator that can be unzipped into multiple collections.
 ///
-/// See [`.multiunzip()`](crate::Itertools::multiunzip) for more information.
 pub trait MultiUnzip<FromI>: Iterator {
     /// Unzip this iterator into multiple collections.
     fn multiunzip(self) -> FromI;

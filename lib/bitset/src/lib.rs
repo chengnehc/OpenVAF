@@ -1,3 +1,8 @@
+//! See Also:
+//!
+//! - https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs
+//! - https://doc.rust-lang.org/stable/nightly-rustc/rustc_index/bit_set/struct.BitSet.html
+
 use std::fmt::{self, Debug, Write};
 use std::marker::PhantomData;
 use std::{mem, slice};
@@ -10,7 +15,7 @@ pub mod matrix;
 mod sparse;
 
 pub use hybrid::{HybridBitSet, HybridIter};
-pub use matrix::{BitMatrix, GrowableSparseBitMatrix, SparseBitMatrix};
+pub use matrix::{BitMatrix, SparseBitMatrix /* , GrowableSparseBitMatrix */};
 pub use sparse::SparseBitSet;
 use sparse::SPARSE_MAX;
 

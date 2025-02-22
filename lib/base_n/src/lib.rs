@@ -1,13 +1,20 @@
 //! Converts unsigned integers into a string representation with some base.
 //! Bases up to and including 36 can be used for case-insensitive things.
+//!
+//! See Also:
+//!
+//! https://github.com/rust-lang/rust/blob/master/compiler/rustc_data_structures/src/base_n.rs
+
+// TODO(JW) update this crate
+
 use std::str;
+
+#[cfg(test)]
+mod tests;
 
 pub const MAX_BASE: usize = 64;
 pub const ALPHANUMERIC_ONLY: usize = 62;
 pub const CASE_INSENSITIVE: usize = 36;
-
-#[cfg(test)]
-mod tests;
 
 const BASE_64: &[u8; MAX_BASE] =
     b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@$";

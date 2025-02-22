@@ -76,7 +76,7 @@ macro_rules! impl_from {
 /// impl_from!(Struct, Union, Enum for Adt);
 /// ```
 #[macro_export]
-macro_rules! impl_from_typed{
+macro_rules! impl_from_typed {
     ($($variant:ident ($ty:ty)),* for $enum:ident) => {
         $(
             impl From<$ty> for $enum {
@@ -99,12 +99,15 @@ macro_rules! impl_from_typed{
     }
 }
 
-/// Generates `From<u32> for I`, `From<I> for u32` impls for `Enum E { Foo(Foo), Bar(Bar) }` enums
+/// Generates `From` trait impls for newtype wrappers serving as index.
+///
+/// Generates `packed_option::ReservedValue` trait impls, using the maximum
+/// of raw numeric type as reserved value.
 ///
 /// # Example
 ///
 /// ```rust
-/// impl_from!(Struct, Union, Enum for Adt);
+/// impl_idx_from!(NewType(Raw));
 /// ```
 #[macro_export]
 macro_rules! impl_idx_from {
@@ -150,13 +153,10 @@ macro_rules! impl_idx_from {
     };
 }
 
-/// Generates `From<u32> for I`, `From<I> for u32` impls for `Enum E { Foo(Foo), Bar(Bar) }` enums
+/// Generates `From` trait impls for raw numeric types within newtype wrappers serving as index.
 ///
-/// # Example
-///
-/// ```rust
-/// impl_from!(Struct, Union, Enum for Adt);
-/// ```
+/// 'Read-only' means that one can only unwrap to get the inner raw value, but can not turn a
+/// raw value into a newtype.
 #[macro_export]
 macro_rules! impl_idx_from_readonly {
     ($ty:ident($raw: ident)) => {
@@ -176,12 +176,11 @@ macro_rules! impl_idx_from_readonly {
     };
 }
 
-/// Generates `From<u32> for I`, `From<I> for u32` impls for `Enum E { Foo(Foo), Bar(Bar) }` enums
-///
-/// # Example
+/// Generates `Add`, `AddAssign`, `Sub` and `SubAssign` trait impls for newtype wrappers
+/// serving as index.
 ///
 /// ```rust
-/// impl_from!(Struct, Union, Enum for Adt);
+/// impl_idx_math!(NewType(Raw));
 /// ```
 #[macro_export]
 macro_rules! impl_idx_math {
@@ -328,13 +327,6 @@ macro_rules! impl_idx_math {
     };
 }
 
-/// Generates `From<u32> for I`, `From<I> for u32` impls for `Enum E { Foo(Foo), Bar(Bar) }` enums
-///
-/// # Example
-///
-/// ```rust
-/// impl_from!(Struct, Union, Enum for Adt);
-/// ```
 #[macro_export]
 macro_rules! impl_idx_math_from {
     ($ty:ident($raw: ident)) => {
@@ -343,7 +335,7 @@ macro_rules! impl_idx_math_from {
     };
 }
 
-/// Generates an Display implementation
+/// Generates a `Display` trait implementation
 ///
 /// # Example
 ///
@@ -363,12 +355,12 @@ macro_rules! impl_display {
     };
 }
 
-/// Generates an Display implementation
+/// Generates a `Debug` trait implementation
 ///
 /// # Example
 ///
 /// ```rust
-/// impl_display! {
+/// impl_debug! {
 ///     match Test{
 ///         Test::Bar(i) => "bar {}", i;
 ///         Test::Foo => "foo";
@@ -383,12 +375,12 @@ macro_rules! impl_debug {
     };
 }
 
-/// Generates an Display implementation
+/// Generates both Display` and `Debug` trait implementation
 ///
 /// # Example
 ///
 /// ```rust
-/// impl_display! {
+/// impl_debug_isplay! {
 ///     match Test{
 ///         Test::Bar(i) => "bar {}", i;
 ///         Test::Foo => "foo";
@@ -428,7 +420,6 @@ macro_rules! impl_fmt {
             }
         }
     };
-
 
     (  $trait:ident $binding: ident @ $ty: ident => $fmt:literal $(, $fmt_arg: expr)*) => {
         impl std::fmt::$trait for $ty{

@@ -5,9 +5,13 @@ use std::ops::{Range, RangeInclusive};
 
 use typed_index_collections::TiVec;
 
+pub type Arena<T> = TiVec<Idx<T>, T>;
+
+pub type ArenaMap<I, T> = TiVec<Idx<I>, T>;
+
 // TODO add tiny idx?
 
-/// Backing storge used for `Idx<T>`
+/// Backing storage used for `Idx<T>`
 pub type RawIdx = u32;
 
 /// The index of a value allocated in an arena that holds `T`s.
@@ -204,7 +208,3 @@ impl<T> Hash for IdxRange<T> {
         self.range.hash(state);
     }
 }
-
-/// Index based Arena that automatically provides an Index Type for convenience
-pub type Arena<T> = TiVec<Idx<T>, T>;
-pub type ArenaMap<I, T> = TiVec<Idx<I>, T>;

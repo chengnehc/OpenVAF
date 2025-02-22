@@ -1,10 +1,13 @@
-use std::fmt::{Debug, Formatter};
+//! See Also:
+//!
+//! https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs#L1398
+
+use std::fmt::{self, Debug};
 use std::marker::PhantomData;
-use std::mem::take;
-use std::{fmt, iter};
+use std::{iter, mem};
 
 use stdx::iter::zip;
-use stdx::vec::{SliceExntesions, VecExtensions};
+use stdx::vec::{SliceExtensions, VecExtensions};
 
 use crate::{
     num_words, word_index_and_mask, BitIter, BitSet, HybridBitSet, UnionIntoHybridBitSet, Word,
@@ -452,7 +455,7 @@ where
     }
 
     pub fn take_row(&mut self, row: R) -> Option<HybridBitSet<C>> {
-        self.rows.get_mut(row.into()).map(take)
+        self.rows.get_mut(row.into()).map(mem::take)
     }
 }
 
@@ -491,6 +494,7 @@ where
     }
 }
 
+/* JW: not used
 /// A `SparseBitMatrix` that grows whenever required
 /// See documentation for `SparseBitMatrix`
 #[derive(PartialEq, Eq)]
@@ -629,3 +633,4 @@ where
         dst.insert_growable(column, num_columns)
     }
 }
+    */

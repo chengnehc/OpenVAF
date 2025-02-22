@@ -1,3 +1,8 @@
+//! See Also:
+//!
+//! - https://docs.rs/crate/cranelift-codegen/0.116.0/source/src/ir/immediates.rs
+//! - https://docs.rs/cranelift-codegen/0.116.0/cranelift_codegen/ir/immediates/struct.Ieee64.html
+
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -19,9 +24,8 @@ pub struct Ieee64(u64);
 /// formats are not supported by C99.
 ///
 /// The encoding parameters are:
-///
-/// w - exponent field width in bits
-/// t - trailing significand field width in bits
+/// - `w`: exponent field width in bits
+/// - `t`: trailing significand field width in bits
 ///
 fn format_float(bits: u64, w: u8, t: u8, f: &mut Formatter) -> fmt::Result {
     debug_assert!(w > 0 && w <= 16, "Invalid exponent range");
@@ -88,9 +92,8 @@ fn format_float(bits: u64, w: u8, t: u8, f: &mut Formatter) -> fmt::Result {
 /// Parse a float using the same format as `format_float` above.
 ///
 /// The encoding parameters are:
-///
-/// w - exponent field width in bits
-/// t - trailing significand field width in bits
+/// - w - exponent field width in bits
+/// - t - trailing significand field width in bits
 ///
 fn parse_float(s: &str, w: u8, t: u8) -> Result<u64, &'static str> {
     debug_assert!(w > 0 && w <= 16, "Invalid exponent range");
@@ -276,7 +279,7 @@ impl From<f64> for Ieee64 {
 
 impl From<u64> for Ieee64 {
     fn from(x: u64) -> Self {
-        Self::with_float(f64::from_bits(x))
+        Self::with_bits(x)
     }
 }
 
@@ -302,8 +305,14 @@ impl Ieee64 {
         self.0
     }
 
-    /// Check if the value is a NaN. For [Ieee64], this means checking that the 11 exponent bits are
-    /// all set.
+    // sig  exponent                        fraction
+    //  0 00000000000 0000000000000000000000000000000000000000000000000000 ≙ 0000 0000 0000 0000 ≙ +0
+    //  1 00000000000 0000000000000000000000000000000000000000000000000000 ≙ 8000 0000 0000 0000 ≙ −0
+    //  0 11111111111 0000000000000000000000000000000000000000000000000000 ≙ 7FF0 0000 0000 0000 ≙ +∞ (positive infinity)
+    //  1 11111111111 0000000000000000000000000000000000000000000000000000 ≙ FFF0 0000 0000 0000 ≙ −∞ (negative infinity)
+    //  0 11111111111 0000000000000000000000000000000000000000000000000001 ≙ 7FF0 0000 0000 0001 ≙ NaN (sNaN on most processors, such as x86 and ARM)
+    //  0 11111111111 1000000000000000000000000000000000000000000000000001 ≙ 7FF8 0000 0000 0001 ≙ NaN (qNaN on most processors, such as x86 and ARM)
+    //  0 11111111111 1111111111111111111111111111111111111111111111111111 ≙ 7FFF FFFF FFFF FFFF ≙ NaN (an alternative encoding of NaN)
     pub fn is_nan(self) -> bool {
         f64::from_bits(self.0).is_nan()
     }
@@ -312,8 +321,6 @@ impl Ieee64 {
         f64::from_bits(self.0).is_finite()
     }
 
-    /// Check if the value is 0.0 or -0.0
-    /// (note that other values have a 0 mantissa!)
     pub fn is_zero(self) -> bool {
         self.0 == 0x0000000000000000 || self.0 == 0x8000000000000000
     }

@@ -6,6 +6,10 @@
 //!
 //! This module provides a `PackedOption<T>` for types that have a reserved value that can be used
 //! to represent `None`.
+//!
+//! See Also:
+//!
+//! https://docs.rs/cranelift-codegen/0.116.0/cranelift_codegen/packed_option/index.html
 
 use core::fmt;
 use core::mem;
