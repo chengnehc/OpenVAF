@@ -1,4 +1,3 @@
-
 [workspace]
 resolver = "2"
 members = ["openvaf/*","melange/*", "verilogae/*", "xtask/", "lib/*", "sourcegen"]
@@ -17,7 +16,6 @@ codegen-units = 1
 opt-level = 3
 debug = false
 incremental = false
-
 
 [profile.dev]
 # Disabling debug info speeds up builds a bunch,
@@ -41,6 +39,5 @@ mir.opt-level = 2
 mir_build.opt-level = 2
 mir_opt.opt-level = 2
 
-
 [patch.crates-io]
-salsa = { git = 'https://github.com/DSPOM2/salsa'}
+salsa = { git = "https://github.com/chengnehc/salsa", branch = "salsa-0.17"}
