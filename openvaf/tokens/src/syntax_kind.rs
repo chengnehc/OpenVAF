@@ -1,6 +1,9 @@
-//! Defines [`SyntaxKind`] -- a fieldless enum of all possible syntactic
-//! constructs of the Rust language.
+// These clippy lints are nice normally, but why generate macros
+// when you can generate pre-expanded code? The `manual_non_exhaustive`
+// one is a false positive.
 
+#[allow(clippy::match_like_matches_macro, clippy::manual_non_exhaustive, clippy::enum_variant_names)]
+#[rustfmt::skip]
 #[macro_use]
 mod generated;
 
@@ -25,5 +28,9 @@ impl SyntaxKind {
     #[inline]
     pub fn is_trivia(self) -> bool {
         matches!(self, SyntaxKind::WHITESPACE | SyntaxKind::COMMENT)
+    }
+    #[inline]
+    pub fn is_non_trivia(self) -> bool {
+        !self.is_trivia()
     }
 }

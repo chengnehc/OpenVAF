@@ -1,12 +1,12 @@
 use std::mem;
 use std::sync::Arc;
 
-use preprocessor::sourcemap::{CtxSpan, SourceContext, SourceMap};
+use preprocessor::sourcemap::{CtxSpan, SourceContextId, SourceMap};
 use preprocessor::{SourceProvider, Token};
-use rowan::{GreenNodeBuilder, Language};
+use rowan::{GreenNode, GreenNodeBuilder, Language};
 use vfs::FileId;
 
-use crate::syntax_node::{GreenNode, VerilogALanguage};
+use crate::syntax_node::VerilogALanguage;
 use crate::{SyntaxError, SyntaxKind, TextRange, TextSize, T};
 
 pub(crate) struct SyntaxTreeBuilder<'a> {
@@ -27,7 +27,7 @@ pub(crate) struct SyntaxTreeBuilder<'a> {
     panic: bool,
     err_depth: u32,
     sm: &'a SourceMap,
-    ranges: Vec<(TextRange, SourceContext, TextSize)>,
+    ranges: Vec<(TextRange, SourceContextId, TextSize)>,
     current_range: CtxSpan,
 }
 
@@ -83,8 +83,8 @@ impl<'a> SyntaxTreeBuilder<'a> {
         }
         if self.err_depth == 0 {
             if let Some(mut err) = self.last_error.take() {
-                if let SyntaxError::UnexpectedToken { span, panic_end, .. } = &mut err {
-                    if span.end() < self.text_pos {
+                if let SyntaxError::UnexpectedToken { range, panic_end, .. } = &mut err {
+                    if range.end() < self.text_pos {
                         *panic_end = Some(self.text_pos);
                     }
                 }
@@ -114,7 +114,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
             let error = SyntaxError::UnexpectedToken {
                 expected,
                 found,
-                span: TextRange::at(
+                range: TextRange::at(
                     self.text_pos,
                     self.tokens.last().map_or_else(|| TextSize::from(0), |t| t.span.range.len()),
                 ),
@@ -140,7 +140,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
         let error = SyntaxError::UnexpectedToken {
             expected,
             found,
-            span: TextRange::at(pos, len),
+            range: TextRange::at(pos, len),
             expected_at,
             missing_delimiter,
             panic_end: None,
@@ -166,7 +166,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
             current_src,
             ranges: Vec::with_capacity(128),
             current_range: CtxSpan {
-                ctx: SourceContext::ROOT,
+                ctx: SourceContextId::ROOT,
                 range: TextRange::empty(TextSize::from(0)),
             },
             panic: false,
@@ -178,7 +178,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
 
     pub(super) fn finish(
         mut self,
-    ) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContext, TextSize)>) {
+    ) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContextId, TextSize)>) {
         match mem::replace(&mut self.state, State::Normal) {
             State::PendingFinish => {
                 self.eat_trivia();

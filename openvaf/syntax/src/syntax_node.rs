@@ -1,26 +1,25 @@
-//! This module defines Concrete Syntax Tree (CST), used by OpenVAF.
+//! This module defines Concrete Syntax Tree (CST) used by OpenVAF
+//! by wrapping `rowan`'s API.
+//!
+//! `rowan` is a crate for generic (language-agnostic) lossless syntax tree
+//! used by rust-analyzer.
 //!
 //! The CST includes comments and whitespace, provides a single node type,
 //! `SyntaxNode`, and a basic traversal API (parent, children, siblings).
-//!
-//! The *real* implementation is in the (language-agnostic) `rowan` crate, this
-//! module just wraps its API.
-
-pub(crate) use rowan::GreenNode;
-use rowan::Language;
-
-use crate::SyntaxKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum VerilogALanguage {}
-impl Language for VerilogALanguage {
-    type Kind = SyntaxKind;
 
-    fn kind_from_raw(raw: rowan::SyntaxKind) -> SyntaxKind {
-        SyntaxKind::from(raw.0)
+/// Teaches `rowan` to convert between two `SyntaxKind` types, allowing for a nicer
+/// SyntaxNode API where "kinds" are values from our `SyntaxKind`, instead of plain u16.
+impl rowan::Language for VerilogALanguage {
+    type Kind = crate::SyntaxKind;
+
+    fn kind_from_raw(raw: rowan::SyntaxKind) -> Self::Kind {
+        Self::Kind::from(raw.0)
     }
 
-    fn kind_to_raw(kind: SyntaxKind) -> rowan::SyntaxKind {
+    fn kind_to_raw(kind: Self::Kind) -> rowan::SyntaxKind {
         rowan::SyntaxKind(kind.into())
     }
 }

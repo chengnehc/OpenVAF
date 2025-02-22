@@ -63,8 +63,8 @@ fn gen_osdi_structs() {
         let file_string = add_preamble("gen_osdi_structs", reformat(file_string));
         let file_name = format!("osdi_{}_{}.rs", header.version_major, header.version_minor);
 
-        ensure_file_contents(&melange_src_dir.join(&file_name), &file_string);
         ensure_file_contents(&osdi_test_dir.join(&file_name), &file_string);
+        ensure_file_contents(&melange_src_dir.join(&file_name), &file_string);
     }
 }
 

@@ -1,21 +1,11 @@
-/*
- *  ******************************************************************************************
- *  Copyright (c) 2021 Pascal Kuthe. This file is part of the frontend project.
- *  It is subject to the license terms in the LICENSE file found in the top-level directory
- *  of this distribution and at  https://gitlab.com/DSPOM/OpenVAF/blob/master/LICENSE.
- *  No part of frontend, including this file, may be copied, modified, propagated, or
- *  distributed except according to the terms contained in the LICENSE file.
- *  *****************************************************************************************
- */
-
-//! In OpenVAF syntax trees are transient objects.
+//! In OpenVAF syntax trees are transient objects. That means that we create
+//! trees when we need them, and tear them down to save memory.
 //!
-//! That means that we create trees when we need them, and tear them down to
-//! save memory. In this architecture, hanging on to a particular syntax node
-//! for a long time is ill-advisable, as that keeps the whole tree resident.
+//! In this architecture, hanging on to a particular syntax node for a long
+//! time is ill-advisable, as that keeps the whole tree resident.
 //!
 //! Instead, we provide a [`SyntaxNodePtr`] type, which stores information about
-//! *location* of a particular syntax node in a tree. Its a small type which can
+//! *location* of a particular syntax node in a tree. It's a small type which can
 //! be cheaply stored, and which can be resolved to a real [`SyntaxNode`] when
 //! necessary.
 
@@ -23,32 +13,47 @@ use std::hash::{Hash, Hasher};
 use std::iter::successors;
 use std::marker::PhantomData;
 
-use crate::{AstNode, SyntaxKind, SyntaxNode, SyntaxToken, TextRange};
+use crate::{AstNode, SyntaxKind, SyntaxNode, /* SyntaxToken, */ TextRange};
 
-/// A pointer to a syntax node inside a file. It can be used to remember a
-/// specific node across reparses of the same file.
+// TODO(JW) migrate to `SyntaxNodePtr` in native rowan?
+// use crate::syntax_node::VerilogALanguage;
+// pub type SyntaxNodePtr = rowan::ast::SyntaxNodePtr<VerilogALanguage>;
+
+/// A "pointer" to a `SynatxNode`, via location in the source code.
+///
+/// It can be used to remember a specific node across reparses of the same file.
+///
+/// It's a small type which can be cheaply stored, and which can be resolved
+/// to a real [`SyntaxNode`] when necessary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SyntaxNodePtr {
     // Don't expose this field further. At some point, we might want to replace
     // range with node id.
-    pub(crate) range: TextRange,
+    range: TextRange,
     kind: SyntaxKind,
 }
 
 impl SyntaxNodePtr {
     #[inline]
-    pub fn new(node: &SyntaxNode) -> SyntaxNodePtr {
-        SyntaxNodePtr { range: node.text_range(), kind: node.kind() }
+    pub fn new(node: &SyntaxNode) -> Self {
+        Self { range: node.text_range(), kind: node.kind() }
     }
 
-    #[inline]
-    pub fn new_token(node: &SyntaxToken) -> SyntaxNodePtr {
-        SyntaxNodePtr { range: node.text_range(), kind: node.kind() }
-    }
+    // #[inline]
+    // pub fn new_token(node: &SyntaxToken) -> Self {
+    //     Self { range: node.text_range(), kind: node.kind() }
+    // }
 
+    /// Returns the range of the syntax node this pointer points to.
     #[inline]
-    pub fn range(&self) -> TextRange {
+    pub fn text_range(&self) -> TextRange {
         self.range
+    }
+
+    /// Returns the kind of the syntax node this pointer points to.
+    #[inline]
+    pub fn syntax_kind(&self) -> SyntaxKind {
+        self.kind
     }
 
     /// "Dereference" the pointer to get the node it points to.
@@ -69,16 +74,12 @@ impl SyntaxNodePtr {
         .unwrap_or_else(|| panic!("can't resolve local ptr to SyntaxNode: {:?}", self))
     }
 
+    /// Cast a `SyntaxNodePtr` to a `AstPtr`, if possible.
     pub fn cast<N: AstNode>(self) -> Option<AstPtr<N>> {
         if !N::can_cast(self.kind) {
             return None;
         }
         Some(AstPtr { raw: self, _ty: PhantomData })
-    }
-
-    #[inline]
-    pub fn syntax_kind(&self) -> SyntaxKind {
-        self.kind
     }
 }
 
@@ -115,17 +116,14 @@ impl<N: AstNode> AstPtr<N> {
         AstPtr { raw: SyntaxNodePtr::new(node.syntax()), _ty: PhantomData }
     }
 
+    /// "Dereference" the pointer to get the node it points to.
     #[inline]
     pub fn to_node(&self, root: &SyntaxNode) -> N {
         let syntax_node = self.raw.to_node(root);
         N::cast(syntax_node).unwrap()
     }
 
-    #[inline]
-    pub fn syntax_node_ptr(&self) -> SyntaxNodePtr {
-        self.raw
-    }
-
+    /// Cast the `AstPtr` to from pointing to `AstNode` type `N` to type `U`, if possible.
     #[inline]
     pub fn cast<U: AstNode>(self) -> Option<AstPtr<U>> {
         if !U::can_cast(self.raw.kind) {
@@ -135,13 +133,13 @@ impl<N: AstNode> AstPtr<N> {
     }
 
     #[inline]
-    pub fn range(&self) -> TextRange {
-        self.raw.range
+    pub fn text_range(&self) -> TextRange {
+        self.raw.text_range()
     }
 
     #[inline]
     pub fn syntax_kind(&self) -> SyntaxKind {
-        self.raw.kind
+        self.raw.syntax_kind()
     }
 }
 

@@ -1,7 +1,8 @@
-use tokens::SyntaxKind;
+use crate::{SyntaxError, SyntaxKind};
 
-use crate::SyntaxError;
-
+/// Output of the parser -- a DFS traversal of a concrete syntax tree.
+///
+/// In a sense, this is just a sequence of [`SyntaxKind`]
 #[derive(Default)]
 pub struct Output {
     /// 32-bit encoding of events. If LSB is zero, then that's an index into the
@@ -22,6 +23,7 @@ pub enum Step<'a> {
 }
 
 impl Output {
+    /// Iterate over traversal steps and consume a syntax tree.
     pub fn iter(&self) -> impl Iterator<Item = Step<'_>> {
         self.event.iter().map(|&event| {
             if event & 0b1 == 0 {
@@ -42,6 +44,8 @@ impl Output {
             }
         })
     }
+
+    // methods to transform `Event` stream to a synatx tree traversal `Output`
 
     pub(crate) fn token(&mut self, kind: SyntaxKind) {
         let e = ((kind as u16 as u32) << 16) | 1;

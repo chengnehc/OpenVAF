@@ -1,27 +1,45 @@
 //! Various extension methods to ast Nodes, which are hard to code-generate.
-//! Extensions for various expressions live in a sibling `expr_extensions` module.
 
+use std::borrow::Cow;
 use std::iter::successors;
 
-use stdx::impl_debug;
+use rowan::{GreenNodeData, GreenTokenData, NodeOrToken};
 
-use super::{
-    AnalogBehaviour, ArgListOwner, Assign, AstChildTokens, AstChildren, Constraint, EventStmt,
-    Expr, ForStmt, Function, ModulePortKind, Path, PortFlow, Range, Stmt, StrLit,
-};
-use crate::ast::{self, support, AstNode};
+use crate::ast::{self, support, ArgListOwner, AstChildTokens, AstChildren, AstNode};
 use crate::SyntaxKind::{IDENT, ROOT_KW};
-use crate::{SyntaxToken, T};
+use crate::{SyntaxNode, SyntaxToken, TokenText};
 
-// impl ast::PathSegment {
-//     pub fn parent_path(&self) -> Option<Path> {
-//         self.syntax.parent().and_then(|x| Path::cast(x))
-//     }
-// }
+impl ast::Name {
+    pub fn text(&self) -> TokenText<'_> {
+        text_of_first_token(self.syntax())
+    }
+}
+
+impl ast::NameRef {
+    pub fn text(&self) -> TokenText<'_> {
+        text_of_first_token(self.syntax())
+    }
+}
+
+fn text_of_first_token(node: &SyntaxNode) -> TokenText<'_> {
+    fn first_token(green_ref: &GreenNodeData) -> &GreenTokenData {
+        green_ref.children().next().and_then(NodeOrToken::into_token).unwrap()
+    }
+
+    match node.green() {
+        Cow::Borrowed(green_ref) => TokenText::borrowed(first_token(green_ref).text()),
+        Cow::Owned(green) => TokenText::owned(first_token(&green).to_owned()),
+    }
+}
 
 impl ast::Path {
-    pub fn parent_path(&self) -> Option<ast::Path> {
+    pub fn parent(&self) -> Option<ast::Path> {
         self.syntax().parent().and_then(ast::Path::cast)
+    }
+
+    #[must_use]
+    pub fn top_path(&self) -> ast::Path {
+        successors(Some(self.clone()), ast::Path::parent).last().unwrap()
     }
 
     #[must_use]
@@ -29,27 +47,19 @@ impl ast::Path {
         successors(Some(self.clone()), ast::Path::qualifier).last().unwrap()
     }
 
-    pub fn first_segment(&self) -> Option<ast::PathSegment> {
-        self.first_qualifier().segment()
-    }
-
-    //     pub fn last_segment(&self) -> Option<ast::PathSegment> {
-    //         self.top_path().segment()
-    //     }
-
-    pub fn segments(&self) -> impl Iterator<Item = ast::PathSegment> + Clone {
-        successors(self.first_segment(), |p| {
-            p.parent_path().and_then(|path| path.parent_path()).and_then(|p| p.segment())
-        })
-    }
-
     pub fn qualifiers(&self) -> impl Iterator<Item = ast::Path> + Clone {
         successors(self.qualifier(), |p| p.qualifier())
     }
 
-    #[must_use]
-    pub fn top_path(&self) -> ast::Path {
-        successors(Some(self.clone()), ast::Path::parent_path).last().unwrap()
+    pub fn segment(&self) -> Option<PathSegment> {
+        self.syntax().children_with_tokens().find_map(|e| {
+            let kind = match e.kind() {
+                IDENT => PathSegmentKind::Name,
+                ROOT_KW => PathSegmentKind::Root,
+                _ => return None,
+            };
+            Some(PathSegment { kind, syntax: e.into_token().unwrap() })
+        })
     }
 
     pub fn segment_token(&self) -> Option<SyntaxToken> {
@@ -67,16 +77,19 @@ impl ast::Path {
         })
     }
 
-    pub fn segment(&self) -> Option<PathSegment> {
-        self.syntax().children_with_tokens().find_map(|e| {
-            let kind = match e.kind() {
-                IDENT => PathSegmentKind::Name,
-                ROOT_KW => PathSegmentKind::Root,
-                _ => return None,
-            };
-            Some(PathSegment { kind, syntax: e.into_token().unwrap() })
-        })
-    }
+    // pub fn first_segment(&self) -> Option<PathSegment> {
+    //    self.first_qualifier().segment()
+    // }
+
+    //     pub fn last_segment(&self) -> Option<ast::PathSegment> {
+    //         self.top_path().segment()
+    //     }
+
+    // pub fn segments(&self) -> impl Iterator<Item = PathSegment> + Clone {
+    //    successors(self.first_segment(), |p| {
+    //        p.parent().and_then(|path| path.parent()).and_then(|p| p.segment())
+    //    })
+    // }
 
     pub fn as_raw_ident(&self) -> Option<SyntaxToken> {
         let segment = self.segment()?;
@@ -85,16 +98,11 @@ impl ast::Path {
         is_valid.then_some(segment.syntax)
     }
 }
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct PathSegment {
     pub syntax: SyntaxToken,
     pub kind: PathSegmentKind,
-}
-
-impl PathSegment {
-    pub fn parent_path(&self) -> Option<ast::Path> {
-        self.syntax.parent().and_then(ast::Path::cast)
-    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -103,37 +111,19 @@ pub enum PathSegmentKind {
     Name,
 }
 
+/* Expressions and Statements */
+
 impl ast::Expr {
     pub fn as_raw_ident(&self) -> Option<SyntaxToken> {
         self.as_path()?.as_raw_ident()
     }
 
-    pub fn as_path(&self) -> Option<Path> {
+    pub fn as_path(&self) -> Option<ast::Path> {
         if let ast::Expr::PathExpr(path_expr) = self {
             path_expr.path()
         } else {
             None
         }
-    }
-}
-
-impl ast::Range {
-    // if the range bound is missing we just assume inclusive here
-
-    pub fn start_inclusive(&self) -> bool {
-        self.l_brack_token().is_some()
-    }
-
-    pub fn end_inclusive(&self) -> bool {
-        self.r_brack_token().is_some()
-    }
-
-    pub fn start(&self) -> Option<ast::Expr> {
-        support::children(self.syntax()).next()
-    }
-
-    pub fn end(&self) -> Option<ast::Expr> {
-        support::children(self.syntax()).nth(1)
     }
 }
 
@@ -147,15 +137,43 @@ impl ast::IfStmt {
     }
 }
 
+impl ast::ForStmt {
+    pub fn init(&self) -> Option<ast::Stmt> {
+        support::child(self.syntax())
+    }
+
+    pub fn incr(&self) -> Option<ast::Stmt> {
+        support::children(self.syntax()).nth(1)
+    }
+
+    pub fn for_body(&self) -> Option<ast::Stmt> {
+        support::children(self.syntax()).nth(2)
+    }
+}
+
+impl ast::EventStmt {
+    pub fn sim_phases(&self) -> AstChildTokens<ast::StrLit> {
+        support::child_tokens(self.syntax())
+    }
+}
+
+impl ast::BlockStmt {
+    pub fn body(&self) -> AstChildren<ast::Stmt> {
+        support::children(self.syntax())
+    }
+}
+
+/* Items */
+
 impl ast::ModuleDecl {
-    pub fn analog_behaviour(&self) -> impl Iterator<Item = Stmt> {
-        support::children::<AnalogBehaviour>(self.syntax())
+    pub fn analog_behaviour(&self) -> impl Iterator<Item = ast::Stmt> {
+        support::children::<ast::AnalogBehaviour>(self.syntax())
             .filter(|it| it.initial_token().is_none())
             .filter_map(|it| it.stmt())
     }
 
-    pub fn analog_initial_behaviour(&self) -> impl Iterator<Item = Stmt> {
-        support::children::<AnalogBehaviour>(self.syntax())
+    pub fn analog_initial_behaviour(&self) -> impl Iterator<Item = ast::Stmt> {
+        support::children::<ast::AnalogBehaviour>(self.syntax())
             .filter(|it| it.initial_token().is_some())
             .filter_map(|it| it.stmt())
     }
@@ -166,7 +184,7 @@ impl ast::ModuleDecl {
 }
 
 impl ast::ModulePort {
-    pub fn kind(&self) -> ModulePortKind {
+    pub fn kind(&self) -> ast::ModulePortKind {
         support::child(&self.syntax).unwrap()
     }
 }
@@ -181,64 +199,11 @@ impl ast::ModulePorts {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum AssignOp {
-    Contribute,
-    Assign,
-}
-
-impl_debug! {
-    match AssignOp{
-        AssignOp::Contribute => "<+";
-        AssignOp::Assign => "=";
-    }
-}
-
-impl Assign {
-    pub fn op(&self) -> Option<AssignOp> {
-        if support::token(self.syntax(), T![=]).is_some() {
-            Some(AssignOp::Assign)
-        } else if support::token(self.syntax(), T![<+]).is_some() {
-            Some(AssignOp::Contribute)
-        } else {
-            None
-        }
-    }
-
-    pub fn lval(&self) -> Option<ast::Expr> {
-        support::child(self.syntax())
-    }
-
-    pub fn rval(&self) -> Option<ast::Expr> {
-        support::children(self.syntax()).nth(1)
-    }
-}
-
-impl ForStmt {
-    pub fn init(&self) -> Option<Stmt> {
-        support::child(self.syntax())
-    }
-
-    pub fn incr(&self) -> Option<Stmt> {
-        support::children(self.syntax()).nth(1)
-    }
-
-    pub fn for_body(&self) -> Option<Stmt> {
-        support::children(self.syntax()).nth(2)
-    }
-}
-
-impl EventStmt {
-    pub fn sim_phases(&self) -> AstChildTokens<StrLit> {
-        support::child_token(self.syntax())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BranchKind {
-    PortFlow(PortFlow),
-    NodeGnd(Path),
-    Nodes(Path, Path),
+    PortFlow(ast::PortFlow),
+    NodeGnd(ast::Path),
+    Nodes(ast::Path, ast::Path),
 }
 
 impl ast::BranchDecl {
@@ -272,11 +237,11 @@ pub enum ConstraintKind {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ConstraintValue {
-    Range(Range),
-    Val(Expr),
+    Range(ast::Range),
+    Val(ast::Expr),
 }
 
-impl Constraint {
+impl ast::Constraint {
     pub fn kind(&self) -> Option<ConstraintKind> {
         if self.from_token().is_some() {
             Some(ConstraintKind::From)
@@ -296,8 +261,28 @@ impl Constraint {
     }
 }
 
-impl Function {
-    pub fn body(&self) -> AstChildren<Stmt> {
+impl ast::Range {
+    // if the range bound is missing we just assume inclusive here
+
+    pub fn start_inclusive(&self) -> bool {
+        self.l_brack_token().is_some()
+    }
+
+    pub fn end_inclusive(&self) -> bool {
+        self.r_brack_token().is_some()
+    }
+
+    pub fn start(&self) -> Option<ast::Expr> {
+        support::children(self.syntax()).next()
+    }
+
+    pub fn end(&self) -> Option<ast::Expr> {
+        support::children(self.syntax()).nth(1)
+    }
+}
+
+impl ast::Function {
+    pub fn body(&self) -> AstChildren<ast::Stmt> {
         support::children(self.syntax())
     }
 }

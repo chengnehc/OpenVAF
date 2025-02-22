@@ -1,17 +1,18 @@
 use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
+use stdx::{impl_debug_display, impl_idx_from};
 
 use ahash::AHashMap;
-use stdx::{impl_debug_display, impl_idx_from};
 use text_size::{TextRange, TextSize};
 use typed_index_collections::TiVec;
 use vfs::{FileId, VfsPath};
 
 use crate::SourceProvider;
 
-/// Representents a continuous range of Text inside a particular file.
-/// This representation is the only representation that can be used to actually obtain the src code
-/// of a particular TextRange
+/// Represents a (global) continuous range of Text inside a particular file.
+///
+/// This representation is the only one that can be used to actually
+/// obtain the source code of a particular TextRange.
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct FileSpan {
     pub range: TextRange,
@@ -28,6 +29,7 @@ impl FileSpan {
     pub fn with_range(self, range: TextRange) -> FileSpan {
         FileSpan { range, file: self.file }
     }
+
     #[must_use]
     pub fn with_len(self, len: TextSize) -> FileSpan {
         FileSpan { range: TextRange::at(self.range.start(), len), file: self.file }
@@ -46,6 +48,7 @@ impl FileSpan {
         FileSpan { range, file: self.file }
     }
 
+    /* Below is not used. */
     #[inline]
     #[must_use]
     pub fn path(&self, sources: &dyn SourceProvider) -> VfsPath {
@@ -75,23 +78,36 @@ impl FileSpan {
     }
 }
 
-/// A CtxSpan refers a contious range of Text a SourceContext (macro expansion or file).
-/// The range is relative to the start of the particular context so that ranges can be changed
+/// Represents a (local) continous range of text within a `SourceContext`
+/// (macro expansion or included file).
+///
+/// The range is relative to the start of the particular `SourceContext`.
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct CtxSpan {
     pub range: TextRange,
     /// Information about where the code came from
-    pub ctx: SourceContext,
+    pub ctx: SourceContextId,
 }
 
 impl CtxSpan {
+    #[inline]
+    pub fn dummy() -> CtxSpan {
+        Self { range: TextRange::empty(0.into()), ctx: SourceContextId::ROOT }
+    }
+
     #[must_use]
-    pub fn with_ctx(self, ctx: SourceContext) -> CtxSpan {
+    pub fn with_ctx(self, ctx: SourceContextId) -> CtxSpan {
         CtxSpan { range: self.range, ctx }
     }
+
     #[must_use]
     pub fn with_range(self, range: TextRange) -> CtxSpan {
         CtxSpan { range, ctx: self.ctx }
+    }
+
+    #[must_use]
+    pub fn with_len(self, len: TextSize) -> CtxSpan {
+        CtxSpan { range: TextRange::at(self.range.start(), len), ctx: self.ctx }
     }
 
     #[must_use]
@@ -100,17 +116,14 @@ impl CtxSpan {
     }
 
     #[must_use]
-    pub fn with_len(self, len: TextSize) -> CtxSpan {
-        CtxSpan { range: TextRange::at(self.range.start(), len), ctx: self.ctx }
+    pub fn to_file_span(self, sm: &SourceMap) -> FileSpan {
+        sm.contexts[self.ctx].decl.with_subrange(self.range)
     }
 
-    #[inline]
-    pub fn dummy() -> CtxSpan {
-        Self { range: TextRange::empty(0.into()), ctx: SourceContext::ROOT }
-    }
-
-    /// Extends `self` to reach to also include `to`
-    /// Note that this is a non-trivial algorithm and should be called conservatively
+    /// Extends `self` to reach to also include `other`
+    ///
+    /// # Note
+    /// this is a non-trivial algorithm and should be called conservatively
     #[must_use]
     pub fn extend(self, other: CtxSpan, sm: &SourceMap) -> CtxSpan {
         if self.ctx == other.ctx {
@@ -122,27 +135,41 @@ impl CtxSpan {
         }
     }
 
+    // JW: not used.
     #[must_use]
     pub fn lookup_expansion(&self, sm: &SourceMap) -> Vec<FileSpan> {
         sm.lookup_expansion(*self)
     }
-
-    #[must_use]
-    pub fn to_file_span(self, sm: &SourceMap) -> FileSpan {
-        sm.ctx_tree[self.ctx].decl.with_subrange(self.range)
-    }
 }
 
+/// Mapping from source context id to the original source code context.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct SourceMap {
-    ctx_tree: TiVec<SourceContext, SourceContextData>,
-    // ranges: Vec<(TextRange, SourceContext, isize)>,
+    contexts: TiVec<SourceContextId, SourceContext>,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct SourceContextId(u32);
+impl_idx_from!(SourceContextId(u32));
+impl_debug_display!(c@SourceContextId => "ctx{}", c.0);
+
+impl SourceContextId {
+    pub const ROOT: Self = SourceContextId(0);
+}
+
+// TODO find rowan like solution to make this cheap to update
+// (currently requires full preprocessor and parser rerun)
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub struct SourceContext {
+    pub decl: FileSpan,
+    pub call_site: Option<CtxSpan>,
 }
 
 impl SourceMap {
     pub(crate) fn new(root_file: FileId, root_file_len: TextSize) -> SourceMap {
         SourceMap {
-            ctx_tree: vec![SourceContextData {
+            contexts: vec![SourceContext {
                 decl: FileSpan { range: TextRange::up_to(root_file_len), file: root_file },
                 call_site: None,
             }]
@@ -150,13 +177,44 @@ impl SourceMap {
         }
     }
 
-    #[must_use]
-    pub fn lookup_expansion(&self, span: CtxSpan) -> Vec<FileSpan> {
-        self.lookup_expansion_until(span, SourceContext::ROOT)
+    pub(crate) fn add_ctx(&mut self, decl: FileSpan, call_site: CtxSpan) -> SourceContextId {
+        self.contexts.push_and_get_key(SourceContext { decl, call_site: Some(call_site) })
+    }
+
+    pub fn to_file_spans(&self, spans: &mut [CtxSpan]) -> (FileId, Vec<TextRange>) {
+        let ctx = self.to_same_ctx(spans);
+        let decl = self.ctx_data(ctx).decl;
+        let ranges = spans.iter_mut().map(|span| decl.with_subrange(span.range).range).collect();
+
+        (decl.file, ranges)
+    }
+
+    pub fn to_same_ctx(&self, spans: &mut [CtxSpan]) -> SourceContextId {
+        let mut merge = (0, spans[0]);
+        for i in 1..spans.len() {
+            if spans[i].ctx != merge.1.ctx {
+                let (ctx, range1, range2) = self.lowest_common_parent(spans[i], spans[i - 1]);
+                spans[i] = CtxSpan { ctx, range: range1 };
+                if ctx != merge.1.ctx {
+                    merge = (i, CtxSpan { ctx, range: range2 });
+                }
+            }
+        }
+        spans[..merge.0].fill(merge.1);
+        merge.1.ctx
+    }
+
+    pub fn ctx_data(&self, id: SourceContextId) -> &SourceContext {
+        &self.contexts[id]
     }
 
     #[must_use]
-    pub fn lookup_expansion_until(&self, span: CtxSpan, until: SourceContext) -> Vec<FileSpan> {
+    pub fn lookup_expansion(&self, span: CtxSpan) -> Vec<FileSpan> {
+        self.lookup_expansion_until(span, SourceContextId::ROOT)
+    }
+
+    #[must_use]
+    pub fn lookup_expansion_until(&self, span: CtxSpan, until: SourceContextId) -> Vec<FileSpan> {
         let mut res = Vec::with_capacity(8);
         let mut current = span;
 
@@ -165,7 +223,7 @@ impl SourceMap {
             if current.ctx == until {
                 return res;
             }
-            match self.ctx_tree[current.ctx].call_site {
+            match self.contexts[current.ctx].call_site {
                 Some(call_site) => current = call_site,
                 None => return res,
             }
@@ -186,12 +244,12 @@ impl SourceMap {
         &self,
         span1: CtxSpan,
         span2: CtxSpan,
-    ) -> (SourceContext, TextRange, TextRange) {
+    ) -> (SourceContextId, TextRange, TextRange) {
         // self.index() is used as a capacity because it is the lowest upper bound we know
         let mut ancestors = AHashMap::new();
         ancestors.insert(span1.ctx, span1.range);
         let mut current = span1.ctx;
-        while let Some(call_site) = self.ctx_tree[current].call_site {
+        while let Some(call_site) = self.contexts[current].call_site {
             current = call_site.ctx;
             ancestors.insert(current, call_site.range);
         }
@@ -204,61 +262,9 @@ impl SourceMap {
                 return (current, call_span, current_call_span);
             }
 
-            let span = self.ctx_tree[current].call_site.expect("CTXT paths dont intersect at root");
+            let span = self.contexts[current].call_site.expect("CTXT paths dont intersect at root");
             current = span.ctx;
             current_call_span = span.range;
         }
     }
-
-    pub fn to_same_ctx(&self, spans: &mut [CtxSpan]) -> SourceContext {
-        let mut merge = (0, spans[0]);
-        for i in 1..spans.len() {
-            if spans[i].ctx != merge.1.ctx {
-                let (ctx, range1, range2) = self.lowest_common_parent(spans[i], spans[i - 1]);
-                spans[i] = CtxSpan { ctx, range: range1 };
-                if ctx != merge.1.ctx {
-                    merge = (i, CtxSpan { ctx, range: range2 });
-                }
-            }
-        }
-        spans[..merge.0].fill(merge.1);
-        merge.1.ctx
-    }
-
-    pub fn to_file_spans(&self, spans: &mut [CtxSpan]) -> (FileId, Vec<TextRange>) {
-        let ctx = self.to_same_ctx(spans);
-        let decl = self.ctx_data(ctx).decl;
-        let ranges = spans.iter_mut().map(|span| decl.with_subrange(span.range).range).collect();
-        (decl.file, ranges)
-    }
-
-    pub fn ctx_data(&self, ctx: SourceContext) -> &SourceContextData {
-        &self.ctx_tree[ctx]
-    }
-
-    pub(crate) fn add_ctx(&mut self, decl: FileSpan, call_site: CtxSpan) -> SourceContext {
-        self.ctx_tree.push_and_get_key(SourceContextData { decl, call_site: Some(call_site) })
-    }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct SourceContext(u32);
-
-impl_idx_from!(SourceContext(u32));
-impl_debug_display!(c@SourceContext => "ctx{}",c.0);
-
-impl SourceContext {
-    pub const ROOT: Self = SourceContext(0);
-
-    pub fn call_site(self, sm: &SourceMap) -> Option<CtxSpan> {
-        sm.ctx_tree[self].call_site
-    }
-}
-
-// TODO find rowan like solution to make this cheap to update
-// (currently requires full preprocessor and parser rerun)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub struct SourceContextData {
-    pub decl: FileSpan,
-    pub call_site: Option<CtxSpan>,
 }

@@ -19,6 +19,10 @@ pub trait InstBuilder<'f>: InstBuilderBase<'f> {
         let data = InstructionData::Unary { opcode, arg };
         self.build(data)
     }
+    fn unary1(self, opcode: Opcode, arg: Value) -> Value {
+        let (inst, dfg) = self.unary(opcode, arg);
+        dfg.first_result(inst)
+    }
     fn binary(self, opcode: Opcode, arg1: Value, arg2: Value) -> (Inst, &'f mut DataFlowGraph) {
         let data = InstructionData::Binary { opcode, args: [arg1, arg2] };
         self.build(data)

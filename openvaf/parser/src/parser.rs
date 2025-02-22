@@ -1,9 +1,7 @@
-//! See [`Parser`].
-
 use std::cell::Cell;
+use stdx::pretty::List;
 
 use drop_bomb::DropBomb;
-use stdx::pretty::List;
 
 use crate::event::Event;
 use crate::token_set::TokenSet;
@@ -28,7 +26,7 @@ pub(crate) struct Parser<'t> {
 
 impl<'t> Parser<'t> {
     pub(super) fn new(tokens: &'t [SyntaxKind]) -> Parser<'t> {
-        Parser { tokens, events: Vec::new(), steps: Cell::new(0), pos: 0 }
+        Parser { tokens, pos: 0, events: Vec::new(), steps: Cell::new(0) }
     }
 
     pub(crate) fn finish(self) -> Vec<Event> {
@@ -54,14 +52,12 @@ impl<'t> Parser<'t> {
         self.tokens.get(self.pos as usize + n).copied().unwrap_or(SyntaxKind::EOF)
     }
 
-    pub(crate) fn nth_at_ts(&self, n: usize, ts: TokenSet) -> bool {
-        ts.contains(self.nth(n))
-    }
     /// Checks if the current token is `kind`.
     pub(crate) fn at(&self, kind: SyntaxKind) -> bool {
         self.nth_at(0, kind)
     }
 
+    /// Checks if the nth token is `kind`.
     pub(crate) fn nth_at(&self, n: usize, kind: SyntaxKind) -> bool {
         self.nth(n) == kind
     }
@@ -79,6 +75,13 @@ impl<'t> Parser<'t> {
     pub(crate) fn at_ts(&self, kinds: TokenSet) -> bool {
         kinds.contains(self.current())
     }
+
+    /// Checks if the nth token is in `kinds`.
+    pub(crate) fn nth_at_ts(&self, n: usize, kinds: TokenSet) -> bool {
+        kinds.contains(self.nth(n))
+    }
+
+    /// Consume the next token if it is in `kinds`.
     pub(crate) fn eat_ts(&mut self, kinds: TokenSet) -> bool {
         if self.at_ts(kinds) {
             self.bump_any();
@@ -88,22 +91,18 @@ impl<'t> Parser<'t> {
         }
     }
 
-    pub(crate) fn bump_ts(&mut self, kinds: TokenSet) {
-        assert!(self.eat_ts(kinds));
-    }
-
-    /// Starts a new node in the syntax tree. All nodes and tokens
-    /// consumed between the `start` and the corresponding `Marker::complete`
-    /// belong to the same node.
-    pub(crate) fn start(&mut self) -> Marker {
-        let pos = self.events.len() as u32;
-        self.push_event(Event::tombstone());
-        Marker::new(pos)
-    }
-
     /// Consume the next token if `kind` matches.
+    ///
+    /// Panics if the parser isn't currently at `kind`.
     pub(crate) fn bump(&mut self, kind: SyntaxKind) {
         assert!(self.eat(kind), "expected {} found {}", kind, self.current());
+    }
+
+    /// Consume the next token if it is in `kinds`.
+    ///
+    /// Panics if the parser isn't currently at any kind in `kinds`.
+    pub(crate) fn bump_ts(&mut self, kinds: TokenSet) {
+        assert!(self.eat_ts(kinds));
     }
 
     /// Advances the parser by one token
@@ -115,14 +114,22 @@ impl<'t> Parser<'t> {
         self.do_bump(kind)
     }
 
+    /// Starts a new node in the syntax tree. All nodes and tokens
+    /// consumed between the `start` and the corresponding `Marker::complete`
+    /// belong to the same node.
+    pub(crate) fn start(&mut self) -> Marker {
+        let pos = self.events.len() as u32;
+        self.push_event(Event::tombstone());
+        Marker::new(pos)
+    }
+
     pub(crate) fn error(&mut self, err: SyntaxError) {
         let m = self.start();
         self.push_event(Event::Error { err });
         m.complete(self, ERROR);
     }
 
-    /// Consume the next token if it is `kind` or emit an error
-    /// otherwise.
+    /// Consume the next token if it is `kind`. Otherwise, emit an error.
     pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
         if self.eat(kind) {
             return true;
@@ -131,6 +138,17 @@ impl<'t> Parser<'t> {
         false
     }
 
+    /// Consume the next token if it is `kind`. Otherwise, emit an error
+    /// with a list of expected kinds.
+    pub(crate) fn expect_with(&mut self, kind: SyntaxKind, expected_kinds: &[SyntaxKind]) -> bool {
+        if self.eat(kind) {
+            return true;
+        }
+        self.error(self.unexpected_tokens_msg(expected_kinds.to_owned()));
+        false
+    }
+
+    /// Consume the next token if it is in `kinds`. Otherwise, emit an error.
     pub(crate) fn expect_ts(&mut self, kinds: TokenSet) -> bool {
         if self.eat_ts(kinds) {
             return true;
@@ -139,23 +157,17 @@ impl<'t> Parser<'t> {
         false
     }
 
-    pub(crate) fn expect_ts_r(&mut self, kinds: TokenSet, recover: TokenSet) -> bool {
+    /// Consume the next token if it is in `kinds`. Otherwise, emit an error
+    /// unless it is in the `recovery` set.
+    pub(crate) fn expect_ts_r(&mut self, kinds: TokenSet, recovery: TokenSet) -> bool {
         if !self.expect_ts(kinds) {
-            if !self.at_ts(recover) {
+            if !self.at_ts(recovery) {
                 self.bump_any();
             }
             false
         } else {
             true
         }
-    }
-
-    pub(crate) fn expect_with(&mut self, kind: SyntaxKind, msg: &[SyntaxKind]) -> bool {
-        if self.eat(kind) {
-            return true;
-        }
-        self.error(self.unexpected_tokens_msg(msg.to_owned()));
-        false
     }
 
     pub(crate) fn unexpected_token_msg(&self, kind: SyntaxKind) -> SyntaxError {
@@ -171,7 +183,9 @@ impl<'t> Parser<'t> {
     //     self.err_recover(err, TokenSet::EMPTY);
     // }
 
-    /// Create an error node and consume the next token.
+    /// Create an error node and consume the next token unless it is in the recovery set.
+    ///
+    /// Returns true if recovery kicked in.
     pub(crate) fn err_recover(&mut self, err: SyntaxError, recovery: TokenSet) -> bool {
         if self.at_ts(recovery) {
             self.error(err);

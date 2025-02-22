@@ -35,9 +35,9 @@ fn hash(db: &CompilationDB, module: Option<&str>) -> md5::Digest {
     // Hash the full preprocessor result
     let preprocess = cu.preprocess(db);
     let vfs = db.vfs().read();
-    for token in &*preprocess.ts {
+    for token in &*preprocess.tokens {
         if !token.kind.is_trivia() {
-            let filespan = token.span.to_file_span(&preprocess.sm);
+            let filespan = token.span.to_file_span(&preprocess.source_map);
             let src = vfs.file_contents_unchecked(filespan.file);
             hash_builder.consume(&src[filespan.range]);
             hash_builder.consume(" ");

@@ -1,44 +1,20 @@
+//! Utilites for source generation
+//!
+//! See Also: https://github.com/rust-lang/rust/blob/master/src/tools/rust-analyzer/xtask/src/codegen.rs
+
+// TODO(JW): use xtask?
+
 #![cfg(all(test, not(cross_compile)))]
-
-use std::path::{Path, PathBuf};
-use std::{fmt, fs, mem};
-
-use xshell::{cmd, Shell};
 
 mod ast;
 mod hir_builtins;
 mod mir_instructions;
 mod osdi;
 
-pub fn list_rust_files(dir: &Path) -> Vec<PathBuf> {
-    let mut res = list_files(dir);
-    res.retain(|it| {
-        it.file_name().unwrap_or_default().to_str().unwrap_or_default().ends_with(".rs")
-    });
-    res
-}
+use std::path::{Path, PathBuf};
+use std::{env, fmt, fs, mem};
 
-pub fn list_files(dir: &Path) -> Vec<PathBuf> {
-    let mut res = Vec::new();
-    let mut work = vec![dir.to_path_buf()];
-    while let Some(dir) = work.pop() {
-        for entry in dir.read_dir().unwrap() {
-            let entry = entry.unwrap();
-            let file_type = entry.file_type().unwrap();
-            let path = entry.path();
-            let is_hidden =
-                path.file_name().unwrap_or_default().to_str().unwrap_or_default().starts_with('.');
-            if !is_hidden {
-                if file_type.is_dir() {
-                    work.push(path)
-                } else if file_type.is_file() {
-                    res.push(path)
-                }
-            }
-        }
-    }
-    res
-}
+use xshell::{cmd, Shell};
 
 pub struct CommentBlock {
     pub id: String,
@@ -108,22 +84,16 @@ fn do_extract_comment_blocks(
 
 #[derive(Debug)]
 pub struct Location {
-    pub file: PathBuf,
-    pub line: usize,
+    pub(crate) file: PathBuf,
+    pub(crate) line: usize,
 }
 
 impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let path = self.file.strip_prefix(&project_root()).unwrap().display().to_string();
+        let path = self.file.strip_prefix(project_root()).unwrap().display().to_string();
         let path = path.replace('\\', "/");
         let name = self.file.file_name().unwrap();
-        write!(
-            f,
-            "https://github.com/rust-analyzer/rust-analyzer/blob/master/{}#L{}[{}]",
-            path,
-            self.line,
-            name.to_str().unwrap()
-        )
+        write!(f, " [{}]({}#{}) ", name.to_str().unwrap(), path, self.line)
     }
 }
 
@@ -188,12 +158,14 @@ fn normalize_newlines(s: &str) -> String {
 }
 
 pub fn project_root() -> PathBuf {
-    let dir = env!("CARGO_MANIFEST_DIR");
-    let mut res = PathBuf::from(dir);
-    while !res.join("README.md").exists() {
-        res = res.parent().expect("reached fs root without finding project root").to_owned()
-    }
-    res
+    let dir =
+        env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_owned());
+    PathBuf::from(dir).parent().unwrap().to_owned()
+    //    let mut res = PathBuf::from(dir);
+    //    while !res.join("README.md").exists() {
+    //        res = res.parent().expect("reached fs root without finding project root").to_owned()
+    //    }
+    //    res
 }
 
 pub fn to_upper_snake_case(s: &str) -> String {
@@ -243,3 +215,36 @@ pub fn to_pascal_case(s: &str) -> String {
 pub fn pluralize(s: &str) -> String {
     format!("{}s", s)
 }
+
+/* JW: not used
+
+pub fn list_rust_files(dir: &Path) -> Vec<PathBuf> {
+    let mut res = list_files(dir);
+    res.retain(|it| {
+        it.file_name().unwrap_or_default().to_str().unwrap_or_default().ends_with(".rs")
+    });
+    res
+}
+
+pub fn list_files(dir: &Path) -> Vec<PathBuf> {
+    let mut res = Vec::new();
+    let mut work = vec![dir.to_path_buf()];
+    while let Some(dir) = work.pop() {
+        for entry in dir.read_dir().unwrap() {
+            let entry = entry.unwrap();
+            let file_type = entry.file_type().unwrap();
+            let path = entry.path();
+            let is_hidden =
+                path.file_name().unwrap_or_default().to_str().unwrap_or_default().starts_with('.');
+            if !is_hidden {
+                if file_type.is_dir() {
+                    work.push(path)
+                } else if file_type.is_file() {
+                    res.push(path)
+                }
+            }
+        }
+    }
+    res
+}
+*/

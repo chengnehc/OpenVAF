@@ -1,46 +1,44 @@
-use std::io;
-use std::iter::once;
 use std::sync::Arc;
+use std::{io, iter};
+use stdx::{impl_debug_display, impl_idx_from};
 
 use ahash::AHashMap;
-use stdx::{impl_debug_display, impl_idx_from};
 use text_size::{TextRange, TextSize};
-use tokens::parser::SyntaxKind;
-use tokens::SyntaxKind::{L_PAREN, R_PAREN};
+use tokens::SyntaxKind::{self, L_PAREN, R_PAREN};
 // use tracing::{debug, debug_span, trace};
 use typed_index_collections::{TiSlice, TiVec};
 use vfs::{FileId, VfsPath};
 
-use crate::diagnostics::PreprocessorDiagnostic::{
-    self, MacroArgumentCountMismatch, MacroNotFound, UnexpectedToken,
+use crate::diagnostics::PreprocessError::{
+    self, MacroArgCountMismatch, MacroNotFound, UnexpectedToken,
 };
 use crate::grammar::{parse_condition, parse_define, parse_include, parse_macro_call};
 use crate::parser::{CompilerDirective, Parser, PreprocessorToken};
-use crate::sourcemap::{CtxSpan, FileSpan, SourceContext, SourceMap};
-use crate::{Diagnostics, FileReadError, ScopedTextArea, SourceProvider, Token};
+use crate::sourcemap::{CtxSpan, FileSpan, SourceContextId, SourceMap};
+use crate::{FileReadError, ScopedTextArena, SourceProvider, Token};
 
 pub(crate) struct Processor<'a> {
     pub(crate) source_map: SourceMap,
     sources: &'a dyn SourceProvider,
-    arena: &'a ScopedTextArea,
+    arena: &'a ScopedTextArena,
     macros: AHashMap<&'a str, Macro<'a>>,
     include_dirs: Arc<[VfsPath]>,
 }
 
 impl<'a> Processor<'a> {
     pub fn new(
-        storage: &'a ScopedTextArea,
+        arena: &'a ScopedTextArena,
         root_file: FileId,
         sources: &'a dyn SourceProvider,
     ) -> Result<Self, FileReadError> {
         let src = sources.file_text(root_file)?;
-        let src = storage.ensure(src);
+        let src = arena.ensure(src);
         let macros = sources
             .macro_flags(root_file)
             .iter()
             .map(|name| -> (&str, Macro) {
                 (
-                    storage.ensure(name.clone()),
+                    arena.ensure(name.clone()),
                     Macro { head: 0.into(), span: CtxSpan::dummy(), body: vec![], arg_cnt: 0 },
                 )
             })
@@ -48,41 +46,124 @@ impl<'a> Processor<'a> {
         let res = Self {
             source_map: SourceMap::new(root_file, TextSize::of(src)),
             macros,
-            arena: storage,
+            arena,
             sources,
             include_dirs: sources.include_dirs(root_file),
         };
         Ok(res)
     }
 
-    pub fn run(&mut self, file: FileId) -> (Vec<Token>, Diagnostics) {
-        let working_dir = self.sources.file_path(file).parent().unwrap();
-
-        let mut err = Diagnostics::new();
+    pub fn run(&mut self, file: FileId) -> (Vec<Token>, Vec<PreprocessError>) {
+        let cwd = self.sources.file_path(file).parent().unwrap();
+        let mut err = Vec::new();
         let mut dst = Vec::new();
-        let parser =
-            Parser::new(self.arena.get(0), SourceContext::ROOT, working_dir, &mut dst, &mut err);
+        let parser = Parser::new(self.arena.get(0), SourceContextId::ROOT, cwd, &mut dst, &mut err);
         self.process_file(parser, &mut err);
 
         (dst, err)
     }
 
-    pub(crate) fn is_macro_defined(&mut self, name: &'a str) -> bool {
-        self.macros.contains_key(name)
+    pub(crate) fn process_file(&mut self, mut p: Parser<'a, '_>, err: &mut Vec<PreprocessError>) {
+        while !p.at(PreprocessorToken::Eof) {
+            self.process_token(&mut p, err)
+        }
+    }
+
+    pub(crate) fn process_token(&mut self, p: &mut Parser<'a, '_>, err: &mut Vec<PreprocessError>) {
+        match p.current() {
+            PreprocessorToken::Define { end } => {
+                if let Some((name, def)) = parse_define(p, err, &mut self.source_map, end) {
+                    self.define_macro(name, def, err)
+                }
+            }
+            PreprocessorToken::CompilerDirective => match p.compiler_directive() {
+                CompilerDirective::Include => {
+                    if let Some((file_name, range)) = parse_include(p, err) {
+                        let span = CtxSpan { range, ctx: p.ctx() };
+                        match self.include_file(file_name, span, p.dst, err, &p.cwd) {
+                            Ok(_) => (),
+                            Err((FileReadError::InvalidTextFormat(err_msg), file)) => {
+                                err.push(PreprocessError::InvalidTextFormat {
+                                    file: file.unwrap(),
+                                    span: Some(span),
+                                    err: err_msg,
+                                })
+                            }
+                            Err((FileReadError::Io(kind), file)) => {
+                                err.push(PreprocessError::FileNotFound {
+                                    file: file.map_or_else(
+                                        || file_name.to_owned(),
+                                        |path| path.to_string(),
+                                    ),
+                                    error: kind,
+                                    span: Some(span),
+                                })
+                            }
+                        }
+                    }
+                }
+                CompilerDirective::IfDef => {
+                    // let _span = debug_span!("preprocessing `ifdef");
+                    // let _tspan = _span.enter();
+                    p.bump();
+                    parse_condition(p, err, self, false);
+                }
+                CompilerDirective::IfNotDef => {
+                    // let _span = debug_span!("preprocessing `ifndef");
+                    // let _tspan = _span.enter();
+                    p.bump();
+                    parse_condition(p, err, self, true);
+                }
+                CompilerDirective::Undef => {
+                    p.bump();
+                    let name = p.current_text();
+                    if self.macros.contains_key(name) {
+                        self.macros.remove(name);
+                    } else {
+                        err.push(PreprocessError::MacroNotDefined {
+                            name: name.to_owned(),
+                            span: p.current_span(),
+                        })
+                    }
+                    p.bump();
+                }
+                CompilerDirective::ResetAll => {
+                    let name = p.current_text();
+                    err.push(PreprocessError::UnsupportedCompDir {
+                        name: name.to_owned(),
+                        span: p.current_span(),
+                    });
+                    p.bump();
+                }
+                CompilerDirective::Macro => {
+                    let (call, range) =
+                        parse_macro_call(p, err, &[], &mut self.source_map, p.end());
+                    let span = CtxSpan { range, ctx: p.ctx() };
+                    self.call_macro(&call, span, TiSlice::from_ref(&[]), p.dst, err);
+                }
+
+                _ => {
+                    err.push(UnexpectedToken(p.current_span()));
+                    p.bump()
+                }
+            },
+
+            _ => p.save_token(err),
+        }
     }
 
     pub(crate) fn include_file(
         &mut self,
-        path: &str,
+        name: &str,
         span: CtxSpan,
         dst: &mut Vec<Token>,
-        errors: &mut Diagnostics,
+        errors: &mut Vec<PreprocessError>,
         workdir: &VfsPath,
     ) -> Result<(), (FileReadError, Option<VfsPath>)> {
-        let mut include_dirs = once(workdir).chain(&*self.include_dirs);
+        let mut include_dirs = iter::once(workdir).chain(&*self.include_dirs);
         let found = loop {
             if let Some(dir) = include_dirs.next() {
-                if let Some(path) = dir.join(path) {
+                if let Some(path) = dir.join(name) {
                     let file = self.sources.file_id(path.clone());
                     match self.sources.file_text(file) {
                         Ok(contents) => break Some((contents, file)),
@@ -112,11 +193,11 @@ impl<'a> Processor<'a> {
         &mut self,
         name: &'a str,
         def: Macro<'a>,
-        diagnostics: &mut Diagnostics,
+        errors: &mut Vec<PreprocessError>,
     ) {
         let span = def.head_span();
         if let Some(old) = self.macros.insert(name, def) {
-            diagnostics.push(PreprocessorDiagnostic::MacroOverwritten {
+            errors.push(PreprocessError::MacroOverwritten {
                 old: old.head_span(),
                 new: span,
                 name: name.to_owned(),
@@ -124,21 +205,8 @@ impl<'a> Processor<'a> {
         }
     }
 
-    fn process_macro_token(
-        &mut self,
-        token: &ParsedTokenKind<'a>,
-        span: CtxSpan,
-        args: &TiSlice<MacroArg, Vec<Token>>,
-        dst: &mut Vec<Token>,
-        errors: &mut Diagnostics,
-    ) {
-        match *token {
-            ParsedTokenKind::ResolvedToken(kind) => dst.push(Token { kind, span }),
-            ParsedTokenKind::ArgumentReference(arg) => {
-                dst.extend(&args[arg]);
-            }
-            ParsedTokenKind::MacroCall(ref call) => self.call_macro(call, span, args, dst, errors),
-        }
+    pub(crate) fn is_macro_defined(&mut self, name: &'a str) -> bool {
+        self.macros.contains_key(name)
     }
 
     pub(crate) fn call_macro(
@@ -147,7 +215,7 @@ impl<'a> Processor<'a> {
         span: CtxSpan,
         args: &TiSlice<MacroArg, Vec<Token>>,
         dst: &mut Vec<Token>,
-        errors: &mut Diagnostics,
+        errors: &mut Vec<PreprocessError>,
     ) {
         // TODO track recursion
         //
@@ -185,7 +253,7 @@ impl<'a> Processor<'a> {
                     dst.push(Token { kind: R_PAREN, span });
                 }
             } else {
-                errors.push(MacroArgumentCountMismatch {
+                errors.push(MacroArgCountMismatch {
                     expected: def.arg_cnt,
                     found: new_args.len(),
                     span,
@@ -196,92 +264,20 @@ impl<'a> Processor<'a> {
         }
     }
 
-    pub(crate) fn process_file(&mut self, mut p: Parser<'a, '_>, err: &mut Diagnostics) {
-        while !p.at(PreprocessorToken::Eof) {
-            self.process_token(&mut p, err)
-        }
-    }
-
-    pub(crate) fn process_token(&mut self, p: &mut Parser<'a, '_>, err: &mut Diagnostics) {
-        match p.current() {
-            PreprocessorToken::Define { end } => {
-                if let Some((name, def)) = parse_define(p, err, &mut self.source_map, end) {
-                    self.define_macro(name, def, err)
-                }
+    fn process_macro_token(
+        &mut self,
+        token: &ParsedTokenKind<'a>,
+        span: CtxSpan,
+        args: &TiSlice<MacroArg, Vec<Token>>,
+        dst: &mut Vec<Token>,
+        errors: &mut Vec<PreprocessError>,
+    ) {
+        match *token {
+            ParsedTokenKind::ResolvedToken(kind) => dst.push(Token { kind, span }),
+            ParsedTokenKind::ArgumentReference(arg) => {
+                dst.extend(&args[arg]);
             }
-            PreprocessorToken::CompilerDirective => match p.compiler_directive() {
-                CompilerDirective::Include => {
-                    if let Some((file_name, range)) = parse_include(p, err) {
-                        let span = CtxSpan { range, ctx: p.ctx() };
-                        match self.include_file(file_name, span, p.dst, err, &p.working_dir) {
-                            Ok(_) => (),
-                            Err((FileReadError::InvalidTextFormat(err_msg), file)) => {
-                                err.push(PreprocessorDiagnostic::InvalidTextFormat {
-                                    file: file.unwrap(),
-                                    span: Some(span),
-                                    err: err_msg,
-                                })
-                            }
-                            Err((FileReadError::Io(kind), file)) => {
-                                err.push(PreprocessorDiagnostic::FileNotFound {
-                                    file: file.map_or_else(
-                                        || file_name.to_owned(),
-                                        |path| path.to_string(),
-                                    ),
-                                    error: kind,
-                                    span: Some(span),
-                                })
-                            }
-                        }
-                    }
-                }
-                CompilerDirective::IfDef => {
-                    // let _span = debug_span!("preprocessing `ifdef");
-                    // let _tspan = _span.enter();
-                    p.bump();
-                    parse_condition(p, err, self, false);
-                }
-                CompilerDirective::IfNotDef => {
-                    // let _span = debug_span!("preprocessing `ifndef");
-                    // let _tspan = _span.enter();
-                    p.bump();
-                    parse_condition(p, err, self, true);
-                }
-                CompilerDirective::Undef => {
-                    p.bump();
-                    let name = p.current_text();
-                    if self.macros.contains_key(name) {
-                        self.macros.remove(name);
-                    } else {
-                        err.push(PreprocessorDiagnostic::MacroNotDefined {
-                            name: name.to_owned(),
-                            span: p.current_span(),
-                        })
-                    }
-                    p.bump();
-                }
-                CompilerDirective::ResetAll => {
-                    let name = p.current_text();
-                    err.push(PreprocessorDiagnostic::UnsupportedCompDir {
-                        name: name.to_owned(),
-                        span: p.current_span(),
-                    });
-                    p.bump();
-                }
-                CompilerDirective::Macro => {
-                    let (call, range) =
-                        parse_macro_call(p, err, &[], &mut self.source_map, p.end());
-                    let span = CtxSpan { range, ctx: p.ctx() };
-                    self.call_macro(&call, span, TiSlice::from_ref(&[]), p.dst, err);
-                }
-
-                _ => {
-                    err.push(UnexpectedToken(p.current_span()));
-                    p.bump()
-                }
-            },
-
-            _ => p.save_token(err),
+            ParsedTokenKind::MacroCall(ref call) => self.call_macro(call, span, args, dst, errors),
         }
     }
 }

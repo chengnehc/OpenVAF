@@ -1,31 +1,30 @@
-mod tree_builder;
+//! This module serves as the bridge to `parser` crate (which does the actual parsing)
+//! and build the SyntaxTree.
 
-use ::preprocessor::sourcemap::SourceContext;
-use ::preprocessor::{Preprocess, SourceProvider};
-use rowan::{TextRange, TextSize};
+use preprocessor::sourcemap::SourceContextId;
+use preprocessor::{Preprocess, SourceProvider};
+use rowan::{GreenNode, TextRange, TextSize};
 use vfs::FileId;
 
-use crate::parsing::tree_builder::SyntaxTreeBuilder;
-use crate::syntax_node::GreenNode;
-use crate::SyntaxError;
+use crate::{SyntaxError /*SyntaxKind*/};
 
-pub(crate) fn parse_text(
+mod tree_builder;
+use tree_builder::SyntaxTreeBuilder;
+
+pub(crate) fn parse_and_build(
     sources: &dyn SourceProvider,
     root_file: FileId,
-    Preprocess { ts, sm, .. }: &Preprocess,
-) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContext, TextSize)>) {
-    // tokens without whitespaces/comments
-    let parser_tokens: Vec<_> = ts
+    Preprocess { tokens, source_map, .. }: &Preprocess,
+) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContextId, TextSize)>) {
+    // initialize tree builder
+    let mut builder = SyntaxTreeBuilder::new(sources, root_file, tokens, source_map);
+    // filter out trivia: whitespaces/comments
+    let tokens: Vec<_> = tokens
         .iter()
-        .filter_map(|token| {
-            if token.kind.is_trivia() {
-                return None;
-            }
-            Some(token.kind)
-        })
+        .filter_map(|token| token.kind.is_non_trivia().then_some(token.kind))
         .collect();
-    let mut builder = SyntaxTreeBuilder::new(sources, root_file, ts, sm);
-    for step in parser::parse(&parser_tokens).iter() {
+    // parse and build
+    for step in parser::parse(&tokens).iter() {
         match step {
             parser::Step::Token { kind } => builder.token(kind),
             parser::Step::Enter { kind } => builder.start_node(kind),
@@ -33,8 +32,7 @@ pub(crate) fn parse_text(
             parser::Step::Error { err } => builder.error(err.clone()),
         }
     }
+    let (tree, errors, ctx_map) = builder.finish();
 
-    let (tree, parser_errors, ctx_map) = builder.finish();
-
-    (tree, parser_errors, ctx_map)
+    (tree, errors, ctx_map)
 }

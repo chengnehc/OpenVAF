@@ -1,23 +1,24 @@
-pub mod lexer;
-pub mod parser;
+mod lexer;
+mod syntax_kind;
 
-use lexer::LiteralKind;
-use lexer::TokenKind::*;
-pub use parser::SyntaxKind;
+pub use lexer::TokenKind::*;
+pub use lexer::{LiteralKind, Token, TokenKind};
+pub use syntax_kind::SyntaxKind;
 
-pub enum LexerErrorKind {
+pub enum LexerError {
     UnterminatedBlockComment,
     UnterminatedStr,
     UnexpectedToken,
 }
 
 impl lexer::TokenKind {
-    pub fn to_syntax(self, src: &str) -> (Option<parser::SyntaxKind>, Option<LexerErrorKind>) {
+    /// Convert this `TokenKind` with identifier `src` to corresponding `SyntaxKind`.
+    pub fn to_syntax(self, src: &str) -> (Option<SyntaxKind>, Option<LexerError>) {
         let token = match self {
             // Combined operators
             LineComment | BlockComment { terminated: true } => SyntaxKind::COMMENT,
             BlockComment { terminated: false } => {
-                return (Some(SyntaxKind::COMMENT), Some(LexerErrorKind::UnterminatedBlockComment))
+                return (Some(SyntaxKind::COMMENT), Some(LexerError::UnterminatedBlockComment))
             }
             Whitespace => SyntaxKind::WHITESPACE,
             SimpleIdent => SyntaxKind::from_keyword(src).unwrap_or(SyntaxKind::IDENT),
@@ -33,7 +34,7 @@ impl lexer::TokenKind {
             }
             Literal { kind: LiteralKind::Str { terminated: true } } => SyntaxKind::STR_LIT,
             Literal { kind: LiteralKind::Str { terminated: false } } => {
-                return (Some(SyntaxKind::STR_LIT), Some(LexerErrorKind::UnterminatedStr))
+                return (Some(SyntaxKind::STR_LIT), Some(LexerError::UnterminatedStr))
             }
             CompilerDirective | Define { .. } | IllegalDefine => return (None, None),
             Semi => T![;],
@@ -81,7 +82,7 @@ impl lexer::TokenKind {
             NXorL => T![~^],
             NXorR => T![^~],
 
-            Unknown => return (None, Some(LexerErrorKind::UnexpectedToken)),
+            Unknown => return (None, Some(LexerError::UnexpectedToken)),
         };
 
         (Some(token), None)

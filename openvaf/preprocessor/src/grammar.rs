@@ -12,15 +12,14 @@ use text_size::TextRange;
 // use tracing::{debug, trace, trace_span};
 use typed_index_collections::TiVec;
 
-use crate::diagnostics::PreprocessorDiagnostic::{self, UnexpectedEof};
+use crate::diagnostics::PreprocessError::{self, UnexpectedEof};
 use crate::parser::{CompilerDirective, FullTokenIdx, Parser, PreprocessorToken};
 use crate::processor::{Macro, MacroArg, MacroCall, ParsedToken, ParsedTokenKind, Processor};
 use crate::sourcemap::{CtxSpan, SourceMap};
-use crate::Diagnostics;
 
 pub(crate) fn parse_condition<'a>(
     p: &mut Parser<'a, '_>,
-    err: &mut Diagnostics,
+    err: &mut Vec<PreprocessError>,
     processor: &mut Processor<'a>,
     inverted: bool,
 ) {
@@ -44,7 +43,7 @@ pub(crate) fn parse_condition<'a>(
 
 fn parse_if_body<'a, const PROCESS: bool, const CONSIDER_ELSE: bool>(
     p: &mut Parser<'a, '_>,
-    err: &mut Diagnostics,
+    err: &mut Vec<PreprocessError>,
     processor: &mut Processor<'a>,
 ) {
     let mut depth = 0;
@@ -96,7 +95,7 @@ fn parse_if_body<'a, const PROCESS: bool, const CONSIDER_ELSE: bool>(
 
 pub(crate) fn parse_include<'a>(
     p: &mut Parser<'a, '_>,
-    err: &mut Diagnostics,
+    err: &mut Vec<PreprocessError>,
 ) -> Option<(&'a str, TextRange)> {
     // let tspan = trace_span!("parsing `include");
     // let _tspan = tspan.enter();
@@ -118,7 +117,7 @@ pub(crate) fn parse_include<'a>(
 
 pub(crate) fn parse_define<'a>(
     p: &mut Parser<'a, '_>,
-    err: &mut Diagnostics,
+    err: &mut Vec<PreprocessError>,
     sm: &mut SourceMap,
     end: FullTokenIdx,
 ) -> Option<(&'a str, Macro<'a>)> {
@@ -191,7 +190,7 @@ pub(crate) fn parse_define<'a>(
 
 fn parse_macro_token<'a>(
     p: &mut Parser<'a, '_>,
-    err: &mut Diagnostics,
+    err: &mut Vec<PreprocessError>,
     args: &[&'a str],
     dst: &mut Vec<ParsedToken<'a>>,
     sm: &mut SourceMap,
@@ -217,7 +216,7 @@ fn parse_macro_token<'a>(
             dst.push(ParsedToken { range, kind: ParsedTokenKind::MacroCall(call) });
         } else {
             // TODO nicer error?
-            err.push(PreprocessorDiagnostic::UnexpectedToken(CtxSpan {
+            err.push(PreprocessError::UnexpectedToken(CtxSpan {
                 ctx: p.ctx,
                 range: p.current_range(),
             }))
@@ -227,9 +226,10 @@ fn parse_macro_token<'a>(
 
     p.bump_to_macro(dst, end, err)
 }
+
 pub(crate) fn parse_macro_call<'a>(
     p: &mut Parser<'a, '_>,
-    err: &mut Diagnostics,
+    err: &mut Vec<PreprocessError>,
     args: &[&'a str],
     sm: &mut SourceMap,
     end: FullTokenIdx,

@@ -1,4 +1,4 @@
-//! Maps paths to compact integer ids. We don't care about clearings paths which
+//! Maps paths to compact integer ids. We don't care about clearing paths which
 //! no longer exist -- the assumption is total size of paths we ever look at is
 //! not too big.
 

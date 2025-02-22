@@ -3,17 +3,13 @@ use std::ops::Deref;
 
 use smol_str::SmolStr;
 
-use crate::ast::{self, SysFun};
+use crate::ast;
 use crate::SyntaxToken;
 
+/// `Name` is a wrapper over a small string up to 23 bytes long.
+/// It is used in HIR for both references and declarations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Name(SmolStr);
-
-impl Display for Name {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 impl Name {
     /// Shortcut to create inline plain text name
@@ -55,8 +51,14 @@ impl Name {
         sysfun::is_known(self.0.as_str())
     }
 
-    pub fn is_sysfun(&self) -> bool {
-        self.0.as_str().starts_with('$')
+    // pub fn is_sysfun(&self) -> bool {
+    //     self.0.as_str().starts_with('$')
+    // }
+}
+
+impl Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -65,6 +67,42 @@ impl Deref for Name {
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
+    }
+}
+
+impl From<Name> for SmolStr {
+    fn from(name: Name) -> Self {
+        name.0
+    }
+}
+
+pub trait AsName {
+    fn as_name(&self) -> Name;
+}
+
+impl AsName for SyntaxToken {
+    fn as_name(&self) -> Name {
+        Name::resolve(self.text())
+    }
+}
+impl AsName for ast::Name {
+    fn as_name(&self) -> Name {
+        Name::resolve(&self.text())
+    }
+}
+impl AsName for ast::NameRef {
+    fn as_name(&self) -> Name {
+        Name::resolve(&self.text())
+    }
+}
+impl AsName for ast::PathSegment {
+    fn as_name(&self) -> Name {
+        Name::resolve(self.syntax.text())
+    }
+}
+impl AsName for ast::SysFun {
+    fn as_name(&self) -> Name {
+        Name::resolve(self.sysfun_token().unwrap().text())
     }
 }
 
@@ -77,64 +115,9 @@ impl AsIdent for ast::Expr {
         self.as_raw_ident().as_ref().map(AsName::as_name)
     }
 }
-
 impl AsIdent for ast::Path {
     fn as_ident(&self) -> Option<Name> {
         self.as_raw_ident().as_ref().map(AsName::as_name)
-    }
-}
-
-impl From<Name> for SmolStr {
-    fn from(name: Name) -> Self {
-        name.0
-    }
-}
-
-// impl AsIdent for crate::Path {
-//     fn as_ident(&self) -> Option<Name> {
-//         if self.is_root_path {
-//             return None;
-//         }
-
-//         if let [name] = &*self.segments {
-//             Some(name.clone())
-//         } else {
-//             None
-//         }
-//     }
-// }
-
-impl AsName for SysFun {
-    fn as_name(&self) -> Name {
-        Name::resolve(self.sysfun_token().unwrap().text())
-    }
-}
-
-pub trait AsName {
-    fn as_name(&self) -> Name;
-}
-
-impl AsName for ast::Name {
-    fn as_name(&self) -> Name {
-        Name::resolve(&self.text())
-    }
-}
-
-impl AsName for ast::NameRef {
-    fn as_name(&self) -> Name {
-        Name::resolve(&self.text())
-    }
-}
-
-impl AsName for ast::PathSegment {
-    fn as_name(&self) -> Name {
-        Name::resolve(self.syntax.text())
-    }
-}
-
-impl AsName for SyntaxToken {
-    fn as_name(&self) -> Name {
-        Name::resolve(self.text())
     }
 }
 
@@ -145,22 +128,25 @@ macro_rules! keywords {
             pub const $ident: super::Name =
                 super::Name::new_inline(stringify!($ident));
         )*
-        pub mod raw{
+
+        pub mod raw {
             $(
                 #[allow(bad_style, dead_code)]
                 pub const $ident: &str = stringify!($ident);
             )*
-
             #[allow(bad_style, dead_code)]
-            pub const use_:&str = "use";
+            pub const use_: &str = "use";
         }
 
         pub fn is_reserved(name: &str) -> bool{
-            matches!(name,$(stringify!($ident) |)* "use")
+            matches!(name, $(stringify!($ident) |)* "use")
         }
     };
 }
 
+/// Refer to LRM Annex B for a complete list of keywords.
+///
+/// The following list has removed some keywords incompatible with compact model.
 pub mod kw {
     #[allow(bad_style, dead_code)]
     pub const use_: super::Name = super::Name::new_inline("use");
@@ -203,19 +189,17 @@ pub mod kw {
         ddt_nature,
         ddx,
         deassign,
-
+        default,
         defparam,
         design,
         disable,
         discipline,
         discrete,
         domain,
-        driver_update,
         edge,
         end,
         endcase,
         endconfig,
-        endconnectrules,
         enddiscipline,
         endfunction,
         endgenerate,
@@ -233,7 +217,7 @@ pub mod kw {
         flicker_noise,
         floor,
         flow,
-        // for, Already removed by the lexer and not allowed by the rust macros
+        // for, Already removed by the lexer and not allowed by rust
         force,
         forever,
         fork,
@@ -246,8 +230,7 @@ pub mod kw {
         idt,
         idtmod,
         idt_nature,
-        // if, Already removed by the lexer and not allowed by the rust macros
-
+        // if, Already removed by the lexer and not allowed by rust
         ifnone,
         incdir,
         include,
@@ -290,8 +273,6 @@ pub mod kw {
         output,
         parameter,
         paramset,
-
-
         posedge,
         potential,
         pow,
@@ -310,7 +291,6 @@ pub mod kw {
         sinh,
         showcancelled,
         signed,
-
         slew,
         small,
         specify,
@@ -326,7 +306,7 @@ pub mod kw {
         tran,
         tranif0,
         tranif1,
-
+        transition,
         units,
         unsigned,
         uwire,
@@ -335,7 +315,6 @@ pub mod kw {
         wand,
         pulldown,
         pullup,
-
         white_noise,
         wire,
         wor,
@@ -345,15 +324,14 @@ pub mod kw {
         zi_np,
         zi_zd,
         zi_zp,
-
-        transition,
     }
 }
 
-/// keywords that will never be used by openvaf because they belong to (exeotic parts) of the
-/// digital subset of VerilogAMS. According to the standard these are still reserved.
-/// However some compact models still use these and OpenVAF should allow that.
-/// Therefore we emit a (warn by default) lint when these are used
+/// keywords that will never be used by openvaf because they belong to (exotic parts) of the
+/// digital subset of Verilog-AMS. According to the standard these are still reserved.
+///
+/// However, some compact models still use them and OpenVAF should allow that.
+/// Therefore, we emit a (warn by default) lint when these are used.
 pub mod kw_comp {
     keywords! {
         // gate level logic
@@ -385,26 +363,24 @@ pub mod kw_comp {
         supply1,
         medium,
 
-        // As specified by the standard
-        connect,
-        connectmodule,
-        connectrules,
-        merged,
-        net_resolution,
-        resolveto,
-        split,
-        wreal,
-
+        // IEEE Std 1364 Verilog
         casex,
         casez,
-
         reg,
-
-
         buf,
         bufif0,
         bufif1,
 
+        // As specified by LRM-2023 Annex C.16
+        connect,
+        connectmodule,
+        connectrules,
+        driver_update,
+        endconnectrules,
+        merged,
+        resolveto,
+        split,
+        wreal,
     }
 }
 
@@ -444,6 +420,7 @@ pub mod sysfun {
     #[allow(bad_style, dead_code)]
     pub const simparam_str: super::Name = super::Name::new_inline("$simparam$str");
 
+    // Refer to LRM 9 for a complete list of system funcs.
     system_functions! {
         display,
         strobe,

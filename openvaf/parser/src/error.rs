@@ -1,8 +1,7 @@
 use std::fmt::Debug;
-
 use stdx::pretty;
 
-use crate::Token;
+type Token = crate::SyntaxKind;
 
 #[derive(Debug, Clone)]
 pub enum SyntaxError {

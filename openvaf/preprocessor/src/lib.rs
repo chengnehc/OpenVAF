@@ -1,32 +1,46 @@
+//! A preprocessor that deals with macro expansion.
+
 use std::sync::Arc;
 
-use diagnostics::PreprocessorDiagnostic;
-use sourcemap::{CtxSpan, SourceMap};
 use vfs::{FileId, FileReadError, VfsPath};
 
-use crate::processor::Processor;
-// use tracing::trace_span;
-
-pub mod diagnostics;
-mod grammar;
-mod parser;
-mod processor;
-pub mod sourcemap;
-
-mod scoped_arc_arena;
 #[cfg(test)]
 #[rustfmt::skip]
 mod tests;
+mod grammar;
+mod parser;
+mod processor;
+mod scoped_arc_arena;
+
+pub mod diagnostics;
+pub mod sourcemap;
+
+use diagnostics::PreprocessError;
+use processor::Processor;
+use scoped_arc_arena::ScopedArena;
+use sourcemap::{CtxSpan, SourceMap};
+// use tracing::trace_span;
 
 type Text = Arc<str>;
-type ScopedTextArea = scoped_arc_arena::ScopedArea<Text>;
-type Diagnostics = Vec<PreprocessorDiagnostic>;
+type ScopedTextArena = ScopedArena<Text>;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Token {
+    pub span: CtxSpan,
+    pub kind: tokens::SyntaxKind,
+}
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Preprocess {
-    pub ts: Arc<Vec<Token>>,
-    pub sm: Arc<SourceMap>,
-    pub diagnostics: Arc<Diagnostics>,
+    pub tokens: Arc<Vec<Token>>,
+    pub errors: Arc<Vec<PreprocessError>>,
+    pub source_map: Arc<SourceMap>,
+}
+
+impl Preprocess {
+    pub fn errors(&self) -> &[PreprocessError] {
+        &self.errors
+    }
 }
 
 /// # Panics
@@ -34,16 +48,15 @@ pub struct Preprocess {
 pub fn preprocess(sources: &dyn SourceProvider, file: FileId) -> Preprocess {
     // let span = trace_span!("preprocessor", main_file = display(sources.file_path(file)));
     // let _scope = span.enter();
-
-    let storage = ScopedTextArea::new();
-    let (ts, diagnostics, sm) = match Processor::new(&storage, file, sources) {
+    let storage = ScopedTextArena::new();
+    let (tokens, errors, source_map) = match Processor::new(&storage, file, sources) {
         Ok(mut processor) => {
-            let (ts, diagnostics) = processor.run(file);
-            (ts, diagnostics, processor.source_map)
+            let (tokens, errors) = processor.run(file);
+            (tokens, errors, processor.source_map)
         }
         Err(FileReadError::Io(error)) => (
             vec![],
-            vec![PreprocessorDiagnostic::FileNotFound {
+            vec![PreprocessError::FileNotFound {
                 file: sources.file_path(file).to_string(),
                 error,
                 span: None,
@@ -52,7 +65,7 @@ pub fn preprocess(sources: &dyn SourceProvider, file: FileId) -> Preprocess {
         ),
         Err(FileReadError::InvalidTextFormat(err)) => (
             vec![],
-            vec![PreprocessorDiagnostic::InvalidTextFormat {
+            vec![PreprocessError::InvalidTextFormat {
                 file: sources.file_path(file),
                 span: None,
                 err,
@@ -61,20 +74,18 @@ pub fn preprocess(sources: &dyn SourceProvider, file: FileId) -> Preprocess {
         ),
     };
 
-    Preprocess { ts: Arc::new(ts), diagnostics: Arc::new(diagnostics), sm: Arc::new(sm) }
+    Preprocess {
+        tokens: Arc::new(tokens),
+        errors: Arc::new(errors),
+        source_map: Arc::new(source_map),
+    }
 }
 
 pub trait SourceProvider {
     fn include_dirs(&self, root_file: FileId) -> Arc<[VfsPath]>;
-    fn macro_flags(&self, file_root: FileId) -> Arc<[Arc<str>]>;
+    fn macro_flags(&self, file_root: FileId) -> Arc<[Text]>;
 
-    fn file_text(&self, file: FileId) -> Result<Arc<str>, FileReadError>;
+    fn file_text(&self, file: FileId) -> Result<Text, FileReadError>;
     fn file_path(&self, file: FileId) -> VfsPath;
     fn file_id(&self, path: VfsPath) -> FileId;
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Token {
-    pub span: CtxSpan,
-    pub kind: tokens::parser::SyntaxKind,
 }

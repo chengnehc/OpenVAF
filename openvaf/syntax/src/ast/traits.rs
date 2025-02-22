@@ -1,10 +1,9 @@
-use std::borrow::Cow;
+//! Super traits `ArgListOwner` and `AttrsOwner` over `AstNode`
+
 use std::iter::FlatMap;
 
-use rowan::{GreenNodeData, GreenTokenData, NodeOrToken};
-
-use crate::ast::{support, RevAstChildren};
-use crate::{ast, AstNode, SyntaxNode, TokenText};
+use crate::ast::{self, support, AstNode, RevAstChildren};
+use crate::SyntaxNode;
 
 pub trait ArgListOwner: AstNode {
     fn arg_list(&self) -> Option<ast::ArgList> {
@@ -32,28 +31,5 @@ pub trait AttrsOwner: AstNode {
     }
     fn get_attr(&self, name: &str) -> Option<ast::Attr> {
         self.attrs().find(|attr| attr.name().map_or(false, |n| n.text() == name))
-    }
-}
-
-impl ast::Name {
-    pub fn text(&self) -> TokenText<'_> {
-        text_of_first_token(self.syntax())
-    }
-}
-
-impl ast::NameRef {
-    pub fn text(&self) -> TokenText<'_> {
-        text_of_first_token(self.syntax())
-    }
-}
-
-fn text_of_first_token(node: &SyntaxNode) -> TokenText<'_> {
-    fn first_token(green_ref: &GreenNodeData) -> &GreenTokenData {
-        green_ref.children().next().and_then(NodeOrToken::into_token).unwrap()
-    }
-
-    match node.green() {
-        Cow::Borrowed(green_ref) => TokenText::borrowed(first_token(green_ref).text()),
-        Cow::Owned(green) => TokenText::owned(first_token(&green).to_owned()),
     }
 }

@@ -1,5 +1,8 @@
+//! Standard definitions for constants, nature and discipline
+
 use crate::Vfs;
 
+/// The `discipline.vams` file. (LRM Annex D.1)
 const CONSTANTS_SRC: &str = r#"
 // Copyright(c) 2009-2014 Accellera Systems Initiative Inc.
 // 1370 Trancas Street #163, Napa, CA 94558, USA.
@@ -100,6 +103,7 @@ const CONSTANTS_SRC: &str = r#"
 
 "#;
 
+/// The `constants.vams` file. (LRM Annex D.2)
 const DISCIPLINCES_SRC: &str = r#"
 // Copyright(c) 2009-2014 Accellera Systems Initiative Inc.
 // 1370 Trancas Street #163, Napa, CA 94558, USA.

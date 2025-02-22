@@ -1,7 +1,7 @@
 use std::str::Chars;
 
 use text_size::TextSize;
-use tokens::lexer::{Token, TokenKind};
+use tokens::{Token, TokenKind};
 
 /// Peekable iterator over a char sequence.
 ///
@@ -31,8 +31,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// Returns the last eaten symbol (or `'\0'` in release builds).
-    /// (For debug assertions only.)
+    /// Returns the last eaten symbol in debug builds, or `'\0'` in release builds.
     pub(crate) fn prev(&self) -> char {
         #[cfg(debug_assertions)]
         {
@@ -47,6 +46,7 @@ impl<'a> Cursor<'a> {
 
     /// Returns nth character relative to the current cursor position.
     /// If requested position doesn't exist, `EOF_CHAR` is returned.
+    ///
     /// However, getting `EOF_CHAR` doesn't always mean actual end of file,
     /// it should be checked with `is_eof` method.
     fn nth_char(&self, n: usize) -> char {

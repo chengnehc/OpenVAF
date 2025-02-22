@@ -1,19 +1,17 @@
 use std::cmp::min;
 use std::ops::Range;
-
 use stdx::impl_idx_math_from;
+
 use text_size::{TextRange, TextSize};
-use tokens::lexer::{LiteralKind, Token, TokenKind};
-use tokens::parser::SyntaxKind;
-use tokens::LexerErrorKind;
-// use tracing::debug;
+use tokens::{LexerError, LiteralKind, SyntaxKind, Token, TokenKind};
 use typed_index_collections::{TiSlice, TiVec};
 use vfs::VfsPath;
 
-use crate::diagnostics::PreprocessorDiagnostic;
+// use tracing::debug;
+
+use crate::diagnostics::PreprocessError;
 use crate::processor::ParsedToken;
-use crate::sourcemap::{CtxSpan, SourceContext};
-use crate::Diagnostics;
+use crate::sourcemap::{CtxSpan, SourceContextId};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct FullTokenIdx(u32);
@@ -24,7 +22,7 @@ pub struct RelevantTokenIdx(u32);
 impl_idx_math_from!(RelevantTokenIdx(u32));
 
 pub(crate) struct Parser<'a, 'd> {
-    full_tokens: TiVec<FullTokenIdx, tokens::lexer::Token>,
+    full_tokens: TiVec<FullTokenIdx, Token>,
     relevant_tokens: TiVec<RelevantTokenIdx, (PreprocessorToken, FullTokenIdx)>,
     previous_offset: TextSize,
     offset: TextSize,
@@ -32,9 +30,9 @@ pub(crate) struct Parser<'a, 'd> {
     pos: RelevantTokenIdx,
     full_token_pos: FullTokenIdx,
     src: &'a str,
-    pub(crate) ctx: SourceContext,
+    pub(crate) ctx: SourceContextId,
     pub(crate) dst: &'d mut Vec<crate::Token>,
-    pub(crate) working_dir: VfsPath,
+    pub(crate) cwd: VfsPath,
 }
 
 fn mk_token(
@@ -50,10 +48,10 @@ fn mk_token(
 impl<'a, 'd> Parser<'a, 'd> {
     pub(crate) fn new(
         src: &'a str,
-        ctx: SourceContext,
-        working_dir: VfsPath,
+        ctx: SourceContextId,
+        cwd: VfsPath,
         dst: &'d mut Vec<crate::Token>,
-        err: &mut Vec<PreprocessorDiagnostic>,
+        err: &mut Vec<PreprocessError>,
     ) -> Self {
         let full_tokens = TiVec::from(lexer::tokenize(src));
         let mut relevant_tokens: TiVec<_, _> = full_tokens
@@ -92,7 +90,7 @@ impl<'a, 'd> Parser<'a, 'd> {
             src,
             ctx,
             dst,
-            working_dir,
+            cwd,
             previous_offset: 0.into(),
             offset: 0.into(),
             token,
@@ -149,7 +147,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         token == PreprocessorToken::OpenParen && idx == (self.full_token_pos + 1u32)
     }
 
-    fn do_bump(&mut self, save: bool, err: &mut Vec<PreprocessorDiagnostic>) {
+    fn do_bump(&mut self, save: bool, err: &mut Vec<PreprocessError>) {
         // trace!(token = display(self.current()), save = save_token, "bump");
 
         if self.token == PreprocessorToken::Eof {
@@ -167,7 +165,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         self.advance(save, start, err);
     }
 
-    fn advance(&mut self, save: bool, start: FullTokenIdx, err: &mut Vec<PreprocessorDiagnostic>) {
+    fn advance(&mut self, save: bool, start: FullTokenIdx, err: &mut Vec<PreprocessError>) {
         let range = start..self.full_token_pos;
         if save {
             self.dst.extend(self.full_tokens[range].iter().filter_map(|token| {
@@ -186,22 +184,20 @@ impl<'a, 'd> Parser<'a, 'd> {
         token: Token,
         offset: TextSize,
         src: &str,
-        err: &mut Vec<PreprocessorDiagnostic>,
-        ctx: SourceContext,
+        err: &mut Vec<PreprocessError>,
+        ctx: SourceContextId,
     ) -> Option<(SyntaxKind, TextRange)> {
         let range = TextRange::at(offset, token.len);
         let (syntax, error) = token.kind.to_syntax(&src[range]);
         if let Some(error) = error {
             let span = CtxSpan { range, ctx };
             match error {
-                LexerErrorKind::UnterminatedStr => {
-                    err.push(PreprocessorDiagnostic::UnexpectedEof { expected: "\"", span })
+                LexerError::UnterminatedStr => {
+                    err.push(PreprocessError::UnexpectedEof { expected: "\"", span })
                 }
-                LexerErrorKind::UnexpectedToken => {
-                    err.push(PreprocessorDiagnostic::UnexpectedToken(span))
-                }
-                LexerErrorKind::UnterminatedBlockComment => {
-                    err.push(PreprocessorDiagnostic::UnexpectedEof { expected: "*/", span })
+                LexerError::UnexpectedToken => err.push(PreprocessError::UnexpectedToken(span)),
+                LexerError::UnterminatedBlockComment => {
+                    err.push(PreprocessError::UnexpectedEof { expected: "*/", span })
                 }
             }
         }
@@ -212,7 +208,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         &mut self,
         range: Range<FullTokenIdx>,
         dst: &mut Vec<ParsedToken<'a>>,
-        err: &mut Vec<PreprocessorDiagnostic>,
+        err: &mut Vec<PreprocessError>,
     ) {
         dst.extend(self.full_tokens[range].iter().filter_map(|token| {
             let res = Self::convert_lexer_token(*token, self.offset, self.src, err, self.ctx);
@@ -226,7 +222,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         &mut self,
         dst: &mut Vec<ParsedToken<'a>>,
         end: FullTokenIdx,
-        err: &mut Vec<PreprocessorDiagnostic>,
+        err: &mut Vec<PreprocessError>,
     ) {
         if self.token == PreprocessorToken::Eof {
             return;
@@ -249,14 +245,14 @@ impl<'a, 'd> Parser<'a, 'd> {
         &mut self,
         token: PreprocessorToken,
         expected: &'static str,
-        errors: &mut Diagnostics,
+        errors: &mut Vec<PreprocessError>,
     ) -> bool {
         if !self.eat(token) {
             // debug!("syntax error: expected {:?} but found {:?}", token, self.current());
-            errors.push(PreprocessorDiagnostic::MissingOrUnexpectedToken {
+            errors.push(PreprocessError::MissingOrUnexpectedToken {
                 expected,
                 expected_at: CtxSpan { range: self.previous_range(), ctx: self.ctx },
-                span: CtxSpan { range: self.current_range(), ctx: self.ctx },
+                found_at: CtxSpan { range: self.current_range(), ctx: self.ctx },
             });
             // self.eat(RawToken::Unexpected); // Only report lexer errors once
             false
@@ -269,7 +265,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         self.current() == token
     }
 
-    pub(crate) fn ctx(&self) -> SourceContext {
+    pub(crate) fn ctx(&self) -> SourceContextId {
         self.ctx
     }
 
@@ -292,7 +288,7 @@ impl<'a, 'd> Parser<'a, 'd> {
     // }
 
     /// Advances the parser by one token
-    pub(crate) fn save_token(&mut self, err: &mut Vec<PreprocessorDiagnostic>) {
+    pub(crate) fn save_token(&mut self, err: &mut Vec<PreprocessError>) {
         self.do_bump(true, err)
     }
 
@@ -324,6 +320,7 @@ pub enum PreprocessorToken {
     Eof,
 }
 
+/// Refer to LRM chapter 10
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum CompilerDirective {
     Include,

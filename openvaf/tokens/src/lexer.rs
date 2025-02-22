@@ -1,8 +1,13 @@
+//! See Also:
+//!
+//! https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer
+
 use text_size::TextSize;
 
 /// Parsed token.
+///
 /// It doesn't contain information about data that has been parsed,
-/// only the type of the token and its size.
+/// only the type and size of the token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Token {
     pub kind: TokenKind,

@@ -185,6 +185,8 @@ pub(crate) enum Cardinality {
     Many,
 }
 
+pub(crate) const MANUAL_ENUMS: [&str; 1] = ["Literal"];
+
 #[derive(Debug)]
 pub(crate) struct AstEnumSrc {
     pub(crate) doc: Vec<String>,

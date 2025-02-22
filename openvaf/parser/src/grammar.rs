@@ -2,14 +2,17 @@
 //!
 //! Each function in this module and its children corresponds
 //! to a production of the formal grammar. Submodules roughly
-//! correspond to different *areas* of the grammar. By convention,
-//! each submodule starts with `use super::*` import and exports
-//! "public" productions via `pub(super)`.
+//! correspond to different *areas* of the grammar.
 //!
-//! See docs for `Parser` to learn about API, available to the grammar,
-//! and see docs for `Event` to learn how this actually manages to
-//! produce parse trees.
-//!
+//! See docs for [`Parser`](super::parser::Parser) to learn about API
+//! available to the grammar, and see docs for [`Event`](super::event::Event)
+//! to learn how this actually manages to produce parse trees.
+
+use tokens::T;
+
+use crate::parser::{CompletedMarker, Marker, Parser};
+use crate::SyntaxKind::{self, *};
+use crate::TokenSet;
 
 mod attributes;
 mod call;
@@ -21,14 +24,8 @@ mod stmts;
 use attributes::attrs;
 use call::arg_list;
 use expressions::expr;
-use items::{parameter_decl, var_decl};
+use items::{parameter_decl, var_decl, ITEM_RECOVERY_SET};
 use stmts::{stmt, stmt_with_attrs};
-use tokens::T;
-
-use crate::grammar::items::ITEM_RECOVERY_SET;
-use crate::parser::{CompletedMarker, Marker, Parser};
-use crate::SyntaxKind::{self, *};
-use crate::TokenSet;
 
 const TYPE_TS: TokenSet = TokenSet::new(&[REAL_KW, INTEGER_KW, STRING_KW]);
 

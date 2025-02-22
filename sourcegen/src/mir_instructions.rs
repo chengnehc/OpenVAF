@@ -1,3 +1,7 @@
+//! See Also:
+//!
+//! https://docs.rs/cranelift-codegen-meta/latest/cranelift_codegen_meta/gen_inst/index.html
+
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 use stdx::iter::zip;
@@ -183,7 +187,6 @@ fn gen_opcodes() {
             #(#formats),*
         }
 
-
         #[repr(u8)]
         #[derive(Clone, PartialEq, Eq, Copy, Hash)]
         pub enum Opcode {
@@ -191,7 +194,7 @@ fn gen_opcodes() {
         }
 
         pub(super) const OPCODE_CONSTRAINTS: [OpcodeConstraints; #opcode_cnt + 1] = [
-                // sential value so that no additional subtraction is required
+                // start from index=1 so that no additional subtraction is required
                 OpcodeConstraints::new(0,0),
                 #(
                     OpcodeConstraints::new(#opcode_args,#opcode_returns)
@@ -199,18 +202,18 @@ fn gen_opcodes() {
         ];
 
         pub(super) const OPCODE_NAMES: [&str; #opcode_cnt + 1] = [
-                // sential value so that no additional subtraction is required
+                // start from index=1 so that no additional subtraction is required
                 "",
                 #(#opcode_print),*
         ];
 
         pub(super) const OPCODE_FORMAT: [InstructionFormat; #opcode_cnt + 1] = [
-                // sential value so that no additional subtraction is required
+                // start from index=1 so that no additional subtraction is required
                 InstructionFormat::Binary,
                 #(InstructionFormat::#opcode_formats),*
         ];
 
-        impl std::str::FromStr for Opcode{
+        impl std::str::FromStr for Opcode {
             type Err = &'static str;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -220,8 +223,6 @@ fn gen_opcodes() {
                 }
             }
         }
-
-
     };
 
     let header = "use super::*;";
@@ -309,11 +310,15 @@ fn gen_instr_builder() {
                 self.build(data)
             }
 
+            fn unary1(self, opcode: Opcode, arg: Value) -> Value {
+                let (inst, dfg) = self.unary(opcode, arg);
+                dfg.first_result(inst)
+            }
+
             fn binary(self, opcode: Opcode, arg1: Value, arg2: Value) -> (Inst, &'f mut DataFlowGraph) {
                 let data = InstructionData::Binary { opcode, args: [arg1, arg2] };
                 self.build(data)
             }
-
 
             fn binary1(self, opcode: Opcode, arg1: Value, arg2: Value) -> Value {
                 let (inst, dfg) = self.binary(opcode, arg1, arg2);
@@ -365,7 +370,6 @@ fn gen_instr_builder() {
                 self.build_call(func_ref, args).0
             }
 
-
             fn call1(mut self, func_ref: FuncRef, args: &[Value]) -> Value {
                 let pool = &mut self.data_flow_graph_mut().insts.value_lists;
                 let args = ValueList::from_slice(args, pool);
@@ -385,7 +389,6 @@ fn gen_instr_builder() {
                 let (inst, dfg) = self.build(PhiNode { args, blocks }.into());
                 dfg.first_result(inst)
             }
-
 
             #[inline]
             fn ensure_optbarrier(self, val: Value) -> Value {

@@ -1,7 +1,6 @@
 //! Yet another version of owned string, backed by a syntax tree token.
 
-use std::cmp::Ordering;
-use std::{fmt, ops};
+use std::{cmp, fmt, ops};
 
 use rowan::GreenToken;
 
@@ -75,12 +74,12 @@ impl PartialEq for TokenText<'_> {
 }
 impl Eq for TokenText<'_> {}
 impl Ord for TokenText<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.as_str().cmp(other.as_str())
     }
 }
 impl PartialOrd for TokenText<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }

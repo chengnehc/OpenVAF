@@ -1,7 +1,7 @@
 use expect_test::{expect, Expect};
 use text_size::{TextRange, TextSize};
 
-use crate::tokenize;
+use super::tokenize;
 
 fn check_lexing(src: &str, expect: Expect) {
     let mut offset = TextSize::from(0);

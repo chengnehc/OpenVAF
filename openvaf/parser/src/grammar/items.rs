@@ -1,7 +1,9 @@
 use super::*;
 use crate::grammar::paths::path;
-mod module;
+
 pub(super) use module::module;
+
+mod module;
 use module::MODULE_ITEM_OR_ATTR_RECOVERY;
 
 pub(super) const ITEM_RECOVERY_SET: TokenSet =

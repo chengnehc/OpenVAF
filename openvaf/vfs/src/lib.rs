@@ -24,24 +24,15 @@
 //! [`FileSet`]s are also pushed to salsa and cause it to re-check `mod foo;`
 //! declarations when files are created or deleted.
 //!
-//! [`FileSet`] and [`loader::Entry`] play similar, but different roles.
-//! Both specify the "set of paths/files", one is geared towards file watching,
-//! the other towards salsa changes. In particular, single [`FileSet`]
-//! may correspond to several [`loader::Entry`]. For example, a crate from
-//! openvaf.io which uses code generation would have two [`Entries`] -- for sources
-//! in `~/.cargo`, and for generated code in `./target/debug/build`. It will
-//! have a single [`FileSet`] which unions the two sources.
-//!
 //! [`set_file_contents`]: Vfs::set_file_contents
 //! [`take_changes`]: Vfs::take_changes
 //! [`FileSet`]: file_set::FileSet
 //! [`Handle`]: loader::Handle
 //! [`Entries`]: loader::Entry
-mod anchored_path;
-pub mod loader;
-mod path_interner;
-pub mod va_std;
-mod vfs_path;
+//!
+//! See Also:
+//!
+//! https://github.com/rust-lang/rust-analyzer/tree/master/crates/vfs
 
 use std::char::REPLACEMENT_CHARACTER;
 use std::ops::Range;
@@ -50,18 +41,25 @@ use std::{fmt, io, mem};
 
 pub use paths::{AbsPath, AbsPathBuf};
 
-pub use crate::anchored_path::{AnchoredPath, AnchoredPathBuf};
+//mod anchored_path;
+//pub mod loader;
+mod path_interner;
+mod va_std;
+mod vfs_path;
+
+//pub use crate::anchored_path::{AnchoredPath, AnchoredPathBuf};
 use crate::path_interner::PathInterner;
 pub use crate::vfs_path::VfsPath;
 
 /// Handle to a file in [`Vfs`]
 ///
-/// Most functions in rust-analyzer use this when they need to refer to a file.
+/// Most functions use this when they need to refer to a file.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FileId(pub u16);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VfsEntry {
+    // Use Box<str> to store string with fixed length.
     contents: Box<str>,
     err: Option<FileReadError>,
 }
@@ -72,15 +70,7 @@ impl Default for VfsEntry {
     }
 }
 
-impl From<Result<Vec<u8>, io::ErrorKind>> for VfsEntry {
-    fn from(src: Result<Vec<u8>, io::ErrorKind>) -> Self {
-        match src {
-            Err(err) => VfsEntry { contents: Box::from(""), err: Some(FileReadError::Io(err)) },
-            Ok(contents) => contents.into(),
-        }
-    }
-}
-
+/// Detect byte encoding in case of invalid text formatting of source code.
 impl From<Vec<u8>> for VfsEntry {
     fn from(contents: Vec<u8>) -> Self {
         // TODO allow back transformations
@@ -93,10 +83,18 @@ impl From<Vec<u8>> for VfsEntry {
         let (res, _, malformed) = detector.guess(None, true).decode(&contents);
         let err = malformed
             .then(|| FileReadError::InvalidTextFormat(InvalidTextFormatErr::from_lossy(&res)));
-
         let contents = LineEndings::normalize(res.into()).0;
 
         VfsEntry { contents: contents.into_boxed_str(), err }
+    }
+}
+
+impl From<Result<Vec<u8>, io::ErrorKind>> for VfsEntry {
+    fn from(src: Result<Vec<u8>, io::ErrorKind>) -> Self {
+        match src {
+            Err(err) => VfsEntry { contents: Box::from(""), err: Some(FileReadError::Io(err)) },
+            Ok(contents) => contents.into(),
+        }
     }
 }
 
@@ -118,89 +116,7 @@ impl From<Box<str>> for VfsEntry {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum LineEndings {
-    Unix,
-    Dos,
-}
-
-impl LineEndings {
-    /// Replaces `\r\n` with `\n` in-place in `src`.
-    pub(crate) fn normalize(src: String) -> (String, LineEndings) {
-        if !src.as_bytes().contains(&b'\r') {
-            return (src, LineEndings::Unix);
-        }
-
-        // We replace `\r\n` with `\n` in-place, which doesn't break utf-8 encoding.
-        // While we *can* call `as_mut_vec` and do surgery on the live string
-        // directly, let's rather steal the contents of `src`. This makes the code
-        // safe even if a panic occurs.
-
-        let mut buf = src.into_bytes();
-        let mut off = 0;
-        let mut tail = buf.as_mut_slice();
-        loop {
-            match find_crlf(&tail[off..]) {
-                None => {
-                    if off != 0 {
-                        tail.copy_within(off.., 0);
-                    }
-                    break;
-                }
-                Some((bytes_to_copy, true)) => {
-                    // found a crlf (\r\n), skip the \r
-                    // copy the bytes until the \r\n
-                    tail.copy_within(off..(off + bytes_to_copy), 0);
-                    // advance the number of bytes between the terminator
-                    tail = &mut tail[bytes_to_copy..];
-                    if tail.len() == off {
-                        break;
-                    }
-                    // ensure we skip the \r on the next iteraation
-                    off += 1;
-                }
-                Some((mut bytes_to_copy, false)) => {
-                    // found a cr (\r) without lf (\n), convert \r to \n
-                    debug_assert_eq!(tail[off + bytes_to_copy], b'\r');
-                    tail[off + bytes_to_copy] = b'\n';
-                    // also copy the line terminator so it doesn't get reexamined later
-                    bytes_to_copy += 1;
-
-                    tail.copy_within(off..(off + bytes_to_copy), 0);
-                    // advance the number of bytes between the terminator
-                    tail = &mut tail[bytes_to_copy..];
-                    if tail.len() == off {
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Account for removed `\r`.
-        // After `set_len`, `buf` is guaranteed to contain utf-8 again.
-        let new_len = buf.len() - off;
-        let src = unsafe {
-            buf.set_len(new_len);
-            String::from_utf8_unchecked(buf)
-        };
-        return (src, LineEndings::Dos);
-
-        fn find_crlf(src: &[u8]) -> Option<(usize, bool)> {
-            let res = src.windows(2).enumerate().find(|(_, it)| it[0] == b'\r');
-            match res {
-                Some((i, it)) => Some((i, it[1] == b'\n')),
-                None => {
-                    let terminating_newline = *src.last()? == b'\r';
-                    terminating_newline.then_some((src.len() - 1, false))
-                }
-            }
-        }
-    }
-}
-
-/// Storage for all files read by rust-analyzer.
-///
-/// For more information see the [crate-level](crate) documentation.
+/// Virtual File System
 #[derive(Default)]
 pub struct Vfs {
     interner: PathInterner,
@@ -229,8 +145,6 @@ impl ChangedFile {
     }
 }
 
-pub type VfsExport = Vec<(Box<str>, Box<str>)>;
-
 /// Kind of [file change](ChangedFile).
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub enum ChangeKind {
@@ -241,6 +155,8 @@ pub enum ChangeKind {
     /// The file was deleted
     Delete,
 }
+
+pub type VfsExport = Vec<(Box<str>, Box<str>)>;
 
 impl Vfs {
     /// Amount of files currently stored.
@@ -254,11 +170,122 @@ impl Vfs {
         self.data.is_empty()
     }
 
-    /// Id of the given path if it exists in the `Vfs` and is not deleted.
+    /// Return file ID associated with `path` stored in the `Vfs`, if any.
     pub fn file_id(&self, path: &VfsPath) -> Option<FileId> {
         self.interner.get(path)
     }
 
+    /// Returns the id associated with `path`,
+    ///
+    /// - If `path` does not exist in the `Vfs`, allocate a new id for it;
+    /// - Else, returns `path`'s id.
+    ///
+    /// Does not record a change.
+    pub fn ensure_file_id(&mut self, path: VfsPath) -> FileId {
+        let file_id = self.interner.intern(path);
+        let idx = file_id.0 as usize;
+        let len = self.data.len().max(idx + 1);
+        self.data.resize_with(len, VfsEntry::default);
+        file_id
+    }
+
+    /// Add a virtual file to `Vfs`.
+    ///
+    /// used by `va_std` and tests.
+    pub fn add_virt_file(&mut self, name: &str, src: VfsEntry) -> FileId {
+        let path = VfsPath::new_virtual_path(name.to_owned());
+        let file_id = self.ensure_file_id(path);
+        self.set_file_contents(file_id, src);
+        file_id
+    }
+
+    /// File path corresponding to the given `file_id`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the id is not present in the `Vfs`.
+    pub fn file_path(&self, file_id: FileId) -> VfsPath {
+        self.interner.lookup(file_id).clone()
+    }
+
+    /// File content corresponding to the given `file_id`.
+    pub fn file_contents_unchecked(&self, file_id: FileId) -> &str {
+        &self.get(file_id).contents
+    }
+
+    /// File content corresponding to the given `file_id`.
+    pub fn file_contents(&self, file_id: FileId) -> Result<&str, FileReadError> {
+        let entry = self.get(file_id);
+        if let Some(err) = &entry.err {
+            Err(err.clone())
+        } else {
+            Ok(&entry.contents)
+        }
+    }
+
+    /// Update the file with the given `contents`.
+    ///
+    /// Returns `true` if the file was modified, and saves the [change](ChangedFile).
+    pub fn set_file_contents(&mut self, file_id: FileId, contents: VfsEntry) -> bool {
+        let old = self.get(file_id);
+        if old == &contents {
+            return false;
+        }
+        let change_kind = if old.err.as_ref().map_or(false, |err| err.is_io()) {
+            ChangeKind::Create
+        } else if contents.err.as_ref().map_or(false, |err| err.is_io()) {
+            ChangeKind::Delete
+        } else {
+            ChangeKind::Modify
+        };
+        *self.get_mut(file_id) = contents;
+        self.changes.push(ChangedFile { file_id, change_kind });
+
+        true
+    }
+
+    /// Returns `true` if the `Vfs` contains [changes](ChangedFile).
+    pub fn has_changes(&self) -> bool {
+        !self.changes.is_empty()
+    }
+
+    /// Drain and returns all the changes in the `Vfs`.
+    pub fn take_changes(&mut self) -> Vec<ChangedFile> {
+        mem::take(&mut self.changes)
+    }
+
+    /// Returns the content associated with the given `file_id`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no file is associated to that id.
+    fn get(&self, file_id: FileId) -> &VfsEntry {
+        &self.data[file_id.0 as usize]
+    }
+
+    /// Mutably returns the content associated with the given `file_id`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no file is associated to that id.
+    fn get_mut(&mut self, file_id: FileId) -> &mut VfsEntry {
+        &mut self.data[file_id.0 as usize]
+    }
+
+    /// Returns an iterator over the stored ids and their corresponding paths.
+    ///
+    /// This will skip deleted/invalid files.
+    pub fn iter(&self) -> impl Iterator<Item = (FileId, &VfsPath)> + '_ {
+        (0..self.data.len())
+            .map(|it| FileId(it as u16))
+            .filter(move |&file_id| self.get(file_id).err.is_none())
+            .map(move |file_id| {
+                let path = self.interner.lookup(file_id);
+                (file_id, path)
+            })
+    }
+
+    // used by verilogae
     pub fn export_native_paths_to_virt(
         &self,
         root_file: &AbsPath,
@@ -300,117 +327,6 @@ impl Vfs {
             })
             .collect();
         Ok((path?, ignored_files))
-    }
-
-    /// File path corresponding to the given `file_id`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the id is not present in the `Vfs`.
-    pub fn file_path(&self, file_id: FileId) -> VfsPath {
-        self.interner.lookup(file_id).clone()
-    }
-
-    /// File content corresponding to the given `file_id`.
-    pub fn file_contents_unchecked(&self, file_id: FileId) -> &str {
-        &self.get(file_id).contents
-    }
-
-    /// File content corresponding to the given `file_id`.
-    pub fn file_contents(&self, file_id: FileId) -> Result<&str, FileReadError> {
-        let entry = self.get(file_id);
-        if let Some(err) = &entry.err {
-            Err(err.clone())
-        } else {
-            Ok(&entry.contents)
-        }
-    }
-
-    /// Returns an iterator over the stored ids and their corresponding paths.
-    ///
-    /// This will skip deleted/invalid files.
-    pub fn iter(&self) -> impl Iterator<Item = (FileId, &VfsPath)> + '_ {
-        (0..self.data.len())
-            .map(|it| FileId(it as u16))
-            .filter(move |&file_id| self.get(file_id).err.is_none())
-            .map(move |file_id| {
-                let path = self.interner.lookup(file_id);
-                (file_id, path)
-            })
-    }
-
-    /// Update the `path` with the given `contents`. `None` means the file was deleted.
-    ///
-    /// Returns `true` if the file was modified, and saves the [change](ChangedFile).
-    ///
-    /// If the path does not currently exists in the `Vfs`, allocates a new
-    /// [`FileId`] for it.
-    pub fn set_file_contents(&mut self, file_id: FileId, contents: VfsEntry) -> bool {
-        let old = self.get(file_id);
-        if old == &contents {
-            return false;
-        }
-        let change_kind = if old.err.as_ref().map_or(false, |err| err.is_io()) {
-            ChangeKind::Create
-        } else if contents.err.as_ref().map_or(false, |err| err.is_io()) {
-            ChangeKind::Delete
-        } else {
-            ChangeKind::Modify
-        };
-
-        *self.get_mut(file_id) = contents;
-        self.changes.push(ChangedFile { file_id, change_kind });
-        true
-    }
-
-    pub fn add_virt_file(&mut self, name: &str, src: VfsEntry) -> FileId {
-        let path = VfsPath::new_virtual_path(name.to_owned());
-        let file_id = self.ensure_file_id(path);
-        self.set_file_contents(file_id, src);
-        file_id
-    }
-
-    /// Returns `true` if the `Vfs` contains [changes](ChangedFile).
-    pub fn has_changes(&self) -> bool {
-        !self.changes.is_empty()
-    }
-
-    /// Drain and returns all the changes in the `Vfs`.
-    pub fn take_changes(&mut self) -> Vec<ChangedFile> {
-        mem::take(&mut self.changes)
-    }
-
-    /// Returns the id associated with `path`
-    ///
-    /// - If `path` does not exists in the `Vfs`, allocate a new id for it, associated with a
-    /// deleted file;
-    /// - Else, returns `path`'s id.
-    ///
-    /// Does not record a change.
-    pub fn ensure_file_id(&mut self, path: VfsPath) -> FileId {
-        let file_id = self.interner.intern(path);
-        let idx = file_id.0 as usize;
-        let len = self.data.len().max(idx + 1);
-        self.data.resize_with(len, VfsEntry::default);
-        file_id
-    }
-
-    /// Returns the content associated with the given `file_id`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no file is associated to that id.
-    fn get(&self, file_id: FileId) -> &VfsEntry {
-        &self.data[file_id.0 as usize]
-    }
-
-    /// Mutably returns the content associated with the given `file_id`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no file is associated to that id.
-    fn get_mut(&mut self, file_id: FileId) -> &mut VfsEntry {
-        &mut self.data[file_id.0 as usize]
     }
 }
 
@@ -461,5 +377,92 @@ pub enum FileReadError {
 impl FileReadError {
     pub fn is_io(&self) -> bool {
         matches!(self, FileReadError::Io(_))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum LineEndings {
+    Unix,
+    Dos,
+}
+
+impl LineEndings {
+    /// Replaces `\r\n` with `\n` in-place in `src`.
+    pub(crate) fn normalize(src: String) -> (String, LineEndings) {
+        // We replace `\r\n` with `\n` in-place, which doesn't break utf-8 encoding.
+        // While we *can* call `as_mut_vec` and do surgery on the live string
+        // directly, let's rather steal the contents of `src`. This makes the code
+        // safe even if a panic occurs.
+
+        let mut buf = src.into_bytes();
+        let mut gap_len = 0;
+        let mut tail = buf.as_mut_slice();
+        let mut crlf_seen = false;
+
+        let find_crlf = |src: &[u8]| src.windows(2).position(|it| it == b"\r\n");
+
+        loop {
+            let idx = match find_crlf(&tail[gap_len..]) {
+                None if crlf_seen => tail.len(),
+                // SAFETY: buf is unchanged and therefore still contains utf8 data
+                None => return (unsafe { String::from_utf8_unchecked(buf) }, LineEndings::Unix),
+                Some(idx) => {
+                    crlf_seen = true;
+                    idx + gap_len
+                }
+            };
+            tail.copy_within(gap_len..idx, 0);
+            tail = &mut tail[idx - gap_len..];
+            if tail.len() == gap_len {
+                break;
+            }
+            gap_len += 1;
+        }
+
+        // Account for removed `\r`.
+        // After `set_len`, `buf` is guaranteed to contain utf-8 again.
+        let src = unsafe {
+            let new_len = buf.len() - gap_len;
+            buf.set_len(new_len);
+            String::from_utf8_unchecked(buf)
+        };
+        (src, LineEndings::Dos)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unix() {
+        let src = "a\nb\nc\n\n\n\n";
+        let (res, endings) = LineEndings::normalize(src.into());
+        assert_eq!(endings, LineEndings::Unix);
+        assert_eq!(res, src);
+    }
+
+    #[test]
+    fn dos() {
+        let src = "\r\na\r\n\r\nb\r\nc\r\n\r\n\r\n\r\n";
+        let (res, endings) = LineEndings::normalize(src.into());
+        assert_eq!(endings, LineEndings::Dos);
+        assert_eq!(res, "\na\n\nb\nc\n\n\n\n");
+    }
+
+    #[test]
+    fn mixed() {
+        let src = "a\r\nb\r\nc\r\n\n\r\n\n";
+        let (res, endings) = LineEndings::normalize(src.into());
+        assert_eq!(endings, LineEndings::Dos);
+        assert_eq!(res, "a\nb\nc\n\n\n\n");
+    }
+
+    #[test]
+    fn none() {
+        let src = "abc";
+        let (res, endings) = LineEndings::normalize(src.into());
+        assert_eq!(endings, LineEndings::Unix);
+        assert_eq!(res, src);
     }
 }

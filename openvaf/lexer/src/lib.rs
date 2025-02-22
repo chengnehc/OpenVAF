@@ -1,11 +1,14 @@
-mod cursor;
+//! Convert raw sources into a labeled sequence of well-known token types.
+//!
+//! See Also: https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer
 
+use tokens::LiteralKind::*;
+use tokens::TokenKind::*;
+use tokens::{LiteralKind, Token, TokenKind};
+
+mod cursor;
 #[cfg(test)]
 mod tests;
-
-use tokens::lexer::LiteralKind::{self, *};
-use tokens::lexer::Token;
-use tokens::lexer::TokenKind::{self, *};
 
 use crate::cursor::Cursor;
 
@@ -23,8 +26,8 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 /// for definitions of these classes.
 ///
 /// Technically the the VAMS standard only considers ASCII.
-/// For better compatibility unicode is also allowed here (same whitespace definition as rust is
-/// used)
+/// For better compatibility unicode is also allowed here
+/// (same whitespace definition as rust is used)
 pub fn is_whitespace(c: char) -> bool {
     // This is Pattern_White_Space.
     //
@@ -33,7 +36,7 @@ pub fn is_whitespace(c: char) -> bool {
     matches!(
         c,
         // Usual ASCII suspects
-        '\u{0009}'   // \t
+        '\u{0009}' // \t
         | '\u{000A}' // \n
         | '\u{000B}' // vertical tab
         | '\u{000C}' // form feed
@@ -79,6 +82,7 @@ impl Cursor<'_> {
                 self.finish_marker();
                 self.whitespace()
             }
+
             // Whitespace sequence.
             c if is_whitespace(c) => self.whitespace(),
 
@@ -86,6 +90,7 @@ impl Cursor<'_> {
                 self.bump();
                 self.whitespace()
             }
+
             '`' if is_ident_start_char(self.first()) => self.compiler_directive(),
 
             // Identifier (this should be checked after other variant that can
@@ -237,6 +242,26 @@ impl Cursor<'_> {
         self.finish_token(token_kind)
     }
 
+    /// Eats double-quoted string and returns true
+    /// if string is terminated.
+    fn double_quoted_string(&mut self) -> bool {
+        debug_assert!(self.prev() == '"');
+        while let Some(c) = self.bump() {
+            match c {
+                '"' => {
+                    return true;
+                }
+                '\\' if self.first() == '\\' || self.first() == '"' => {
+                    // Bump again to skip escaped character.
+                    self.bump();
+                }
+                _ => (),
+            }
+        }
+        // End of file reached.
+        false
+    }
+
     fn compiler_directive(&mut self) -> TokenKind {
         let mut is_define = true;
         for e in ['d', 'e', 'f', 'i', 'n', 'e'] {
@@ -305,9 +330,12 @@ impl Cursor<'_> {
         Whitespace
     }
 
+    /// Refer to LRM 2.6: Numbers and Table 2-1 for scale factors
     fn number(&mut self) -> LiteralKind {
         debug_assert!('0' <= self.prev() && self.prev() <= '9');
-        // let mut base = Base::Decimal; TODO decimal with different base
+        // For analog compact model, decimal base seems enough
+
+        // let mut base = Base::Decimal;
         // if first_digit == '0' {
         //     // Attempt to parse encoding base.
         //     let has_digits = match self.first() {
@@ -355,7 +383,6 @@ impl Cursor<'_> {
                             self.bump();
                             self.eat_float_exponent();
                         }
-
                         'T' | 'G' | 'M' | 'K' | 'k' | 'm' | 'u' | 'n' | 'p' | 'f' | 'a' => {
                             self.bump();
                             has_scale_char = true;
@@ -365,7 +392,6 @@ impl Cursor<'_> {
                 }
                 Float { has_scale_char }
             }
-
             'T' | 'G' | 'M' | 'K' | 'k' | 'm' | 'u' | 'n' | 'p' | 'f' | 'a' => {
                 self.bump();
                 Float { has_scale_char: true }
@@ -378,30 +404,13 @@ impl Cursor<'_> {
             _ => Int,
         }
     }
-    /// Eats double-quoted string and returns true
-    /// if string is terminated.
-    fn double_quoted_string(&mut self) -> bool {
-        debug_assert!(self.prev() == '"');
-        while let Some(c) = self.bump() {
-            match c {
-                '"' => {
-                    return true;
-                }
-                '\\' if self.first() == '\\' || self.first() == '"' => {
-                    // Bump again to skip escaped character.
-                    self.bump();
-                }
-                _ => (),
-            }
-        }
-        // End of file reached.
-        false
-    }
 
     fn eat_decimal_digits(&mut self) -> bool {
         let mut has_digits = false;
         loop {
             match self.first() {
+                // '_' is used as digit separator for clarity in Rust,
+                // however we should conform to VAMS LRM here.
                 '_' => {
                     self.bump();
                 }

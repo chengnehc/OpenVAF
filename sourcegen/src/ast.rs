@@ -1,33 +1,40 @@
-//! This module generates AST datatype used by rust-analyzer.
+//! This module generates
+//! 1. the `SyntaxKind` enum (in the `syntax_kind` module of `token` crate)
+//! 2. newtype wrappers around `SyntaxToken` which implement trait `AstToken`.
+//! 3. newtype wrappers around `SyntaxNode` which implement trait `AstNode`.
 //!
-//! Specifically, it generates the `SyntaxKind` enum and a number of newtype
-//! wrappers around `SyntaxNode` which implement `syntax::AstNode`.
+//! See Also:
+//!
+//! https://github.com/rust-lang/rust/blob/master/src/tools/rust-analyzer/xtask/src/codegen/grammar.rs
 
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write;
+use std::fs;
 
 use proc_macro2::{Punct, Spacing};
 use quote::{format_ident, quote};
 use ungrammar::{Grammar, Rule};
 
-use crate::ast::src::{
-    AstEnumSrc, AstEnumVariant, AstNodeSrc, AstSrc, Cardinality, Field, KindsSrc, KINDS_SRC,
-};
 use crate::{
     add_preamble, ensure_file_contents, pluralize, project_root, reformat, to_lower_snake_case,
     to_pascal_case, to_upper_snake_case,
 };
 
 mod src;
+use self::src::{
+    AstEnumSrc, AstEnumVariant, AstNodeSrc, AstSrc, Cardinality, Field, KindsSrc, KINDS_SRC,
+    MANUAL_ENUMS,
+};
 
 #[test]
 pub fn ast() {
-    let src = include_str!("../../openvaf/syntax/veriloga.ungram");
-    let grammar = src.parse().unwrap();
-
+    let grammar = fs::read_to_string(project_root().join("openvaf/syntax/veriloga.ungram"))
+        .unwrap()
+        .parse()
+        .unwrap();
     let ast = lower(&grammar);
 
-    let syntax_kinds_file = project_root().join("openvaf/tokens/src/parser/generated.rs");
+    let syntax_kinds_file = project_root().join("openvaf/tokens/src/syntax_kind/generated.rs");
     let syntax_kinds = generate_syntax_kinds(KINDS_SRC);
     ensure_file_contents(syntax_kinds_file.as_path(), &syntax_kinds);
 
@@ -65,7 +72,7 @@ fn generate_tokens(grammar: &AstSrc) -> String {
     });
 
     add_preamble(
-        "sourcegen_ast",
+        "sourcegen/ast: generate_tokens()",
         reformat(
             quote! {
                 use crate::SyntaxKind::{self, *};
@@ -122,9 +129,7 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
                     pub struct #name {
                         pub(crate) syntax: SyntaxNode,
                     }
-
                     #(#traits)*
-
                     impl #name {
                         #(#methods)*
                     }
@@ -226,7 +231,6 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
                     pub enum #name {
                         #(#variants(#variants),)*
                     }
-
                     #(#traits)*
                 },
                 quote! {
@@ -265,7 +269,7 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
         .map(|kind| to_pascal_case(kind))
         .filter(|name| !defined_nodes.contains(name))
     {
-        // FIXME: restore this
+        // FIXME restore this
         eprintln!("Warning: node {} not defined in ast source", node);
         drop(node);
     }
@@ -296,7 +300,7 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
         }
     }
 
-    add_preamble("sourcegen_ast", reformat(res))
+    add_preamble("sourcegen/ast: generate_nodes()", reformat(res)).replace("#[derive", "\n#[derive")
 }
 
 fn write_doc_comment(contents: &[String], dest: &mut String) {
@@ -318,7 +322,7 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
             let c = token.chars().next().unwrap();
             quote! { #c }
         } else if *token == "'{" || *token == "(*" || *token == "*)" {
-            quote! { #token}
+            quote! { #token }
         } else {
             let cs = token.chars().map(|c| Punct::new(c, Spacing::Joint));
             quote! { #(#cs)* }
@@ -326,35 +330,24 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
     });
     let punctuation =
         grammar.punct.iter().map(|(_token, name)| format_ident!("{}", name)).collect::<Vec<_>>();
-
     let punctuation_pretty: Vec<String> =
         grammar.punct.iter().map(|(token, _name)| format!("'{}'", token)).collect();
 
-    let full_keywords_values = &grammar.keywords;
-    let full_keywords =
-        full_keywords_values.iter().map(|kw| format_ident!("{}_KW", to_upper_snake_case(kw)));
+    let fmt_kw_as_variant = |&name| format_ident!("{}_KW", to_upper_snake_case(name));
 
-    let all_keywords_values = grammar.keywords.to_owned();
-    //grammar.keywords.iter().chain(grammar.contextual_keywords.iter()).collect::<Vec<_>>();
-
-    let all_keywords_idents = all_keywords_values.iter().map(|kw| format_ident!("{}", kw));
-    let all_keywords = all_keywords_values
-        .iter()
-        .map(|name| format_ident!("{}_KW", to_upper_snake_case(name)))
-        .collect::<Vec<_>>();
-
+    let all_keywords = grammar.keywords;
+    let all_keywords_variants = all_keywords.iter().map(fmt_kw_as_variant).collect::<Vec<_>>();
+    let all_keywords_tokens = all_keywords.iter().map(|kw| format_ident!("{}", kw));
     let keywords_pretty = grammar.keywords.iter().map(|kw| format!("'{}'", kw));
 
     let literals =
         grammar.literals.iter().map(|name| format_ident!("{}", name)).collect::<Vec<_>>();
-
     let tokens = grammar.tokens.iter().map(|name| format_ident!("{}", name)).collect::<Vec<_>>();
-
     let nodes = grammar.nodes.iter().map(|name| format_ident!("{}", name)).collect::<Vec<_>>();
 
     let ast = quote! {
         #![allow(bad_style, missing_docs, unreachable_pub)]
-        /// The kind of syntax node, e.g. `IDENT`, `USE_KW`, or `STRUCT`.
+        /// The kind of syntax node, e.g. `IDENT`, `MODULE_KW`, or `PARAM_DECL`.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
         #[repr(u16)]
         pub enum SyntaxKind {
@@ -365,7 +358,7 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
             #[doc(hidden)]
             EOF,
             #(#punctuation,)*
-            #(#all_keywords,)*
+            #(#all_keywords_variants,)*
             #(#literals,)*
             #(#tokens,)*
             #(#nodes,)*
@@ -379,7 +372,7 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
         impl SyntaxKind {
             pub fn is_keyword(self) -> bool {
                 match self {
-                    #(#all_keywords)|* => true,
+                    #(#all_keywords_variants)|* => true,
                     _ => false,
                 }
             }
@@ -400,7 +393,7 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
 
             pub fn from_keyword(ident: &str) -> Option<SyntaxKind> {
                 let kw = match ident {
-                    #(#full_keywords_values => #full_keywords,)*
+                    #(#all_keywords => #all_keywords_variants,)*
                       "reg"
                     |"wreal"
                     |"wire"
@@ -422,16 +415,16 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
             }
         }
 
-        impl std::fmt::Display for SyntaxKind{
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>)->std::fmt::Result{
-                let pretty = match self{
+        impl std::fmt::Display for SyntaxKind {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let pretty = match self {
                     #(Self::#punctuation => #punctuation_pretty,)*
-                    #(Self::#all_keywords => #keywords_pretty,)*
+                    #(Self::#all_keywords_variants => #keywords_pretty,)*
                     Self::INT_NUMBER => "integer",
-                    Self::STD_REAL_NUMBER| Self::SI_REAL_NUMBER  => "real number",
+                    Self::STD_REAL_NUMBER | Self::SI_REAL_NUMBER  => "real number",
                     Self::STR_LIT => "string literal",
                     Self::LITERAL => "literal",
-                    Self::IDENT|  Self::NAME => "identifier",
+                    Self::IDENT | Self::NAME => "identifier",
                     Self::SYSFUN => "system function identifier",
                     Self::WHITESPACE => "whitespace",
                     Self::COMMENT => "comment",
@@ -439,23 +432,23 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
                     Self::PORT_DECL => "port decl.",
                     Self::NET_DECL => "net decl.",
                     Self::ANALOG_BEHAVIOUR => "analog block",
-                    _ => return std::fmt::Debug::fmt(self,f)
+                    _ => return std::fmt::Debug::fmt(self, f)
                 };
-                write!(f,"{}",pretty)
+                write!(f, "{}", pretty)
             }
         }
 
         #[macro_export]
         macro_rules! T {
             #([#punctuation_values] => { $crate::SyntaxKind::#punctuation };)*
-            #([#all_keywords_idents] => { $crate::SyntaxKind::#all_keywords };)*
+            #([#all_keywords_tokens] => { $crate::SyntaxKind::#all_keywords_variants };)*
             [ident] => { $crate::SyntaxKind::IDENT };
             [net_type] => { $crate::SyntaxKind::NET_TYPE };
             [sysfun] => { $crate::SyntaxKind::SYSFUN };
         }
     };
 
-    add_preamble("sourcegen_ast", reformat(ast.to_string()))
+    add_preamble("sourcegen/ast: generate_syntax_kinds", reformat(ast.to_string()))
 }
 
 impl Field {
@@ -591,8 +584,6 @@ fn lower_enum(grammar: &Grammar, rule: &Rule) -> Option<(Vec<AstEnumVariant>, Op
     seen_non_token.then_some((variants, nested))
 }
 
-const MANUAL_ENUMS: [&str; 1] = ["Literal"];
-
 fn lower_rule(acc: &mut Vec<Field>, grammar: &Grammar, label: Option<&String>, rule: &Rule) {
     if lower_comma_list(acc, grammar, label, rule) {
         return;
@@ -601,7 +592,6 @@ fn lower_rule(acc: &mut Vec<Field>, grammar: &Grammar, label: Option<&String>, r
     match rule {
         Rule::Node(node) => {
             let ty = grammar[*node].name.clone();
-
             let name = label.cloned().unwrap_or_else(|| to_lower_snake_case(&ty));
             let field = Field::Node { name, ty, cardinality: Cardinality::Optional };
             acc.push(field);

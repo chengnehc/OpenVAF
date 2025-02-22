@@ -1,28 +1,36 @@
 //  VerilogA Un-Grammar.
 //
-// This grammar specifies the structure of VerilogA's concrete syntax tree.
+// This grammar specifies the structure of VerilogA's concrete syntax tree (CST).
 // It does not specify parsing rules (ambiguities, precedence, etc are out of scope).
-// Tokens are processed -- contextual keywords are recognised, compound operators glued.
 //
 // Legend:
 //
 //   //          -- comment
 //   Name =      -- non-terminal definition
 //   'ident'     -- token (terminal)
+// TODO(JW) more accurate identifier type
+//        'ident'     -- keyword or punct token (terminal)
+//        '#ident'    -- generic token (terminal)
+//        '@ident'    -- literal token (terminal)
 //   A B         -- sequence
 //   A | B       -- alternation
-//   A*          -- zero or more repetition
+//   A*          -- option
 //   A?          -- zero or one repetition
 //   (A)         -- same as A
 //   label:A     -- suggested name for field of AST node
+
+// See Also: LRM Annex A & C, formal syntax definition in Backus-Naur Form (BNF).
+
 
 //*************************//
 // Names, Paths and Macros //
 //*************************//
 
+Name =
+  'ident'
 
-Name = 'ident'
-NameRef = 'ident'
+NameRef =
+  'ident'
 
 Path =
   (qualifier:Path '.')? ('ident' | 'root')
@@ -30,21 +38,21 @@ Path =
 AttrList =
   '(*' (Attr (',' Attr)*)? '*)'
 
-
-
 Attr =
- Name ('=' val:Expr)?
+  Name ('=' val:Expr)?
 
-Type = ('integer' | 'real' | 'string')
+Type =
+  ('integer' | 'real' | 'string')
+
 
 //****************************//
 // Statements and Expressions //
 //****************************//
 
 Stmt =
-EmptyStmt
-| AssignStmt
+  EmptyStmt
 | ExprStmt
+| AssignStmt
 | IfStmt
 | WhileStmt
 | ForStmt
@@ -52,7 +60,8 @@ EmptyStmt
 | EventStmt
 | BlockStmt
 
-EmptyStmt = AttrList* ';'
+EmptyStmt =
+  AttrList* ';'
 
 ExprStmt =
   AttrList* Expr ';'?
@@ -60,7 +69,7 @@ ExprStmt =
 AssignStmt =
   AttrList* Assign ';'?
 
-Assign = 
+Assign =
   lval: Expr op: ('<+' | '=') rval: Expr
 
 IfStmt =
@@ -84,12 +93,9 @@ CaseStmt =
 Case =
   (Expr (',' Expr)* | 'default') ':'? Stmt
 
-
-
-
+// Consider removing this as it is not suitable for compact model
 EventStmt =
   AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases: ('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
-
 
 BlockStmt =
   AttrList* 'begin'
@@ -97,9 +103,10 @@ BlockStmt =
     items: BlockItem*
   'end'
 
-BlockScope = ':' Name
+BlockScope =
+  ':' Name
 
-BlockItem = 
+BlockItem =
   VarDecl | ParamDecl | Stmt
 
 Expr =
@@ -108,24 +115,13 @@ Expr =
 | BinExpr
 | ParenExpr
 | ArrayExpr
-| Call
 | SelectExpr
+| Call
 | PathExpr
 | PortFlow
 
-
-PathExpr = Path // Required to allow
-PortFlow = '<' port: Path '>'
-
-SelectExpr =
-  condition: Expr '?' then_val: Expr ':' else_val: Expr
-
-ArrayExpr =
-  '\'{' (Expr (',' Expr)*)? '}'
-
 Literal =
-   'int_number' | 'str_lit' | 'std_real_number' | 'si_real_number' | 'inf'
-   
+  'int_number' | 'str_lit' | 'std_real_number' | 'si_real_number' | 'inf'
 
 PrefixExpr =
   AttrList* op:( '-' | '!' | '~' | '+') Expr
@@ -143,35 +139,50 @@ BinExpr =
 ParenExpr =
   '(' Expr ')'
 
-ArgList =
-  '(' args: (Expr (',' Expr)*)? ')'
+// Consider removing this as it is not suitable for compact model
+ArrayExpr =
+  '\'{' (Expr (',' Expr)*)? '}'
+
+SelectExpr =
+  condition: Expr '?' then_val: Expr ':' else_val: Expr
 
 Call =
   FunctionRef ArgList?
 
-SysFun = 'sysfun'
+ArgList =
+  '(' args: (Expr (',' Expr)*)? ')'
 
 FunctionRef =
   Path | SysFun
+
+SysFun =
+  'sysfun'
+
+// ?
+PathExpr =
+  Path
+
+PortFlow =
+  '<' port: Path '>'
+
 
 //*************************//
 //          Items          //
 //*************************//
 
-
 SourceFile =
   Item*
 
 Item =
-   DisciplineDecl | NatureDecl | ModuleDecl
+  DisciplineDecl | NatureDecl | ModuleDecl
 
 DisciplineDecl =
   AttrList* 'discipline' Name ';'
   DisciplineAttr*
   'enddiscipline'
 
-DisciplineAttr = 
-  name: Path  '='? val:Expr ';'
+DisciplineAttr =
+  name: Path '='? val:Expr ';'
 
 NatureDecl =
   AttrList* 'nature' Name (':' parent: Path)? ';'
@@ -183,25 +194,42 @@ NatureAttr =
 
 ModuleDecl =
   AttrList* 'module' Name ModulePorts? ';'
-   ModuleItem*
+  ModuleItem*
   'endmodule'
+
+ModulePorts =
+  '('ports: (ModulePort (',' ModulePort)*)? ')'
+
+ModulePort =
+  kind: ModulePortKind
+
+ModulePortKind =
+  PortDecl | Name
 
 ModuleItem =
   BodyPortDecl
 | NetDecl
-| AnalogBehaviour
-| Function
 | BranchDecl
 | VarDecl
 | ParamDecl
 | AliasParam
+| Function
+| AnalogBehaviour
 
-ModulePorts = '('ports: (ModulePort (',' ModulePort)*)? ')'
-ModulePort = kind: ModulePortKind
-ModulePortKind = PortDecl| Name
+BodyPortDecl =
+  PortDecl ';'
 
-AnalogBehaviour =
-  AttrList* 'analog' 'initial'? Stmt
+PortDecl =
+  AttrList* Direction discipline:NameRef? 'net_type'? (Name (',' Name)*)
+
+Direction =
+  'inout' | 'input' | 'output'
+
+NetDecl =
+  AttrList* discipline:NameRef? 'net_type'? (Name (',' Name)*) ';'
+
+BranchDecl =
+  AttrList* 'branch' ArgList (Name (',' Name)*) ';'
 
 VarDecl =
   AttrList* Type (Var (',' Var)*) ';'
@@ -209,38 +237,23 @@ VarDecl =
 Var =
   Name ('=' default:Expr)?
 
-
-
 ParamDecl =
-  AttrList* ('parameter'|'localparam') Type? paras:(Param (',' Param)*) ';'
+  AttrList* ('parameter' | 'localparam') Type? paras:(Param (',' Param)*) ';'
+
+Param =
+  Name '=' default:Expr Constraint*
+
+Constraint =
+  ('from' | 'exclude') (Expr | Range)
+
+Range =
+  ('(' | '[') start: Expr ':' end:Expr (')' | ']')
 
 AliasParam =
   AttrList* 'aliasparam' name: Name '=' src: ParamRef ';'
 
 ParamRef =
   Path | SysFun
-
-Param = Name '=' default:Expr Constraint*
-
-Constraint =
-    ('from' | 'exclude') (Expr | Range)
-
-Range =
-  ('(' | '[') start: Expr ':' end:Expr (')' | ']')
-
-
-NetDecl =
-  AttrList*  discipline:NameRef?  'net_type'? (Name (',' Name)*)';'
-
-BodyPortDecl =
-  PortDecl ';'
-
-PortDecl =
-  AttrList* Direction discipline:NameRef?  'net_type'? (Name (',' Name)*)
-
-Direction =
-  'inout' | 'input' | 'output'
-
 
 Function =
   AttrList* 'analog' 'function' Type? Name ';'
@@ -251,9 +264,7 @@ FunctionItem =
   ParamDecl | VarDecl | FunctionArg | Stmt
 
 FunctionArg =
-  AttrList* Direction (Name(',' Name)*)';'
+  AttrList* Direction (Name(',' Name)*) ';'
 
-
-
-BranchDecl =
-  AttrList* 'branch' ArgList (Name (',' Name)*)';'
+AnalogBehaviour =
+  AttrList* 'analog' 'initial'? Stmt

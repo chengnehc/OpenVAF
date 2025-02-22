@@ -1,40 +1,54 @@
-pub mod ast;
+//! Syntax Tree library
+//!
+//! The most interesting modules here are `syntax_node` (which defines concrete
+//! syntax tree) and `ast` (which defines abstract syntax tree on top of the CST).
+//!
+//! The actual parser live in a separate `parser` crate.
+//! The `parsing` module serves as the bridge and build the syntax tree.
+//!
+//! See Also:
+//! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/syntax
+//! - https://docs.rs/ra_ap_syntax/latest/ra_ap_syntax/index.html
+//! - https://github.com/rust-lang/rfcs/pull/2256
+//! - https://github.com/apple/swift/blob/13d593df6f359d0cb2fc81cfaac273297c539455/lib/Syntax/README.md
+
+use std::cmp::Ordering;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use preprocessor::sourcemap::{CtxSpan, FileSpan, SourceContextId};
+use vfs::FileId;
+
+pub use preprocessor::diagnostics::PreprocessError;
+pub use preprocessor::sourcemap::{self, SourceMap};
+pub use preprocessor::{preprocess, Preprocess, SourceProvider};
+pub use rowan::{Direction, GreenNode, NodeOrToken, SyntaxText, TextRange, TextSize, WalkEvent};
+pub use tokens::{SyntaxKind, T};
+
 mod error;
-pub mod name;
 mod parsing;
 mod ptr;
 mod syntax_node;
 mod token_text;
 mod validation;
 
-use std::cmp::Ordering;
-use std::marker::PhantomData;
-use std::sync::Arc;
+pub mod ast;
+pub mod name;
 
-pub use ast::AstNode;
+pub use ast::{AstNode, SourceFile};
 pub use error::SyntaxError;
-pub use preprocessor::diagnostics::PreprocessorDiagnostic;
-use preprocessor::sourcemap::{CtxSpan, FileSpan, SourceContext};
-pub use preprocessor::{preprocess, sourcemap, Preprocess, SourceProvider};
 pub use ptr::{AstPtr, SyntaxNodePtr};
-pub use rowan::{
-    Direction, GreenNode, NodeOrToken, SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
-};
 pub use syntax_node::{SyntaxNode, SyntaxToken};
 pub use token_text::TokenText;
-pub use tokens::{SyntaxKind, T};
-use vfs::FileId;
 
-/// `Parse` is the result of the parsing: a syntax tree and a collection of
-/// errors.
+/// `Parse` is the result of the parsing: a syntax tree and a collection of errors.
 ///
-/// Note that we always produce a syntax tree, even for completely invalid
-/// files.
+/// `ctx_map` is used for diagnostics and reporting.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parse<T> {
     green: GreenNode,
     errors: Arc<Vec<SyntaxError>>,
-    pub ctx_map: Arc<Vec<(TextRange, SourceContext, TextSize)>>,
+    pub ctx_map: Arc<Vec<(TextRange, SourceContextId, TextSize)>>,
     _ty: PhantomData<fn() -> T>,
 }
 
@@ -53,7 +67,7 @@ impl<T> Parse<T> {
     fn new(
         green: GreenNode,
         errors: Vec<SyntaxError>,
-        ctx_map: Vec<(TextRange, SourceContext, TextSize)>,
+        ctx_map: Vec<(TextRange, SourceContextId, TextSize)>,
     ) -> Parse<T> {
         Parse { green, errors: Arc::new(errors), ctx_map: Arc::new(ctx_map), _ty: PhantomData }
     }
@@ -62,33 +76,17 @@ impl<T> Parse<T> {
         SyntaxNode::new_root(self.green.clone())
     }
 
-    fn find_ctx_range(&self, global_pos: TextSize) -> (TextRange, SourceContext, TextSize) {
-        self.ctx_map
-            .binary_search_by(|(range, _, _)| {
-                if range.end() <= global_pos {
-                    Ordering::Less
-                } else if global_pos < range.start() {
-                    Ordering::Greater
-                } else {
-                    Ordering::Equal
-                }
-            })
-            .ok()
-            .map(|i| self.ctx_map[i])
-            .expect("No range in the sourcemap covers the requested position")
-    }
-    pub fn ctx(&self, global_pos: TextSize) -> (SourceContext, TextSize) {
-        let (range, ctx, _offset) = self.find_ctx_range(global_pos);
-        let relative_pos = global_pos - range.start();
-        (ctx, relative_pos)
+    pub fn errors(&self) -> &[SyntaxError] {
+        &self.errors
     }
 
-    pub fn to_ctx_span(&self, range: TextRange, sm: &sourcemap::SourceMap) -> CtxSpan {
+    pub fn to_ctx_span(&self, range: TextRange, sm: &SourceMap) -> CtxSpan {
         let (ctx_range1, ctx1, offset1) = self.find_ctx_range(range.start());
         if range.end() <= ctx_range1.end() {
-            // Special case common case that start and end are in the same SourceContext
+            // Special and common case that start and end are in the same `SourceContext`
             CtxSpan { range: range - ctx_range1.start() + offset1, ctx: ctx1 }
         } else {
+            // Expensive but much less common case
             let (ctx_range2, ctx2, offset2) = self.find_ctx_range(range.end());
             let start = range.start() - ctx_range1.start() + offset1;
             let end = range.end() - ctx_range2.start() + offset2;
@@ -105,24 +103,50 @@ impl<T> Parse<T> {
         }
     }
 
-    pub fn to_file_span(&self, range: TextRange, sm: &sourcemap::SourceMap) -> FileSpan {
+    pub fn to_file_span(&self, range: TextRange, sm: &SourceMap) -> FileSpan {
         self.to_ctx_span(range, sm).to_file_span(sm)
+    }
+
+    /* JW: not used.
+    pub fn ctx(&self, global_pos: TextSize) -> (SourceContextId, TextSize) {
+        let (range, ctx, _offset) = self.find_ctx_range(global_pos);
+        let relative_pos = global_pos - range.start();
+        (ctx, relative_pos)
+    }
+    */
+
+    fn find_ctx_range(&self, global_pos: TextSize) -> (TextRange, SourceContextId, TextSize) {
+        self.ctx_map
+            .binary_search_by(|(range, _, _)| {
+                if range.end() <= global_pos {
+                    Ordering::Less
+                } else if global_pos < range.start() {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .ok()
+            .map(|i| self.ctx_map[i])
+            .expect("No range in the sourcemap covers the requested position")
     }
 }
 
 impl<T: AstNode> Parse<T> {
+    /// Erase the type of the parsed syntax tree.
     pub fn to_syntax(self) -> Parse<SyntaxNode> {
         Parse { green: self.green, errors: self.errors, ctx_map: self.ctx_map, _ty: PhantomData }
     }
 
+    /// Gets the parsed syntax tree as a typed AstNode through casting.
+    ///
+    /// Panics if the root node cannot be cast.
     pub fn tree(&self) -> T {
         T::cast(self.syntax_node()).unwrap()
     }
 
-    pub fn errors(&self) -> &[SyntaxError] {
-        &self.errors
-    }
-
+    /// Gets the parsed syntax tree as a typed AstNode if no syntax errors are seen
+    /// during parsing, othersise gets a collection of syntax errors.
     pub fn ok(self) -> Result<T, Arc<Vec<SyntaxError>>> {
         if self.errors.is_empty() {
             Ok(self.tree())
@@ -132,6 +156,7 @@ impl<T: AstNode> Parse<T> {
     }
 }
 
+/* JW: not used
 impl Parse<SyntaxNode> {
     pub fn cast<N: AstNode>(self) -> Option<Parse<N>> {
         if N::cast(self.syntax_node()).is_some() {
@@ -146,7 +171,9 @@ impl Parse<SyntaxNode> {
         }
     }
 }
+*/
 
+// TODO(JW) these are for incremental reparse, currently not used.
 impl Parse<SourceFile> {
     // pub fn debug_dump(&self) -> String {
     //     use std::fmt::Write;
@@ -164,7 +191,6 @@ impl Parse<SourceFile> {
     // }
 
     // fn incremental_reparse(&self, indel: &Indel) -> Option<Parse<SourceFile>> {
-    //     // FIXME: validation errors are not handled here
     //     parsing::incremental_reparse(self.tree().syntax(), indel, self.errors.to_vec()).map(
     //         |(green_node, errors, _reparsed_range)| Parse {
     //             green: green_node,
@@ -181,27 +207,23 @@ impl Parse<SourceFile> {
     // }
 }
 
-/// `SourceFile` represents a parse tree for a single Rust file.
-pub use crate::ast::SourceFile;
-
+/// `SourceFile` is a `AstNode` that represents a parse tree for a file.
 impl SourceFile {
     pub fn parse(
         db: &dyn SourceProvider,
         root_file: FileId,
         preprocess: &Preprocess,
     ) -> Parse<SourceFile> {
-        let (green, mut errors, ctx_map) = parsing::parse_text(db, root_file, preprocess);
-        let root = SyntaxNode::new_root(green.clone());
-
+        let (tree, mut errors, ctx_map) = parsing::parse_and_build(db, root_file, preprocess);
+        let root = SyntaxNode::new_root(tree.clone());
         validation::validate(&root, &mut errors);
-
         assert_eq!(root.kind(), SyntaxKind::SOURCE_FILE);
 
-        Parse::new(green, errors, ctx_map)
+        Parse::new(tree, errors, ctx_map)
     }
 }
 
-/// Matches a `SyntaxNode` against an `ast` type.
+/// Matches an untyped `SyntaxNode` against a typed `AstNode`
 ///
 /// # Example:
 ///
