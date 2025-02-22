@@ -6,7 +6,7 @@ use crate::{Block, DataFlowGraph, Inst, InstructionData, Value, GRAVESTONE};
 impl DataFlowGraph {
     #[inline]
     pub fn insert_phi_edge(&mut self, inst: Inst, block: Block, val: Value) {
-        let PhiNode { mut args, mut blocks } = self.insts.declarations[inst].unwrap_phi().clone();
+        let PhiNode { mut args, mut blocks } = self.insts[inst].unwrap_phi().clone();
         blocks.update_or_insert_with(
             block,
             |arg| {
@@ -32,7 +32,7 @@ impl DataFlowGraph {
 
     #[inline]
     pub fn try_remove_phi_edge_at(&mut self, inst: Inst, block: Block) -> Option<(Value, u32)> {
-        if let InstructionData::PhiNode(PhiNode { mut blocks, args }) = self.insts[inst].clone() {
+        if let InstructionData::PhiNode(PhiNode { args, mut blocks }) = self.insts[inst].clone() {
             if let Some(pos) = blocks.remove(block, &mut self.phi_forest, &()) {
                 self.detach_operand(inst, pos as u16);
                 // this use might be reattched again so we replace the value with a constant where

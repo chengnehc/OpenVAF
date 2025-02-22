@@ -1,92 +1,13 @@
 use std::borrow::Borrow;
+use stdx::packed_option::PackedOption;
 
 use ahash::AHashMap;
 use lasso::Spur;
-use stdx::packed_option::PackedOption;
 use typed_index_collections::TiVec;
 
 use crate::dfg::uses::UseData;
 use crate::entities::{Param, Tag};
 use crate::{DataFlowGraph, Ieee64, Inst, Use, Value};
-
-use consts::*;
-
-macro_rules! consts {
-    (
-    $(pub const $name: ident: $ty: ident = $val: expr;)*
-
-    ) => {
-      consts!(@const 0, $($name),*);
-        pub(super) fn init(dst: &mut DfgValues){
-            $(consts!(@init $ty dst $val);)*
-        }
-    };
-
-    (@const $pos: expr, $name: ident $(,$rem: ident)*) => {
-        pub const $name: Value = Value::with_number_($pos);
-      consts!(@const $pos + 1, $($rem),*);
-    };
-
-
-
-    (@const $pos: expr,) => {};
-
-    (@init f64 $dst: ident $val: expr) => {
-        $dst.fconst($val.into())
-    };
-
-
-    (@init i32 $dst: ident $val: expr) => {
-        $dst.iconst($val)
-    };
-
-
-    (@init bool $dst: ident $val: literal) => {
-        if $val{
-            $dst.make(ValueDataType::True, None)
-        }else{
-            $dst.make(ValueDataType::False, None)
-        }
-    };
-}
-
-pub mod consts {
-    use std::f64::consts::{LN_2, LOG10_E};
-
-    use super::DfgValues;
-    use super::Value;
-    use super::ValueDataType;
-
-    consts! {
-        // Place holder for unused values that must remain (in phis)
-        pub const GRAVESTONE: bool = false;
-        pub const FALSE: bool = false;
-        pub const TRUE: bool = true;
-        pub const F_ZERO: f64 = 0.0;
-        pub const ZERO: i32 = 0;
-        pub const ONE: i32 = 1;
-        pub const F_ONE: f64 = 1.0;
-        pub const F_N_ONE: f64 = -1.0;
-        pub const F_LN2_N: f64 = -LN_2;
-        pub const F_LN2: f64 = LN_2;
-        pub const F_LOG10_E: f64 = LOG10_E;
-        pub const F_TWO: f64 = 2.0;
-        pub const N_ONE: i32 = -1;
-        pub const F_TEN: f64 = 10.0;
-        pub const F_THREE: f64 = 3.0;
-        pub const INFINITY: f64 = f64::INFINITY;
-    }
-}
-
-impl From<bool> for Value {
-    fn from(val: bool) -> Self {
-        if val {
-            TRUE
-        } else {
-            FALSE
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct DfgValues {
@@ -126,7 +47,6 @@ impl From<ValueDataType> for ValueData {
     }
 }
 
-/// Internal table storage for extended values.
 #[derive(Clone, Debug)]
 pub(super) enum ValueDataType {
     /// Value is defined by an instruction.
@@ -160,12 +80,14 @@ pub enum ValueDef {
     Result(Inst, usize),
     /// Value is the n'th parameter to a function.
     Param(Param),
+    /// Value is a predefined constant.
     Const(Const),
+    /// Value is invalid.
     Invalid,
 }
 
 impl ValueDef {
-    /// Unwrap the instruction where the value was defined, or panic.
+    /// Unwrap the instruction where the value was defined as its result, or panic.
     #[inline]
     pub fn unwrap_inst(&self) -> Inst {
         self.inst().expect("Value is not an instruction result")
@@ -195,7 +117,7 @@ impl ValueDef {
         }
     }
 
-    /// Get the instruction where the value was defined, if any.
+    /// Get the instruction and its index where the value was defined, if any.
     #[inline]
     pub fn result(&self) -> Option<(Inst, usize)> {
         match *self {
@@ -204,7 +126,7 @@ impl ValueDef {
         }
     }
 
-    /// Get the instruction where the value was defined, if any.
+    /// Use the value defined as a constant.
     #[inline]
     pub fn as_const(&self) -> Option<Const> {
         match *self {
@@ -213,7 +135,7 @@ impl ValueDef {
         }
     }
 
-    /// Get the instruction where the value was defined, if any.
+    /// Use the value defined as a function parameter.
     #[inline]
     pub fn as_param(&self) -> Option<Param> {
         match *self {
@@ -231,21 +153,76 @@ pub enum Const {
     Bool(bool),
 }
 
-impl Const {
-    pub fn unwrap_f64(self) -> f64 {
-        if let Const::Float(val) = self {
-            val.into()
+/// Allocate and initialize predefined constants.
+macro_rules! consts {
+    ( $(pub const $name: ident: $ty: ident = $val: expr;)* ) => {
+        consts!(@const 0, $($name),*);
+        pub(super) fn init(dst: &mut DfgValues){
+            $(consts!(@init $ty dst $val);)*
+        }
+    };
+
+    (@const $pos: expr, $name: ident $(,$rem: ident)*) => {
+        pub const $name: Value = Value::with_number_($pos);
+        consts!(@const $pos + 1, $($rem),*);
+    };
+
+    (@const $pos: expr,) => {};
+
+    (@init f64 $dst: ident $val: expr) => {
+        $dst.fconst($val.into())
+    };
+
+    (@init i32 $dst: ident $val: expr) => {
+        $dst.iconst($val)
+    };
+
+    (@init bool $dst: ident $val: expr) => {
+        $dst.make($val, None)
+    };
+}
+
+use consts::*;
+
+/// Predefined constants, with name from `v0` to `v15`.
+pub mod consts {
+    use super::{DfgValues, Value, ValueDataType};
+    use std::f64::consts::{LN_2, LOG10_E};
+
+    // The order of these constant values shall not be changed, otherwise tests could fail.
+    consts! {
+        // Placeholder for unused values that must remain (in 'phi's)
+        pub const GRAVESTONE: bool = ValueDataType::False;
+        pub const FALSE: bool = ValueDataType::False;
+        pub const TRUE: bool = ValueDataType::True;
+        pub const F_ZERO: f64 = 0.0;
+        pub const ZERO: i32 = 0;
+        pub const ONE: i32 = 1;
+        pub const F_ONE: f64 = 1.0;
+        pub const F_N_ONE: f64 = -1.0;
+        pub const F_LN2_N: f64 = -LN_2;
+        pub const F_LN2: f64 = LN_2;
+        pub const F_LOG10_E: f64 = LOG10_E;
+        pub const F_TWO: f64 = 2.0;
+        pub const N_ONE: i32 = -1;
+        pub const F_TEN: f64 = 10.0;
+        pub const F_THREE: f64 = 3.0;
+        pub const INFINITY: f64 = f64::INFINITY;
+    }
+}
+
+impl From<bool> for Value {
+    fn from(val: bool) -> Self {
+        if val {
+            TRUE
         } else {
-            unreachable!("Const is not a float!")
+            FALSE
         }
     }
 }
 
 /// Handling values.
-///
-/// Values are either block parameters or instruction results.
 impl DfgValues {
-    /// Create a new empty `DataFlowGraph`.
     pub fn new() -> Self {
         let mut res = Self {
             defs: TiVec::new(),
@@ -264,7 +241,6 @@ impl DfgValues {
         res
     }
 
-    /// Clear everything.
     pub fn clear(&mut self) {
         self.defs.clear();
         self.uses.clear();
@@ -284,13 +260,17 @@ impl DfgValues {
         let data = ValueData::new(ty, tag.into());
         self.defs.push_and_get_key(data)
     }
+
     pub fn make_invalid_value(&mut self) -> Value {
         self.make(ValueDataType::Invalid, None)
     }
 
-    /// Allocate an extended value entry.
     pub fn make_param(&mut self, param: Param) -> Value {
         self.make(ValueDataType::Param { param }, None)
+    }
+
+    pub fn make_param_at(&mut self, param: Param, val: Value) {
+        self.defs[val].ty = ValueDataType::Param { param };
     }
 
     #[inline]
@@ -303,9 +283,12 @@ impl DfgValues {
         self.defs[dst].ty = ValueDataType::Alias(val);
     }
 
-    /// Allocate an extended value entry.
-    pub fn make_param_at(&mut self, param: Param, val: Value) {
-        self.defs[val].ty = ValueDataType::Param { param };
+    #[inline]
+    pub fn resolve_alias(&self, mut val: Value) -> Value {
+        while let ValueDataType::Alias(res) = self.defs[val].ty {
+            val = res
+        }
+        val
     }
 
     /// Get an iterator over all values.
@@ -336,10 +319,6 @@ impl DfgValues {
         }
     }
 
-    /// Get the definition of a value.
-    ///
-    /// This is either the instruction that defined it or the Block that has the value as an
-    /// parameter.
     #[inline]
     pub fn def_allow_alias(&self, v: Value) -> ValueDef {
         match self.defs[v].ty {
@@ -354,36 +333,36 @@ impl DfgValues {
             ValueDataType::Invalid => ValueDef::Invalid,
         }
     }
-
-    pub fn unwrap_bool(&self, v: Value) -> bool {
-        match self.defs[v].ty {
-            ValueDataType::True => true,
-            ValueDataType::False => false,
-            ref ty => unreachable!("called unwrap_bool on {:?} value", ty),
+    /* JW: not used
+        pub fn unwrap_bool(&self, v: Value) -> bool {
+            match self.defs[v].ty {
+                ValueDataType::True => true,
+                ValueDataType::False => false,
+                ref ty => unreachable!("called unwrap_bool on {:?} value", ty),
+            }
         }
-    }
 
-    pub fn unwrap_f64(&self, v: Value) -> f64 {
-        match self.defs[v].ty {
-            ValueDataType::Fconst { val } => val.into(),
-            ref ty => unreachable!("called unwrap_f64 on {:?} value", ty),
+        pub fn unwrap_f64(&self, v: Value) -> f64 {
+            match self.defs[v].ty {
+                ValueDataType::Fconst { val } => val.into(),
+                ref ty => unreachable!("called unwrap_f64 on {:?} value", ty),
+            }
         }
-    }
 
-    pub fn unwrap_i32(&self, v: Value) -> i32 {
-        match self.defs[v].ty {
-            ValueDataType::Iconst { val } => val,
-            ref ty => unreachable!("called unwrap_i32 on {:?} value", ty),
+        pub fn unwrap_i32(&self, v: Value) -> i32 {
+            match self.defs[v].ty {
+                ValueDataType::Iconst { val } => val,
+                ref ty => unreachable!("called unwrap_i32 on {:?} value", ty),
+            }
         }
-    }
 
-    pub fn unwrap_str(&self, v: Value) -> Spur {
-        match self.defs[v].ty {
-            ValueDataType::Sconst { val } => val,
-            ref ty => unreachable!("called unwrap_str on {:?} value", ty),
+        pub fn unwrap_str(&self, v: Value) -> Spur {
+            match self.defs[v].ty {
+                ValueDataType::Sconst { val } => val,
+                ref ty => unreachable!("called unwrap_str on {:?} value", ty),
+            }
         }
-    }
-
+    */
     pub fn tag(&self, val: Value) -> Option<Tag> {
         self.defs[val].tag.expand()
     }
@@ -410,6 +389,13 @@ impl DfgValues {
         })
     }
 
+    pub fn sconst(&mut self, val: Spur) -> Value {
+        *self.str_consts.entry(val).or_insert_with(|| {
+            let data = ValueDataType::Sconst { val }.into();
+            self.defs.push_and_get_key(data)
+        })
+    }
+
     pub fn make_const(&mut self, val: Const) -> Value {
         match val {
             Const::Float(val) => self.fconst(val),
@@ -418,13 +404,6 @@ impl DfgValues {
             Const::Bool(false) => FALSE,
             Const::Bool(true) => TRUE,
         }
-    }
-
-    pub fn sconst(&mut self, val: Spur) -> Value {
-        *self.str_consts.entry(val).or_insert_with(|| {
-            let data = ValueDataType::Sconst { val }.into();
-            self.defs.push_and_get_key(data)
-        })
     }
 
     pub fn iconst_at(&mut self, val: i32, dst: Value) {
@@ -441,16 +420,21 @@ impl DfgValues {
         self.str_consts.insert(val, dst);
         self.defs[dst].ty = ValueDataType::Sconst { val };
     }
+}
 
-    #[inline]
-    pub fn resolve_alias(&self, mut val: Value) -> Value {
-        while let ValueDataType::Alias(res) = self.defs[val].ty {
-            val = res
-        }
-        val
+impl Borrow<DfgValues> for DataFlowGraph {
+    fn borrow(&self) -> &DfgValues {
+        &self.values
     }
 }
 
+impl Default for DfgValues {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Handling aliases.
 impl DataFlowGraph {
     #[inline]
     pub fn resolve_alias(&self, val: Value) -> Value {
@@ -485,17 +469,5 @@ impl DataFlowGraph {
                 stack.clear();
             }
         }
-    }
-}
-
-impl Borrow<DfgValues> for DataFlowGraph {
-    fn borrow(&self) -> &DfgValues {
-        &self.values
-    }
-}
-
-impl Default for DfgValues {
-    fn default() -> Self {
-        Self::new()
     }
 }

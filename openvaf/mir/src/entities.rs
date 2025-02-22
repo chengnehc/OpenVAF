@@ -1,6 +1,6 @@
 //! OpenVAF IR entity references.
 //!
-//! Instructions in Cranelift IR need to reference other entities in the function. This can be other
+//! Instructions in IR need to reference other entities in the function. This can be other
 //! parts of the function like basic blocks or stack slots, or it can be external entities
 //! that are declared in the function preamble in the text format.
 //!
@@ -19,14 +19,10 @@
 //! The entity references all implement the `Display` trait in a way that matches the textual IR
 //! format.
 
-use core::u32;
 use std::fmt;
 use stdx::{impl_debug_display, impl_idx_from};
 
-// impl From<usize> for Block {}
-
-/// An opaque reference to a [basic block](https://en.wikipedia.org/wiki/Basic_block) in a
-/// [`Function`](super::function::Function).
+/// An opaque reference to a [basic block](https://en.wikipedia.org/wiki/Basic_block) in a [`Function`](super::Function).
 ///
 /// You can get a `Block` using
 /// [`FunctionBuilder::create_block`](https://docs.rs/cranelift-frontend/*/cranelift_frontend/struct.FunctionBuilder.html#method.create_block)
@@ -54,16 +50,6 @@ impl Block {
 
 /// An opaque reference to an SSA value.
 ///
-/// You can get a constant `Value` from the following
-/// [`InstBuilder`](super::InstBuilder) instructions:
-///
-/// - [`iconst`](super::InstBuilder::iconst) for integer constants
-/// - [`f32const`](super::InstBuilder::f32const) for 32-bit float constants
-/// - [`f64const`](super::InstBuilder::f64const) for 64-bit float constants
-/// - [`bconst`](super::InstBuilder::bconst) for boolean constants
-/// - [`vconst`](super::InstBuilder::vconst) for vector constants
-/// - [`null`](super::InstBuilder::null) for null reference constants
-///
 /// Any `InstBuilder` instruction that has an output will also return a `Value`.
 ///
 /// While the order is stable, it is arbitrary.
@@ -89,13 +75,14 @@ impl Value {
 
     /// Create a value from its number representation.
     /// This is the number in the `vNN` notation.
+    ///
+    /// This method is for use by the predefined constant values.
     pub const fn with_number_(n: u32) -> Self {
         assert!(n < u32::MAX / 2);
         Self(n)
     }
 }
 
-/// An opaque reference to an SSA Use.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Use(u32);
 impl_idx_from!(Use(u32));
@@ -103,7 +90,6 @@ impl_debug_display! {
     match Use {Use(i) => "use{}", i;}
 }
 
-/// An opaque reference to an SSA Use.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Param(u32);
 impl_idx_from!(Param(u32));
@@ -111,7 +97,6 @@ impl_debug_display! {
     match Param {Param(i) => "param{}", i;}
 }
 
-/// An opaque reference to an SSA Use.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Tag(u32);
 impl_idx_from!(Tag(u32));
@@ -140,17 +125,14 @@ impl_debug_display! {
     match Inst {Inst(i) => "inst{}", i;}
 }
 
-/// An opaque reference to another [`Function`](super::Function).
+/// An opaque reference to *another* [`Function`](super::Function).
 ///
-/// `FuncRef`s are used for [direct](super::InstBuilder::call) function calls
-///
-/// `FuncRef`s can be created with
+/// `FuncRef`s are used for direct function calls.
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FuncRef(u32);
 impl_idx_from!(FuncRef(u32));
-
 impl_debug_display! {
     match FuncRef {FuncRef(i) => "inst{}", i;}
 }
@@ -168,7 +150,7 @@ impl FuncRef {
     }
 }
 
-/// An opaque reference to any of the entities defined in this module that can appear in CLIF IR.
+/// An opaque reference to any of the entities defined in this module.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AnyEntity {
     /// The whole function.

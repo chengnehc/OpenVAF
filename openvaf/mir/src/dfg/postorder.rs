@@ -1,5 +1,6 @@
-use crate::{DataFlowGraph, Inst, InstUseIter, Use, Value};
 use bitset::BitSet;
+
+use crate::{DataFlowGraph, Inst, InstUseIter, Use, Value};
 
 pub type PostorderParts<'a> = (BitSet<Inst>, Vec<(Inst, InstUseIter<'a>)>);
 
@@ -7,7 +8,6 @@ pub type PostorderParts<'a> = (BitSet<Inst>, Vec<(Inst, InstUseIter<'a>)>);
 ///
 /// Postorder traversal is when each node is visited after all of its
 /// successors, except when the successor is only reachable by a back-edge
-///
 ///
 /// ```text
 ///
@@ -50,7 +50,7 @@ impl<'a, F: FnMut(Inst) -> bool> Postorder<'a, F> {
 
     pub fn populate(&mut self, val: Value) {
         for use_ in self.dfg.uses(val) {
-            self.transverse_use(use_)
+            self.traverse_use(use_)
         }
     }
 
@@ -60,16 +60,16 @@ impl<'a, F: FnMut(Inst) -> bool> Postorder<'a, F> {
 
     pub fn traverse_successor(&mut self) {
         while let Some(use_) = self.visit_stack.last_mut().and_then(|(_, iter)| iter.next()) {
-            self.transverse_use(use_);
+            self.traverse_use(use_);
         }
     }
 
-    fn transverse_use(&mut self, use_: Use) {
+    fn traverse_use(&mut self, use_: Use) {
         let inst = self.dfg.use_to_operand(use_).0;
-        self.transverse_inst(inst);
+        self.traverse_inst(inst);
     }
 
-    pub fn transverse_inst(&mut self, inst: Inst) {
+    pub fn traverse_inst(&mut self, inst: Inst) {
         if (self.descend)(inst) && self.visited.insert(inst) {
             self.visit_stack.push((inst, self.dfg.inst_uses(inst)));
         }

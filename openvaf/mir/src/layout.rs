@@ -43,12 +43,6 @@ pub struct Layout {
     last_block: Option<Block>,
 }
 
-impl Default for Layout {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Layout {
     /// Create a new empty `Layout`.
     pub fn new() -> Self {
@@ -63,9 +57,15 @@ impl Layout {
         self.last_block = None;
     }
 
-    /// Returns the capacity of the `BlockData` map.
+    /// Returns the number of `Block`s.
     pub fn num_blocks(&self) -> usize {
         self.blocks.len()
+    }
+}
+
+impl Default for Layout {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -79,6 +79,7 @@ impl Layout {
 /// blocks do not affect the semantics of the program.
 ///
 impl Layout {
+    /// Create a new empty `Block`.
     #[inline]
     pub fn make_block(&mut self) -> Block {
         self.blocks.push_and_get_key(BlockNode {
@@ -89,14 +90,9 @@ impl Layout {
         })
     }
 
+    /// Create and append a *new* empty `Block`.
     pub fn append_new_block(&mut self) -> Block {
-        let res = self.blocks.push_and_get_key(BlockNode {
-            prev: None.into(),
-            next: None.into(),
-            first_inst: None.into(),
-            last_inst: None.into(),
-        });
-
+        let res = self.make_block();
         self.append_block(res);
 
         res
@@ -127,7 +123,7 @@ impl Layout {
         self.last_block = Some(block);
     }
 
-    /// Insert `block` in the layout before the existing block `before`.
+    /// Insert `block` in the layout *before* the existing block `before`.
     pub fn insert_block(&mut self, block: Block, before: Block) {
         debug_assert!(
             !self.is_block_inserted(block),
@@ -179,12 +175,6 @@ impl Layout {
         self.blocks[block].last_inst = None.into();
     }
 
-    pub fn remove_and_clear_block(&mut self, block: Block) {
-        self.clear_block(block);
-        self.remove_empty_block(block);
-    }
-
-    /// Remove `block` from the layout.
     pub fn remove_empty_block(&mut self, block: Block) {
         debug_assert!(self.is_block_inserted(block), "block not in the layout");
         debug_assert!(self.first_inst(block).is_none(), "block must be empty.");
@@ -211,21 +201,12 @@ impl Layout {
         }
     }
 
-    /// Return an iterator over all blocks in layout order.
-    pub fn blocks(&self) -> Blocks {
-        Blocks { layout: self, next: self.first_block }
+    pub fn remove_and_clear_block(&mut self, block: Block) {
+        self.clear_block(block);
+        self.remove_empty_block(block);
     }
 
-    pub fn blocks_cursor(&self) -> BlockCursor {
-        BlockCursor { next: self.first_block }
-    }
-
-    pub fn rev_blocks_cursor(&self) -> RevBlockCursor {
-        RevBlockCursor { next: self.last_block }
-    }
-
-    /// Get the function's entry block.
-    /// This is simply the first block in the layout order.
+    /// Get the function's entry block, which is simply the first block in the layout order.
     pub fn entry_block(&self) -> Option<Block> {
         self.first_block
     }
@@ -244,6 +225,19 @@ impl Layout {
     pub fn next_block(&self, block: Block) -> Option<Block> {
         self.blocks[block].next.expand()
     }
+
+    /// Return an iterator over all blocks in layout order.
+    pub fn blocks(&self) -> Blocks {
+        Blocks { layout: self, next: self.first_block }
+    }
+
+    pub fn blocks_cursor(&self) -> BlockCursor {
+        BlockCursor { next: self.first_block }
+    }
+
+    pub fn rev_blocks_cursor(&self) -> RevBlockCursor {
+        RevBlockCursor { next: self.last_block }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -254,12 +248,10 @@ struct BlockNode {
     last_inst: PackedOption<Inst>,
 }
 
-/// Iterate over blocks in layout order. See [crate::ir::layout::Layout::blocks].
 pub struct Blocks<'f> {
     layout: &'f Layout,
     next: Option<Block>,
 }
-
 impl<'f> Iterator for Blocks<'f> {
     type Item = Block;
 
@@ -277,7 +269,6 @@ impl<'f> Iterator for Blocks<'f> {
 pub struct BlockCursor {
     pub next: Option<Block>,
 }
-
 impl BlockCursor {
     pub fn next(&mut self, layout: &Layout) -> Option<Block> {
         match self.next {
@@ -293,7 +284,6 @@ impl BlockCursor {
 pub struct RevBlockCursor {
     pub next: Option<Block>,
 }
-
 impl RevBlockCursor {
     pub fn next(&mut self, layout: &Layout) -> Option<Block> {
         match self.next {
@@ -326,18 +316,49 @@ impl Layout {
         self.insts.get(inst).and_then(|inst| inst.block.expand())
     }
 
-    // /// Get the block containing the program point `pp`. Panic if `pp` is not in the layout.
-    // pub fn pp_block<PP>(&self, pp: PP) -> Block
-    // where
-    //     PP: Into<ExpandedProgramPoint>,
-    // {
-    //     match pp.into() {
-    //         ExpandedProgramPoint::Block(block) => block,
-    //         ExpandedProgramPoint::Inst(inst) => {
-    //             self.inst_block(inst).expect("Program point not in layout")
-    //         }
-    //     }
-    // }
+    /// Fetch a block's first instruction.
+    pub fn first_inst(&self, block: Block) -> Option<Inst> {
+        self.blocks[block].first_inst.into()
+    }
+
+    /// Fetch a block's last instruction.
+    pub fn last_inst(&self, block: Block) -> Option<Inst> {
+        self.blocks[block].last_inst.into()
+    }
+
+    /// Fetch the instruction following `inst`.
+    pub fn next_inst(&self, inst: Inst) -> Option<Inst> {
+        self.insts[inst].next.expand()
+    }
+
+    /// Fetch the instruction preceding `inst`.
+    pub fn prev_inst(&self, inst: Inst) -> Option<Inst> {
+        self.insts[inst].prev.expand()
+    }
+
+    /// Iterate over the instructions in `block` in layout order.
+    pub fn block_insts(&self, block: Block) -> InstIter {
+        InstIter { layout: self, cursor: self.block_inst_cursor(block) }
+    }
+
+    pub fn block_insts_no_term(&self, block: Block) -> InstIter {
+        let mut insts = self.block_insts(block);
+        insts.next_back();
+        insts
+    }
+
+    /// Iterate over the instructions in `block` in layout order.
+    pub fn block_inst_cursor(&self, block: Block) -> InstCursor {
+        InstCursor {
+            head: self.blocks[block].first_inst.into(),
+            tail: self.blocks[block].last_inst.into(),
+        }
+    }
+
+    /// a block terminator is the last instruction of a block
+    pub fn block_terminator(&self, block: Block) -> Option<Inst> {
+        self.blocks[block].last_inst.into()
+    }
 
     /// Append `inst` to the end of `block`.
     pub fn append_inst_to_bb(&mut self, inst: Inst, block: Block) {
@@ -364,26 +385,6 @@ impl Layout {
             self.insts[block_node.last_inst.unwrap()].next = inst.into();
         }
         block_node.last_inst = inst.into();
-    }
-
-    /// Fetch a block's first instruction.
-    pub fn first_inst(&self, block: Block) -> Option<Inst> {
-        self.blocks[block].first_inst.into()
-    }
-
-    /// Fetch a block's last instruction.
-    pub fn last_inst(&self, block: Block) -> Option<Inst> {
-        self.blocks[block].last_inst.into()
-    }
-
-    /// Fetch the instruction following `inst`.
-    pub fn next_inst(&self, inst: Inst) -> Option<Inst> {
-        self.insts[inst].next.expand()
-    }
-
-    /// Fetch the instruction preceding `inst`.
-    pub fn prev_inst(&self, inst: Inst) -> Option<Inst> {
-        self.insts[inst].prev.expand()
     }
 
     /// Insert `inst` before the instruction `before` in the same block.
@@ -453,29 +454,6 @@ impl Layout {
             None => self.blocks[block].last_inst = prev,
             Some(n) => self.insts[n].prev = prev,
         }
-    }
-
-    /// Iterate over the instructions in `block` in layout order.
-    pub fn block_insts(&self, block: Block) -> InstIter {
-        InstIter { layout: self, cursor: self.block_inst_cursor(block) }
-    }
-
-    pub fn block_insts_no_term(&self, block: Block) -> InstIter {
-        let mut insts = self.block_insts(block);
-        insts.next_back();
-        insts
-    }
-
-    /// Iterate over the instructions in `block` in layout order.
-    pub fn block_inst_cursor(&self, block: Block) -> InstCursor {
-        InstCursor {
-            head: self.blocks[block].first_inst.into(),
-            tail: self.blocks[block].last_inst.into(),
-        }
-    }
-
-    pub fn block_terminator(&self, block: Block) -> Option<Inst> {
-        self.blocks[block].last_inst.into()
     }
 
     /// Merges `succ` ito `pred` by remvoing the terminator from `pred` and appding all instructions
@@ -606,7 +584,6 @@ pub struct InstIter<'f> {
     pub layout: &'f Layout,
     pub cursor: InstCursor,
 }
-
 impl<'f> Iterator for InstIter<'f> {
     type Item = Inst;
 
@@ -614,7 +591,6 @@ impl<'f> Iterator for InstIter<'f> {
         self.cursor.next(self.layout)
     }
 }
-
 impl<'f> DoubleEndedIterator for InstIter<'f> {
     fn next_back(&mut self) -> Option<Inst> {
         self.cursor.next_back(self.layout)
@@ -627,7 +603,6 @@ pub struct InstCursor {
     pub head: Option<Inst>,
     pub tail: Option<Inst>,
 }
-
 impl InstCursor {
     pub fn next(&mut self, layout: &Layout) -> Option<Inst> {
         let rval = self.head;
@@ -642,7 +617,6 @@ impl InstCursor {
         rval
     }
 }
-
 impl InstCursor {
     pub fn next_back(&mut self, layout: &Layout) -> Option<Inst> {
         let rval = self.tail;

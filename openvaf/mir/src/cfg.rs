@@ -1,67 +1,35 @@
 //! A control flow graph represented as mappings of basic blocks to their predecessors
 //! and successors.
 //!
-//! Successors are represented as basic blocks while predecessors are represented by basic
-//! blocks. Basic blocks are denoted by tuples of block and branch/jump instructions. Each
-//! predecessor tuple corresponds to the end of a basic block.
+//! See Also:
 //!
-//! ```c
-//!     Block0:
-//!         ...          ; beginning of basic block
-//!
-//!         ...
-//!
-//!         brz vx, Block1 ; end of basic block
-//!
-//!         ...          ; beginning of basic block
-//!
-//!         ...
-//!
-//!         jmp Block2     ; end of basic block
-//! ```
-//!
-//! Here `Block1` and `Block2` would each have a single predecessor denoted as `(Block0, brz)`
-//! and `(Block0, jmp Block2)` respectively.
+//! https://docs.rs/cranelift-codegen/latest/cranelift_codegen/flowgraph/index.html
 
-use std::fs::File;
-use std::iter::FilterMap;
-use std::ops::Index;
-use std::path::Path;
+use std::{fs::File, iter::FilterMap, ops::Index, path::Path};
 
-use bforest::Set;
 use stdx::packed_option::PackedOption;
 use typed_index_collections::TiVec;
 
-pub use crate::flowgraph::transversal::{Postorder, ReversePostorder};
 use crate::{Block, Function, InstructionData};
 
-mod transversal;
-
-pub type PredecessorIter<'a> = bforest::SetIter<'a, Block>;
-pub type PredecessorRevIter<'a> = bforest::RevSetIter<'a, Block>;
+//mod tests;
+mod traversal;
+pub use traversal::{Postorder, ReversePostorder};
 
 /// A container for the successors and predecessors of some Block.
+///
+/// MIR allows >=1 predecessors and at most 2 successors for each basic block.
+///
+/// For each basic block:
+/// - in degree >= 1
+/// - out degree = 1 | 2
 #[derive(Clone, Default)]
 pub struct CFGNode {
-    /// Instructions that can branch or jump to this block.
-    ///
-    /// This maps branch instruction -> predecessor block which is redundant since the block containing
-    /// the branch instruction is available from the `layout.inst_block()` method. We store the
-    /// redundant information because:
-    ///
-    /// 1. Many `pred_iter()` consumers want the block anyway, so it is handily available.
-    /// 2. The `invalidate_block_successors()` may be called *after* branches have been removed from
-    ///    their block, but we still need to remove them form the old block predecessor map.
-    ///
-    /// The redundant block stored here is always consistent with the CFG successor lists, even after
-    /// the IR has been edited.
     pub predecessors: bforest::Set<Block>,
-
-    /// Set of blocks that are the targets of branches and jumps in this block.
-    /// The set is ordered by block number, indicated by the `()` comparator type.
     pub successors: Successors,
 }
 
+/// Two possible successor blocks.
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
 pub struct Successors(pub PackedOption<Block>, pub PackedOption<Block>);
 
@@ -70,6 +38,11 @@ impl Successors {
     pub fn clear(&mut self) {
         self.0 = None.into();
         self.1 = None.into();
+    }
+
+    #[inline]
+    pub fn pop(&mut self) -> Option<Block> {
+        self.1.take().or_else(|| self.0.take())
     }
 
     #[inline]
@@ -91,14 +64,14 @@ impl Successors {
     }
 
     #[inline]
-    pub fn contains(self, bb: Block) -> bool {
-        let expected = PackedOption::from(bb);
-        (self.0 == expected) | (self.1 == expected)
+    pub fn is_empty(self) -> bool {
+        self.0.is_none()
     }
 
     #[inline]
-    pub fn pop(&mut self) -> Option<Block> {
-        self.1.take().or_else(|| self.0.take())
+    pub fn contains(self, bb: Block) -> bool {
+        let expected = PackedOption::from(bb);
+        (self.0 == expected) | (self.1 == expected)
     }
 
     #[inline]
@@ -111,30 +84,31 @@ impl Successors {
         [self.0, self.1]
     }
 
-    pub fn is_empty(self) -> bool {
-        self.0.is_none()
-    }
-
     pub fn as_pair(self) -> Option<(Block, Block)> {
         Some((self.0.expand()?, self.1.expand()?))
     }
 }
 
+/// Iterator over block predecessors/successors. The iterator type is `Block`.
+pub type PredIter<'a> = bforest::SetIter<'a, Block>;
+pub type PredRevIter<'a> = bforest::RevSetIter<'a, Block>;
 pub type SuccIter = FilterMap<
     std::array::IntoIter<PackedOption<Block>, 2>,
     fn(PackedOption<Block>) -> Option<Block>,
 >;
 
-/// The Control Flow Graph maintains a mapping of blocks to their predecessors
-/// and successors where predecessors are basic blocks and successors are
-/// basic blocks.
+/// The Control Flow Graph maintains
 #[derive(Clone)]
 pub struct ControlFlowGraph {
+    /// Mapping of blocks to their predecessors and successors.
     data: TiVec<Block, CFGNode>,
+    /// The memory pool where all predecessors are stored.
     pred_forest: bforest::SetForest<Block>,
+    /// Is this CFG valid?
     valid: bool,
 }
 
+/// A CFG rendered using GraphViz API
 pub struct CfgRender<'a> {
     pub cfg: &'a ControlFlowGraph,
     pub func: &'a Function,
@@ -226,10 +200,10 @@ impl ControlFlowGraph {
             match func.dfg.insts[inst] {
                 InstructionData::Jump { destination } => self.add_edge(block, destination),
                 InstructionData::Branch { then_dst, else_dst, .. } => {
-                    // CAREFUL: Do not change the order of edges here. We want postorder
-                    // trasnversal to always take the loop free path
+                    // CAREFUL: Do not change the order of edges here.
+                    // We want postorder traversal to always take the loop-free path.
                     self.add_edge(block, else_dst);
-                    self.add_edge(block, then_dst);
+                    self.add_edge(block, then_dst); // `then_dst` might be a loop body
                 }
                 _ => (),
             }
@@ -261,7 +235,7 @@ impl ControlFlowGraph {
     pub fn replace(&mut self, old: Block, new: Block) {
         debug_assert_ne!(old, new);
         debug_assert!(self.is_valid());
-        let mut pos = self.predecessors(old).read_cursor();
+        let mut pos = self.data[old].predecessors.read_cursor();
         let old_ = old.into();
         let new_ = new.into();
         while let Some(pred) = pos.next(&self.pred_forest) {
@@ -290,30 +264,22 @@ impl ControlFlowGraph {
         self.data[to].predecessors.insert(from, &mut self.pred_forest, &());
     }
 
-    pub fn ensure_bb(&mut self, bb: Block) {
-        self.data.resize(usize::from(bb) + 1, CFGNode::default())
+    pub fn ensure_block(&mut self, block: Block) {
+        self.data.resize(usize::from(block) + 1, CFGNode::default())
     }
 
     /// Get an iterator over the CFG predecessors to `block`.
-    pub fn pred_iter(&self, block: Block) -> PredecessorIter<'_> {
+    pub fn pred_iter(&self, block: Block) -> PredIter<'_> {
         self.data[block].predecessors.iter(&self.pred_forest)
     }
 
-    /// Get an iterator over the CFG predecessors to `block`.
-    pub fn pred_rev_iter(&self, block: Block) -> PredecessorRevIter<'_> {
+    /// Get an reverse iterator over the CFG predecessors to `block`.
+    pub fn pred_rev_iter(&self, block: Block) -> PredRevIter<'_> {
         self.data[block].predecessors.iter_rev(&self.pred_forest)
     }
 
-    pub fn predecessors(&self, block: Block) -> &Set<Block> {
-        &self.data[block].predecessors
-    }
-
-    pub fn successors(&self, block: Block) -> Successors {
-        self.data[block].successors
-    }
-
-    pub fn is_predecessors(&self, pred: Block, block: Block) -> bool {
-        self.data[block].predecessors.contains(pred, &self.pred_forest, &())
+    pub fn is_predecessor(&self, test_block: Block, this: Block) -> bool {
+        self.data[this].predecessors.contains(test_block, &self.pred_forest, &())
     }
 
     /// Get an iterator over the CFG successors to `block`.
@@ -322,11 +288,36 @@ impl ControlFlowGraph {
         self.data[block].successors.iter()
     }
 
-    pub fn unique_succ(&self, block: Block) -> Option<Block> {
+    #[inline]
+    pub fn successors_of(&self, block: Block) -> Successors {
+        self.data[block].successors
+    }
+
+    /// Returns the unique successor of `block`, if any.
+    #[inline]
+    pub fn unique_successor_of(&self, block: Block) -> Option<Block> {
         let mut iter = self.succ_iter(block);
         let res = iter.next();
         if iter.next().is_none() {
             res
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn self_loop(&self, bb: Block) -> bool {
+        let mut iter = self.pred_iter(bb);
+        iter.all(|pred| pred == bb)
+    }
+
+    /// Returns the single predecessor of `block`, if any.
+    #[inline]
+    pub fn single_predecessor_of(&self, bb: Block) -> Option<Block> {
+        let mut iter = self.pred_iter(bb);
+        let res = iter.next()?;
+        if iter.next().is_none() {
+            Some(res)
         } else {
             None
         }
@@ -339,28 +330,6 @@ impl ControlFlowGraph {
     /// CFG is consistent with the function.
     pub fn is_valid(&self) -> bool {
         self.valid
-    }
-
-    #[inline]
-    pub fn self_loop(&self, bb: Block) -> bool {
-        let mut iter = self.pred_iter(bb);
-        iter.all(|pred| pred == bb)
-    }
-
-    #[inline]
-    pub fn single_predecessor(&self, bb: Block) -> Option<Block> {
-        let mut iter = self.pred_iter(bb);
-        let res = iter.next()?;
-        if iter.next().is_none() {
-            Some(res)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    pub fn empty_predecessors(&self, bb: Block) -> bool {
-        self.pred_iter(bb).next().is_none()
     }
 
     #[inline]

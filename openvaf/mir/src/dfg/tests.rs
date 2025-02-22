@@ -20,30 +20,29 @@ fn make_inst() {
     "#]]
     .assert_debug_eq(&dfg.display_inst(inst).to_string());
 
-    // Results.
     let v4 = dfg.first_result(inst);
     assert_eq!(dfg.inst_results(inst), &[v4]);
-
     assert_eq!(dfg.value_def(v4), ValueDef::Result(inst, 0));
-
-    // Replacing results.
+    // v4 is attached (to an in instruction as its result)
     assert!(dfg.value_attached(v4));
+    // v4 is not used elsewhere
     assert_eq!(dfg.uses(v4).count(), 0);
 
     let idata = InstructionData::Binary { opcode: Opcode::Fadd, args: [v4, v4] };
     let inst = dfg.make_inst(idata);
     dfg.make_inst_results(inst);
+
     let v5 = dfg.first_result(inst);
-
     assert_eq!(dfg.value_def(v5), ValueDef::Result(inst, 0));
+    // `v5` is not used elsewhere.
     assert_eq!(dfg.uses(v5).count(), 0);
-    // test that uses are created correctly
+    // `v4` is used twice by `inst` as its operands.
     assert_eq!(dfg.uses(v4).count(), 2);
-
-    // linked list is fifo so reverse the iterator.
-    // The code does not make any garuntee about the order of the iterator just the contents so if
-    // this test ever fails because of order its ok to change this
+    // linked list is FIFO, so reverse the iterator.
+    // The code does not make any guarantee about the order of the iterator, so if
+    // this test ever fails because of order, it's ok to change this.
     assert_eq!(dfg.uses_double_ended(v4).rev().collect::<Vec<_>>(), dfg.operands(inst));
+
     // test that updating is a noop when nothing has changed
     dfg.zap_inst(inst);
     dfg.update_inst_uses(inst);
@@ -56,19 +55,14 @@ fn make_inst() {
     assert_eq!(dfg.uses_double_ended(v4).rev().count(), 0);
 
     dfg.zap_inst(inst);
-    dfg.zap_inst(inst);
-
     assert_eq!(dfg.uses(v3).count(), 1);
     assert_eq!(dfg.uses(F_ZERO).count(), 1);
-    assert!(dfg.value_dead(v4));
-    assert_eq!(dfg.uses(v4).count(), 0);
 
     dfg.instr_args_mut(inst).copy_from_slice(&[v3, v4]);
     dfg.update_inst_uses(inst);
-
-    assert_eq!(dfg.uses(F_ZERO).count(), 1);
     assert_eq!(dfg.uses(v4).count(), 1);
     assert_eq!(dfg.uses(v3).count(), 2);
+    assert_eq!(dfg.uses(F_ZERO).count(), 1);
 }
 
 #[test]

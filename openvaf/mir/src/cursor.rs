@@ -23,7 +23,7 @@ pub enum CursorPosition {
     After(Block),
 }
 
-/// All cursor types implement the `Cursor` which provides common navigation operations.
+/// All cursor types implement the `Cursor` trait which provides common navigation operations.
 pub trait Cursor {
     /// Get the current cursor position.
     fn position(&self) -> CursorPosition;
@@ -491,7 +491,7 @@ pub trait Cursor {
 
     /// Insert an instruction at the current position.
     ///
-    /// - If pointing at an instruction, the new instruction is inserted before the current
+    /// - If pointing at an instruction, the new instruction is inserted *before* the current
     ///   instruction.
     /// - If pointing at the bottom of a block, the new instruction is appended to the block.
     /// - Otherwise panic.

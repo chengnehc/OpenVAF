@@ -6,8 +6,28 @@
 //! Lecture Notes in Computer Science, vol 7791. Springer, Berlin, Heidelberg
 //!
 //! <https://link.springer.com/content/pdf/10.1007/978-3-642-37051-9_6.pdf>
+//!
+//! Here is how it should be used when translating to MIR:
+//!
+//! - for each basic block, create a corresponding data for SSA construction with `declare_block`;
+//!
+//! - while traversing a basic block and translating instruction, use `def_var` and `use_var`
+//!   to record definitions and uses of variables, these methods will give you the corresponding
+//!   SSA values;
+//!
+//! - when all the instructions in a basic block have translated, the block is said _filled_ and
+//!   only then you can add it as a predecessor to other blocks with `declare_block_predecessor`;
+//!
+//! - when you have constructed all the predecessor to a basic block,
+//!   call `seal_block` on it with the `Function` that you are building.
+//!
+//! This API will give you the correct SSA values to use as arguments of your instructions,
+//! as well as modify the jump instruction and `Block` parameters to account for the SSA
+//! Phi functions.
 
 use std::{iter, slice};
+use stdx::iter::zip;
+use stdx::packed_option::PackedOption;
 
 use bforest::Map;
 use bitset::HybridBitSet;
@@ -15,8 +35,6 @@ use mir::builder::InstBuilderBase;
 use mir::cursor::{Cursor, FuncCursor};
 use mir::{Block, Function, PhiNode, Value, ValueList, GRAVESTONE};
 use smallvec::SmallVec;
-use stdx::iter::zip;
-use stdx::packed_option::PackedOption;
 use typed_index_collections::TiVec;
 
 pub(crate) use mir::ControlFlowGraph as CompleteCfg;
@@ -40,11 +58,11 @@ pub(crate) trait ControlFlowGraph {
 
 impl<'c> ControlFlowGraph for &'c CompleteCfg {
     type Predecessors<'a>
-        = mir::flowgraph::PredecessorIter<'a>
+        = mir::cfg::PredIter<'a>
     where
         'c: 'a;
     type PredecessorsRev<'a>
-        = mir::flowgraph::PredecessorRevIter<'a>
+        = mir::cfg::PredRevIter<'a>
     where
         'c: 'a;
 
@@ -54,7 +72,7 @@ impl<'c> ControlFlowGraph for &'c CompleteCfg {
     }
 
     fn has_single_predecessor(&self, bb: Block) -> bool {
-        self.single_predecessor(bb).is_some()
+        self.single_predecessor_of(bb).is_some()
     }
 
     fn predecessors_rev(&self, bb: Block) -> Self::PredecessorsRev<'_> {
@@ -69,6 +87,7 @@ impl<'c> ControlFlowGraph for &'c CompleteCfg {
         unreachable!("all blocks are sealed")
     }
 }
+
 /// Structure containing the data relevant the construction of SSA for a given function.
 ///
 /// The parameter struct `Variable` corresponds to the way variables are represented in the
@@ -91,11 +110,37 @@ pub(crate) struct SSABuilder<Blocks> {
     /// Records the position of the basic blocks and the list of values used but not defined in the
     /// block.
     cfg: Blocks,
+
     // visited: BitSet<Block>,
     /// Call stack for use in the `use_var`/`predecessors_lookup` state machine.
     calls: Vec<Call>,
     /// Result stack for use in the `use_var`/`predecessors_lookup` state machine.
     results: Vec<Value>,
+}
+
+#[derive(Clone, Default)]
+struct SSABlockData {
+    // The predecessors of the Block with the block and branch instruction.
+    // The elements of this array MUST be kept in order.
+    // Ideally only `add_predecessor` is used to modify it
+    predecessors: SmallVec<[Block; 4]>,
+    // A block is sealed if all of its predecessors have been declared.
+    sealed: bool,
+    // List of current phis for which an earlier def has not been found yet.
+    undef_phis: Vec<(Place, Value)>,
+}
+
+impl SSABlockData {
+    fn add_predecessor(&mut self, new_pred: Block) {
+        debug_assert!(!self.sealed, "sealed blocks cannot accept new predecessors");
+        if let Some(i) = self.predecessors.iter().position(|&e| e >= new_pred) {
+            debug_assert_ne!(self.predecessors[i], new_pred);
+            self.predecessors.insert(i, new_pred);
+        } else {
+            // `elem` is larger than all existing elements.
+            self.predecessors.push(new_pred);
+        };
+    }
 }
 
 impl<'a> SSABuilder<&'a CompleteCfg> {
@@ -259,25 +304,6 @@ enum Call {
     FinishPredecessorsLookup(Value, Block),
 }
 
-/// The following methods are the API of the SSA builder. Here is how it should be used when
-/// translating to MIR:
-///
-/// - for each basic block, create a corresponding data for SSA construction with `declare_block`;
-///
-/// - while traversing a basic block and translating instruction, use `def_var` and `use_var`
-///   to record definitions and uses of variables, these methods will give you the corresponding
-///   SSA values;
-///
-/// - when all the instructions in a basic block have translated, the block is said _filled_ and
-///   only then you can add it as a predecessor to other blocks with `declare_block_predecessor`;
-///
-/// - when you have constructed all the predecessor to a basic block,
-///   call `seal_block` on it with the `Function` that you are building.
-///
-/// This API will give you the correct SSA values to use as arguments of your instructions,
-/// as well as modify the jump instruction and `Block` parameters to account for the SSA
-/// Phi functions.
-///
 impl<C: ControlFlowGraph> SSABuilder<C> {
     /// Declares a new definition of a variable in a given basic block.
     /// The SSA value is passed as an argument because it should be created with
@@ -598,30 +624,5 @@ impl ControlFlowGraph for IncompleteCfg {
 
     fn push_undef_phis(&mut self, bb: Block, var: Place, val: Value) {
         self.blocks[bb].undef_phis.push((var, val));
-    }
-}
-
-#[derive(Clone, Default)]
-struct SSABlockData {
-    // The predecessors of the Block with the block and branch instruction.
-    // The elements of this array MUST be kept in order.
-    // Ideally only `add_predecessor` is used to modify it
-    predecessors: SmallVec<[Block; 4]>,
-    // A block is sealed if all of its predecessors have been declared.
-    sealed: bool,
-    // List of current phis for which an earlier def has not been found yet.
-    undef_phis: Vec<(Place, Value)>,
-}
-
-impl SSABlockData {
-    fn add_predecessor(&mut self, new_pred: Block) {
-        debug_assert!(!self.sealed, "sealed blocks cannot accept new predecessors");
-        if let Some(i) = self.predecessors.iter().position(|&e| e >= new_pred) {
-            debug_assert_ne!(self.predecessors[i], new_pred);
-            self.predecessors.insert(i, new_pred);
-        } else {
-            // `elem` is larger than all existing elements.
-            self.predecessors.push(new_pred);
-        };
     }
 }

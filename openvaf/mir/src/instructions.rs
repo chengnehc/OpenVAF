@@ -1,3 +1,10 @@
+//! Instruction formats and opcodes.
+//!
+//! The `instructions` module contains definitions for instruction formats, opcodes, and the
+//! in-memory representation of IR instructions.
+//!
+//! A large part of this module is auto-generated.
+
 use std::fmt;
 use std::hash::Hash;
 
@@ -8,31 +15,20 @@ mod generated;
 pub use generated::*;
 
 /// Some instructions use an external list of argument values because there is not enough space in
-/// the 16-byte `InstructionData` struct. These value lists are stored in a memory pool in
-/// `dfg.value_lists`.
+/// the 16-byte `InstructionData` struct.
 pub type ValueList = list_pool::ListHandle<Value>;
-
-/// Memory pool for holding value lists. See `ValueList`.
-pub type ValueListPool = list_pool::ListPool<Value>;
-
-/// Some instructions use an external list of argument values because there is not enough space in
-/// the 16-byte `InstructionData` struct. These value lists are stored in a memory pool in
-/// `dfg.value_lists`.
 pub type UseList = list_pool::ListHandle<Use>;
 
 /// Memory pool for holding value lists. See `ValueList`.
+pub type ValueListPool = list_pool::ListPool<Value>;
 pub type UseListPool = list_pool::ListPool<Use>;
-
-pub type PhiForest = bforest::MapForest<Block, u32>;
-pub type PhiMap = bforest::Map<Block, u32>;
 
 #[derive(Clone, Debug)]
 pub enum InstructionData {
     Unary { opcode: Opcode, arg: Value },
     Binary { opcode: Opcode, args: [Value; 2] },
     Branch { cond: Value, then_dst: Block, else_dst: Block, loop_entry: bool },
-    // We store blocks as a value list so that we do not need a second pool
-    PhiNode(PhiNode),
+    PhiNode(PhiNode), // for phi nodes, we store blocks as a ValueList so that we do not need a second pool
     Jump { destination: Block },
     Call { func_ref: FuncRef, args: ValueList },
 }
@@ -49,20 +45,20 @@ fn instruction_data_size() {
 }
 
 impl InstructionData {
-    pub fn unwrap_phi(&self) -> &PhiNode {
-        if let InstructionData::PhiNode(node) = self {
-            node
-        } else {
-            unreachable!()
-        }
+    pub fn is_terminator(&self) -> bool {
+        matches!(self, InstructionData::Branch { .. } | InstructionData::Jump { .. })
     }
 
     pub fn is_phi(&self) -> bool {
         matches!(self, InstructionData::PhiNode(_))
     }
 
-    pub fn is_terminator(&self) -> bool {
-        matches!(self, InstructionData::Branch { .. } | InstructionData::Jump { .. })
+    pub fn unwrap_phi(&self) -> &PhiNode {
+        if let InstructionData::PhiNode(node) = self {
+            node
+        } else {
+            unreachable!()
+        }
     }
 
     pub fn unwrap_phi_mut(&mut self) -> &mut PhiNode {
@@ -73,8 +69,22 @@ impl InstructionData {
         }
     }
 
-    /// Get mutable references to the value arguments to this
-    /// instruction.
+    /// Get references to the value arguments to this instruction.
+    pub fn arguments<'a>(&'a self, pool: &'a ValueListPool) -> &'a [Value] {
+        match self {
+            InstructionData::Unary { arg, .. } | InstructionData::Branch { cond: arg, .. } => {
+                core::slice::from_ref(arg)
+            }
+            InstructionData::Binary { args, .. } => args,
+            InstructionData::Call { args, .. } | InstructionData::PhiNode(PhiNode { args, .. }) => {
+                args.as_slice(pool)
+            }
+
+            InstructionData::Jump { .. } => &[],
+        }
+    }
+
+    /// Get mutable references to the value arguments to this instruction.
     ///
     /// # Note
     ///
@@ -93,22 +103,7 @@ impl InstructionData {
         }
     }
 
-    /// Get mutable references to the value arguments to this
-    /// instruction.
-    pub fn arguments<'a>(&'a self, pool: &'a ValueListPool) -> &'a [Value] {
-        match self {
-            InstructionData::Unary { arg, .. } | InstructionData::Branch { cond: arg, .. } => {
-                core::slice::from_ref(arg)
-            }
-            InstructionData::Binary { args, .. } => args,
-            InstructionData::Call { args, .. } | InstructionData::PhiNode(PhiNode { args, .. }) => {
-                args.as_slice(pool)
-            }
-
-            InstructionData::Jump { .. } => &[],
-        }
-    }
-
+    /// Get the opcode of this instruction.
     pub fn opcode(&self) -> Opcode {
         match self {
             InstructionData::Unary { opcode: op, .. }
@@ -231,6 +226,28 @@ impl Opcode {
     }
 
     #[inline]
+    pub fn is_commutative(self) -> bool {
+        matches!(
+            self,
+            Opcode::Fmul
+                | Opcode::Fadd
+                | Opcode::Iand
+                | Opcode::Ixor
+                | Opcode::Ior
+                | Opcode::Iadd
+                | Opcode::Imul
+                | Opcode::Ieq
+                | Opcode::Feq
+                | Opcode::Beq
+                | Opcode::Seq
+                | Opcode::Ine
+                | Opcode::Fne
+                | Opcode::Bne
+                | Opcode::Sne
+        )
+    }
+
+    #[inline]
     pub const fn constraints(self) -> OpcodeConstraints {
         OPCODE_CONSTRAINTS[self as usize]
     }
@@ -270,6 +287,7 @@ pub struct OpcodeConstraints {
     /// Bits 0-2:
     ///     Number of fixed result values. This does not include `variable_args` results as are
     ///     produced by call instructions.
+    ///
     /// Bits 3-5:
     ///     Number of fixed value arguments. The minimum required number of value operands.
     flags: u8,
@@ -279,7 +297,9 @@ impl OpcodeConstraints {
     const fn new(arg_cnt: u8, ret_cnt: u8) -> OpcodeConstraints {
         OpcodeConstraints { flags: arg_cnt << 3 | ret_cnt }
     }
+
     /// Get the number of *fixed* result values produced by this opcode.
+    ///
     /// This does not include `variable_args` produced by calls.
     pub fn num_fixed_results(self) -> usize {
         (self.flags & 0x7) as usize
@@ -296,6 +316,39 @@ impl OpcodeConstraints {
         ((self.flags >> 3) & 0x7) as usize
     }
 }
+
+// PHI (Φ) nodes are required when a variable can be assigned a different value based on the path of control flow.
+//
+// For example, the value of b at the end of execution of the snippet below:
+//
+// ```code
+// a = 1;
+// if (v < 10)
+//     a = 2;
+// b = a;
+// ```
+//
+// cannot be determined statically. The value of ‘2’ cannot be assigned to the ‘original’ a,
+// since a can be assigned to only once. There are two a ‘s in there, and the last assignment
+// has to choose between which version to pick. This is accomplished by adding a PHI node:
+//
+// ```code
+// a1 = 1;
+// if (v < 10)
+//     a2 = 2;
+// b = PHI(a1, a2);
+// ```
+//
+// The PHI node selects a1 or a2, depending on where the control reached the PHI node.
+// The argument a1 of the PHI node is associated with the block “a1 = 1;” and a2 with the block “a2 = 2;”.
+//
+// PHI nodes have to be explicitly created.
+//
+
+/// A map of Phi
+pub type PhiMap = bforest::Map<Block, u32>;
+/// A memory pool for a forest of Phi
+pub type PhiForest = bforest::MapForest<Block, u32>;
 
 #[derive(Clone, Debug)]
 pub struct PhiNode {
@@ -325,6 +378,12 @@ impl PhiNode {
     }
 
     #[inline]
+    pub fn edges<'a>(&self, value_lists: &'a ValueListPool, forest: &'a PhiForest) -> PhiEdges<'a> {
+        let args = self.args.as_slice(value_lists);
+        PhiEdges { iter: self.blocks.iter(forest), args }
+    }
+
+    #[inline]
     pub fn edge_val(
         &self,
         block: Block,
@@ -338,12 +397,6 @@ impl PhiNode {
     #[inline]
     pub fn edge_operand(&self, block: Block, forest: &PhiForest) -> Option<u32> {
         self.blocks.get(block, forest, &())
-    }
-
-    #[inline]
-    pub fn edges<'a>(&self, value_lists: &'a ValueListPool, forest: &'a PhiForest) -> PhiEdges<'a> {
-        let args = self.args.as_slice(value_lists);
-        PhiEdges { iter: self.blocks.iter(forest), args }
     }
 
     #[inline]
@@ -373,29 +426,5 @@ impl Iterator for PhiEdges<'_> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(move |(block, pos)| (block, self.args[pos as usize]))
-    }
-}
-
-impl Opcode {
-    #[inline]
-    pub fn is_commutative(self) -> bool {
-        matches!(
-            self,
-            Opcode::Fmul
-                | Opcode::Fadd
-                | Opcode::Iand
-                | Opcode::Ixor
-                | Opcode::Ior
-                | Opcode::Iadd
-                | Opcode::Imul
-                | Opcode::Ieq
-                | Opcode::Feq
-                | Opcode::Beq
-                | Opcode::Seq
-                | Opcode::Ine
-                | Opcode::Fne
-                | Opcode::Bne
-                | Opcode::Sne
-        )
     }
 }

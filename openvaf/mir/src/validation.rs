@@ -2,11 +2,11 @@ use crate::{ControlFlowGraph, DominatorTree, Function, InstructionData, ValueDef
 
 impl Function {
     pub fn validate(&self) -> bool {
-        let mut cfg = ControlFlowGraph::new();
         let mut valid = true;
-        cfg.compute(self);
+        let cfg = ControlFlowGraph::with_function(&self);
         let mut dom_tree = DominatorTree::default();
         dom_tree.compute(self, &cfg, true, false, true);
+
         for &bb in dom_tree.cfg_postorder() {
             for (seq_num, inst) in self.layout.block_insts(bb).enumerate() {
                 let mut valid_inst = true;
@@ -20,13 +20,17 @@ impl Function {
                 }
                 if let InstructionData::PhiNode(phi) = &self.dfg.insts[inst] {
                     for (edge_bb, edge_val) in self.dfg.phi_edges(phi) {
+                        // A phi edge block must be a predecessor of the block
+                        // that this phi node belongs to
                         assert!(
-                            cfg.is_predecessors(edge_bb, bb),
+                            cfg.is_predecessor(edge_bb, bb),
                             "{edge_bb} is not a predecessor of {bb}"
                         );
                         let edge_def = self.dfg.value_def(edge_val);
                         if let Some(arg_def) = edge_def.inst() {
                             if let Some(edge_val_bb) = self.layout.inst_block(arg_def) {
+                                // The block that a phi edge value belongs to must dominate
+                                // the block that uses this phi nde
                                 assert!(
                                     dom_tree.dominates(edge_bb, edge_val_bb),
                                     "{edge_val} doesn't dominate use ({edge_val_bb} !dom {edge_bb})"
@@ -63,7 +67,7 @@ impl Function {
 
                 for use_ in self.dfg.inst_uses(inst) {
                     let (use_inst, _) = self.dfg.use_to_operand(use_);
-                    let use_val = self.dfg.use_to_value(use_);
+                    let use_val = use_.to_value(&self.dfg);
                     assert!(
                         self.dfg.inst_results(inst).contains(&use_val),
                         "invalid use {} ({use_val})",
@@ -75,6 +79,7 @@ impl Function {
                         self.dfg.display_inst(use_inst)
                     );
                 }
+
                 if !valid_inst {
                     eprintln!("{}", self.dfg.display_inst(inst));
                     eprintln!();

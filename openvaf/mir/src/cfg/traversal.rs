@@ -1,14 +1,17 @@
-use crate::Block;
+//! See Also:
+//!
+//! https://github.com/rust-lang/rust/blob/master/compiler/rustc_middle/src/mir/traversal.rs
+
 use bitset::BitSet;
 
-use crate::flowgraph::Successors;
+use crate::cfg::Successors;
+use crate::Block;
 use crate::ControlFlowGraph;
 
 /// Postorder traversal of a graph.
 ///
 /// Postorder traversal is when each node is visited after all of its
 /// successors, except when the successor is only reachable by a back-edge
-///
 ///
 /// ```text
 ///
@@ -35,7 +38,7 @@ impl<'a> Postorder<'a> {
             Postorder { cfg, visited: BitSet::new_empty(cfg.data.len()), visit_stack: Vec::new() };
 
         po.visited.insert(root);
-        po.visit_stack.push((root, cfg.successors(root)));
+        po.visit_stack.push((root, cfg.successors_of(root)));
         po.traverse_successor(cfg);
 
         po
@@ -91,7 +94,7 @@ impl<'a> Postorder<'a> {
         // two iterations yield `C` and finally `A` for a final traversal of [E, D, B, A]
         while let Some(bb) = self.visit_stack.last_mut().and_then(|(_, iter)| iter.pop()) {
             if self.visited.insert(bb) {
-                self.visit_stack.push((bb, cfg.successors(bb)));
+                self.visit_stack.push((bb, cfg.successors_of(bb)));
             }
         }
     }
@@ -137,7 +140,7 @@ impl<'lt> Iterator for Postorder<'lt> {
 /// ```
 ///
 /// A reverse postorder traversal of this graph is either `A B C D` or `A C B D`
-/// Note that for a graph containing no loops (i.e., A DAG), this is equivalent to
+/// Note that for a graph containing no loops (i.e., a DAG), this is equivalent to
 /// a topological sort.
 ///
 /// Construction of a `ReversePostorder` traversal requires doing a full
@@ -153,7 +156,6 @@ pub struct ReversePostorder {
 impl ReversePostorder {
     pub fn new(cfg: &ControlFlowGraph, root: Block) -> Self {
         let blocks: Vec<_> = Postorder::new(cfg, root).collect();
-
         let len = blocks.len();
 
         ReversePostorder { blocks, idx: len }

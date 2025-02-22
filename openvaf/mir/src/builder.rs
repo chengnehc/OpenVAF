@@ -1,7 +1,11 @@
 //! MIR instruction builder.
 //!
-//! A `Builder` provides a convenient interface for inserting instructions into a Cranelift
+//! A instruction builder provides a convenient interface for inserting instructions into a MIR
 //! function. Many of its methods are generated from the meta language instruction definitions.
+//!
+//! See Also:
+//!
+//! https://docs.rs/crate/cranelift-codegen/latest/source/src/ir/builder.rs
 
 use crate::instructions::{PhiMap, PhiNode, ValueList};
 use crate::{Block, DataFlowGraph, FuncRef, Inst, InstructionData, Opcode, Value};
@@ -17,9 +21,6 @@ pub use generated::*;
 /// The `InstBuilderBase` trait provides the basic functionality required by the methods of the
 /// generated `InstBuilder` trait. These methods should not normally be used directly. Use the
 /// methods in the `InstBuilder` trait instead.
-///
-/// Any data type that implements `InstBuilderBase` also gets all the methods of the `InstBuilder`
-/// trait.
 pub trait InstBuilderBase<'f>: Sized {
     /// Get an immutable reference to the data flow graph that will hold the constructed
     /// instructions.
@@ -110,12 +111,10 @@ impl<'f, IIB: InstInserterBase<'f>> InstBuilderBase<'f> for InsertBuilder<'f, II
     }
 
     fn build(mut self, data: InstructionData) -> (Inst, &'f mut DataFlowGraph) {
-        let inst;
-        {
-            let dfg = self.inserter.data_flow_graph_mut();
-            inst = dfg.make_inst(data);
-            dfg.make_inst_results(inst);
-        }
+        let dfg = self.inserter.data_flow_graph_mut();
+        let inst = dfg.make_inst(data);
+        dfg.make_inst_results(inst);
+
         (inst, self.inserter.insert_built_inst(inst))
     }
 }
@@ -145,14 +144,12 @@ where
     }
 
     fn build(mut self, data: InstructionData) -> (Inst, &'f mut DataFlowGraph) {
-        let inst;
-        {
-            let dfg = self.inserter.data_flow_graph_mut();
-            inst = dfg.make_inst(data);
-            // Make an `Iterator<Item = Option<Value>>`.
-            let ru = self.reuse.as_ref().iter().cloned();
-            dfg.make_inst_results_reusing(inst, ru);
-        }
+        let dfg = self.inserter.data_flow_graph_mut();
+        let inst = dfg.make_inst(data);
+        // Make an `Iterator<Item = Option<Value>>`.
+        let ru = self.reuse.as_ref().iter().cloned();
+        dfg.make_inst_results_reusing(inst, ru);
+
         (inst, self.inserter.insert_built_inst(inst))
     }
 }

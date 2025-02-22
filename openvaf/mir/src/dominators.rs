@@ -1,13 +1,30 @@
+//! A Dominator Tree represented as mappings of Blocks to their immediate dominator
+//! (which is also a Block).
+//!
+//! A node d of a control-flow graph dominates a node n if every path from the entry
+//! node to n must go through d. By definition, every node, except the entry node,
+//! has an immediate dominator.
+
+//! A node d strictly dominates a node n if d dominates n and d does not equal n.
+//!
+//! The *immediate dominator* or 'idom' of a node n is the unique node that strictly
+//! dominates n but does not strictly dominate any other node that strictly dominates n.
+//!
+//! See Also:
+//!
+//! https://docs.rs/crate/cranelift-codegen/latest/source/src/dominator_tree.rs
+
 use std::cmp::Ordering;
 use std::fs::File;
 use std::path::Path;
+use stdx::packed_option::PackedOption;
 
-use crate::flowgraph::Successors;
+use bitset::SparseBitMatrix;
+use typed_index_collections::{TiSlice, TiVec};
+
+use crate::cfg::Successors;
 use crate::ControlFlowGraph;
 use crate::{Block, Function};
-use bitset::SparseBitMatrix;
-use stdx::packed_option::PackedOption;
-use typed_index_collections::{TiSlice, TiVec};
 
 /* AB: unused
 trait CfgREVERSE {
@@ -21,10 +38,11 @@ trait CfgREVERSE {
 trait ToIter {}
 */
 
+/// Dominator tree node. We keep one of these per block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DomTreeNode {
     /// Number of this node in a (reverse) post-order traversal of the CFG, starting from 1.
-    /// This number is monotonic in the reverse postorder
+    /// This number is monotonic in the reverse postorder but not contiguous.
     /// Unreachable nodes get number 0, all others are positive.
     rpo_number: u32,
 
@@ -47,9 +65,24 @@ pub struct DominatorTree {
     /// CFG post-order of all reachable blocks.
     postorder: Vec<Block>,
     stack: Vec<(Block, Successors)>,
+    // valid: bool
 }
 
 impl DominatorTree {
+    /// Allocate and compute a dominator tree.
+    pub fn with_func_and_cfg(_func: &Function, _cfg: &ControlFlowGraph) -> Self {
+        todo!();
+    }
+
+    /// Clear the data structures used to represent the dominator tree.
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.reverse_nodes.clear();
+        self.postorder.clear();
+        debug_assert!(self.stack.is_empty());
+        // self.valid = false;
+    }
+
     /// Reset and compute a CFG post-order and dominator tree.
     pub fn compute(
         &mut self,
@@ -60,32 +93,19 @@ impl DominatorTree {
         postorder: bool,
     ) {
         debug_assert!(cfg.is_valid());
-
         self.clear();
         if pdom {
             self.compute_reverse_postorder(func, cfg);
             self.compute_domtree::<true>(cfg);
             self.postorder.clear();
         }
-
         if dom || postorder {
             self.compute_postorder(func, cfg);
         }
         if dom {
             self.compute_domtree::<false>(cfg);
         }
-
         // self.valid = true;
-    }
-
-    /// Clear the data structures used to represent the dominator tree. This will leave the tree in
-    /// a state where `is_valid()` returns false.
-    pub fn clear(&mut self) {
-        self.nodes.clear();
-        self.reverse_nodes.clear();
-        self.postorder.clear();
-        debug_assert!(self.stack.is_empty());
-        // self.valid = false;
     }
 
     /// Get the CFG post-order of blocks that was used to compute the dominator tree.
@@ -94,6 +114,16 @@ impl DominatorTree {
     /// computed from scratch and cached by `compute()`.
     pub fn cfg_postorder(&self) -> &[Block] {
         &self.postorder
+    }
+
+    /// Returns the immediate dominator of `block`.
+    pub fn idom(&self, block: Block) -> Option<Block> {
+        self.nodes[block].idom.into()
+    }
+
+    /// Returns the post-order immediate dominator of `block`.
+    pub fn ipdom(&self, block: Block) -> Option<Block> {
+        self.reverse_nodes[block].idom.into()
     }
 
     pub fn dominates(&self, block: Block, dominator: Block) -> bool {
@@ -113,10 +143,6 @@ impl DominatorTree {
             }
         }
         block == dominator
-    }
-
-    pub fn ipdom(&self, block: Block) -> Option<Block> {
-        self.reverse_nodes[block].idom.expand()
     }
 
     pub fn compute_dom_frontiers(
@@ -144,7 +170,7 @@ impl DominatorTree {
     ) {
         dst.clear(self.reverse_nodes.len(), self.reverse_nodes.len());
         for bb in self.reverse_nodes.keys() {
-            if let Some((bb1, bb2)) = cfg.successors(bb).as_pair() {
+            if let Some((bb1, bb2)) = cfg.successors_of(bb).as_pair() {
                 Self::propagate_dom_frontiers(&self.reverse_nodes, bb1, bb, dst);
                 Self::propagate_dom_frontiers(&self.reverse_nodes, bb2, bb, dst);
             }
@@ -236,7 +262,7 @@ impl DominatorTree {
 
         match func.layout.entry_block() {
             Some(block) => {
-                self.stack.push((block, cfg.successors(block)));
+                self.stack.push((block, cfg.successors_of(block)));
                 self.nodes[block].rpo_number = SEEN;
             }
             None => return,
@@ -246,7 +272,7 @@ impl DominatorTree {
             while let Some(block) = self.stack.last_mut().and_then(|(_, succ)| succ.pop()) {
                 if self.nodes[block].rpo_number == UNDEF {
                     self.nodes[block].rpo_number = SEEN;
-                    self.stack.push((block, cfg.successors(block)))
+                    self.stack.push((block, cfg.successors_of(block)))
                 }
             }
 
@@ -321,6 +347,7 @@ impl DominatorTree {
             Self::compute_idom_(&self.nodes, cfg.pred_iter(block))
         }
     }
+
     // Compute the immediate dominator for `block` using the current `idom` states for the reachable
     // nodes.
     fn compute_idom_(

@@ -1,7 +1,7 @@
 use std::iter;
 use std::ops::{Index, IndexMut};
-
 use stdx::iter::zip;
+
 use typed_index_collections::{TiSliceKeys, TiVec};
 
 use crate::dfg::values::{DfgValues, ValueDataType};
@@ -10,8 +10,9 @@ use crate::instructions::{UseList, UseListPool};
 use crate::{DataFlowGraph, Inst, InstructionData, Use, Value, ValueList, ValueListPool};
 
 #[derive(Clone)]
-pub struct DfgInsructions {
+pub struct DfgInsts {
     /// Data about all of the instructions in the function, including opcodes and operands.
+    ///
     /// The instructions in this map are not in program order. That is tracked by `Layout`, along
     /// with the block containing each instruction.
     pub(super) declarations: TiVec<Inst, InstructionData>,
@@ -32,13 +33,29 @@ pub struct DfgInsructions {
     pub use_lists: UseListPool,
 }
 
-impl Default for DfgInsructions {
+impl Default for DfgInsts {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DfgInsructions {
+/// Allow immutable access to instructions via indexing.
+impl Index<Inst> for DfgInsts {
+    type Output = InstructionData;
+
+    fn index(&self, inst: Inst) -> &InstructionData {
+        &self.declarations[inst]
+    }
+}
+
+/// Allow mutable access to instructions via indexing.
+impl IndexMut<Inst> for DfgInsts {
+    fn index_mut(&mut self, inst: Inst) -> &mut InstructionData {
+        &mut self.declarations[inst]
+    }
+}
+
+impl DfgInsts {
     pub fn new() -> Self {
         Self {
             declarations: TiVec::new(),
@@ -63,8 +80,6 @@ impl DfgInsructions {
 
     /// Get the total number of instructions created in this function, whether they are currently
     /// inserted in the layout or not.
-    ///
-    /// This is intended for use with `SecondaryMap::with_capacity`.
     pub fn num(&self) -> usize {
         self.declarations.len()
     }
@@ -175,35 +190,32 @@ impl DfgInsructions {
     // }
 }
 
-/// Operations that require mutable access to `values` and `insts` (but logically still belong to
+/// Operations that require mutable access to `values` and `uses` (but logically still belong to
 /// instructions)
 impl DataFlowGraph {
-    /// Append a new instruction result value to `inst`.
-    pub fn append_result(&mut self, inst: Inst, tag: Option<Tag>) -> Value {
-        let res = self.values.defs.next_key();
-        let num = self.insts.results[inst].push(res, &mut self.insts.value_lists);
-        debug_assert!(num <= u16::MAX as usize, "Too many result values");
-        self.values.make(ValueDataType::Inst { inst, num: num as u16 }, tag)
+    // Instructions that produce no result values only need to be created with `make_inst`,
+    // otherwise call `make_inst_results` to allocate value table entries for the results.
+
+    /// Create a new instruction with `data`.
+    pub fn make_inst(&mut self, data: InstructionData) -> Inst {
+        // add instructions
+        let inst = self.insts.declarations.push_and_get_key(data);
+        self.insts.results.push(ValueList::new());
+        self.insts.uses.push(UseList::new());
+
+        // update use list
+        let args = self.insts.declarations[inst].arguments(&self.insts.value_lists).iter().copied();
+        let uses = args.enumerate().map(|(i, arg)| self.values.make_use(arg, inst, i as u16));
+        self.insts.uses[inst].extend(uses, &mut self.insts.use_lists);
+        inst
     }
 
-    /// Attach an existing value to the result value list for `inst`.
-    ///
-    /// The `res` value is appended to the end of the result list.
-    ///
-    /// This is a very low-level operation. Usually, instruction results are
-    /// created automatically. The `res` value must not be attached to anything else.
-    pub fn attach_result(&mut self, inst: Inst, res: Value) {
-        debug_assert!(!self.value_attached(res));
-        let num = self.insts.results[inst].push(res, &mut self.insts.value_lists);
-        debug_assert!(num <= u16::MAX as usize, "Too many result values");
-        self.values.defs[res].ty = ValueDataType::Inst { num: num as u16, inst };
+    /// Create result values for `inst`.
+    pub fn make_inst_results(&mut self, inst: Inst) -> usize {
+        self.make_inst_results_reusing(inst, iter::empty())
     }
 
     /// Create result values for `inst`, reusing the provided detached values.
-    ///
-    /// Create a new set of result values for `inst` using `ctrl_typevar` to determine the result
-    /// types. Any values provided by `reuse` will be reused. When `reuse` is exhausted or when it
-    /// produces `None`, a new value is created.
     pub fn make_inst_results_reusing<I>(&mut self, inst: Inst, reuse: I) -> usize
     where
         I: Iterator<Item = Option<Value>>,
@@ -231,23 +243,30 @@ impl DataFlowGraph {
         num_results
     }
 
-    /// Create a new instruction.
+    /// Append a *new* value to the result value list for `inst`.
+    pub fn append_result(&mut self, inst: Inst, tag: Option<Tag>) -> Value {
+        let res = self.values.defs.next_key();
+        let num = self.insts.results[inst].push(res, &mut self.insts.value_lists);
+        debug_assert!(num <= u16::MAX as usize, "Too many result values");
+        self.values.make(ValueDataType::Inst { inst, num: num as u16 }, tag)
+    }
+
+    /// Attach an existing value to the result value list for `inst`.
     ///
-    /// The type of the first result is indicated by `data.ty`. If the instruction produces
-    /// multiple results, also call `make_inst_results` to allocate value table entries.
-    pub fn make_inst(&mut self, data: InstructionData) -> Inst {
-        // add instructions
-        self.insts.uses.push(UseList::new());
-        self.insts.results.push(ValueList::new());
-        let inst = self.insts.declarations.push_and_get_key(data);
+    /// The `res` value is appended to the end of the result list.
+    ///
+    /// This is a very low-level operation. Usually, instruction results are
+    /// created automatically. The `res` value must not be attached to anything else.
+    pub fn attach_result(&mut self, inst: Inst, res: Value) {
+        debug_assert!(!self.value_attached(res));
+        let num = self.insts.results[inst].push(res, &mut self.insts.value_lists);
+        debug_assert!(num <= u16::MAX as usize, "Too many result values");
+        self.values.defs[res].ty = ValueDataType::Inst { num: num as u16, inst };
+    }
 
-        // update use list
-        let args = self.insts.declarations[inst].arguments(&self.insts.value_lists);
-        let args = args.iter().copied();
-
-        let uses = args.enumerate().map(|(i, arg)| self.values.make_use(arg, inst, i as u16));
-        self.insts.uses[inst].extend(uses, &mut self.insts.use_lists);
-        inst
+    /// Removes all uses of `inst`.
+    pub fn zap_inst(&mut self, inst: Inst) {
+        self.insts.zap(inst, &mut self.values)
     }
 
     pub fn update_inst(&mut self, inst: Inst, data: InstructionData) {
@@ -256,6 +275,7 @@ impl DataFlowGraph {
         self.update_inst_uses(inst);
     }
 
+    /// Update the uses of `inst` using argument values.
     pub fn update_inst_uses(&mut self, inst: Inst) {
         let data = self.insts.declarations[inst].clone();
         let pool = &mut self.insts.use_lists;
@@ -282,37 +302,5 @@ impl DataFlowGraph {
             // remove excess uses
             self.insts.uses[inst].truncate(arg_len, pool);
         }
-    }
-
-    /// Create result values for an instruction that produces multiple results.
-    ///
-    /// Instructions that produce no result values only need to be created with `make_inst`,
-    /// otherwise call `make_inst_results` to allocate value table entries for the results.
-    ///
-    /// The result value types are determined from the instruction's value type constraints and the
-    /// provided `ctrl_typevar` type for polymorphic instructions. For non-polymorphic
-    /// instructions, `ctrl_typevar` is ignored, and `INVALID` can be used.
-    ///
-    /// The type of the first result value is also set, even if it was already set in the
-    /// `InstructionData` passed to `make_inst`. If this function is called with a single-result
-    /// instruction, that is the only effect.
-    pub fn make_inst_results(&mut self, inst: Inst) -> usize {
-        self.make_inst_results_reusing(inst, iter::empty())
-    }
-}
-
-/// Allow immutable access to instructions via indexing.
-impl Index<Inst> for DfgInsructions {
-    type Output = InstructionData;
-
-    fn index(&self, inst: Inst) -> &InstructionData {
-        &self.declarations[inst]
-    }
-}
-
-/// Allow mutable access to instructions via indexing.
-impl IndexMut<Inst> for DfgInsructions {
-    fn index_mut(&mut self, inst: Inst) -> &mut InstructionData {
-        &mut self.declarations[inst]
     }
 }

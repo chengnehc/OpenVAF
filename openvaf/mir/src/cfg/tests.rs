@@ -1,8 +1,8 @@
 use super::*;
 
-use mir::builder::InstBuilder;
-use mir::cursor::{Cursor, FuncCursor};
-use mir::Function;
+use crate::builder::InstBuilder;
+use crate::cursor::{Cursor, FuncCursor};
+use crate::Function;
 
 #[test]
 fn empty() {

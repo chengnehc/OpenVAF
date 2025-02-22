@@ -58,6 +58,7 @@ pub trait FuncWriter {
             self.write_entity_definition(w, func, sig.into(), &sig_data)?;
         }
 
+        // Write out used constant, literal values.
         for val in func.dfg.values() {
             match func.dfg.value_def(val) {
                 ValueDef::Const(Const::Float(def)) if func.dfg.uses(val).next().is_some() => {
@@ -275,7 +276,6 @@ fn write_instruction(w: &mut dyn Write, func: &Function, inst: Inst, indent: usi
     }
 
     let opcode = func.dfg.insts[inst].opcode();
-
     write!(w, "{}", opcode)?;
 
     write_operands(w, &func.dfg, inst)?;

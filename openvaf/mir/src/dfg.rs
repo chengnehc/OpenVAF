@@ -1,29 +1,35 @@
+//! Data flow graph tracking Instructions, Values, and blocks.
+//!
+//! See Also:
+//!
+//! https://docs.rs/cranelift-codegen/0.116.1/cranelift_codegen/ir/dfg/index.html
+
 use std::fmt;
 
 use lasso::Spur;
 use typed_index_collections::TiVec;
 
 use crate::builder::ReplaceBuilder;
-use crate::dfg::instructions::DfgInsructions;
-use crate::dfg::values::consts::{FALSE, TRUE};
-use crate::dfg::values::ValueDataType;
 use crate::entities::{Inst, Param, Tag, Value};
 use crate::instructions::PhiForest;
 use crate::write::write_operands;
 use crate::{Block, FuncRef, FunctionSignature, Ieee64, InstructionData, Use, ValueList};
-
-pub use crate::dfg::postorder::{Postorder, PostorderParts};
-pub use crate::dfg::uses::{DoubleEndedUseIter, InstUseIter, UseCursor, UseIter};
-pub use crate::dfg::values::{consts, Const, DfgValues, ValueDef};
-
-#[cfg(test)]
-mod tests;
 
 mod instructions;
 mod phis;
 mod postorder;
 mod uses;
 mod values;
+
+#[cfg(test)]
+mod tests;
+
+use instructions::DfgInsts;
+use values::ValueDataType;
+
+pub use postorder::{Postorder, PostorderParts};
+pub use uses::{DoubleEndedUseIter, InstUseIter, UseCursor, UseIter};
+pub use values::{consts, Const, DfgValues, ValueDef};
 
 /// A data flow graph defines all instructions and basic blocks in a function as well as
 /// the data flow dependencies between them. The DFG also tracks values which can be either
@@ -34,13 +40,16 @@ mod values;
 ///
 #[derive(Clone)]
 pub struct DataFlowGraph {
-    pub insts: DfgInsructions,
+    /// Instructions
+    pub insts: DfgInsts,
+
+    /// Values, constants and their uses
     pub values: DfgValues,
 
     /// Function signature table. These signatures are referenced by external function references.
-    /// We currently only store the number of return values
     pub signatures: TiVec<FuncRef, FunctionSignature>,
 
+    /// A memory pool of Phi nodes
     pub phi_forest: PhiForest,
 }
 
@@ -55,7 +64,7 @@ impl DataFlowGraph {
     pub fn new() -> Self {
         Self {
             signatures: TiVec::new(),
-            insts: DfgInsructions::new(),
+            insts: DfgInsts::new(),
             values: DfgValues::new(),
             phi_forest: PhiForest::new(),
         }
@@ -70,13 +79,12 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that interact with instructions. These are just wrappers around the functions defined for
-/// `DfgInsructions` for convenience
+/// Routines that interact with instructions.
+///
+/// These are just wrappers around the functions defined for `DfgInsts` for convenience
 impl DataFlowGraph {
     /// Get the total number of instructions created in this function, whether they are currently
     /// inserted in the layout or not.
-    ///
-    /// This is intended for use with `SecondaryMap::with_capacity`.
     pub fn num_insts(&self) -> usize {
         self.insts.num()
     }
@@ -91,14 +99,7 @@ impl DataFlowGraph {
         DisplayInst(self, inst)
     }
 
-    pub fn zap_inst(&mut self, inst: Inst) {
-        self.insts.zap(inst, &mut self.values)
-    }
-
-    pub fn call_signature(&self, inst: Inst) -> Option<&FunctionSignature> {
-        self.func_ref(inst).map(|func_ref| &self.signatures[func_ref])
-    }
-
+    /// Get the inner of a branch instruction.
     pub fn as_branch(&self, inst: Inst) -> Option<(Value, Block, Block)> {
         if let InstructionData::Branch { cond, then_dst, else_dst, .. } = self.insts[inst] {
             Some((cond, then_dst, else_dst))
@@ -107,6 +108,12 @@ impl DataFlowGraph {
         }
     }
 
+    /// Get the function signature of a direct or indirect call instruction.
+    pub fn call_signature(&self, inst: Inst) -> Option<&FunctionSignature> {
+        self.func_ref(inst).map(|func_ref| &self.signatures[func_ref])
+    }
+
+    /// Get the function reference of a call instruction.
     pub fn func_ref(&self, inst: Inst) -> Option<FuncRef> {
         if let InstructionData::Call { func_ref, .. } = self.insts[inst] {
             Some(func_ref)
@@ -115,6 +122,7 @@ impl DataFlowGraph {
         }
     }
 
+    // postorder traversal
     pub fn uses_postorder_with<'a, F: FnMut(Inst) -> bool>(
         &'a self,
         val: Value,
@@ -155,174 +163,44 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that interact with values. These are just wrappers around functions defined for
-/// `DfgValues` for convenience
-impl DataFlowGraph {
-    /// Allocate an extended value entry.
-    pub fn make_param(&mut self, param: Param) -> Value {
-        self.values.make_param(param)
-    }
+pub struct DisplayInst<'a>(&'a DataFlowGraph, Inst);
 
-    /// Get the total number of values.
-    pub fn num_values(&self) -> usize {
-        self.values.num()
-    }
+impl<'a> fmt::Display for DisplayInst<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let dfg = self.0;
+        let inst = self.1;
 
-    /// Get an iterator over all values.
-    pub fn values(&self) -> impl Iterator<Item = Value> + ExactSizeIterator {
-        self.values.iter()
-    }
-
-    /// Check if a value reference is valid.
-    pub fn is_value_valid(&self, v: Value) -> bool {
-        self.values.is_valid(v)
-    }
-
-    /// Get the definition of a value.
-    ///
-    /// This is either the instruction that defined it or the Block that has the value as an
-    /// parameter.
-    #[inline]
-    pub fn value_def(&self, v: Value) -> ValueDef {
-        self.values.def(v)
-    }
-
-    pub fn tag(&self, val: Value) -> Option<Tag> {
-        self.values.tag(val)
-    }
-
-    pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
-        self.values.set_tag(val, tag)
-    }
-
-    /// Determine if `v` is an attached instruction result / block parameter.
-    ///
-    /// An attached value can't be attached to something else without first being detached.
-    pub fn value_attached(&self, v: Value) -> bool {
-        match self.values.defs[v].ty {
-            ValueDataType::Inst { inst, num, .. } => {
-                Some(&v) == self.insts.results(inst).get(num as usize)
+        if let Some((first, rest)) = dfg.inst_results(inst).split_first() {
+            write!(f, "{}", first)?;
+            for v in rest {
+                write!(f, ", {}", v)?;
             }
-            _ => false,
+            write!(f, " = ")?;
         }
-    }
 
-    pub fn value_dead(&self, val: Value) -> bool {
-        self.values.is_dead(val)
-    }
-
-    pub fn iconst(&mut self, val: i32) -> Value {
-        self.values.iconst(val)
-    }
-
-    pub fn f64const(&mut self, val: f64) -> Value {
-        self.values.fconst(val.into())
-    }
-
-    pub fn fconst(&mut self, val: Ieee64) -> Value {
-        self.values.fconst(val)
-    }
-
-    pub fn sconst(&mut self, val: Spur) -> Value {
-        self.values.sconst(val)
-    }
-
-    pub fn bconst(&mut self, val: bool) -> Value {
-        if val {
-            TRUE
-        } else {
-            FALSE
-        }
+        write!(f, "{}", dfg.insts[inst].opcode())?;
+        write_operands(f, dfg, inst)
     }
 }
 
-/// Routines that interact with uses. These are just wrappers around functions defined for
-/// `DfgValues` for convenience
+// Dealing with results of instructions.
 impl DataFlowGraph {
-    pub fn make_use(&mut self, val: Value, parent: Inst, parent_idx: u16) -> Use {
-        self.values.make_use(val, parent, parent_idx)
-    }
-
-    pub fn detach_use(&mut self, use_: Use) {
-        self.values.detach_use(use_, &self.insts)
-    }
-
-    pub fn make_operand(&mut self, val: Value, inst: Inst, pos: u16) {
-        let use_ = self.make_use(val, inst, pos);
-        let pos_ = self.insts.uses[inst].push(use_, &mut self.insts.use_lists);
-        debug_assert_eq!(pos as usize, pos_);
-    }
-
-    pub fn detach_operand(&mut self, inst: Inst, pos: u16) {
-        let use_ = self.operands(inst)[pos as usize];
-        self.values.detach_use(use_, &self.insts)
-    }
-
-    pub fn attach_operand(&mut self, inst: Inst, pos: u16) {
-        let use_ = self.insts.uses[inst].as_slice(&self.insts.use_lists)[pos as usize];
-        let val = self.insts.args(inst)[pos as usize];
-        self.values.attach_use(use_, val);
-    }
-
-    pub fn set_operand_value(&mut self, val: Value, inst: Inst, pos: u16) {
-        let use_ = self.insts.uses[inst].as_slice(&self.insts.use_lists)[pos as usize];
-        self.use_set_value(use_, val)
-    }
-
-    pub fn attach_use(&mut self, use_: Use, val: Value) {
-        self.values.attach_use(use_, val);
-    }
-
-    pub fn is_use_detachted(&self, use_: Use) -> bool {
-        self.values.is_use_detachted(use_)
-    }
-
-    pub fn uses(&self, value: Value) -> UseIter<'_> {
-        self.values.uses(value)
-    }
-
-    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
-        self.values.uses_double_ended(value)
-    }
-
-    pub fn uses_head_cursor(&self, value: Value) -> UseCursor {
-        self.values.uses_head_cursor(value)
-    }
-
-    pub fn uses_tail_cursor(&self, value: Value) -> UseCursor {
-        self.values.uses_tail_cursor(value)
-    }
-
-    pub fn use_to_value(&self, use_: Use) -> Value {
-        self.values.use_to_value(use_, &self.insts)
-    }
-
-    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
-        self.values.use_to_operand(use_)
-    }
-
-    pub fn use_to_value_mut(&mut self, use_: Use) -> &mut Value {
-        self.values.use_to_value_mut(use_, &mut self.insts)
-    }
-}
-
-impl DataFlowGraph {
-    /// Returns whether an instructions is save to remove (none of its results are used anywhere)
+    /// An instruction is safe to remove if none of its results is used anywhere.
     pub fn instr_safe_to_remove(&self, inst: Inst) -> bool {
         self.insts.safe_to_remove(inst, &self.values)
     }
 
-    /// Returns whether an instructions is save to remove (none of its results are used anywhere)
-    pub fn inst_dead(&self, inst: Inst, keep_branches: bool) -> bool {
-        self.insts.safe_to_remove(inst, &self.values) && !self.has_sideeffects(inst, keep_branches)
-    }
-
-    pub fn has_sideeffects(&self, inst: Inst, keep_branches: bool) -> bool {
+    pub fn has_side_effects(&self, inst: Inst, keep_branches: bool) -> bool {
         match self.insts[inst] {
             InstructionData::Branch { .. } | InstructionData::Jump { .. } => keep_branches,
-            InstructionData::Call { func_ref, .. } => self.signatures[func_ref].has_sideeffects,
+            InstructionData::Call { func_ref, .. } => self.signatures[func_ref].has_side_effects,
             _ => false,
         }
+    }
+
+    /// A instruction is dead if it is safe to remove and has no side effects.
+    pub fn instr_dead(&self, inst: Inst, keep_branches: bool) -> bool {
+        self.insts.safe_to_remove(inst, &self.values) && !self.has_side_effects(inst, keep_branches)
     }
 
     /// Get all value arguments on `inst` as a slice.
@@ -383,29 +261,147 @@ impl DataFlowGraph {
     }
 }
 
+/// Routines that interact with values.
+///
+/// These are just wrappers around functions defined for `DfgValues` for convenience
 impl DataFlowGraph {
-    pub fn make_invalid_value(&mut self) -> Value {
-        self.values.make(ValueDataType::Invalid, None)
+    pub fn num_values(&self) -> usize {
+        self.values.num()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = Value> + ExactSizeIterator {
+        self.values.iter()
+    }
+
+    pub fn value_is_valid(&self, v: Value) -> bool {
+        self.values.is_valid(v)
+    }
+
+    /// Get the definition source of a value.
+    #[inline]
+    pub fn value_def(&self, v: Value) -> ValueDef {
+        self.values.def(v)
+    }
+
+    pub fn tag(&self, val: Value) -> Option<Tag> {
+        self.values.tag(val)
+    }
+
+    pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
+        self.values.set_tag(val, tag)
+    }
+
+    /// A value is attached if it is an instruction result or a function parameter.
+    ///
+    /// An attached value can't be attached to something else without first being detached.
+    pub fn value_attached(&self, v: Value) -> bool {
+        match self.values.defs[v].ty {
+            ValueDataType::Inst { inst, num, .. } => {
+                Some(&v) == self.insts.results(inst).get(num as usize)
+            }
+            _ => false,
+        }
+    }
+
+    pub fn value_dead(&self, val: Value) -> bool {
+        self.values.is_dead(val)
     }
 }
 
-/// Object that can display an instruction.
-pub struct DisplayInst<'a>(&'a DataFlowGraph, Inst);
+/// Create values.
+impl DataFlowGraph {
+    pub fn make_param(&mut self, param: Param) -> Value {
+        self.values.make_param(param)
+    }
 
-impl<'a> fmt::Display for DisplayInst<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let dfg = self.0;
-        let inst = self.1;
+    pub fn make_invalid_value(&mut self) -> Value {
+        self.values.make_invalid_value()
+    }
 
-        if let Some((first, rest)) = dfg.inst_results(inst).split_first() {
-            write!(f, "{}", first)?;
-            for v in rest {
-                write!(f, ", {}", v)?;
-            }
-            write!(f, " = ")?;
-        }
+    pub fn iconst(&mut self, val: i32) -> Value {
+        self.values.iconst(val)
+    }
 
-        write!(f, "{}", dfg.insts[inst].opcode())?;
-        write_operands(f, dfg, inst)
+    pub fn f64const(&mut self, val: f64) -> Value {
+        self.values.fconst(val.into())
+    }
+
+    pub fn fconst(&mut self, val: Ieee64) -> Value {
+        self.values.fconst(val)
+    }
+
+    pub fn sconst(&mut self, val: Spur) -> Value {
+        self.values.sconst(val)
+    }
+}
+
+/// Routines that interact with uses.
+///
+/// These are just wrappers around functions defined for `DfgValues` for convenience
+impl DataFlowGraph {
+    pub fn make_use(&mut self, val: Value, parent: Inst, parent_idx: u16) -> Use {
+        self.values.make_use(val, parent, parent_idx)
+    }
+
+    pub fn detach_use(&mut self, use_: Use) {
+        self.values.detach_use(use_, &self.insts)
+    }
+
+    pub fn make_operand(&mut self, val: Value, inst: Inst, pos: u16) {
+        let use_ = self.make_use(val, inst, pos);
+        let pos_ = self.insts.uses[inst].push(use_, &mut self.insts.use_lists);
+        debug_assert_eq!(pos as usize, pos_);
+    }
+
+    pub fn detach_operand(&mut self, inst: Inst, pos: u16) {
+        let use_ = self.operands(inst)[pos as usize];
+        self.values.detach_use(use_, &self.insts)
+    }
+
+    pub fn attach_operand(&mut self, inst: Inst, pos: u16) {
+        let use_ = self.insts.uses[inst].as_slice(&self.insts.use_lists)[pos as usize];
+        let val = self.insts.args(inst)[pos as usize];
+        self.values.attach_use(use_, val);
+    }
+
+    pub fn set_operand_value(&mut self, val: Value, inst: Inst, pos: u16) {
+        let use_ = self.insts.uses[inst].as_slice(&self.insts.use_lists)[pos as usize];
+        self.use_set_value(use_, val)
+    }
+
+    pub fn attach_use(&mut self, use_: Use, val: Value) {
+        self.values.attach_use(use_, val);
+    }
+
+    pub fn is_use_detached(&self, use_: Use) -> bool {
+        self.values.is_use_detached(use_)
+    }
+
+    pub fn uses(&self, value: Value) -> UseIter<'_> {
+        self.values.uses(value)
+    }
+
+    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
+        self.values.uses_double_ended(value)
+    }
+
+    pub fn uses_head_cursor(&self, value: Value) -> UseCursor {
+        self.values.uses_head_cursor(value)
+    }
+
+    pub fn uses_tail_cursor(&self, value: Value) -> UseCursor {
+        self.values.uses_tail_cursor(value)
+    }
+
+    pub fn use_to_value(&self, use_: Use) -> Value {
+        self.values.use_to_value(use_, &self.insts)
+    }
+
+    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
+        self.values.use_to_operand(use_)
+    }
+
+    pub fn use_to_value_mut(&mut self, use_: Use) -> &mut Value {
+        self.values.use_to_value_mut(use_, &mut self.insts)
     }
 }

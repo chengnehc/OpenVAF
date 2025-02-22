@@ -1,12 +1,12 @@
 use std::borrow::Borrow;
 use std::mem::{self, take};
 use std::slice;
-
 use stdx::packed_option::PackedOption;
 
-use crate::dfg::values::DfgValues;
-use crate::dfg::DfgInsructions;
 use crate::{DataFlowGraph, Inst, Use, Value};
+
+use super::instructions::DfgInsts;
+use super::values::DfgValues;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct UseData {
@@ -18,29 +18,33 @@ pub struct UseData {
 }
 
 impl Use {
-    pub fn prev(self, dfg: &DfgValues) -> Option<Use> {
-        dfg.uses[self].prev.expand()
+    pub fn prev(self, values: &DfgValues) -> Option<Use> {
+        values.uses[self].prev.expand()
     }
 
-    pub fn next(self, dfg: &DfgValues) -> Option<Use> {
-        dfg.uses[self].next.expand()
+    pub fn next(self, values: &DfgValues) -> Option<Use> {
+        values.uses[self].next.expand()
     }
 
     pub fn to_value(self, dfg: &DataFlowGraph) -> Value {
         dfg.use_to_value(self)
     }
 
-    pub fn set_value(self, dfg: &mut DataFlowGraph, val: Value) {
-        dfg.use_set_value(self, val)
-    }
+    /*
+        pub fn set_value(self, dfg: &mut DataFlowGraph, val: Value) {
+            dfg.use_set_value(self, val)
+        }
+    */
 
-    pub fn into_cursor(self) -> UseCursor {
-        UseCursor { curr: Some(self) }
-    }
+    /*
+        pub fn into_cursor(self) -> UseCursor {
+            UseCursor { curr: Some(self) }
+        }
 
-    pub fn into_iter<D: Borrow<DfgValues>>(self, dfg: &D) -> UseIter<'_> {
-        self.into_cursor().into_iter(dfg)
-    }
+        pub fn into_iter<D: Borrow<DfgValues>>(self, dfg: &D) -> UseIter<'_> {
+            self.into_cursor().into_iter(dfg)
+        }
+    */
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
@@ -116,7 +120,6 @@ impl Iterator for InstUseIter<'_> {
                 }
             }
         }
-
         res
     }
 }
@@ -185,12 +188,12 @@ impl DfgValues {
         use_
     }
 
-    pub fn detach_operand(&mut self, inst: Inst, arg: u16, insts: &DfgInsructions) {
+    pub fn detach_operand(&mut self, inst: Inst, arg: u16, insts: &DfgInsts) {
         let use_ = insts.operands(inst)[arg as usize];
         self.detach_use(use_, insts)
     }
 
-    pub fn detach_use(&mut self, use_: Use, insts: &DfgInsructions) {
+    pub fn detach_use(&mut self, use_: Use, insts: &DfgInsts) {
         let prev = take(&mut self.uses[use_].prev);
         let next = take(&mut self.uses[use_].next);
 
@@ -224,7 +227,7 @@ impl DfgValues {
 
     pub fn attach_use(&mut self, use_: Use, val: Value) {
         debug_assert!(
-            self.is_use_detachted(use_),
+            self.is_use_detached(use_),
             "use_ must be detached from old value before being added back"
         );
         let data = &mut self.uses[use_];
@@ -239,7 +242,7 @@ impl DfgValues {
         self.defs[val].uses_head = use_.into();
     }
 
-    pub fn is_use_detachted(&self, use_: Use) -> bool {
+    pub fn is_use_detached(&self, use_: Use) -> bool {
         !self.uses[use_].attached
     }
 
@@ -263,12 +266,12 @@ impl DfgValues {
         self.defs[value].uses_tail.into()
     }
 
-    pub fn use_to_value(&self, use_: Use, insts: &DfgInsructions) -> Value {
+    pub fn use_to_value(&self, use_: Use, insts: &DfgInsts) -> Value {
         let data = self.uses[use_];
         insts.args(data.parent)[data.parent_idx as usize]
     }
 
-    pub fn use_to_value_mut<'a>(&self, use_: Use, insts: &'a mut DfgInsructions) -> &'a mut Value {
+    pub fn use_to_value_mut<'a>(&self, use_: Use, insts: &'a mut DfgInsts) -> &'a mut Value {
         let data = self.uses[use_];
         &mut insts.args_mut(data.parent)[data.parent_idx as usize]
     }
@@ -277,42 +280,42 @@ impl DfgValues {
 impl DataFlowGraph {
     /// Turn a value into an alias of another.
     ///
-    /// Change the `dest` value to behave as an alias of `src`. This means that all uses of `dest`
+    /// Change the `dst` value to behave as an alias of `src`. This means that all uses of `dst`
     /// will behave as if they used that value `src`.
     ///
-    /// The `dest` value can't be attached to an instruction or block.
+    /// The `dst` value can't be attached to an instruction or block.
     ///
     /// # Note
-    /// Calling this value with `dest` == `src` will cause incorrect results
-    pub fn replace_uses(&mut self, dest: Value, src: Value) {
-        debug_assert_ne!(dest, src);
+    /// Calling this value with `dst` == `src` will cause incorrect results
+    pub fn replace_uses(&mut self, dst: Value, src: Value) {
+        debug_assert_ne!(dst, src);
 
         if self.values.tag(src).is_none() {
-            self.values.set_tag(src, self.values.tag(dest))
+            self.values.set_tag(src, self.values.tag(dst))
         }
 
         // replace values in instructions
-        let mut cursor = self.values.uses_head_cursor(dest);
+        let mut cursor = self.values.uses_head_cursor(dst);
         while let Some(use_) = cursor.advance(&self.values) {
             *self.use_to_value_mut(use_) = src;
         }
 
         // Update use list
-        if let Some(new_head) = self.values.defs[dest].uses_head.take() {
+        if let Some(new_head) = self.values.defs[dst].uses_head.take() {
             if let Some(old_head) = self.values.defs[src].uses_head.expand() {
-                let old_tail = self.values.defs[dest].uses_tail.unwrap();
+                let old_tail = self.values.defs[dst].uses_tail.unwrap();
                 self.values.uses[old_tail].next = old_head.into();
                 self.values.uses[old_head].prev = old_tail.into();
             } else {
-                self.values.defs[src].uses_tail = self.values.defs[dest].uses_tail;
+                self.values.defs[src].uses_tail = self.values.defs[dst].uses_tail;
             }
-            self.values.defs[dest].uses_tail = None.into();
+            self.values.defs[dst].uses_tail = None.into();
             self.values.defs[src].uses_head = new_head.into();
         }
     }
 
     pub fn use_set_value(&mut self, use_: Use, val: Value) {
-        debug_assert!(!self.is_use_detachted(use_));
+        debug_assert!(!self.is_use_detached(use_));
         self.values.detach_use(use_, &self.insts);
         let data = self.values.uses[use_];
         self.insts.args_mut(data.parent)[data.parent_idx as usize] = val;
