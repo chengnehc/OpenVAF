@@ -9,6 +9,7 @@ use vfs::FileId;
 use crate::syntax_node::VerilogALanguage;
 use crate::{SyntaxError, SyntaxKind, TextRange, TextSize, T};
 
+// TODO(JW) refactor the tree builder
 pub(crate) struct SyntaxTreeBuilder<'a> {
     tokens: &'a [Token],
     text_pos: TextSize,
@@ -38,6 +39,23 @@ enum State {
 }
 
 impl<'a> SyntaxTreeBuilder<'a> {
+    pub(super) fn finish(
+        mut self,
+    ) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContextId, TextSize)>) {
+        match mem::replace(&mut self.state, State::Normal) {
+            State::PendingFinish => {
+                self.eat_trivia();
+                self.inner.finish_node()
+            }
+            State::PendingStart | State::Normal => unreachable!(),
+        }
+        let start = self.ranges.last().map_or(0.into(), |(range, _, _)| range.end());
+        let range = TextRange::new(start, self.text_pos);
+        self.ranges.push((range, self.current_range.ctx, self.current_range.range.start()));
+
+        (self.inner.finish(), self.errors, self.ranges)
+    }
+
     pub(super) fn token(&mut self, kind: SyntaxKind) {
         match mem::replace(&mut self.state, State::Normal) {
             State::PendingStart => unreachable!(),
@@ -174,22 +192,6 @@ impl<'a> SyntaxTreeBuilder<'a> {
             errors: Vec::new(),
             last_error: None,
         }
-    }
-
-    pub(super) fn finish(
-        mut self,
-    ) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContextId, TextSize)>) {
-        match mem::replace(&mut self.state, State::Normal) {
-            State::PendingFinish => {
-                self.eat_trivia();
-                self.inner.finish_node()
-            }
-            State::PendingStart | State::Normal => unreachable!(),
-        }
-        let start = self.ranges.last().map_or(0.into(), |(range, _, _)| range.end());
-        let range = TextRange::new(start, self.text_pos);
-        self.ranges.push((range, self.current_range.ctx, self.current_range.range.start()));
-        (self.inner.finish(), self.errors, self.ranges)
     }
 
     fn eat_trivia(&mut self) {

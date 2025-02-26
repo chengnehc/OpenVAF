@@ -22,11 +22,36 @@ pub use error::SyntaxError;
 pub use output::{Output, Step};
 pub(crate) use token_set::TokenSet;
 
+/// The parser doesn't have access to the *text* of the tokens, and makes
+/// decisions based solely on their classification(kind).
+///
+/// Unlike tokens produced by the lexer, the input `tokens` doesn't include
+/// trivia (whitespace and comments).
 pub fn parse(tokens: &[SyntaxKind]) -> Output {
     let mut p = parser::Parser::new(tokens);
+
+    // source file is the only entry point of the parser
     grammar::source_file(&mut p);
     let events = p.finish();
-    event::process(events)
+    let output = event::process(events);
+
+    if cfg!(debug_assertions) {
+        let mut depth = 0;
+        let mut first = true;
+        for step in output.iter() {
+            assert!(depth > 0 || first);
+            first = false;
+            match step {
+                Step::Enter { .. } => depth += 1,
+                Step::Exit => depth -= 1,
+                Step::Token { .. } | Step::Error { .. } => (),
+            }
+        }
+        assert!(!first, "no tree at all");
+        assert_eq!(depth, 0, "unbalanced tree");
+    }
+
+    output
 }
 
 /* JW: not used.

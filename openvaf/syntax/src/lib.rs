@@ -225,9 +225,9 @@ impl SourceFile {
         preprocess: &Preprocess,
     ) -> Parse<SourceFile> {
         let (tree, errors, ctx_map) = parsing::parse_text(db, root_file, preprocess);
-        let root = SyntaxNode::new_root(tree.clone());
+        // let root = SyntaxNode::new_root(tree.clone());
+        // assert_eq!(root.kind(), SyntaxKind::SOURCE_FILE);
 
-        assert_eq!(root.kind(), SyntaxKind::SOURCE_FILE);
         Parse::new(tree, errors, ctx_map)
     }
 }

@@ -31,6 +31,10 @@ use stmts::{stmt, stmt_with_attrs};
 
 const TYPE_TS: TokenSet = TokenSet::new(&[T![real], T![integer], T![string]]);
 
+/// The top entry point of the parser is always a source file.
+///
+/// The root items of a source file must be either `discipline`, `nature`
+/// or `module` declaration.
 pub(crate) fn source_file(p: &mut Parser) {
     let m = p.start();
     let mut error_range: Option<CompletedMarker> = None;
@@ -74,10 +78,8 @@ pub(crate) fn source_file(p: &mut Parser) {
     m.complete(p, SOURCE_FILE);
 }
 
-// TODO(JW): does start then abandon undermine performance?
-// is testing whether the parser is at some token first more idiomatic?
-
 // start anyway, complete or abandon after
+// TODO(JW): does this undermine performance?
 fn ty(p: &mut Parser) {
     let m = p.start();
     if p.expect_ts(TYPE_TS) {

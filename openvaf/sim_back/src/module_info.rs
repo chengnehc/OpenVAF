@@ -21,7 +21,7 @@ pub fn collect_modules(
     let cu = db.compilation_unit();
     let name = cu.name(db);
 
-    cu.diagnostics(db, sink);
+    cu.collect_diagnostics(db, sink);
     if sink.summary(&name) {
         return None;
     }
@@ -58,7 +58,7 @@ impl ModuleInfo {
             IndexMap::default();
         let mut op_vars = IndexMap::default();
 
-        let ast = cu.ast(db);
+        let ast = cu.ast_cache(db);
 
         let mut resolved_attrs = AHashSet::new();
         let mut declarations = module.rec_declarations(db);

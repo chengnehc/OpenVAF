@@ -1,3 +1,5 @@
+//! Recursive declarations (?)
+
 use std::iter::once;
 use std::mem::transmute;
 use std::ops::Deref;

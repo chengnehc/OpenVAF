@@ -1,7 +1,4 @@
-//! Instruction formats and opcodes.
-//!
-//! The `instructions` module contains definitions for instruction formats, opcodes, and the
-//! in-memory representation of IR instructions.
+//! Definitions for instruction formats, opcodes, and the in-memory representation of IR instructions.
 //!
 //! A large part of this module is auto-generated.
 
@@ -14,12 +11,12 @@ use crate::entities::{Block, FuncRef, Use, Value};
 mod generated;
 pub use generated::*;
 
-/// Some instructions use an external list of argument values because there is not enough space in
-/// the 16-byte `InstructionData` struct.
+/// Some instructions use an external list of argument values to fit in the very
+/// compact 16-byte structure `InstructionData`.
 pub type ValueList = list_pool::ListHandle<Value>;
 pub type UseList = list_pool::ListHandle<Use>;
 
-/// Memory pool for holding value lists. See `ValueList`.
+/// Memory pool for holding `ValueList`s.
 pub type ValueListPool = list_pool::ListPool<Value>;
 pub type UseListPool = list_pool::ListPool<Use>;
 
@@ -28,9 +25,9 @@ pub enum InstructionData {
     Unary { opcode: Opcode, arg: Value },
     Binary { opcode: Opcode, args: [Value; 2] },
     Branch { cond: Value, then_dst: Block, else_dst: Block, loop_entry: bool },
-    PhiNode(PhiNode), // for phi nodes, we store blocks as a ValueList so that we do not need a second pool
     Jump { destination: Block },
     Call { func_ref: FuncRef, args: ValueList },
+    PhiNode(PhiNode),
 }
 
 impl From<PhiNode> for InstructionData {
@@ -345,9 +342,10 @@ impl OpcodeConstraints {
 // PHI nodes have to be explicitly created.
 //
 
-/// A map of Phi
+// TODO(JW): maybe refactor this?
+/// A map from the source `Block` to the position of its corresponding `Value` in the `ValueList`
 pub type PhiMap = bforest::Map<Block, u32>;
-/// A memory pool for a forest of Phi
+/// A memory pool for `PhiMap`s
 pub type PhiForest = bforest::MapForest<Block, u32>;
 
 #[derive(Clone, Debug)]
@@ -357,26 +355,6 @@ pub struct PhiNode {
 }
 
 impl PhiNode {
-    #[inline]
-    pub fn eq(&self, other: &Self, val_pool: &ValueListPool, forest: &PhiForest) -> bool {
-        let l_edges = self.edges(val_pool, forest);
-        let r_edges = other.edges(val_pool, forest);
-        l_edges.eq(r_edges)
-    }
-
-    #[inline]
-    pub fn hash<H: std::hash::Hasher>(
-        &self,
-        state: &mut H,
-        val_pool: &ValueListPool,
-        forest: &PhiForest,
-    ) {
-        for (block, val) in self.edges(val_pool, forest) {
-            block.hash(state);
-            val.hash(state)
-        }
-    }
-
     #[inline]
     pub fn edges<'a>(&self, value_lists: &'a ValueListPool, forest: &'a PhiForest) -> PhiEdges<'a> {
         let args = self.args.as_slice(value_lists);
@@ -395,7 +373,7 @@ impl PhiNode {
     }
 
     #[inline]
-    pub fn edge_operand(&self, block: Block, forest: &PhiForest) -> Option<u32> {
+    fn edge_operand(&self, block: Block, forest: &PhiForest) -> Option<u32> {
         self.blocks.get(block, forest, &())
     }
 
@@ -411,6 +389,26 @@ impl PhiNode {
         let mut blocks = PhiMap::new();
         blocks.insert_sorted_iter(self.blocks.iter(forest), dst_forest, &(), |_, i| i);
         Self { args, blocks }
+    }
+
+    #[inline]
+    pub fn eq(&self, other: &Self, val_pool: &ValueListPool, forest: &PhiForest) -> bool {
+        let l_edges = self.edges(val_pool, forest);
+        let r_edges = other.edges(val_pool, forest);
+        l_edges.eq(r_edges)
+    }
+
+    #[inline]
+    pub fn hash<H: std::hash::Hasher>(
+        &self,
+        state: &mut H,
+        val_pool: &ValueListPool,
+        forest: &PhiForest,
+    ) {
+        for (block, val) in self.edges(val_pool, forest) {
+            block.hash(state);
+            val.hash(state)
+        }
     }
 }
 

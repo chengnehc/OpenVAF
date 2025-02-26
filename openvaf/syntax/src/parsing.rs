@@ -16,14 +16,15 @@ pub(crate) fn parse_text(
     root_file: FileId,
     Preprocess { tokens, source_map, .. }: &Preprocess,
 ) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContextId, TextSize)>) {
-    // initialize tree builder
     let mut builder = SyntaxTreeBuilder::new(sources, root_file, tokens, source_map);
-    // filter out trivia: whitespaces/comments
+
+    // filter out trivia(whitespaces/comments)
     let tokens: Vec<_> = tokens
         .iter()
         .filter_map(|token| token.kind.is_non_trivia().then_some(token.kind))
         .collect();
-    // parse and build
+
+    // parse and build the tree
     for step in parser::parse(&tokens).iter() {
         match step {
             parser::Step::Token { kind } => builder.token(kind),

@@ -223,7 +223,7 @@ impl ControlFlowGraph {
     /// Recompute the control flow graph of `block`.
     ///
     /// This is for use after modifying instructions within a specific block. It recomputes all edges
-    /// from `block` while leaving edges to `block` intact. Its functionality a subset of that of the
+    /// from `block` while leaving edges to `block` intact. It functions as a subset of that of the
     /// more expensive `compute`, and should be used when we know we don't need to recompute the CFG
     /// from scratch, but rather that our changes have been restricted to specific blocks.
     pub fn recompute_block(&mut self, func: &Function, block: Block) {
