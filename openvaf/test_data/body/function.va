@@ -8,7 +8,7 @@ module test;
         input x;
         input y;
         real x, y;
-        begin
+        begin: baz
             test = x * y;
         end
     endfunction

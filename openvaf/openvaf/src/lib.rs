@@ -111,7 +111,7 @@ pub fn expand(opts: &Opts) -> Result<CompilationTermination> {
     let input =
         opts.input.canonicalize().with_context(|| format!("failed to resolve {}", opts.input))?;
     let input = AbsPathBuf::assert(input);
-    let db = CompilationDB::new_fs(input, &opts.include, &opts.defines, &opts.lints)?;
+    let db = CompilationDB::new_from_fs(input, &opts.include, &opts.defines, &opts.lints)?;
     let cu = db.compilation_unit();
 
     let preprocess = cu.preprocess(&db);
@@ -159,7 +159,7 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
     let input =
         opts.input.canonicalize().with_context(|| format!("failed to resolve {}", opts.input))?;
     let input = AbsPathBuf::assert(input);
-    let db = CompilationDB::new_fs(input, &opts.include, &opts.defines, &opts.lints)?;
+    let db = CompilationDB::new_from_fs(input, &opts.include, &opts.defines, &opts.lints)?;
 
     let lib_file = match &opts.output {
         CompilationDestination::Cache { cache_dir } => {

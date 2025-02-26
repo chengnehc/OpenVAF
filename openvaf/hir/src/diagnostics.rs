@@ -24,7 +24,7 @@ pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl Dia
     let item_tree = db.item_tree(root_file);
     let def_map = db.root_def_map(root_file);
 
-    // JW: does the order of collecting `def_map` and
+    // TODO(JW): does the order of collecting `def_map` and `type` diagnostics matter?
     collect_def_map(db, root_file, &def_map, sink);
     collect_type(db, root_file, &item_tree, sink);
 

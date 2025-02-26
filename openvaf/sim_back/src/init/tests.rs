@@ -13,7 +13,7 @@ use crate::init::Initialization;
 use crate::topology::Topology;
 
 fn run_test(src: &str) {
-    let db = CompilationDB::new_virtual(src).unwrap();
+    let db = CompilationDB::new_from_vfs(src).unwrap();
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut cx = Context::new(&db, &mut literals, &module);

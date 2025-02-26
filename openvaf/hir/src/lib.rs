@@ -10,8 +10,6 @@
 
 use std::sync::Arc;
 
-use basedb::diagnostics::sink::Buffer;
-use basedb::diagnostics::ConsoleSink;
 use basedb::{BaseDB, FileId};
 use hir_def::db::HirDefDB;
 use hir_def::nameres::{DefMap, LocalScopeId, ScopeDefItem};
@@ -57,10 +55,10 @@ pub mod signatures {
     pub use hir_ty::types::{BOOL_EQ, INT_EQ, INT_OP, REAL_EQ, REAL_OP, STR_EQ};
 }
 
-/// A compilation unit is represented as a root file.
-///
-/// A physical file may be part of multiple root files through
-/// `include` statements. This is however not the case here.
+/// A compilation unit is represented by a root file (entry file),
+/// while as a result of '`include' statements:
+/// - a compilation unit may contain multiple physical files
+/// - a physical file may be a part of multiple compilation units
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompilationUnit {
     root_file: FileId,
@@ -75,19 +73,18 @@ impl CompilationUnit {
         db.file_path(self.root_file).name().unwrap_or_else(|| String::from("~.va"))
     }
 
-    pub fn diagnostics(self, db: &CompilationDB, sink: &mut impl DiagnosticSink) {
-        diagnostics::collect(db, self.root_file, sink)
+    pub fn preprocess(&self, db: &CompilationDB) -> syntax::Preprocess {
+        db.preprocess(self.root_file)
     }
 
-    pub fn test_diagnostics(&self, db: &CompilationDB) -> String {
-        let mut buf = Buffer::no_color();
-        {
-            let mut sink = ConsoleSink::buffer(db, &mut buf);
-            sink.annonymize_paths();
-            self.diagnostics(db, &mut sink);
-        }
-        let data = buf.into_inner();
-        String::from_utf8(data).unwrap()
+    /// Create an ast cache to extract information of attributes, used by simulator backend
+    pub fn ast_cache(&self, db: &CompilationDB) -> attributes::AstCache {
+        attributes::AstCache::new(db, self.root_file)
+    }
+
+    /// Collect all diagnostics to given `sink`.
+    pub fn collect_diagnostics(self, db: &CompilationDB, sink: &mut impl DiagnosticSink) {
+        diagnostics::collect(db, self.root_file, sink)
     }
 
     pub fn modules(self, db: &CompilationDB) -> Vec<Module> {
@@ -105,12 +102,20 @@ impl CompilationUnit {
             .collect()
     }
 
-    pub fn ast(&self, db: &CompilationDB) -> attributes::AstCache {
-        attributes::AstCache::new(db, self.root_file)
-    }
+    /// Collect all diagnostics to console sink and generate diagnostics for testing.
+    pub fn test_diagnostics(&self, db: &CompilationDB) -> String {
+        use basedb::diagnostics::sink::Buffer;
+        use basedb::diagnostics::ConsoleSink;
 
-    pub fn preprocess(&self, db: &CompilationDB) -> syntax::Preprocess {
-        db.preprocess(self.root_file)
+        let mut buf = Buffer::no_color();
+        {
+            let mut sink = ConsoleSink::buffer(db, &mut buf);
+            sink.annonymize_paths();
+            self.collect_diagnostics(db, &mut sink);
+        }
+        let data = buf.into_inner();
+
+        String::from_utf8(data).unwrap()
     }
 }
 

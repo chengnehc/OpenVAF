@@ -13,7 +13,7 @@ fn invalid_attr() {
             aliasparam alias=foo;
         endmodule
     "#};
-    let db = CompilationDB::new_virtual(src).unwrap();
+    let db = CompilationDB::new_from_vfs(src).unwrap();
     let mut buf = Buffer::no_color();
     {
         let mut sink = ConsoleSink::buffer(&db, &mut buf);
@@ -78,7 +78,7 @@ fn parameters() {
             (* type="model" *) parameter real module_param=3.0;
         endmodule
     "#};
-    let db = CompilationDB::new_virtual(src).unwrap();
+    let db = CompilationDB::new_from_vfs(src).unwrap();
     let modules = super::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
     assert_eq!(modules.len(), 1);
     let params: Vec<_> = modules[0].params.iter().map(|(k, v)| (k.name(&db), v)).collect();
@@ -133,7 +133,7 @@ fn opvars() {
             (* desc="hmm" *) real desc_;
         endmodule
     "#};
-    let db = CompilationDB::new_virtual(src).unwrap();
+    let db = CompilationDB::new_from_vfs(src).unwrap();
     let modules = super::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
     assert_eq!(modules.len(), 1);
     let params: Vec<_> = modules[0].op_vars.iter().map(|(k, v)| (k.name(&db), v)).collect();

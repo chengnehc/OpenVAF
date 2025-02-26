@@ -1,0 +1,14 @@
+SOURCE_FILE@0..147
+  ERROR@0..147
+    ERROR@0..0
+    COMMENT@0..17 "// A line comment"
+    WHITESPACE@17..19 "\n\n"
+    COMMENT@19..40 "/* A block comment */"
+    WHITESPACE@40..42 "\n\n"
+    COMMENT@42..98 "/*\n    Another block  ..."
+    WHITESPACE@98..100 "\n\n"
+    COMMENT@100..144 "/* /* Nested block co ..."
+    WHITESPACE@144..145 " "
+    STAR@145..146 "*"
+    SLASH@146..147 "/"
+error : unexpected token '*'; expected 'discipline', 'nature' or 'module'

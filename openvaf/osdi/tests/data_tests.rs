@@ -13,7 +13,7 @@ use target::spec::Target;
 
 fn test_compile(root_file: &Path) {
     let root_file = AbsPathBuf::assert(root_file.canonicalize().unwrap());
-    let db = CompilationDB::new_fs(root_file, &[], &[], &[]).unwrap();
+    let db = CompilationDB::new_from_fs(root_file, &[], &[], &[]).unwrap();
     let modules = collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
     let target = Target::host_target().unwrap();
     let back = LLVMBackend::new(&[], &target, "native".to_owned(), &[]);

@@ -1,0 +1,187 @@
+SOURCE_FILE@0..386
+  WHITESPACE@0..1 "\n"
+  WHITESPACE@1..2 "\n"
+  WHITESPACE@2..3 "\n"
+  WHITESPACE@3..4 "\n"
+  WHITESPACE@4..5 "\n"
+  WHITESPACE@5..6 "\n"
+  WHITESPACE@6..7 "\n"
+  WHITESPACE@7..8 "\n"
+  WHITESPACE@8..9 "\n"
+  WHITESPACE@9..10 "\n"
+  WHITESPACE@10..11 "\n"
+  WHITESPACE@11..12 "\n"
+  WHITESPACE@12..13 "\n"
+  WHITESPACE@13..15 "\n\n"
+  MODULE_DECL@15..386
+    MODULE_KW@15..21 "module"
+    WHITESPACE@21..22 " "
+    NAME@22..26
+      IDENT@22..26 "test"
+    SEMICOLON@26..27 ";"
+    WHITESPACE@27..32 "\n    "
+    PARAM_DECL@32..141
+      ATTR_LIST@32..98
+        L_ATTR_PAREN@32..34 "(*"
+        WHITESPACE@34..35 " "
+        ATTR@35..46
+          NAME@35..40
+            IDENT@35..40 "units"
+          WHITESPACE@40..41 " "
+          EQ@41..42 "="
+          WHITESPACE@42..43 " "
+          LITERAL@43..46
+            STR_LIT@43..46 "\"m\""
+        COMMA@46..47 ","
+        WHITESPACE@47..48 " "
+        ATTR@48..65
+          NAME@48..52
+            IDENT@48..52 "type"
+          WHITESPACE@52..53 " "
+          EQ@53..54 "="
+          WHITESPACE@54..55 " "
+          LITERAL@55..65
+            STR_LIT@55..65 "\"instance\""
+        COMMA@65..66 ","
+        WHITESPACE@66..67 " "
+        ATTR@67..96
+          NAME@67..71
+            IDENT@67..71 "desc"
+          WHITESPACE@71..72 " "
+          EQ@72..73 "="
+          WHITESPACE@73..74 " "
+          LITERAL@74..96
+            STR_LIT@74..96 "\"Designed gate length\""
+        R_ATTR_PAREN@96..98 "*)"
+      WHITESPACE@98..99 " "
+      PARAMETER_KW@99..108 "parameter"
+      WHITESPACE@108..109 " "
+      TYPE@109..113
+        REAL_KW@109..113 "real"
+      WHITESPACE@113..114 " "
+      PARAM@114..140
+        NAME@114..115
+          IDENT@114..115 "L"
+        EQ@115..116 "="
+        WHITESPACE@116..117 " "
+        LITERAL@117..123
+          STD_REAL_NUMBER@117..123 "3.0e-8"
+        CONSTRAINT@123..140
+          FROM_KW@123..127 "from"
+          RANGE@127..140
+            L_BRACK@127..128 "["
+            LITERAL@128..134
+              STD_REAL_NUMBER@128..134 "1.0e-9"
+            COLON@134..135 ":"
+            WHITESPACE@135..136 " "
+            LITERAL@136..139
+              INF_KW@136..139 "inf"
+            R_PAREN@139..140 ")"
+      SEMICOLON@140..141 ";"
+    PARAM_DECL@141..240
+      ATTR_LIST@141..203
+        L_ATTR_PAREN@141..143 "(*"
+        WHITESPACE@143..144 " "
+        ATTR@144..154
+          NAME@144..149
+            IDENT@144..149 "units"
+          WHITESPACE@149..150 " "
+          EQ@150..151 "="
+          WHITESPACE@151..152 " "
+          LITERAL@152..154
+            STR_LIT@152..154 "\"\""
+        COMMA@154..155 ","
+        WHITESPACE@155..156 " "
+        ATTR@156..173
+          NAME@156..160
+            IDENT@156..160 "type"
+          WHITESPACE@160..161 " "
+          EQ@161..162 "="
+          WHITESPACE@162..163 " "
+          LITERAL@163..173
+            STR_LIT@163..173 "\"instance\""
+        COMMA@173..174 ","
+        WHITESPACE@174..175 " "
+        ATTR@175..201
+          NAME@175..179
+            IDENT@175..179 "desc"
+          WHITESPACE@179..180 " "
+          EQ@180..181 "="
+          WHITESPACE@181..182 " "
+          LITERAL@182..201
+            STR_LIT@182..201 "\"Number of fingers\""
+        R_ATTR_PAREN@201..203 "*)"
+      WHITESPACE@203..204 " "
+      PARAMETER_KW@204..213 "parameter"
+      WHITESPACE@213..214 " "
+      TYPE@214..221
+        INTEGER_KW@214..221 "integer"
+      WHITESPACE@221..222 " "
+      PARAM@222..239
+        NAME@222..224
+          IDENT@222..224 "NF"
+        EQ@224..225 "="
+        WHITESPACE@225..226 " "
+        LITERAL@226..227
+          INT_NUMBER@226..227 "1"
+        CONSTRAINT@227..239
+          FROM_KW@227..231 "from"
+          RANGE@231..239
+            L_BRACK@231..232 "["
+            LITERAL@232..233
+              INT_NUMBER@232..233 "1"
+            COLON@233..234 ":"
+            WHITESPACE@234..235 " "
+            LITERAL@235..238
+              INF_KW@235..238 "inf"
+            R_PAREN@238..239 ")"
+      SEMICOLON@239..240 ";"
+    PARAM_DECL@240..377
+      ATTR_LIST@240..337
+        L_ATTR_PAREN@240..242 "(*"
+        WHITESPACE@242..243 " "
+        ATTR@243..253
+          NAME@243..248
+            IDENT@243..248 "units"
+          WHITESPACE@248..249 " "
+          EQ@249..250 "="
+          WHITESPACE@250..251 " "
+          LITERAL@251..253
+            STR_LIT@251..253 "\"\""
+        COMMA@253..254 ","
+        WHITESPACE@254..255 " "
+        ATTR@255..335
+          NAME@255..259
+            IDENT@255..259 "desc"
+          WHITESPACE@259..260 " "
+          EQ@260..261 "="
+          WHITESPACE@261..262 " "
+          LITERAL@262..335
+            STR_LIT@262..335 "\"0: SOI multi-gate; 1 ..."
+        R_ATTR_PAREN@335..337 "*)"
+      WHITESPACE@337..338 " "
+      PARAMETER_KW@338..347 "parameter"
+      WHITESPACE@347..348 " "
+      TYPE@348..355
+        INTEGER_KW@348..355 "integer"
+      WHITESPACE@355..356 " "
+      PARAM@356..376
+        NAME@356..363
+          IDENT@356..363 "BULKMOD"
+        EQ@363..364 "="
+        WHITESPACE@364..365 " "
+        LITERAL@365..366
+          INT_NUMBER@365..366 "0"
+        CONSTRAINT@366..376
+          FROM_KW@366..370 "from"
+          RANGE@370..376
+            L_BRACK@370..371 "["
+            LITERAL@371..372
+              INT_NUMBER@371..372 "0"
+            COLON@372..373 ":"
+            WHITESPACE@373..374 " "
+            LITERAL@374..375
+              INT_NUMBER@374..375 "2"
+            R_BRACK@375..376 "]"
+      SEMICOLON@376..377 ";"
+    ENDMODULE_KW@377..386 "endmodule"

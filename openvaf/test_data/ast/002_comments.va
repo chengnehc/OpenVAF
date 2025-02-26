@@ -1,0 +1,10 @@
+// A line comment
+
+/* A block comment */
+
+/*
+    Another block comment
+    with multiple lines
+ */
+
+/* /* Nested block comment is not allowed */ */

@@ -3,12 +3,13 @@ use std::path::Path;
 use basedb::diagnostics::sink::Buffer;
 use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
 use basedb::{AbsPathBuf, BaseDB, FileId, SourceDatabase, Vfs, VfsEntry, VfsPath, VfsStorage};
-use expect_test::expect_file;
 use hir_def::db::{HirDefDB, HirDefDatabase, InternDatabase};
 use hir_def::nameres::{DefMap, LocalScopeId, ScopeDefItem, ScopeOrigin};
 use hir_def::DefWithBodyId;
-use mini_harness::{harness, Result};
 use parking_lot::RwLock;
+
+use expect_test::expect_file;
+use mini_harness::{harness, Result};
 use stdx::Upcast;
 use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 
@@ -39,6 +40,7 @@ impl TestDataBase {
     pub fn root_file(&self) -> FileId {
         self.root_file.unwrap()
     }
+
     pub fn vfs(&self) -> &RwLock<Vfs> {
         self.vfs.as_ref().unwrap()
     }
@@ -93,18 +95,18 @@ impl Upcast<dyn BaseDB> for TestDataBase {
     }
 }
 
-fn integration_test(dir: &Path) -> Result {
+fn integration(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
-    let main_file = dir.join(format!("{name}.va"));
-
-    let db = TestDataBase::new_from_fs(&main_file);
+    let root_file = dir.join(format!("{name}.va"));
+    let db = TestDataBase::new_from_fs(&root_file);
     let diagnostics = db.lower_and_check();
+
     expect_file![dir.join("hir_def.log")].assert_eq(&diagnostics);
 
     Ok(())
 }
 
-fn body_test(file: &Path) -> Result {
+fn body(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let def_map = db.root_def_map(db.root_file());
 
@@ -120,28 +122,36 @@ fn body_test(file: &Path) -> Result {
             }
         }
     }
+
+    // std::fs::write(file.with_extension("body"), actual)?;
     expect_file![file.with_extension("body")].assert_eq(&actual);
 
     Ok(())
 }
 
-fn item_tree_test(file: &Path) -> Result {
+fn item_tree(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let actual = db.item_tree(db.root_file()).dump();
+
+    // std::fs::write(file.with_extension("item_tree"), actual)?;
     expect_file![file.with_extension("item_tree")].assert_eq(&actual);
+
     Ok(())
 }
 
-fn def_map_test(file: &Path) -> Result {
+fn def_map(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let actual = db.root_def_map(db.root_file()).dump(&db);
+
+    // std::fs::write(file.with_extension("def_map"), actual)?;
     expect_file![file.with_extension("def_map")].assert_eq(&actual);
+
     Ok(())
 }
 
 harness! {
-    Test::from_dir_filtered("integration", &integration_test, &Path::is_dir, &ignore_dev_tests, &project_root().join("integration_tests")),
-    Test::from_dir_filtered("body", &body_test, &is_va_file, &ignore_never, &openvaf_test_data("body")),
-    Test::from_dir_filtered("item_tree", &item_tree_test, &is_va_file, &ignore_never, &openvaf_test_data("item_tree")),
-    Test::from_dir_filtered("def_map", &def_map_test, &is_va_file, &ignore_never, &openvaf_test_data("item_tree"))
+    Test::from_dir_filtered("integration", &integration, &Path::is_dir, &ignore_dev_tests, &project_root().join("integration_tests")),
+    Test::from_dir_filtered("body", &body, &is_va_file, &ignore_never, &openvaf_test_data("body")),
+    Test::from_dir_filtered("item_tree", &item_tree, &is_va_file, &ignore_never, &openvaf_test_data("item_tree")),
+    Test::from_dir_filtered("def_map", &def_map, &is_va_file, &ignore_never, &openvaf_test_data("item_tree"))
 }

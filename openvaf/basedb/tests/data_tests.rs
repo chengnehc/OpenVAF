@@ -1,15 +1,17 @@
 use std::path::Path;
-use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 
 use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
 use basedb::{BaseDB, SourceDatabase, VfsPath, VfsStorage};
 use codespan_reporting::term::termcolor::Buffer;
-use expect_test::expect_file;
-use mini_harness::{harness, Result};
 use parking_lot::RwLock;
 use syntax::{Parse, SourceFile};
 use vfs::{AbsPathBuf, FileId, Vfs, VfsEntry};
 
+use expect_test::expect_file;
+use mini_harness::{harness, Result};
+use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
+
+// TODO:(JW) make `TestDatabase` more general
 #[salsa::database(SourceDatabase)]
 pub struct TestDataBase {
     storage: salsa::Storage<TestDataBase>,
@@ -75,7 +77,6 @@ impl VfsStorage for TestDataBase {
 fn integration(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
     let main_file = dir.join(format!("{name}.va"));
-
     let db = TestDataBase::new_from_fs(&main_file);
     let (_, actual) = db.parse_and_check();
 
@@ -93,14 +94,14 @@ fn syn_ui(file: &Path) -> Result {
     Ok(())
 }
 
-// FIXME: this test is incorrectly formed
 fn ast(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let (parse, _) = db.parse_and_check();
     let actual = parse.debug_dump();
-    // std::fs::write(file.with_extension("vast"), actual).unwrap();
 
+    // std::fs::write(file.with_extension("vast"), actual)?;
     expect_file![file.with_extension("vast")].assert_eq(&actual);
+
     Ok(())
 }
 

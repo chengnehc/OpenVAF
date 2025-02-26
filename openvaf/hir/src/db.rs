@@ -2,7 +2,6 @@ use std::intrinsics::transmute;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::{fs, io, iter};
-use stdx::Upcast;
 
 use anyhow::{bail, Result};
 use basedb::lints::{Lint, LintLevel};
@@ -23,12 +22,12 @@ pub struct CompilationDB {
     root_file: FileId,
 }
 
-impl Upcast<dyn HirDefDB> for CompilationDB {
+impl stdx::Upcast<dyn HirDefDB> for CompilationDB {
     fn upcast(&self) -> &(dyn HirDefDB + 'static) {
         self
     }
 }
-impl Upcast<dyn BaseDB> for CompilationDB {
+impl stdx::Upcast<dyn BaseDB> for CompilationDB {
     fn upcast(&self) -> &(dyn BaseDB + 'static) {
         self
     }
@@ -55,7 +54,7 @@ impl salsa::ParallelDatabase for CompilationDB {
 }
 
 impl CompilationDB {
-    pub fn new_fs(
+    pub fn new_from_fs(
         root_file: AbsPathBuf,
         include_dirs: &[AbsPathBuf],
         macro_flags: &[String],
@@ -71,10 +70,7 @@ impl CompilationDB {
         )
     }
 
-    /// Utility function for testing.
-    ///
-    /// Create a database with default settings and a single virtual root file.
-    pub fn new_virtual(contents: &str) -> Result<Self> {
+    pub fn new_from_vfs(contents: &str) -> Result<Self> {
         CompilationDB::new(
             VfsPath::new_virtual_path("/root.va".to_owned()),
             Ok(contents.as_bytes().to_owned()),
