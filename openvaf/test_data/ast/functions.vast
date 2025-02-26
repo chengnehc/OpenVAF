@@ -1,0 +1,171 @@
+SOURCE_FILE@0..332
+  MODULE_DECL@0..332
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    L_PAREN@11..12 "("
+    MODULE_PORTS@12..13
+      R_PAREN@12..13 ")"
+    SEMICOLON@13..14 ";"
+    WHITESPACE@14..23 "\n        "
+    FUNCTION@23..322
+      ANALOG_KW@23..29 "analog"
+      WHITESPACE@29..30 " "
+      FUNCTION_KW@30..38 "function"
+      WHITESPACE@38..39 " "
+      TYPE@39..43
+        REAL_KW@39..43 "real"
+      WHITESPACE@43..44 " "
+      NAME@44..53
+        IDENT@44..53 "hypsmooth"
+      SEMICOLON@53..54 ";"
+      WHITESPACE@54..67 "\n            "
+      FUNCTION_ARG@67..79
+        DIRECTION@67..72
+          INPUT_KW@67..72 "input"
+        WHITESPACE@72..73 " "
+        NAME@73..74
+          IDENT@73..74 "x"
+        WHITESPACE@74..75 " "
+        COMMA@75..76 ","
+        WHITESPACE@76..77 " "
+        NAME@77..78
+          IDENT@77..78 "c"
+        SEMICOLON@78..79 ";"
+      WHITESPACE@79..92 "\n            "
+      FUNCTION_ARG@92..105
+        DIRECTION@92..98
+          OUTPUT_KW@92..98 "output"
+        WHITESPACE@98..99 " "
+        NAME@99..100
+          IDENT@99..100 "y"
+        WHITESPACE@100..101 " "
+        COMMA@101..102 ","
+        WHITESPACE@102..103 " "
+        NAME@103..104
+          IDENT@103..104 "z"
+        SEMICOLON@104..105 ";"
+      WHITESPACE@105..118 "\n            "
+      FUNCTION_ARG@118..130
+        DIRECTION@118..123
+          INOUT_KW@118..123 "inout"
+        WHITESPACE@123..124 " "
+        NAME@124..125
+          IDENT@124..125 "m"
+        WHITESPACE@125..126 " "
+        COMMA@126..127 ","
+        WHITESPACE@127..128 " "
+        NAME@128..129
+          IDENT@128..129 "l"
+        SEMICOLON@129..130 ";"
+      WHITESPACE@130..143 "\n            "
+      VAR_DECL@143..154
+        TYPE@143..147
+          REAL_KW@143..147 "real"
+        WHITESPACE@147..148 " "
+        VAR@148..149
+          NAME@148..149
+            IDENT@148..149 "x"
+        WHITESPACE@149..150 " "
+        COMMA@150..151 ","
+        WHITESPACE@151..152 " "
+        VAR@152..153
+          NAME@152..153
+            IDENT@152..153 "c"
+        SEMICOLON@153..154 ";"
+      WHITESPACE@154..167 "\n            "
+      VAR_DECL@167..181
+        TYPE@167..174
+          INTEGER_KW@167..174 "integer"
+        WHITESPACE@174..175 " "
+        VAR@175..176
+          NAME@175..176
+            IDENT@175..176 "m"
+        WHITESPACE@176..177 " "
+        COMMA@177..178 ","
+        WHITESPACE@178..179 " "
+        VAR@179..180
+          NAME@179..180
+            IDENT@179..180 "z"
+        SEMICOLON@180..181 ";"
+      WHITESPACE@181..194 "\n            "
+      VAR_DECL@194..207
+        TYPE@194..200
+          STRING_KW@194..200 "string"
+        WHITESPACE@200..201 " "
+        VAR@201..202
+          NAME@201..202
+            IDENT@201..202 "l"
+        WHITESPACE@202..203 " "
+        COMMA@203..204 ","
+        WHITESPACE@204..205 " "
+        VAR@205..206
+          NAME@205..206
+            IDENT@205..206 "y"
+        SEMICOLON@206..207 ";"
+      WHITESPACE@207..220 "\n            "
+      BLOCK_STMT@220..302
+        BEGIN_KW@220..225 "begin"
+        WHITESPACE@225..242 "\n                "
+        ASSIGN_STMT@242..286
+          ASSIGN@242..285
+            PATH_EXPR@242..251
+              PATH@242..251
+                IDENT@242..251 "hypsmooth"
+            WHITESPACE@251..252 " "
+            EQ@252..253 "="
+            WHITESPACE@253..254 " "
+            BIN_EXPR@254..285
+              LITERAL@254..257
+                STD_REAL_NUMBER@254..257 "0.5"
+              WHITESPACE@257..258 " "
+              STAR@258..259 "*"
+              WHITESPACE@259..260 " "
+              PAREN_EXPR@260..285
+                L_PAREN@260..261 "("
+                BIN_EXPR@261..284
+                  PATH_EXPR@261..262
+                    PATH@261..262
+                      IDENT@261..262 "x"
+                  WHITESPACE@262..263 " "
+                  PLUS@263..264 "+"
+                  WHITESPACE@264..265 " "
+                  CALL@265..284
+                    PATH@265..269
+                      IDENT@265..269 "sqrt"
+                    ARG_LIST@269..284
+                      L_PAREN@269..270 "("
+                      BIN_EXPR@270..283
+                        BIN_EXPR@270..273
+                          PATH_EXPR@270..271
+                            PATH@270..271
+                              IDENT@270..271 "x"
+                          STAR@271..272 "*"
+                          PATH_EXPR@272..273
+                            PATH@272..273
+                              IDENT@272..273 "x"
+                        WHITESPACE@273..274 " "
+                        PLUS@274..275 "+"
+                        WHITESPACE@275..276 " "
+                        BIN_EXPR@276..283
+                          BIN_EXPR@276..281
+                            LITERAL@276..279
+                              STD_REAL_NUMBER@276..279 "4.0"
+                            STAR@279..280 "*"
+                            PATH_EXPR@280..281
+                              PATH@280..281
+                                IDENT@280..281 "c"
+                          STAR@281..282 "*"
+                          PATH_EXPR@282..283
+                            PATH@282..283
+                              IDENT@282..283 "c"
+                      R_PAREN@283..284 ")"
+                R_PAREN@284..285 ")"
+          SEMICOLON@285..286 ";"
+        WHITESPACE@286..299 "\n            "
+        END_KW@299..302 "end"
+      WHITESPACE@302..311 "\n        "
+      ENDFUNCTION_KW@311..322 "endfunction"
+    WHITESPACE@322..323 "\n"
+    ENDMODULE_KW@323..332 "endmodule"

@@ -11,7 +11,7 @@ use crate::{SyntaxError /*SyntaxKind*/};
 mod tree_builder;
 use tree_builder::SyntaxTreeBuilder;
 
-pub(crate) fn parse_and_build(
+pub(crate) fn parse_text(
     sources: &dyn SourceProvider,
     root_file: FileId,
     Preprocess { tokens, source_map, .. }: &Preprocess,

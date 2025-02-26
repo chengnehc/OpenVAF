@@ -70,23 +70,23 @@ AssignStmt =
   AttrList* Assign ';'?
 
 Assign =
-  lval: Expr op: ('<+' | '=') rval: Expr
+  lval:Expr op:('<+' | '=') rval:Expr
 
 IfStmt =
   AttrList* 'if' '(' condition:Expr ')'
-  then_branch: Stmt
-  ('else' else_branch: Stmt)?
+  then_branch:Stmt
+  ('else' else_branch:Stmt)?
 
 WhileStmt =
   AttrList* 'while' '(' condition:Expr ')'
-  body: Stmt
+  body:Stmt
 
 ForStmt =
-  AttrList* 'for' '(' init: Stmt ';' condition:Expr ';' incr: Stmt ')'
-  for_body: Stmt
+  AttrList* 'for' '(' init:Stmt ';' condition:Expr ';' incr:Stmt ')'
+  for_body:Stmt
 
 CaseStmt =
-  AttrList* 'case' '(' discriminant: Expr ')'
+  AttrList* 'case' '(' discriminant:Expr ')'
   Case*
   'endcase'
 
@@ -95,12 +95,12 @@ Case =
 
 // Consider removing this as it is not suitable for compact model
 EventStmt =
-  AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases: ('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
+  AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases:('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
 
 BlockStmt =
   AttrList* 'begin'
     BlockScope?
-    items: BlockItem*
+    items:BlockItem*
   'end'
 
 BlockScope =
@@ -144,13 +144,13 @@ ArrayExpr =
   '\'{' (Expr (',' Expr)*)? '}'
 
 SelectExpr =
-  condition: Expr '?' then_val: Expr ':' else_val: Expr
+  condition:Expr '?' then_val:Expr ':' else_val:Expr
 
 Call =
   FunctionRef ArgList?
 
 ArgList =
-  '(' args: (Expr (',' Expr)*)? ')'
+  '(' args:(Expr (',' Expr)*)? ')'
 
 FunctionRef =
   Path | SysFun
@@ -163,7 +163,7 @@ PathExpr =
   Path
 
 PortFlow =
-  '<' port: Path '>'
+  '<' port:Path '>'
 
 
 //*************************//
@@ -182,15 +182,15 @@ DisciplineDecl =
   'enddiscipline'
 
 DisciplineAttr =
-  name: Path '='? val:Expr ';'
+  name:Path '='? val:Expr ';'
 
 NatureDecl =
-  AttrList* 'nature' Name (':' parent: Path)? ';'
+  AttrList* 'nature' Name (':' parent:Path)? ';'
   NatureAttr*
   'endnature'
 
 NatureAttr =
-  Name '=' val: Expr ';'
+  Name '=' val:Expr ';'
 
 ModuleDecl =
   AttrList* 'module' Name ModulePorts? ';'
@@ -198,10 +198,10 @@ ModuleDecl =
   'endmodule'
 
 ModulePorts =
-  '('ports: (ModulePort (',' ModulePort)*)? ')'
+  '('ports:(ModulePort (',' ModulePort)*)? ')'
 
 ModulePort =
-  kind: ModulePortKind
+  kind:ModulePortKind
 
 ModulePortKind =
   PortDecl | Name
@@ -247,10 +247,10 @@ Constraint =
   ('from' | 'exclude') (Expr | Range)
 
 Range =
-  ('(' | '[') start: Expr ':' end:Expr (')' | ']')
+  ('(' | '[') start:Expr ':' end:Expr (')' | ']')
 
 AliasParam =
-  AttrList* 'aliasparam' name: Name '=' src: ParamRef ';'
+  AttrList* 'aliasparam' name:Name '=' src:ParamRef ';'
 
 ParamRef =
   Path | SysFun

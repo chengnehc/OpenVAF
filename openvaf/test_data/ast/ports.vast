@@ -1,0 +1,181 @@
+SOURCE_FILE@0..290
+  MODULE_DECL@0..23
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..12
+      IDENT@7..12 "test1"
+    SEMICOLON@12..13 ";"
+    WHITESPACE@13..14 "\n"
+    ENDMODULE_KW@14..23 "endmodule"
+  WHITESPACE@23..25 "\n\n"
+  MODULE_DECL@25..193
+    MODULE_KW@25..31 "module"
+    WHITESPACE@31..32 " "
+    NAME@32..37
+      IDENT@32..37 "test2"
+    WHITESPACE@37..38 " "
+    L_PAREN@38..39 "("
+    MODULE_PORTS@39..53
+      MODULE_PORT@39..40
+        NAME@39..40
+          IDENT@39..40 "a"
+      COMMA@40..41 ","
+      MODULE_PORT@41..42
+        NAME@41..42
+          IDENT@41..42 "b"
+      COMMA@42..43 ","
+      MODULE_PORT@43..44
+        NAME@43..44
+          IDENT@43..44 "c"
+      COMMA@44..45 ","
+      MODULE_PORT@45..46
+        NAME@45..46
+          IDENT@45..46 "d"
+      COMMA@46..47 ","
+      MODULE_PORT@47..48
+        NAME@47..48
+          IDENT@47..48 "e"
+      COMMA@48..49 ","
+      MODULE_PORT@49..50
+        NAME@49..50
+          IDENT@49..50 "f"
+      COMMA@50..51 ","
+      MODULE_PORT@51..52
+        NAME@51..52
+          IDENT@51..52 "g"
+      R_PAREN@52..53 ")"
+    SEMICOLON@53..54 ";"
+    WHITESPACE@54..59 "\n    "
+    BODY_PORT_DECL@59..68
+      PORT_DECL@59..67
+        DIRECTION@59..65
+          OUTPUT_KW@59..65 "output"
+        WHITESPACE@65..66 " "
+        NAME@66..67
+          IDENT@66..67 "a"
+      SEMICOLON@67..68 ";"
+    WHITESPACE@68..73 "\n    "
+    BODY_PORT_DECL@73..81
+      PORT_DECL@73..80
+        DIRECTION@73..78
+          INPUT_KW@73..78 "input"
+        WHITESPACE@78..79 " "
+        NAME@79..80
+          IDENT@79..80 "b"
+      SEMICOLON@80..81 ";"
+    WHITESPACE@81..86 "\n    "
+    BODY_PORT_DECL@86..101
+      PORT_DECL@86..100
+        DIRECTION@86..91
+          INOUT_KW@86..91 "inout"
+        WHITESPACE@91..92 " "
+        NET_TYPE@92..98 "ground"
+        WHITESPACE@98..99 " "
+        NAME@99..100
+          IDENT@99..100 "c"
+      SEMICOLON@100..101 ";"
+    WHITESPACE@101..106 "\n    "
+    BODY_PORT_DECL@106..125
+      PORT_DECL@106..124
+        DIRECTION@106..111
+          INOUT_KW@106..111 "inout"
+        WHITESPACE@111..112 " "
+        NAME_REF@112..122
+          IDENT@112..122 "electrical"
+        WHITESPACE@122..123 " "
+        NAME@123..124
+          IDENT@123..124 "d"
+      SEMICOLON@124..125 ";"
+    WHITESPACE@125..130 "\n    "
+    BODY_PORT_DECL@130..152
+      PORT_DECL@130..151
+        DIRECTION@130..136
+          OUTPUT_KW@130..136 "output"
+        WHITESPACE@136..137 " "
+        NAME_REF@137..147
+          IDENT@137..147 "electrical"
+        WHITESPACE@147..148 " "
+        NAME@148..149
+          IDENT@148..149 "e"
+        COMMA@149..150 ","
+        NAME@150..151
+          IDENT@150..151 "f"
+      SEMICOLON@151..152 ";"
+    WHITESPACE@152..157 "\n    "
+    BODY_PORT_DECL@157..183
+      PORT_DECL@157..182
+        DIRECTION@157..162
+          INOUT_KW@157..162 "inout"
+        WHITESPACE@162..163 " "
+        NAME_REF@163..173
+          IDENT@163..173 "electrical"
+        WHITESPACE@173..174 " "
+        NET_TYPE@174..180 "ground"
+        WHITESPACE@180..181 " "
+        NAME@181..182
+          IDENT@181..182 "g"
+      SEMICOLON@182..183 ";"
+    WHITESPACE@183..184 "\n"
+    ENDMODULE_KW@184..193 "endmodule"
+  WHITESPACE@193..195 "\n\n"
+  MODULE_DECL@195..290
+    MODULE_KW@195..201 "module"
+    WHITESPACE@201..202 " "
+    NAME@202..207
+      IDENT@202..207 "test3"
+    WHITESPACE@207..208 " "
+    L_PAREN@208..209 "("
+    MODULE_PORTS@209..279
+      MODULE_PORT@209..219
+        PORT_DECL@209..219
+          DIRECTION@209..215
+            OUTPUT_KW@209..215 "output"
+          WHITESPACE@215..216 " "
+          NAME@216..217
+            IDENT@216..217 "a"
+          COMMA@217..218 ","
+          NAME@218..219
+            IDENT@218..219 "b"
+      COMMA@219..220 ","
+      WHITESPACE@220..221 " "
+      MODULE_PORT@221..243
+        PORT_DECL@221..243
+          DIRECTION@221..226
+            INPUT_KW@221..226 "input"
+          WHITESPACE@226..227 " "
+          NAME_REF@227..237
+            IDENT@227..237 "electrical"
+          WHITESPACE@237..238 " "
+          NAME@238..239
+            IDENT@238..239 "c"
+          COMMA@239..240 ","
+          NAME@240..241
+            IDENT@240..241 "d"
+          COMMA@241..242 ","
+          NAME@242..243
+            IDENT@242..243 "e"
+      COMMA@243..244 ","
+      WHITESPACE@244..245 " "
+      MODULE_PORT@245..278
+        PORT_DECL@245..278
+          ATTR_LIST@245..252
+            L_ATTR_PAREN@245..247 "(*"
+            ATTR@247..250
+              NAME@247..250
+                IDENT@247..250 "foo"
+            R_ATTR_PAREN@250..252 "*)"
+          WHITESPACE@252..253 " "
+          DIRECTION@253..258
+            INOUT_KW@253..258 "inout"
+          WHITESPACE@258..259 " "
+          NAME_REF@259..269
+            IDENT@259..269 "electrical"
+          WHITESPACE@269..270 " "
+          NET_TYPE@270..276 "ground"
+          WHITESPACE@276..277 " "
+          NAME@277..278
+            IDENT@277..278 "f"
+      R_PAREN@278..279 ")"
+    SEMICOLON@279..280 ";"
+    WHITESPACE@280..281 "\n"
+    ENDMODULE_KW@281..290 "endmodule"

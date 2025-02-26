@@ -15,6 +15,7 @@
 use std::cmp::Ordering;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use stdx::format_to;
 
 use preprocessor::sourcemap::{CtxSpan, FileSpan, SourceContextId};
 use vfs::FileId;
@@ -22,7 +23,9 @@ use vfs::FileId;
 pub use preprocessor::diagnostics::PreprocessError;
 pub use preprocessor::sourcemap::{self, SourceMap};
 pub use preprocessor::{preprocess, Preprocess, SourceProvider};
-pub use rowan::{Direction, GreenNode, NodeOrToken, SyntaxText, TextRange, TextSize, WalkEvent};
+pub use rowan::{
+    Direction, GreenNode, NodeOrToken, /*SyntaxText,*/ TextRange, TextSize, WalkEvent,
+};
 pub use tokens::{SyntaxKind, T};
 
 mod error;
@@ -47,7 +50,7 @@ pub use token_text::TokenText;
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parse<T> {
     green: GreenNode,
-    errors: Arc<Vec<SyntaxError>>,
+    errors: Option<Arc<[SyntaxError]>>,
     pub ctx_map: Arc<Vec<(TextRange, SourceContextId, TextSize)>>,
     _ty: PhantomData<fn() -> T>,
 }
@@ -69,15 +72,22 @@ impl<T> Parse<T> {
         errors: Vec<SyntaxError>,
         ctx_map: Vec<(TextRange, SourceContextId, TextSize)>,
     ) -> Parse<T> {
-        Parse { green, errors: Arc::new(errors), ctx_map: Arc::new(ctx_map), _ty: PhantomData }
+        Parse {
+            green,
+            errors: if errors.is_empty() { None } else { Some(errors.into()) },
+            ctx_map: Arc::new(ctx_map),
+            _ty: PhantomData,
+        }
     }
 
     pub fn syntax_node(&self) -> SyntaxNode {
         SyntaxNode::new_root(self.green.clone())
     }
 
-    pub fn errors(&self) -> &[SyntaxError] {
-        &self.errors
+    pub fn errors(&self) -> Vec<SyntaxError> {
+        let mut errors = if let Some(e) = self.errors.as_deref() { e.to_vec() } else { vec![] };
+        validation::validate(&self.syntax_node(), &mut errors);
+        errors
     }
 
     pub fn to_ctx_span(&self, range: TextRange, sm: &SourceMap) -> CtxSpan {
@@ -138,20 +148,21 @@ impl<T: AstNode> Parse<T> {
         Parse { green: self.green, errors: self.errors, ctx_map: self.ctx_map, _ty: PhantomData }
     }
 
-    /// Gets the parsed syntax tree as a typed AstNode through casting.
+    /// Gets the parsed syntax tree as a typed ast node through casting.
     ///
-    /// Panics if the root node cannot be cast.
+    /// # Panics
+    ///
+    /// Panics if the root node cannot be casted into the typed ast node
+    /// (e.g. if it's an ERROR node).
     pub fn tree(&self) -> T {
         T::cast(self.syntax_node()).unwrap()
     }
 
-    /// Gets the parsed syntax tree as a typed AstNode if no syntax errors are seen
-    /// during parsing, othersise gets a collection of syntax errors.
-    pub fn ok(self) -> Result<T, Arc<Vec<SyntaxError>>> {
-        if self.errors.is_empty() {
-            Ok(self.tree())
-        } else {
-            Err(self.errors)
+    /// Converts from `Parse<T>` to [`Result<T, Vec<SyntaxError>>`].
+    pub fn ok(self) -> Result<T, Vec<SyntaxError>> {
+        match self.errors() {
+            errors if !errors.is_empty() => Err(errors),
+            _ => Ok(self.tree()),
         }
     }
 }
@@ -173,17 +184,16 @@ impl Parse<SyntaxNode> {
 }
 */
 
-// TODO(JW) these are for incremental reparse, currently not used.
 impl Parse<SourceFile> {
-    // pub fn debug_dump(&self) -> String {
-    //     use std::fmt::Write;
+    pub fn debug_dump(&self) -> String {
+        let mut buf = format!("{:#?}", self.tree().syntax());
+        for err in self.errors() {
+            format_to!(buf, "error : {}\n", err);
+        }
+        buf
+    }
 
-    //     let mut buf = format!("{:#?}", self.tree().syntax());
-    //     for err in self.errors.iter() {
-    //         writeln!(buf, "error {:?}: {}", err.range(), err).unwrap();
-    //     }
-    //     buf
-    // }
+    // TODO(JW) for incremental reparse, currently not used.
 
     // pub fn reparse(&self, indel: &Indel) -> Parse<SourceFile> {
     //     self.full_reparse(indel)
@@ -214,11 +224,10 @@ impl SourceFile {
         root_file: FileId,
         preprocess: &Preprocess,
     ) -> Parse<SourceFile> {
-        let (tree, mut errors, ctx_map) = parsing::parse_and_build(db, root_file, preprocess);
+        let (tree, errors, ctx_map) = parsing::parse_text(db, root_file, preprocess);
         let root = SyntaxNode::new_root(tree.clone());
-        validation::validate(&root, &mut errors);
-        assert_eq!(root.kind(), SyntaxKind::SOURCE_FILE);
 
+        assert_eq!(root.kind(), SyntaxKind::SOURCE_FILE);
         Parse::new(tree, errors, ctx_map)
     }
 }

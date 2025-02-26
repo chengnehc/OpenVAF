@@ -1,0 +1,169 @@
+SOURCE_FILE@0..240
+  MODULE_DECL@0..240
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    WHITESPACE@11..12 " "
+    L_PAREN@12..13 "("
+    MODULE_PORTS@13..29
+      MODULE_PORT@13..20
+        PORT_DECL@13..20
+          DIRECTION@13..18
+            INOUT_KW@13..18 "inout"
+          WHITESPACE@18..19 " "
+          NAME@19..20
+            IDENT@19..20 "a"
+      COMMA@20..21 ","
+      MODULE_PORT@21..28
+        PORT_DECL@21..28
+          DIRECTION@21..26
+            INPUT_KW@21..26 "input"
+          WHITESPACE@26..27 " "
+          NAME@27..28
+            IDENT@27..28 "b"
+      R_PAREN@28..29 ")"
+    SEMICOLON@29..30 ";"
+    WHITESPACE@30..35 "\n    "
+    NET_DECL@35..51
+      NAME_REF@35..45
+        IDENT@35..45 "electrical"
+      WHITESPACE@45..46 " "
+      NAME@46..47
+        IDENT@46..47 "a"
+      COMMA@47..48 ","
+      WHITESPACE@48..49 " "
+      NAME@49..50
+        IDENT@49..50 "b"
+      SEMICOLON@50..51 ";"
+    WHITESPACE@51..56 "\n    "
+    BRANCH_DECL@56..77
+      BRANCH_KW@56..62 "branch"
+      WHITESPACE@62..63 " "
+      ARG_LIST@63..68
+        L_PAREN@63..64 "("
+        PATH_EXPR@64..65
+          PATH@64..65
+            IDENT@64..65 "a"
+        COMMA@65..66 ","
+        PATH_EXPR@66..67
+          PATH@66..67
+            IDENT@66..67 "b"
+        R_PAREN@67..68 ")"
+      WHITESPACE@68..69 " "
+      NAME@69..72
+        IDENT@69..72 "ab1"
+      COMMA@72..73 ","
+      NAME@73..76
+        IDENT@73..76 "ab2"
+      SEMICOLON@76..77 ";"
+    WHITESPACE@77..82 "\n    "
+    BRANCH_DECL@82..99
+      BRANCH_KW@82..88 "branch"
+      WHITESPACE@88..89 " "
+      ARG_LIST@89..92
+        L_PAREN@89..90 "("
+        PATH_EXPR@90..91
+          PATH@90..91
+            IDENT@90..91 "a"
+        R_PAREN@91..92 ")"
+      WHITESPACE@92..93 " "
+      NAME@93..98
+        IDENT@93..98 "a_gnd"
+      SEMICOLON@98..99 ";"
+    WHITESPACE@99..104 "\n    "
+    BRANCH_DECL@104..140
+      BRANCH_KW@104..110 "branch"
+      WHITESPACE@110..111 " "
+      ARG_LIST@111..127
+        L_PAREN@111..112 "("
+        PORT_FLOW@112..126
+          L_ANGLE@112..113 "<"
+          PATH@113..125
+            PATH@113..123
+              PATH@113..118
+                ROOT_KW@113..118 "$root"
+              DOT@118..119 "."
+              IDENT@119..123 "test"
+            DOT@123..124 "."
+            IDENT@124..125 "b"
+          R_ANGLE@125..126 ">"
+        R_PAREN@126..127 ")"
+      WHITESPACE@127..128 " "
+      NAME@128..139
+        IDENT@128..139 "port_flow_b"
+      SEMICOLON@139..140 ";"
+    WHITESPACE@140..145 "\n    "
+    ANALOG_BEHAVIOUR@145..230
+      ANALOG_KW@145..151 "analog"
+      WHITESPACE@151..152 " "
+      BLOCK_STMT@152..230
+        BEGIN_KW@152..157 "begin"
+        WHITESPACE@157..166 "\n        "
+        ASSIGN_STMT@166..222
+          ASSIGN@166..221
+            CALL@166..174
+              PATH@166..167
+                IDENT@166..167 "I"
+              ARG_LIST@167..174
+                L_PAREN@167..168 "("
+                PATH_EXPR@168..173
+                  PATH@168..173
+                    IDENT@168..173 "a_gnd"
+                R_PAREN@173..174 ")"
+            WHITESPACE@174..175 " "
+            CONTR@175..177 "<+"
+            WHITESPACE@177..178 " "
+            BIN_EXPR@178..221
+              BIN_EXPR@178..204
+                BIN_EXPR@178..193
+                  CALL@178..184
+                    PATH@178..179
+                      IDENT@178..179 "V"
+                    ARG_LIST@179..184
+                      L_PAREN@179..180 "("
+                      PATH_EXPR@180..183
+                        PATH@180..183
+                          IDENT@180..183 "ab1"
+                      R_PAREN@183..184 ")"
+                  WHITESPACE@184..185 " "
+                  PLUS@185..186 "+"
+                  WHITESPACE@186..187 " "
+                  CALL@187..193
+                    PATH@187..188
+                      IDENT@187..188 "V"
+                    ARG_LIST@188..193
+                      L_PAREN@188..189 "("
+                      PATH_EXPR@189..192
+                        PATH@189..192
+                          IDENT@189..192 "ab2"
+                      R_PAREN@192..193 ")"
+                WHITESPACE@193..194 " "
+                MINUS@194..195 "-"
+                WHITESPACE@195..196 " "
+                CALL@196..204
+                  PATH@196..197
+                    IDENT@196..197 "V"
+                  ARG_LIST@197..204
+                    L_PAREN@197..198 "("
+                    PATH_EXPR@198..203
+                      PATH@198..203
+                        IDENT@198..203 "a_gnd"
+                    R_PAREN@203..204 ")"
+              WHITESPACE@204..205 " "
+              PLUS@205..206 "+"
+              WHITESPACE@206..207 " "
+              CALL@207..221
+                PATH@207..208
+                  IDENT@207..208 "I"
+                ARG_LIST@208..221
+                  L_PAREN@208..209 "("
+                  PATH_EXPR@209..220
+                    PATH@209..220
+                      IDENT@209..220 "port_flow_b"
+                  R_PAREN@220..221 ")"
+          SEMICOLON@221..222 ";"
+        WHITESPACE@222..227 "\n    "
+        END_KW@227..230 "end"
+    WHITESPACE@230..231 "\n"
+    ENDMODULE_KW@231..240 "endmodule"
