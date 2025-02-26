@@ -1,9 +1,3 @@
-//! See Also:
-//!
-//! - https://github.com/rust-lang/rust/tree/master/compiler/rustc_index/src
-//! - https://doc.rust-lang.org/beta/nightly-rustc/rustc_index/vec/struct.IndexVec.html
-//! - https://doc.rust-lang.org/beta/nightly-rustc/rustc_index/slice/struct.IndexSlice.html
-
 use std::ptr;
 
 pub trait VecExtensions<T> {

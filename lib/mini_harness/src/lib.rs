@@ -1,13 +1,10 @@
-use std::fmt::{self, Debug, Display, Formatter};
-use std::fs::read_dir;
 use std::path::Path;
-use std::process::{self, exit};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
-
-pub use flags::Test as Arguments;
+use std::{fmt, fs, process};
 
 mod flags;
+pub use flags::Test as Arguments;
 
 pub type Result<T = (), E = Failed> = std::result::Result<T, E>;
 
@@ -39,7 +36,7 @@ impl<'a> Test<'a> {
         Self::from_dir_filtered(name, runner, &|_| true, ignore, dir)
     }
 
-    pub fn from_list<'r, T: Debug + Clone>(
+    pub fn from_list<'r, T: fmt::Debug + Clone>(
         name: &'r str,
         runner: &'a dyn Fn(T) -> Result,
         ignore: &'r dyn Fn(T) -> bool,
@@ -68,20 +65,23 @@ impl<'a> Test<'a> {
     where
         'a: 'r,
     {
-        read_dir(dir).expect("reading test data must succeed").flatten().filter_map(move |entry| {
-            let path = entry.path();
-            if !filter(&path) {
-                return None;
-            }
-            let test = Test {
-                name: format!("{name}::{}", path.file_name().unwrap().to_string_lossy()),
-                ignored: ignore(&path),
-                runner: Box::new(move || runner(&path)),
-            };
-            Some(test)
-        })
+        fs::read_dir(dir).expect("reading test data must succeed").flatten().filter_map(
+            move |entry| {
+                let path = entry.path();
+                if !filter(&path) {
+                    return None;
+                }
+                let test = Test {
+                    name: format!("{name}::{}", path.file_name().unwrap().to_string_lossy()),
+                    ignored: ignore(&path),
+                    runner: Box::new(move || runner(&path)),
+                };
+                Some(test)
+            },
+        )
     }
 }
+
 impl Test<'_> {
     /// Runs the given runner, catching any panics and treating them as a failed test.
     fn run(runner: Box<dyn FnOnce() -> Result + '_>) -> Result<(), String> {
@@ -106,31 +106,6 @@ impl Test<'_> {
     }
 }
 
-/// Indicates that a test has failed
-#[derive(Debug, Clone)]
-pub struct Failed {
-    msg: String,
-}
-
-impl<M: fmt::Display> From<M> for Failed {
-    fn from(msg: M) -> Self {
-        Self { msg: msg.to_string() }
-    }
-}
-
-impl Arguments {
-    pub fn parse_cli() -> Arguments {
-        match Arguments::from_env() {
-            Ok(res) => res,
-            Err(err) => {
-                eprintln!("{err}");
-                // match the exit code used by libtest
-                exit(101)
-            }
-        }
-    }
-}
-
 /// Runs all given tests.
 ///
 /// This is the central function of this crate. It provides the framework for
@@ -150,81 +125,103 @@ pub fn run_harness(args: &Arguments, mut tests: Vec<Test>) -> TestSummary {
         0
     };
 
+    // Set up prettifier
     let pretty = args.pretty();
+    let name_width = pretty
+        .then_some(tests.iter().map(|t| t.name.chars().count()).max().unwrap_or(0))
+        .unwrap_or(0);
 
-    // If `--list` is specified, just print the list and return.
+    // If `--list` is specified, just list all tests and return.
     if args.list {
-        print_tests(&tests, pretty, args.ignored);
+        list_tests(&tests, pretty, args.ignored);
         return TestSummary::default();
     }
 
-    let name_width = if pretty {
-        tests.iter().map(|test| test.name.chars().count()).max().unwrap_or(0)
-    } else {
-        0
-    };
-
     // Print number of tests
-    println!("\nrunning {} tests", tests.len());
+    let total = tests.len();
+    println!("\nrunning {} tests", total);
+
     let mut ignored = 0;
+    let mut failed = Vec::new();
 
-    let mut failed_tests = Vec::new();
-
-    let num_tests = tests.len();
-    // Execute all tests.
-    // Run test sequentially in main thread
+    // Execute all tests sequentially in main thread.
     for test in tests {
+        // print test name
         if pretty {
             print!("test {: <name_width$} ... ", &test.name);
         }
+        // print test result msg
+        let (ignore, ok, fail) =
+            if pretty { ("ignored\n", "ok\n", "FAILED\n") } else { ("i", ".", "F") };
         if args.is_ignored(&test) {
             ignored += 1;
-            if pretty {
-                println!("ignored\n");
-            } else {
-                print!("i")
-            }
+            print!("{ignore}");
         } else {
             match Test::run(test.runner) {
-                Ok(_) => {
-                    if pretty {
-                        println!("ok")
-                    } else {
-                        print!(".")
-                    }
-                }
+                Ok(_) => print!("{ok}"),
                 Err(err) => {
-                    println!("{err}");
-                    if pretty {
-                        println!("FAILED");
-                    } else {
-                        print!("F");
-                    }
-                    failed_tests.push(test.name)
+                    print!("{err}\n{fail}");
+                    failed.push(test.name)
                 }
             }
         };
     }
 
-    // Print failures if there were any, and the final summary.
-    if !failed_tests.is_empty() {
-        println!("\n failures:\n");
-
-        for test in &failed_tests {
+    // Print failures if any, and the final summary.
+    if !failed.is_empty() {
+        println!("\n failures:");
+        for test in &failed {
             println!("    {test}");
         }
     }
     let res = TestSummary {
-        passed: num_tests as u32 - failed_tests.len() as u32 - ignored,
-        failed: failed_tests,
+        passed: total as u32 - failed.len() as u32 - ignored,
+        failed,
         ignored,
         filtered,
         elapsed: start_instant.elapsed(),
     };
-
-    println!("{res}");
+    print!("\n{res}\n");
 
     res
+}
+
+fn list_tests(tests: &[Test], pretty: bool, ignored: bool) {
+    let mut i = 0;
+    for test in tests {
+        if ignored == test.ignored {
+            println!("{}: test", test.name,);
+            i += 1;
+        }
+    }
+    if pretty {
+        println!("\n{i} tests");
+    }
+}
+
+/// Indicates that a test has failed
+#[derive(Debug, Clone)]
+pub struct Failed {
+    msg: String,
+}
+
+impl<M: fmt::Display> From<M> for Failed {
+    fn from(msg: M) -> Self {
+        Self { msg: msg.to_string() }
+    }
+}
+
+impl Arguments {
+    pub fn parse_cli() -> Arguments {
+        match Arguments::from_env() {
+            Ok(res) => res,
+            Err(err) => {
+                eprintln!("{err}");
+                // match the exit code used by libtest
+                process::exit(101)
+            }
+        }
+    }
 }
 
 impl Arguments {
@@ -257,20 +254,6 @@ impl Arguments {
 
     fn pretty(&self) -> bool {
         self.format.map_or(true, |it| it == Format::Pretty)
-    }
-}
-
-fn print_tests(tests: &[Test], pretty: bool, ignored: bool) {
-    let mut i = 0;
-    for test in tests {
-        if ignored == test.ignored {
-            println!("{}: test", test.name,);
-            i += 1;
-        }
-    }
-    if pretty {
-        println!();
-        println!("{i} tests");
     }
 }
 
@@ -324,8 +307,8 @@ impl TestSummary {
     }
 }
 
-impl Display for TestSummary {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl fmt::Display for TestSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { failed, passed, ignored, filtered, elapsed } = self;
         let succ = if failed.is_empty() { "ok" } else { "FAILED" };
         let failed = failed.len();

@@ -99,7 +99,7 @@ macro_rules! impl_from_typed {
     }
 }
 
-/// Generates `From` trait impls for newtype wrappers serving as index.
+/// Generates `From` trait impls for newtyped wrappers serving as index.
 ///
 /// Generates `packed_option::ReservedValue` trait impls, using the maximum
 /// of raw numeric type as reserved value.
@@ -153,7 +153,7 @@ macro_rules! impl_idx_from {
     };
 }
 
-/// Generates `From` trait impls for raw numeric types within newtype wrappers serving as index.
+/// Generates `From` trait impls for raw numeric types within newtyped wrappers serving as index.
 ///
 /// 'Read-only' means that one can only unwrap to get the inner raw value, but can not turn a
 /// raw value into a newtype.
@@ -176,7 +176,7 @@ macro_rules! impl_idx_from_readonly {
     };
 }
 
-/// Generates `Add`, `AddAssign`, `Sub` and `SubAssign` trait impls for newtype wrappers
+/// Generates `Add`, `AddAssign`, `Sub` and `SubAssign` trait impls for newtyped wrappers
 /// serving as index.
 ///
 /// ```rust

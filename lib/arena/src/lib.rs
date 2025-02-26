@@ -11,14 +11,14 @@ pub type ArenaMap<I, T> = TiVec<Idx<I>, T>;
 
 // TODO add tiny idx?
 
-/// Backing storage used for `Idx<T>`
-pub type RawIdx = u32;
-
 /// The index of a value allocated in an arena that holds `T`s.
 pub struct Idx<T> {
     raw: RawIdx,
     _ty: PhantomData<fn() -> T>,
 }
+
+/// Backing storage used for `Idx<T>`
+pub type RawIdx = u32;
 
 impl<T> Clone for Idx<T> {
     #[inline(always)]

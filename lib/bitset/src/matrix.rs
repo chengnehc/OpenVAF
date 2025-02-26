@@ -245,21 +245,6 @@ where
     }
 }
 
-impl<R, C> Default for SparseBitMatrix<R, C>
-where
-    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-{
-    fn default() -> Self {
-        Self {
-            num_columns: Default::default(),
-            num_rows: Default::default(),
-            rows: Default::default(),
-            _row_ty: Default::default(),
-        }
-    }
-}
-
 /// A fixed-column-size, variable-row-size 2D bit matrix with a moderately
 /// sparse representation.
 ///
@@ -281,6 +266,21 @@ where
     num_rows: usize,
     rows: Vec<HybridBitSet<C>>,
     _row_ty: PhantomData<fn() -> R>,
+}
+
+impl<R, C> Default for SparseBitMatrix<R, C>
+where
+    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+{
+    fn default() -> Self {
+        Self {
+            num_columns: Default::default(),
+            num_rows: Default::default(),
+            rows: Default::default(),
+            _row_ty: Default::default(),
+        }
+    }
 }
 
 impl<R, C> Clone for SparseBitMatrix<R, C>
