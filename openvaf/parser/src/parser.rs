@@ -24,6 +24,8 @@ pub(crate) struct Parser<'t> {
     steps: Cell<u32>,
 }
 
+const PARSER_STEP_LIMIT: usize = 10_000_000;
+
 impl<'t> Parser<'t> {
     pub(super) fn new(tokens: &'t [SyntaxKind]) -> Parser<'t> {
         Parser { tokens, pos: 0, events: Vec::new(), steps: Cell::new(0) }
@@ -46,10 +48,10 @@ impl<'t> Parser<'t> {
         assert!(n <= 3);
 
         let steps = self.steps.get();
-        assert!(steps <= 10_000_000, "the parser seems stuck");
+        assert!((steps as usize) < PARSER_STEP_LIMIT, "the parser seems stuck");
         self.steps.set(steps + 1);
 
-        self.tokens.get(self.pos as usize + n).copied().unwrap_or(SyntaxKind::EOF)
+        self.tokens.get(self.pos as usize + n).copied().unwrap_or(EOF)
     }
 
     /// Checks if the current token is `kind`.
@@ -62,13 +64,15 @@ impl<'t> Parser<'t> {
         self.nth(n) == kind
     }
 
-    /// Consume the next token if `kind` matches.
+    /// Consume the next token if `kind` matches and return `true`,
+    /// otherwise *do nothing* and return `false`.
     pub(crate) fn eat(&mut self, kind: SyntaxKind) -> bool {
-        if !self.at(kind) {
-            return false;
+        if self.at(kind) {
+            self.do_bump(kind);
+            true
+        } else {
+            false
         }
-        self.do_bump(kind);
-        true
     }
 
     /// Checks if the current token is in `kinds`.
@@ -81,7 +85,8 @@ impl<'t> Parser<'t> {
         kinds.contains(self.nth(n))
     }
 
-    /// Consume the next token if it is in `kinds`.
+    /// Consume the next token if it is in `kinds` and return `true`,
+    /// otherwise *do nothing* and return `false`.
     pub(crate) fn eat_ts(&mut self, kinds: TokenSet) -> bool {
         if self.at_ts(kinds) {
             self.bump_any();
@@ -91,16 +96,12 @@ impl<'t> Parser<'t> {
         }
     }
 
-    /// Consume the next token if `kind` matches.
-    ///
-    /// Panics if the parser isn't currently at `kind`.
+    /// Consume the next token if `kind` matches, or panic.
     pub(crate) fn bump(&mut self, kind: SyntaxKind) {
         assert!(self.eat(kind), "expected {} found {}", kind, self.current());
     }
 
-    /// Consume the next token if it is in `kinds`.
-    ///
-    /// Panics if the parser isn't currently at any kind in `kinds`.
+    /// Consume the next token if it is in `kinds`, or panic.
     pub(crate) fn bump_ts(&mut self, kinds: TokenSet) {
         assert!(self.eat_ts(kinds));
     }
@@ -123,85 +124,91 @@ impl<'t> Parser<'t> {
         Marker::new(pos)
     }
 
+    /// Create and complete an error node in the syntax tree.
     pub(crate) fn error(&mut self, err: SyntaxError) {
         let m = self.start();
         self.push_event(Event::Error { err });
         m.complete(self, ERROR);
     }
 
-    /// Consume the next token if it is `kind`. Otherwise, emit an error.
-    pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
-        if self.eat(kind) {
-            return true;
-        }
-        self.error(self.unexpected_token_msg(kind));
-        false
-    }
-
-    /// Consume the next token if it is `kind`. Otherwise, emit an error
-    /// with a list of expected kinds.
-    pub(crate) fn expect_with(&mut self, kind: SyntaxKind, expected_kinds: &[SyntaxKind]) -> bool {
-        if self.eat(kind) {
-            return true;
-        }
-        self.error(self.unexpected_tokens_msg(expected_kinds.to_owned()));
-        false
-    }
-
-    /// Consume the next token if it is in `kinds`. Otherwise, emit an error.
-    pub(crate) fn expect_ts(&mut self, kinds: TokenSet) -> bool {
-        if self.eat_ts(kinds) {
-            return true;
-        }
-        self.error(self.unexpected_tokens_msg(kinds.iter().collect()));
-        false
-    }
-
-    /// Consume the next token if it is in `kinds`. Otherwise, emit an error
-    /// unless it is in the `recovery` set.
-    pub(crate) fn expect_ts_r(&mut self, kinds: TokenSet, recovery: TokenSet) -> bool {
-        if !self.expect_ts(kinds) {
-            if !self.at_ts(recovery) {
-                self.bump_any();
-            }
-            false
-        } else {
-            true
-        }
-    }
-
-    pub(crate) fn unexpected_token_msg(&self, kind: SyntaxKind) -> SyntaxError {
-        SyntaxError::UnexpectedToken { expected: List::new(vec![kind]), found: self.current() }
-    }
-
-    pub(crate) fn unexpected_tokens_msg(&self, kinds: Vec<SyntaxKind>) -> SyntaxError {
-        SyntaxError::UnexpectedToken { expected: List::new(kinds), found: self.current() }
-    }
-
-    // Create an error node and consume the next token.
-    // pub(crate) fn err_and_bump(&mut self, err: SyntaxError) {
-    //     self.err_recover(err, TokenSet::EMPTY);
-    // }
-
-    /// Create an error node and consume the next token unless it is in the recovery set.
-    ///
-    /// Returns true if recovery kicked in.
-    pub(crate) fn err_recover(&mut self, err: SyntaxError, recovery: TokenSet) -> bool {
-        if self.at_ts(recovery) {
-            self.error(err);
-            return true;
-        }
-
+    /// Create an error node and consume the next token.
+    pub(crate) fn err_and_bump(&mut self, err: SyntaxError) {
         let m = self.start();
         self.push_event(Event::Error { err });
         self.bump_any();
         m.complete(self, ERROR);
+    }
+
+    /// Create an error node and consume the next token unless it is in the `recovery` set.
+    ///
+    /// Returns `true` if recovery kicked in.
+    pub(crate) fn err_recover(&mut self, err: SyntaxError, recovery: TokenSet) -> bool {
+        if self.at_ts(recovery) {
+            // create an error node only
+            self.error(err);
+            true
+        } else {
+            // consume the token as well
+            self.err_and_bump(err);
+            false
+        }
+    }
+
+    /// Consume the next token if it is `kind` and return `true`,
+    /// or create an error node otherwise.
+    pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
+        if self.eat(kind) {
+            return true;
+        }
+        self.error(self.err_with_expected_syntax(kind));
         false
+    }
+
+    /// Consume the next token if it is `kind` and return `true`,
+    /// or create an error node with a list of expected `kinds` otherwise.
+    pub(crate) fn expect_with(&mut self, kind: SyntaxKind, kinds: &[SyntaxKind]) -> bool {
+        if self.eat(kind) {
+            return true;
+        }
+        self.error(self.err_with_expected_syntaxes(kinds));
+        false
+    }
+
+    /// Consume the next token if it is in `kinds` and return `true`,
+    /// or emit an error message otherwise.
+    pub(crate) fn expect_ts(&mut self, kinds: TokenSet) -> bool {
+        if self.eat_ts(kinds) {
+            return true;
+        }
+        self.error(self.err_with_expected_syntaxes(kinds.iter().collect::<Vec<_>>().as_ref()));
+        false
+    }
+
+    /// Consume the next token if it is in `kinds` and return `true`,
+    /// or emit an error message otherwise.
+    ///
+    /// Unless the token is in the `recovery` set, it will be consumed.
+    pub(crate) fn expect_ts_recover(&mut self, kinds: TokenSet, recovery: TokenSet) -> bool {
+        if self.expect_ts(kinds) {
+            return true;
+        } else {
+            if !self.at_ts(recovery) {
+                self.bump_any();
+            }
+            false
+        }
+    }
+
+    pub(crate) fn err_with_expected_syntax(&self, kind: SyntaxKind) -> SyntaxError {
+        SyntaxError::UnexpectedToken { expected: List::new(vec![kind]), found: self.current() }
+    }
+
+    pub(crate) fn err_with_expected_syntaxes(&self, kinds: &[SyntaxKind]) -> SyntaxError {
+        SyntaxError::UnexpectedToken { expected: List::new(kinds.to_vec()), found: self.current() }
     }
 
     fn do_bump(&mut self, kind: SyntaxKind) {
         self.pos += 1;
-
         self.push_event(Event::Token(kind));
     }
 
@@ -233,8 +240,11 @@ impl Marker {
             }
             _ => unreachable!(),
         }
-        let finish_pos = p.events.len() as u32;
+        // JW: swap the order according to rust-analyzer
+        // it makes more sense pushing the event first and then
+        // getting the finish position.
         p.push_event(Event::Finish);
+        let finish_pos = p.events.len() as u32;
         CompletedMarker::new(self.pos, finish_pos)
     }
 
@@ -244,10 +254,10 @@ impl Marker {
         self.bomb.defuse();
         let idx = self.pos as usize;
         if idx == p.events.len() - 1 {
-            match p.events.pop() {
-                Some(Event::Start { kind: TOMBSTONE, forward_parent: None }) => (),
-                _ => unreachable!(),
-            }
+            assert!(matches!(
+                p.events.pop(),
+                Some(Event::Start { kind: TOMBSTONE, forward_parent: None })
+            ));
         }
     }
 }

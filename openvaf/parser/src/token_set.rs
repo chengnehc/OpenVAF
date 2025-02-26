@@ -1,7 +1,6 @@
 //! A bit-set of `SyntaxKind`s.
 
 use std::convert::TryInto;
-use std::u128;
 
 use crate::SyntaxKind;
 
@@ -9,22 +8,24 @@ use crate::SyntaxKind;
 #[derive(Clone, Copy)]
 pub(crate) struct TokenSet(u128);
 
+/// `TokenSet`s should only include token `SyntaxKind`s,
+/// so the discriminant of any passed/included `SyntaxKind`
+/// must *not* be greater than that of the last token `SyntaxKind`.
+const LAST_TOKEN_KIND_DISCRIMINANT: usize = SyntaxKind::COMMENT as usize;
+
 impl TokenSet {
     pub(crate) const EMPTY: TokenSet = TokenSet(0);
-
-    // pub fn from_raw(raw: u128)->Self{
-    //     Self(raw)
-    // }
-
-    // pub fn to_raw(self)->u128{
-    //     self.0
-    // }
 
     pub(crate) const fn new(kinds: &[SyntaxKind]) -> TokenSet {
         let mut res = 0u128;
         let mut i = 0;
         while i < kinds.len() {
-            res |= mask(kinds[i]);
+            let discriminant = kinds[i] as usize;
+            debug_assert!(
+                discriminant <= LAST_TOKEN_KIND_DISCRIMINANT,
+                "Expected a token `SyntaxKind`"
+            );
+            res |= mask(discriminant);
             i += 1
         }
         TokenSet(res)
@@ -39,7 +40,12 @@ impl TokenSet {
     }
 
     pub(crate) const fn contains(&self, kind: SyntaxKind) -> bool {
-        self.0 & mask(kind) != 0
+        let discriminant = kind as usize;
+        debug_assert!(
+            discriminant <= LAST_TOKEN_KIND_DISCRIMINANT,
+            "Expected a token `SyntaxKind`"
+        );
+        self.0 & mask(discriminant) != 0
     }
 
     pub(crate) const fn iter(&self) -> TokenSetIter {
@@ -47,8 +53,8 @@ impl TokenSet {
     }
 }
 
-const fn mask(kind: SyntaxKind) -> u128 {
-    1u128 << (kind as usize)
+const fn mask(kind: usize) -> u128 {
+    1u128 << kind
 }
 
 pub(crate) struct TokenSetIter(u128);
@@ -65,4 +71,13 @@ impl Iterator for TokenSetIter {
             None
         }
     }
+}
+
+#[test]
+fn token_set_works() {
+    use crate::SyntaxKind::*;
+    let ts = TokenSet::new(&[EOF, COMMENT]);
+    assert!(ts.contains(EOF));
+    assert!(ts.contains(COMMENT));
+    assert!(!ts.contains(PARAMETER_KW));
 }

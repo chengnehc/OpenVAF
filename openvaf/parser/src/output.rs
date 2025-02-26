@@ -16,14 +16,15 @@ pub struct Output {
 
 #[derive(Debug)]
 pub enum Step<'a> {
-    Token { kind: SyntaxKind },
-    Enter { kind: SyntaxKind },
-    Exit,
+    Token { kind: SyntaxKind }, // tag = 0000
+    Enter { kind: SyntaxKind }, // tag = 0001
+    Exit,                       // tag = 0010
     Error { err: &'a SyntaxError },
 }
 
 impl Output {
-    /// Iterate over traversal steps and consume a syntax tree.
+    // Transform the parser output (a flat stream of events, with syntax tree building
+    // steps information encoded)
     pub fn iter(&self) -> impl Iterator<Item = Step<'_>> {
         self.event.iter().map(|&event| {
             if event & 0b1 == 0 {
@@ -45,23 +46,25 @@ impl Output {
         })
     }
 
-    // methods to transform `Event` stream to a synatx tree traversal `Output`
-
+    // Step::Token
     pub(crate) fn token(&mut self, kind: SyntaxKind) {
         let e = ((kind as u16 as u32) << 16) | 1;
         self.event.push(e)
     }
 
+    // Step::Enter
     pub(crate) fn enter_node(&mut self, kind: SyntaxKind) {
         let e = ((kind as u16 as u32) << 16) | (1 << 4) | 1;
         self.event.push(e)
     }
 
+    // Step::Exit
     pub(crate) fn leave_node(&mut self) {
         let e = 2 << 4 | 1;
         self.event.push(e)
     }
 
+    // Step::Error
     pub(crate) fn error(&mut self, error: SyntaxError) {
         let idx = self.error.len();
         self.error.push(error);

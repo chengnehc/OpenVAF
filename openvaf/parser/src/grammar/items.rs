@@ -1,16 +1,15 @@
-use super::*;
 use crate::grammar::paths::path;
 
-pub(super) use module::module;
+use super::*;
 
 mod module;
-use module::MODULE_ITEM_OR_ATTR_RECOVERY;
+use module::{module_items, module_ports, MODULE_ITEM_OR_ATTR_RECOVERY};
 
 pub(super) const ITEM_RECOVERY_SET: TokenSet =
-    TokenSet::new(&[DISCIPLINE_KW, NATURE_KW, MODULE_KW, EOF]);
+    TokenSet::new(&[T![discipline], T![nature], T![module], EOF]);
 
 const DISCIPLINE_RECOVERY_SET: TokenSet =
-    ITEM_RECOVERY_SET.union(TokenSet::unique(ENDDISCIPLINE_KW));
+    ITEM_RECOVERY_SET.union(TokenSet::unique(T![enddiscipline]));
 
 pub(super) fn discipline(p: &mut Parser, m: Marker) {
     p.bump(T![discipline]);
@@ -22,16 +21,16 @@ pub(super) fn discipline(p: &mut Parser, m: Marker) {
         p.eat(T![=]);
         expr(p);
         if !p.eat(T![;]) {
-            let err = p.unexpected_token_msg(T![;]);
-            p.err_recover(err, DISCIPLINE_RECOVERY_SET.union(TokenSet::unique(IDENT)));
+            let err = p.err_with_expected_syntax(T![;]);
+            p.err_recover(err, DISCIPLINE_RECOVERY_SET.union(TokenSet::unique(T![ident])));
         }
         m.complete(p, DISCIPLINE_ATTR);
     }
-    p.expect(ENDDISCIPLINE_KW);
+    p.expect(T![enddiscipline]);
     m.complete(p, DISCIPLINE_DECL);
 }
 
-const NATURE_RECOVERY_SET: TokenSet = ITEM_RECOVERY_SET.union(TokenSet::unique(ENDNATURE_KW));
+const NATURE_RECOVERY_SET: TokenSet = ITEM_RECOVERY_SET.union(TokenSet::unique(T![endnature]));
 
 pub(super) fn nature(p: &mut Parser, m: Marker) {
     p.bump(T![nature]);
@@ -42,18 +41,31 @@ pub(super) fn nature(p: &mut Parser, m: Marker) {
     p.eat(T![;]);
     while !p.at_ts(NATURE_RECOVERY_SET) {
         let m = p.start();
-
         name_r(p, TokenSet::unique(T![=]));
         p.expect(T![=]);
         expr(p);
         if !p.eat(T![;]) {
-            let err = p.unexpected_token_msg(T![;]);
-            p.err_recover(err, NATURE_RECOVERY_SET.union(TokenSet::unique(IDENT)));
+            let err = p.err_with_expected_syntax(T![;]);
+            p.err_recover(err, NATURE_RECOVERY_SET.union(TokenSet::unique(T![ident])));
         }
         m.complete(p, NATURE_ATTR);
     }
-    p.expect(ENDNATURE_KW);
+    p.expect(T![endnature]);
     m.complete(p, NATURE_DECL);
+}
+
+pub(super) fn module(p: &mut Parser, m: Marker) {
+    p.bump(T![module]);
+    name_r(p, TokenSet::new(&[T!['('], T![;]]));
+    if p.at(T!['(']) {
+        // module ports are optional
+        p.bump(T!['(']);
+        module_ports(p);
+    }
+    p.expect(T![;]);
+    module_items(p);
+    p.expect(T![endmodule]);
+    m.complete(p, MODULE_DECL);
 }
 
 pub(super) fn decl_list(
@@ -64,7 +76,7 @@ pub(super) fn decl_list(
 ) {
     let recovery = recovery.union(TokenSet::new(&[terminator]));
     if p.at_ts(recovery) {
-        p.error(p.unexpected_token_msg(IDENT));
+        p.error(p.err_with_expected_syntax(T![ident]));
     } else {
         while !p.at_ts(recovery) && parse_entry(p) {
             if !p.at(terminator) {
@@ -74,7 +86,7 @@ pub(super) fn decl_list(
     }
 }
 
-pub(super) fn decl_name(p: &mut Parser) -> bool {
+fn decl_name(p: &mut Parser) -> bool {
     name_r(p, TokenSet::new(&[T![,], T![;]]));
     true
 }
@@ -104,13 +116,14 @@ pub(super) fn parameter_decl(p: &mut Parser, m: Marker) {
     m.complete(p, PARAM_DECL);
 }
 
-const PARAM_RECOVER: TokenSet = MODULE_ITEM_OR_ATTR_RECOVERY.union(TokenSet::new(&[T![,], T![;]]));
+const PARAM_RECOVERY: TokenSet = MODULE_ITEM_OR_ATTR_RECOVERY.union(TokenSet::new(&[T![,], T![;]]));
+
 fn parameter(p: &mut Parser) -> bool {
     let m = p.start();
     name_r(p, TokenSet::new(&[T![,], T![;]]));
     p.expect(T![=]);
     expr(p);
-    while !p.at_ts(PARAM_RECOVER) {
+    while !p.at_ts(PARAM_RECOVERY) {
         constraint(p)
     }
     m.complete(p, PARAM);
@@ -119,7 +132,7 @@ fn parameter(p: &mut Parser) -> bool {
 
 fn constraint(p: &mut Parser) {
     let m = p.start();
-    if !p.expect_ts_r(TokenSet::new(&[FROM_KW, EXCLUDE_KW]), PARAM_RECOVER) {
+    if !p.expect_ts_recover(TokenSet::new(&[T![from], T![exclude]]), PARAM_RECOVERY) {
         m.abandon(p);
         return;
     }

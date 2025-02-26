@@ -1,5 +1,6 @@
-use super::*;
 use crate::grammar::expressions::expr;
+
+use super::*;
 
 pub(super) fn call(p: &mut Parser, lhs: CompletedMarker) -> CompletedMarker {
     let m = lhs.precede(p);
@@ -10,7 +11,7 @@ pub(super) fn call(p: &mut Parser, lhs: CompletedMarker) -> CompletedMarker {
 pub(super) fn sys_fun_call(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     let m2 = p.start();
-    p.bump(SYSFUN);
+    p.bump(T![sysfun]);
     m2.complete(p, SYS_FUN);
     if p.at(T!('(')) {
         arg_list(p);

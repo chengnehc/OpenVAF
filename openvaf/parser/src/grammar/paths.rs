@@ -1,8 +1,8 @@
 use super::*;
 
-pub(crate) const PATH_SEGMENT_TS: TokenSet = TokenSet::new(&[IDENT, ROOT_KW]);
+pub(super) const PATH_SEGMENT_TS: TokenSet = TokenSet::new(&[T![ident], T![root]]);
 
-pub(crate) fn path(p: &mut Parser) -> CompletedMarker {
+pub(super) fn path(p: &mut Parser) -> CompletedMarker {
     assert!(p.at_ts(PATH_SEGMENT_TS));
     let path = p.start();
     p.expect_ts(PATH_SEGMENT_TS);

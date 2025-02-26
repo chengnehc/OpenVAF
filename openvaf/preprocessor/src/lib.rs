@@ -21,9 +21,7 @@ use scoped_arc_arena::ScopedArena;
 use sourcemap::{CtxSpan, SourceMap};
 // use tracing::trace_span;
 
-type Text = Arc<str>;
-type ScopedTextArena = ScopedArena<Text>;
-
+/// A `Token` with source context span information
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Token {
     pub span: CtxSpan,
@@ -42,6 +40,9 @@ impl Preprocess {
         &self.errors
     }
 }
+
+type Text = Arc<str>;
+type ScopedTextArena = ScopedArena<Text>;
 
 /// # Panics
 /// This function panics if called multiple times in the same OpenVAF session

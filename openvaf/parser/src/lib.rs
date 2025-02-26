@@ -1,8 +1,9 @@
-//! The VerilogA parser.
+//! The Verilog-A parser.
 //!
-//! `Parser` struct in `parser` module provides the low-level API for
-//! navigating through the stream of tokens and constructing the parse
-//! tree. The actual parsing happens in the `grammar` module.
+//! The `Parser` struct from the [`parser`] module is a cursor into the sequence of tokens.
+//! Parsing routines use `Parser` to inspect current state and advance the parsing.
+//!
+//! The actual parsing happens in the [`grammar`] module.
 //!
 //! See Also:
 //! - https://docs.rs/ra_ap_parser/0.0.259/ra_ap_parser/
@@ -10,13 +11,12 @@
 
 pub(crate) use tokens::SyntaxKind;
 
-#[macro_use]
-mod token_set;
 mod error;
 mod event;
 mod grammar;
 mod output;
 mod parser;
+mod token_set;
 
 pub use error::SyntaxError;
 pub use output::{Output, Step};
