@@ -1,6 +1,4 @@
-//! See Also:
-//!
-//! https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer
+//! See Also: `rustc_lexer` crate
 
 use text_size::TextSize;
 
@@ -8,17 +6,20 @@ use text_size::TextSize;
 ///
 /// It doesn't contain information about data that has been parsed,
 /// only the type and size of the token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct Token {
     pub kind: TokenKind,
     pub len: TextSize,
 }
 
 /// Enum representing common lexeme types.
-// perf note: Changing all `usize` to `u32` doesn't change performance
+///
+/// # Note
+///
+/// Changing `usize` to `u32` doesn't change performance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
-    // Multi-char tokens:
+    /* Multi-char tokens */
     /// "// comment"
     LineComment,
     /// `/* block comment */`
@@ -27,32 +28,25 @@ pub enum TokenKind {
     },
     /// Any whitespace characters sequence.
     Whitespace,
-
     /// a normal identifier
     SimpleIdent,
-
     /// an escaped identifier starts with \ and ends with a whitespace
     EscapedIdent,
-
     /// a system call Identifier
     SystemCallIdent,
-
     Literal {
         kind: LiteralKind,
     },
-
     /// a compiler directive
     CompilerDirective,
-
     /// Because macro definitions (`define) are whitespace aware,
     /// the lexer this includes all tokens to the next whitespace
     Define {
         end: usize,
     },
-
     IllegalDefine,
 
-    // One-char tokens:
+    /*  One-char tokens */
     /// ";"
     Semi,
     /// ","
@@ -154,6 +148,7 @@ pub enum TokenKind {
     Unknown,
 }
 
+/// Enum representing the literal types supported by the lexer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LiteralKind {
     Int,

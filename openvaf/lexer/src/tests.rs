@@ -279,8 +279,8 @@ $foo$bar
     )
 }
 
-// Compared to rust VAMS explicitly disallows nested block comments so this is only one block
-// comment
+// Compared to Rust, VAMS explicitly disallows nested block comments
+// (see [LRM chapter 2.4 Comments]), so this is only one block comment
 #[test]
 fn nested_block_comments() {
     check_lexing(

@@ -12,7 +12,8 @@ pub enum LexerError {
 }
 
 impl lexer::TokenKind {
-    /// Convert this `TokenKind` with identifier `src` to corresponding `SyntaxKind`.
+    /// Convert this `TokenKind` with identifier `src` to corresponding `SyntaxKind`
+    /// if possible, and emit lexer errors.
     pub fn to_syntax(self, src: &str) -> (Option<SyntaxKind>, Option<LexerError>) {
         let token = match self {
             // Combined operators

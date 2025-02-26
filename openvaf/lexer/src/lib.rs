@@ -1,6 +1,15 @@
 //! Convert raw sources into a labeled sequence of well-known token types.
+//! so building an actual token stream will be easier.
 //!
-//! See Also: https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer
+//! By separating out pure lexing and language-specific concerns, like spans,
+//! error reporting, and interning, this lexer operates directly on `&str`,
+//! produces simple tokens which are a pair of type-tag and a bit of original
+//! text (see [`tokens`] crate), and does not report errors, instead storing
+//! them as flags on the token.
+//!
+//! See Also:
+//! - https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer
+//! - https://docs.rs/ra-ap-rustc_lexer/0.97.0/ra_ap_rustc_lexer/
 
 use tokens::LiteralKind::*;
 use tokens::TokenKind::*;
@@ -56,14 +65,18 @@ pub fn is_whitespace(c: char) -> bool {
     )
 }
 
-/// True if 'c' is allowed in an identifier after the first token
-pub fn is_ident_char(c: char) -> bool {
-    matches!(c,'a'..='z'|'A'..='Z'|'_'|'$'|'0'..='9')
+/// True if 'c' is valid as a first token of an identifier.
+///
+/// See [LRM Annex A.9.3 Identifiers] for formal definitions.
+pub fn is_ident_start(c: char) -> bool {
+    matches!(c, 'a'..='z'|'A'..='Z'|'_')
 }
 
-/// True if 'c' is allowed in an identifier at the first token (or later)
-pub fn is_ident_start_char(c: char) -> bool {
-    matches!(c,'a'..='z'|'A'..='Z'|'_')
+/// True if 'c' is valid as a non-first character of an identifier.
+///
+/// See [LRM Annex A.9.3 Identifiers] for formal definitions.
+pub fn is_ident_continue(c: char) -> bool {
+    matches!(c, 'a'..='z'|'A'..='Z'|'_'|'$'|'0'..='9')
 }
 
 impl Cursor<'_> {
@@ -71,13 +84,15 @@ impl Cursor<'_> {
     fn advance_token(&mut self) {
         let first_char = self.bump().unwrap();
         let token_kind = match first_char {
-            // Slash, comment or block comment.
+            // Slash, line comment or block comment.
             '/' => match self.first() {
                 '/' => self.line_comment(),
                 '*' => self.block_comment(),
                 _ => Slash,
             },
 
+            // Special case of whitespace.
+            // This could also mean the end of a '`define' statement.
             '\n' => {
                 self.finish_marker();
                 self.whitespace()
@@ -91,7 +106,8 @@ impl Cursor<'_> {
                 self.whitespace()
             }
 
-            '`' if is_ident_start_char(self.first()) => self.compiler_directive(),
+            // Compiler directives.
+            '`' if is_ident_start(self.first()) => self.compiler_directive(),
 
             // Identifier (this should be checked after other variant that can
             // start as identifier).
@@ -102,12 +118,12 @@ impl Cursor<'_> {
 
             // Identifier (this should be checked after other variant that can
             // start as identifier).
-            c if is_ident_start_char(c) => {
+            c if is_ident_start(c) => {
                 self.eat_identifier();
                 SimpleIdent
             }
 
-            '$' if is_ident_start_char(self.first()) => {
+            '$' if is_ident_start(self.first()) => {
                 self.bump();
                 self.eat_identifier();
                 SystemCallIdent
@@ -119,7 +135,13 @@ impl Cursor<'_> {
                 TokenKind::Literal { kind: literal_kind }
             }
 
-            // Three Symbol tokens
+            // String literal.
+            '"' => {
+                let terminated = self.double_quoted_string();
+                Literal { kind: Str { terminated } }
+            }
+
+            // Three-symbol tokens
             '<' if self.first() == '<' && self.second() == '<' => {
                 self.bump();
                 ShlA
@@ -130,7 +152,7 @@ impl Cursor<'_> {
                 ShrA
             }
 
-            // Two Symbol tokens
+            // Two-symbol tokens
             '(' if self.first() == '*' => {
                 self.bump();
                 AttrOpenParen
@@ -144,6 +166,7 @@ impl Cursor<'_> {
                 self.bump();
                 ArrStart
             }
+
             '=' if self.first() == '=' => {
                 self.bump();
                 Eq2
@@ -232,34 +255,9 @@ impl Cursor<'_> {
             '^' => Caret,
             '%' => Percent,
 
-            // String literal.
-            '"' => {
-                let terminated = self.double_quoted_string();
-                Literal { kind: Str { terminated } }
-            }
             _ => Unknown,
         };
         self.finish_token(token_kind)
-    }
-
-    /// Eats double-quoted string and returns true
-    /// if string is terminated.
-    fn double_quoted_string(&mut self) -> bool {
-        debug_assert!(self.prev() == '"');
-        while let Some(c) = self.bump() {
-            match c {
-                '"' => {
-                    return true;
-                }
-                '\\' if self.first() == '\\' || self.first() == '"' => {
-                    // Bump again to skip escaped character.
-                    self.bump();
-                }
-                _ => (),
-            }
-        }
-        // End of file reached.
-        false
     }
 
     fn compiler_directive(&mut self) -> TokenKind {
@@ -271,11 +269,12 @@ impl Cursor<'_> {
             }
             self.bump();
         }
-
-        if !is_define || is_ident_char(self.first()) {
-            self.eat_while(is_ident_char);
+        if !is_define || is_ident_continue(self.first()) {
+            // for cases like `foo or `definefoo
+            self.eat_while(is_ident_continue);
             CompilerDirective
         } else {
+            // `define`
             self.set_marker()
         }
     }
@@ -300,22 +299,33 @@ impl Cursor<'_> {
         debug_assert!(self.prev() == '/' && self.first() == '*');
         self.bump();
 
+        // VAMS disallows nested block comments.
+        // let mut depth = 1usize;
         while let Some(c) = self.bump() {
             match c {
+                // '/' if self.first() == '*' => {
+                //    self.bump();
+                //    depth += 1;
+                // }
                 '*' if self.first() == '/' => {
                     self.bump();
+                    // depth -= 1;
+                    // if depth == 0 {
+                    //    return BlockComment { terminated: true };
+                    // }
                     return BlockComment { terminated: true };
                 }
                 _ => (),
             }
         }
-
         BlockComment { terminated: false }
     }
 
     fn whitespace(&mut self) -> TokenKind {
         loop {
             match self.first() {
+                // `\n` marks the end of a '`define' statement
+                // when `finish_marker` returns true.
                 '\n' if self.finish_marker() => {
                     break;
                 }
@@ -330,7 +340,27 @@ impl Cursor<'_> {
         Whitespace
     }
 
-    /// Refer to LRM 2.6: Numbers and Table 2-1 for scale factors
+    /// Eats double-quoted string and returns true
+    /// if string is properly terminated.
+    fn double_quoted_string(&mut self) -> bool {
+        debug_assert!(self.prev() == '"');
+        while let Some(c) = self.bump() {
+            match c {
+                '"' => {
+                    return true;
+                }
+                '\\' if self.first() == '\\' || self.first() == '"' => {
+                    // Bump again to skip escaped character.
+                    self.bump();
+                }
+                _ => (),
+            }
+        }
+        // End of file reached.
+        false
+    }
+
+    /// See [LRM 2.6: Numbers] and [Table 2-1] for formal definitions of scale factors
     fn number(&mut self) -> LiteralKind {
         debug_assert!('0' <= self.prev() && self.prev() <= '9');
         // For analog compact model, decimal base seems enough
@@ -453,9 +483,7 @@ impl Cursor<'_> {
 
     // Eats the identifier.
     fn eat_identifier(&mut self) {
-        // debug_assert!(is_ident_char(self.first()));
-        // self.bump();
-        self.eat_while(is_ident_char);
+        self.eat_while(is_ident_continue);
     }
 
     /// Eats symbols while predicate returns true or until the end of file is reached.

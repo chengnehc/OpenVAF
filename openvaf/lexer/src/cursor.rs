@@ -8,11 +8,15 @@ use tokens::{Token, TokenKind};
 /// Next characters can be peeked via `nth_char` method,
 /// and position can be shifted forward via `bump` method.
 pub(crate) struct Cursor<'a> {
-    initial_len: TextSize,
+    len_remaining: TextSize,
+    // an iterator of symbols
     chars: Chars<'a>,
+    // the last eaten symbol
     #[cfg(debug_assertions)]
     prev: char,
+    // TODO(JW) consider refactoring this out of `Cursor`?
     dst: Vec<Token>,
+    // for '`define' macro expansion
     marker: Option<usize>,
 }
 
@@ -21,7 +25,7 @@ pub(crate) const EOF_CHAR: char = '\0';
 impl<'a> Cursor<'a> {
     pub(crate) fn new(input: &'a str) -> Cursor<'a> {
         Cursor {
-            initial_len: TextSize::of(input),
+            len_remaining: TextSize::of(input),
             chars: input.chars(),
             #[cfg(debug_assertions)]
             prev: EOF_CHAR,
@@ -44,23 +48,22 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// Returns nth character relative to the current cursor position.
+    /// Peeks the next symbol from the input stream without consuming it.
     /// If requested position doesn't exist, `EOF_CHAR` is returned.
     ///
     /// However, getting `EOF_CHAR` doesn't always mean actual end of file,
     /// it should be checked with `is_eof` method.
-    fn nth_char(&self, n: usize) -> char {
-        self.chars().nth(n).unwrap_or(EOF_CHAR)
-    }
-
-    /// Peeks the next symbol from the input stream without consuming it.
-    pub(crate) fn first(&self) -> char {
-        self.nth_char(0)
+    pub fn first(&self) -> char {
+        // `.next()` optimizes better than `.nth(0)`
+        self.chars.clone().next().unwrap_or(EOF_CHAR)
     }
 
     /// Peeks the second symbol from the input stream without consuming it.
     pub(crate) fn second(&self) -> char {
-        self.nth_char(1)
+        // `.next()` optimizes better than `.nth(1)`
+        let mut iter = self.chars.clone();
+        iter.next();
+        iter.next().unwrap_or(EOF_CHAR)
     }
 
     /// Checks if there is nothing more to consume.
@@ -69,13 +72,13 @@ impl<'a> Cursor<'a> {
     }
 
     /// Returns amount of already consumed symbols.
-    fn len_consumed(&self) -> TextSize {
-        self.initial_len - TextSize::of(self.chars.as_str())
+    pub(crate) fn pos_within_token(&self) -> TextSize {
+        self.len_remaining - TextSize::of(self.chars.as_str())
     }
 
-    /// Returns a `Chars` iterator over the remaining characters.
-    fn chars(&self) -> Chars<'a> {
-        self.chars.clone()
+    /// Resets the number of bytes consumed to 0.
+    pub(crate) fn reset_pos_within_token(&mut self) {
+        self.len_remaining = TextSize::of(self.chars.as_str());
     }
 
     /// Moves to the next character.
@@ -91,9 +94,18 @@ impl<'a> Cursor<'a> {
     }
 
     pub(crate) fn finish_token(&mut self, kind: TokenKind) {
-        let len = self.len_consumed();
-        self.initial_len -= len;
+        let len = self.pos_within_token();
+        self.reset_pos_within_token();
         self.dst.push(Token { kind, len })
+    }
+
+    pub(crate) fn set_marker(&mut self) -> TokenKind {
+        // Nested define statements are not allowed.
+        if self.marker.is_none() {
+            self.marker = Some(self.dst.len())
+        }
+        // Placeholder that remains if the marker cannot be finished.
+        TokenKind::IllegalDefine
     }
 
     pub(crate) fn finish_marker(&mut self) -> bool {
@@ -103,14 +115,6 @@ impl<'a> Cursor<'a> {
         } else {
             false
         }
-    }
-
-    pub(crate) fn set_marker(&mut self) -> TokenKind {
-        // we do not allow nested define statements
-        if self.marker.is_none() {
-            self.marker = Some(self.dst.len())
-        }
-        TokenKind::IllegalDefine
     }
 
     pub(crate) fn finish(mut self) -> Vec<Token> {
