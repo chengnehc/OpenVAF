@@ -8,7 +8,6 @@ license="GPL-3.0"
 [lib]
 doctest = false
 
-
 [dependencies]
 mir = {version = "0.0.0", path = "../mir" }
 
@@ -21,5 +20,6 @@ ahash = "0.8"
 hashbrown = {version = "0.14", features = ["raw"]}
 
 [dev-dependencies]
-expect-test = "1.4"
 mir_reader = {version = "0.0.0", path = "../mir_reader" }
+
+expect-test = "1.4"

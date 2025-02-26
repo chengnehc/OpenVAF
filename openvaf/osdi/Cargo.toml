@@ -15,12 +15,13 @@ typed_indexmap = {version = "0.0.0", path = "../../lib/typed_indexmap"}
 paths = {version = "0.0", path = "../../lib/paths"}
 base_n = {version = "1", path="../../lib/base_n"}
 
-hir_lower = {version ="0.0.0", path ="../hir_lower"}
 hir = { version = "0.0.0", path = "../hir" }
-sim_back = { version = "0.0.0", path = "../sim_back" }
+hir_lower = {version ="0.0.0", path ="../hir_lower"}
 
 mir = { version = "0.0.0", path = "../mir" }
 mir_llvm = { version = "0.0.0", path = "../mir_llvm" }
+
+sim_back = { version = "0.0.0", path = "../sim_back" }
 
 llvm = { version = "0.0.0", path = "../llvm" }
 target = { version = "0.0.0", path = "../target"}
@@ -48,8 +49,9 @@ target = { version = "0.0.0", path = "../target" }
 
 expect-test = "1.4"
 mir_interpret = {version = "0.0.0", path = "../mir_interpret" }
-float-cmp =  "0.9"
 mini_harness = { version = "0.0.1", path = "../../lib/mini_harness" }
+
+float-cmp =  "0.9"
 
 [[test]]
 name = "data_tests"

@@ -8,7 +8,6 @@ license="GPL-3.0"
 [lib]
 doctest = false
 
-
 [dependencies]
 mir = {version = "0.0.0", path = "../mir" }
 
