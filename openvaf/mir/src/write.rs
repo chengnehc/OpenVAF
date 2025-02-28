@@ -332,7 +332,7 @@ pub fn write_operands(w: &mut dyn Write, dfg: &DataFlowGraph, inst: Inst) -> fmt
 /// Displayable slice of values.
 struct DisplayValues<'a>(&'a [Value]);
 
-impl<'a> fmt::Display for DisplayValues<'a> {
+impl fmt::Display for DisplayValues<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (i, val) in self.0.iter().enumerate() {
             if i == 0 {

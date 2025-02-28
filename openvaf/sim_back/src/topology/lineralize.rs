@@ -33,7 +33,7 @@ pub(super) enum Evaluation {
     Dead,
 }
 
-impl<'a> super::Builder<'a> {
+impl super::Builder<'_> {
     /// Build topology for a list of analog operators (noise and ddt) with a predetermined evaluation.
     pub(super) fn builid_analog_operators(
         &mut self,

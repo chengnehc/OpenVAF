@@ -37,7 +37,7 @@ struct FileSrc<'a> {
     anon_paths: bool,
 }
 
-impl<'a> Files<'_> for FileSrc<'a> {
+impl Files<'_> for FileSrc<'_> {
     type FileId = FileId;
 
     type Name = VfsPath;

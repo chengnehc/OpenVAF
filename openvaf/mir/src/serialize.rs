@@ -297,7 +297,7 @@ impl Serializer<'_> {
     }
 }
 
-impl<'a> Write for Serializer<'a> {
+impl Write for Serializer<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for line in s.split_inclusive('\n') {
             if self.needs_indent {

@@ -51,7 +51,7 @@ fn ty_struct<'ll>(llcx: &'ll llvm::Context, name: &str, elements: &[&'ll Type]) 
 }
 
 /// wrappers for llvm::Type
-impl<'a, 'll> CodegenCx<'a, 'll> {
+impl<'ll> CodegenCx<'_, 'll> {
     #[inline(always)]
     pub fn ty_double(&self) -> &'ll Type {
         self.tys.double
@@ -115,7 +115,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
 }
 
 /// wrappers for constant llvm::Value
-impl<'a, 'll> CodegenCx<'a, 'll> {
+impl<'ll> CodegenCx<'_, 'll> {
     pub fn const_val(&self, val: &Const) -> &'ll Value {
         match *val {
             Const::Float(val) => self.const_real(val.into()),

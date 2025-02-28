@@ -455,7 +455,10 @@ impl<'a, T: From<usize> + Into<usize> + Copy + PartialEq + Debug> BitIter<'a, T>
     }
 }
 
-impl<'a, T: From<usize> + Into<usize> + Copy + PartialEq + Debug> Iterator for BitIter<'a, T> {
+impl<T> Iterator for BitIter<'_, T>
+where
+    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
+{
     type Item = T;
     fn next(&mut self) -> Option<T> {
         loop {

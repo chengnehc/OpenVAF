@@ -26,7 +26,7 @@ pub fn declare_raw_fn<'ll>(
     }
 }
 
-impl<'a, 'll> CodegenCx<'a, 'll> {
+impl<'ll> CodegenCx<'_, 'll> {
     // pub fn target_cpu_attr(&self) -> &'ll Attribute {
     //     create_attr_string_value(self.llcx, "target-cpu", self.target_cpu)
     // }

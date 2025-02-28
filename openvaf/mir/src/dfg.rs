@@ -165,7 +165,7 @@ impl DataFlowGraph {
 
 pub struct DisplayInst<'a>(&'a DataFlowGraph, Inst);
 
-impl<'a> fmt::Display for DisplayInst<'a> {
+impl fmt::Display for DisplayInst<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let dfg = self.0;
         let inst = self.1;

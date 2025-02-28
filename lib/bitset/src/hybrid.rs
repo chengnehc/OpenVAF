@@ -404,7 +404,7 @@ where
     Dense(BitIter<'a, T>),
 }
 
-impl<'a, T> Iterator for HybridIter<'a, T>
+impl<T> Iterator for HybridIter<'_, T>
 where
     T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
 {

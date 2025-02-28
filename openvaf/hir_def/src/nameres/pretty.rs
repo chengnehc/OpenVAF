@@ -22,7 +22,7 @@ struct Printer<'a> {
     needs_indent: bool,
 }
 
-impl<'a> Printer<'a> {
+impl Printer<'_> {
     fn indented(&mut self, f: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
         self.indent_level += 1;
         writeln!(self)?;
@@ -42,14 +42,11 @@ impl<'a> Printer<'a> {
     }
 
     fn print_scope(&mut self, map: &DefMap, local_scope: LocalScopeId) -> fmt::Result {
-        let mut declarations: Vec<_> = map.scopes[local_scope]
-            .declarations
-            .iter()
-            .map(|(name, def)| (name.clone(), *def))
-            .collect();
+        let mut declarations: Vec<_> =
+            map[local_scope].declarations.iter().map(|(name, def)| (name.clone(), *def)).collect();
         declarations.sort_unstable_by_key(|(name, _)| name.clone());
         for (name, def) in declarations {
-            write!(self, "{} = {};", name, def.item_kind())?;
+            write!(self, "{name} = {};", def.item_kind())?;
             match def {
                 ScopeItemDef::BlockId(block) => {
                     if let Some(def_map) = self.db.block_def_map(block) {
@@ -61,7 +58,7 @@ impl<'a> Printer<'a> {
                     self.indented(|s| s.print_def_map(&def_map))?;
                 }
                 _ => {
-                    if let Some(child) = map.scopes[local_scope].children.get(&name) {
+                    if let Some(child) = map[local_scope].children.get(&name) {
                         self.indented(|s| s.print_scope(map, *child))?;
                     } else {
                         writeln!(self)?;
@@ -74,7 +71,7 @@ impl<'a> Printer<'a> {
     }
 }
 
-impl<'a> Write for Printer<'a> {
+impl Write for Printer<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for line in s.split_inclusive('\n') {
             if self.needs_indent {

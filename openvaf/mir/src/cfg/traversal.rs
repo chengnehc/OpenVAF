@@ -100,7 +100,7 @@ impl<'a> Postorder<'a> {
     }
 }
 
-impl<'lt> Iterator for Postorder<'lt> {
+impl Iterator for Postorder<'_> {
     type Item = Block;
 
     fn next(&mut self) -> Option<Block> {

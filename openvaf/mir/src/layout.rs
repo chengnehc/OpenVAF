@@ -252,7 +252,7 @@ pub struct Blocks<'f> {
     layout: &'f Layout,
     next: Option<Block>,
 }
-impl<'f> Iterator for Blocks<'f> {
+impl Iterator for Blocks<'_> {
     type Item = Block;
 
     fn next(&mut self) -> Option<Block> {
@@ -584,14 +584,14 @@ pub struct InstIter<'f> {
     pub layout: &'f Layout,
     pub cursor: InstCursor,
 }
-impl<'f> Iterator for InstIter<'f> {
+impl Iterator for InstIter<'_> {
     type Item = Inst;
 
     fn next(&mut self) -> Option<Inst> {
         self.cursor.next(self.layout)
     }
 }
-impl<'f> DoubleEndedIterator for InstIter<'f> {
+impl DoubleEndedIterator for InstIter<'_> {
     fn next_back(&mut self) -> Option<Inst> {
         self.cursor.next_back(self.layout)
     }

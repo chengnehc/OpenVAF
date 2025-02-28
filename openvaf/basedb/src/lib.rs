@@ -192,7 +192,7 @@ fn empty_global_lint_overwrites(db: &dyn BaseDB) -> TiVec<Lint, Option<LintLevel
 /// BaseDB is a kind of SourceProvider
 struct SourceProviderDelegate<'a>(&'a dyn BaseDB);
 
-impl<'a> dyn BaseDB + 'a {
+impl dyn BaseDB + '_ {
     pub fn as_src_provider(&self) -> impl SourceProvider + '_ {
         SourceProviderDelegate(self)
     }

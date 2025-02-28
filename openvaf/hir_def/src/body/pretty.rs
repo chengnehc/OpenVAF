@@ -177,7 +177,7 @@ impl Printer<'_> {
     }
 }
 
-impl<'a> Write for Printer<'a> {
+impl Write for Printer<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for line in s.split_inclusive('\n') {
             if self.needs_indent {

@@ -46,7 +46,7 @@ struct SimplifyCfg<'a> {
     // unconditional_preds: Vec<(Block, InstCursor)>,
 }
 
-impl<'a> SimplifyCfg<'a> {
+impl SimplifyCfg<'_> {
     /// Call SimplifyCFG on all the blocks in the function,
     fn iteratively_simplify_cfg(&mut self) -> bool {
         let mut changed = false;

@@ -233,7 +233,7 @@ pub struct LdLinker<'a> {
     target: &'a Target,
 }
 
-impl<'a> LdLinker<'a> {
+impl LdLinker<'_> {
     /// Passes an argument directly to the linker.
     ///
     /// When the linker is not ld-like such as when using a compiler as a linker, the argument is
@@ -253,7 +253,7 @@ impl<'a> LdLinker<'a> {
     }
 }
 
-impl<'a> Linker for LdLinker<'a> {
+impl Linker for LdLinker<'_> {
     fn cmd(&mut self) -> &mut Command {
         &mut self.cmd
     }

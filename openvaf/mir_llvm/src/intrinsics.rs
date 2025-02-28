@@ -2,7 +2,7 @@ use llvm::{Type, Value};
 
 use crate::CodegenCx;
 
-impl<'a, 'll> CodegenCx<'a, 'll> {
+impl<'ll> CodegenCx<'_, 'll> {
     pub fn intrinsic(&self, name: &'static str) -> Option<(&'ll Type, &'ll Value)> {
         if let Some(res) = self.intrinsics.borrow().get(name) {
             return Some(*res);

@@ -584,7 +584,7 @@ impl<'f> FuncCursor<'f> {
     }
 }
 
-impl<'f> Cursor for FuncCursor<'f> {
+impl Cursor for FuncCursor<'_> {
     fn position(&self) -> CursorPosition {
         self.pos
     }
@@ -610,7 +610,7 @@ impl<'f> Cursor for FuncCursor<'f> {
     }
 }
 
-impl<'c, 'f> InstInserterBase<'c> for &'c mut FuncCursor<'f> {
+impl<'c> InstInserterBase<'c> for &'c mut FuncCursor<'_> {
     fn data_flow_graph(&self) -> &DataFlowGraph {
         &self.func.dfg
     }

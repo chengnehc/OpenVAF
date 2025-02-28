@@ -48,11 +48,8 @@ impl Literal {
     }
 
     pub fn unwrap_str(&self) -> &str {
-        if let Literal::String(lit) = self {
-            lit
-        } else {
-            unreachable!("called unwrap str on {self:?}")
-        }
+        let Literal::String(lit) = self else { unreachable!("called unwrap str on {self:?}") };
+        lit
     }
 
     pub fn is_zero(&self) -> bool {
@@ -120,11 +117,8 @@ impl Expr {
     }
 
     pub fn unwrap_literal(&self) -> &Literal {
-        if let Expr::Literal(lit) = self {
-            lit
-        } else {
-            unreachable!("called unwrap_literal on {self:?}")
-        }
+        let Expr::Literal(lit) = self else { unreachable!("called unwrap_literal on {self:?}") };
+        lit
     }
 }
 
@@ -226,10 +220,7 @@ impl Stmt {
 
     #[inline]
     pub fn unwrap_expr(&self) -> ExprId {
-        if let Stmt::Expr(e) = self {
-            *e
-        } else {
-            unreachable!("Called unwrap_expr on {:?}", self)
-        }
+        let Stmt::Expr(e) = self else { unreachable!("Called unwrap_expr on {:?}", self) };
+        *e
     }
 }

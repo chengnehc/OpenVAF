@@ -478,7 +478,7 @@ impl<'a> FunctionBuilder<'a> {
 }
 
 /// Inspect the function being built.
-impl<'a> FunctionBuilder<'a> {
+impl FunctionBuilder<'_> {
     /// Returns the result values of an instruction.
     pub fn inst_results(&self, inst: Inst) -> &[Value] {
         self.func.dfg.inst_results(inst)
@@ -515,7 +515,7 @@ impl<'a> FunctionBuilder<'a> {
 }
 
 /// Modify the function in ways that can be unsafe if used incorrectly.
-impl<'a> FunctionBuilder<'a> {
+impl FunctionBuilder<'_> {
     /// Fill the block under current position.
     ///
     /// A `Block` is 'filled' when a terminator instruction is present.
