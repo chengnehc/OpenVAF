@@ -23,13 +23,13 @@ extern "C" {
     // pub fn LLVMIsAMDNode(Val: &'a Value) -> &'a Value;
     // pub fn LLVMIsAMDString(Val: &'a Value) -> &'a Value;
 
-    /// Usage
+    // Usage
     // pub fn LLVMGetFirstUse(Val: &'a Value) -> LLVMUseRef;
     // pub fn LLVMGetNextUse(U: LLVMUseRef) -> LLVMUseRef;
     // pub fn LLVMGetUser(U: LLVMUseRef) -> &'a Value;
     // pub fn LLVMGetUsedValue(U: LLVMUseRef) -> &'a Value;
 
-    /// User value
+    // User value
     // pub fn LLVMGetOperand(Val: &'a Value, Index: ::libc::c_uint) -> &'a Value;
     // pub fn LLVMGetOperandUse(Val: &'a Value, Index: ::libc::c_uint) -> LLVMUseRef;
     // pub fn LLVMSetOperand(User: &'a Value, Index: ::libc::c_uint, Val: &'a Value);

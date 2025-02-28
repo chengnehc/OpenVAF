@@ -3,7 +3,7 @@ use crate::{ControlFlowGraph, DominatorTree, Function, InstructionData, ValueDef
 impl Function {
     pub fn validate(&self) -> bool {
         let mut valid = true;
-        let cfg = ControlFlowGraph::with_function(&self);
+        let cfg = ControlFlowGraph::with_function(self);
         let mut dom_tree = DominatorTree::default();
         dom_tree.compute(self, &cfg, true, false, true);
 

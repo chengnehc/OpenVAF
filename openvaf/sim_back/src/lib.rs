@@ -79,10 +79,7 @@ impl<'a> CompiledModule<'a> {
             cx.intern.params.iter().for_each(|(p, val)| {
                 print!("  {:?}", p);
                 match p {
-                    ParamKind::Param(param) => {
-                        println!(" .. {:?} -> {:?}", param.name(db), val);
-                    }
-                    ParamKind::ParamGiven { param } => {
+                    ParamKind::Param(param) | ParamKind::ParamGiven { param } => {
                         println!(" .. {:?} -> {:?}", param.name(db), val);
                     }
                     ParamKind::Voltage { hi, lo } => {
@@ -121,7 +118,7 @@ impl<'a> CompiledModule<'a> {
                     }
                 }
             });
-            println!("");
+            println!();
 
             println!("Outputs:");
             cx.intern.outputs.iter().for_each(|(p, val)| {
@@ -131,19 +128,19 @@ impl<'a> CompiledModule<'a> {
                     println!("  {:?} -> None", p);
                 }
             });
-            println!("");
+            println!();
 
             println!("Tagged reads:");
             cx.intern.tagged_reads.iter().for_each(|(val, var)| {
                 println!("  {:?} -> {:?}", val, var);
             });
-            println!("");
+            println!();
 
             println!("Implicit equations:");
             for (i, &iek) in cx.intern.implicit_equations.iter().enumerate() {
                 println!("  {:?} : {:?}", i, iek);
             }
-            println!("");
+            println!();
 
             let cu = db.compilation_unit();
             println!("Compilation unit: {}", cu.name(db));
@@ -156,11 +153,11 @@ impl<'a> CompiledModule<'a> {
             println!("DAE system");
             let str = format!("{dae_system:#?}");
             println!("{}", str);
-            println!("");
+            println!();
 
             println!("CX function");
             println!("{:?}", cx.func);
-            println!("");
+            println!();
         }
 
         debug_assert!(cx.func.validate());
@@ -174,7 +171,7 @@ impl<'a> CompiledModule<'a> {
         if debugging {
             println!("Init function");
             println!("{:?}", init.func);
-            println!("");
+            println!();
         }
 
         debug_assert!(init.func.validate());

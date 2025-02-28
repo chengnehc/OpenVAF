@@ -166,8 +166,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             .iter()
             .find(|bb| {
                 func.layout
-                    .last_inst(**bb)
-                    .map_or(true, |term| !func.dfg.insts[term].is_terminator())
+                    .last_inst(**bb).is_none_or(|term| !func.dfg.insts[term].is_terminator())
             })
             .unwrap();
 

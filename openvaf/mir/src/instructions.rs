@@ -292,7 +292,7 @@ pub struct OpcodeConstraints {
 
 impl OpcodeConstraints {
     const fn new(arg_cnt: u8, ret_cnt: u8) -> OpcodeConstraints {
-        OpcodeConstraints { flags: arg_cnt << 3 | ret_cnt }
+        OpcodeConstraints { flags: (arg_cnt << 3) | ret_cnt }
     }
 
     /// Get the number of *fixed* result values produced by this opcode.

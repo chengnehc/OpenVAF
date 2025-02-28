@@ -88,34 +88,21 @@ impl<'a> BodyRef<'a> {
     // AB: get integer literal
     pub fn as_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
         match &self.body.exprs[expr1] {
-            hir_def::Expr::Literal(lit) => match &lit {
-                Literal::Int(ii) => Some(*ii), // Int literal
-                _ => None,                     // other literals
-            },
-            _ => None, // not a literal
+            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii), // Int literal
+            _ => None, // not a literal or other literals
         }
     }
 
     // AB: get integer literal with optional negative sign
     pub fn as_signed_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
         match &self.body.exprs[expr1] {
-            hir_def::Expr::Literal(lit) => match &lit {
-                // Literal
-                Literal::Int(ii) => Some(*ii), // Int literal
-                _ => None,                     // other literals
-            },
-            hir_def::Expr::UnaryOp { expr, op } => {
-                // UnaryOp
-                match op {
-                    UnaryOp::Neg => match self.as_int_literal(expr) {
-                        // Neg
-                        Some(ii) => Some(-ii), // Neg Int literal
-                        _ => None,             // Neg anything else
-                    },
-                    _ => None, // Other UnaryOp
-                }
+            // Int literal
+            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
+            // Int literal with `-` prefix
+            hir_def::Expr::UnaryOp { expr, op: UnaryOp::Neg } => {
+                self.as_int_literal(expr).map(|ii| -ii)
             }
-            _ => None, // Neither Literal nor UnaryOp
+            _ => None,
         }
     }
 

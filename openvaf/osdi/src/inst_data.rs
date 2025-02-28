@@ -230,9 +230,12 @@ impl<'ll> OsdiInstanceData<'ll> {
             .sys_fun_alias
             .keys()
             .map(|param| (OsdiInstanceParam::Builtin(*param), ty_f64));
-        let user_inst_params = module.info.params.iter().filter_map(|(param, info)| {
-            info.is_instance.then(|| (OsdiInstanceParam::User(*param), lltype(&param.ty(db), cx)))
-        });
+        let user_inst_params = module
+            .info
+            .params
+            .iter()
+            .filter(|&(_param, info)| info.is_instance)
+            .map(|(param, _info)| (OsdiInstanceParam::User(*param), lltype(&param.ty(db), cx)));
         let params: IndexMap<_, _, _> =
             builtin_inst_params.chain(alias_inst_params).chain(user_inst_params).collect();
 

@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use expect_test::{expect, Expect};
 use text_size::{TextRange, TextSize};
 
@@ -5,14 +7,12 @@ use super::tokenize;
 
 fn check_lexing(src: &str, expect: Expect) {
     let mut offset = TextSize::from(0);
-    let actual: String = tokenize(src)
-        .into_iter()
-        .map(|token| {
-            let content = &src[TextRange::at(offset, token.len)];
-            offset += token.len;
-            format!("{:?}\n{:?}\n", token, content)
-        })
-        .collect();
+    let actual: String = tokenize(src).into_iter().fold(String::new(), |mut output, token| {
+        let content = &src[TextRange::at(offset, token.len)];
+        let _ = write!(output, "{:?}\n{:?}\n", token, content);
+        offset += token.len;
+        output
+    });
     expect.assert_eq(&actual)
 }
 

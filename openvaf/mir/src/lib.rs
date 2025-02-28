@@ -10,7 +10,7 @@
 //! * The MIR only represents Verilog-A, allowing for dropping support for atomics etc.
 //! * The MIR does not map to actual hardware opcodes as direct codegeneration is not a goal.
 //! * The MIR is untyped. All opcodes have fixed argument/return types. Instructions must be
-//! constructed with correct types.
+//!   constructed with correct types.
 //!
 //! Compared to the HIR, the MIR is completely decoupled from the AST (and HIR), which allows for much
 //! faster compile times. This break comes quite naturally as the various algorithms that operate on the

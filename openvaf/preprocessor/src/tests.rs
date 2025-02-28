@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use std::sync::Arc;
 use std::{cell::RefCell, path::PathBuf};
 
@@ -44,9 +46,12 @@ impl SourceProvider for TestSourceProvider {
 }
 
 fn check_prepocessor(sources: TestSourceProvider, root_file: FileId, test_name: &'static str) {
-    let Preprocess { tokens, errors, source_map: sm } = preprocess(&sources, root_file);
+    let Preprocess { tokens, errors, source_map } = preprocess(&sources, root_file);
     assert_eq!(errors.as_slice(), &[]);
-    let actual_tokens: String = tokens.iter().map(|token| format!("{:?}\n", token.kind,)).collect();
+    let actual_tokens: String = tokens.iter().fold(String::new(), |mut output, token| {
+        let _ = writeln!(output, "{:?}", token.kind,);
+        output
+    });
     let expected = PathBuf::from(".").join("test_data").join(format!("{}.tokens", test_name));
     expect_file![expected].assert_eq(&actual_tokens);
 
@@ -54,7 +59,7 @@ fn check_prepocessor(sources: TestSourceProvider, root_file: FileId, test_name: 
     let actual_content: String = tokens
         .iter()
         .map(|token| {
-            let filespan = token.span.to_file_span(&sm);
+            let filespan = token.span.to_file_span(&source_map);
             let src = vfs.file_contents(filespan.file).unwrap();
             &src[filespan.range]
         })

@@ -27,7 +27,7 @@ macro_rules! match_signature {
     ($signature:ident: $($case:ident $(| $extra_case:ident)* => $res:expr),*) => {
         match $signature {
             $($case $(|$extra_case)* => $res,)*
-            signature => unreachable!("invalid signature {:?}",signature)
+            signature => unreachable!("invalid signature {:?}", signature)
         }
     };
 }
@@ -393,7 +393,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
 
             // Signal access functions
             BuiltIn::flow => {
-                let res = match_signature! {
+                match_signature! {
                     signature:
                         NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                             let hi = self.body.into_node(args[0]);
@@ -407,14 +407,13 @@ impl BodyLoweringCtx<'_, '_, '_> {
                         NATURE_ACCESS_PORT_FLOW => self.ctx.use_param(ParamKind::Current(
                             CurrentKind::Port(self.body.into_port_flow(args[0]))
                         ))
-                };
+                }
                 // AB: Do not divide flow probe.
                 //     Flow unknowns correspond to the flow of a single parallel instance.
                 //     HIR equation describes a single parallel instance.
                 //     Handle $mfactor at a lower level.
                 // let mfactor = self.ctx.use_param(ParamKind::ParamSysFun(ParamSysFun::mfactor));
                 // return self.ctx.ins().fdiv(res, mfactor);
-                return res;
             }
             BuiltIn::potential => {
                 match_signature! {
@@ -607,7 +606,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 const Q: f64 = 1.602176565e-19;
 
                 let fac = self.ctx.fconst(KB / Q);
-                let temp = match args.get(0) {
+                let temp = match args.first() {
                     Some(temp) => self.lower_expr(*temp),
                     None => self.ctx.use_param(ParamKind::Temperature),
                 };

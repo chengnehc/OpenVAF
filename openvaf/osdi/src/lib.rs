@@ -237,7 +237,7 @@ pub fn compile(
 
 impl OsdiModule<'_> {
     fn intern_names(&self, literals: &mut Rodeo, db: &CompilationDB) {
-        literals.get_or_intern(&self.info.module.name(db));
+        literals.get_or_intern(self.info.module.name(db));
         self.intern_node_strs(literals, db);
         literals.get_or_intern_static("Multiplier (Verilog-A $mfactor)");
         literals.get_or_intern_static("deg");
@@ -255,7 +255,7 @@ impl OsdiModule<'_> {
         }
 
         for (var, opvar_info) in self.info.op_vars.iter() {
-            literals.get_or_intern(&var.name(db));
+            literals.get_or_intern(var.name(db));
             literals.get_or_intern(&opvar_info.unit);
             literals.get_or_intern(&opvar_info.description);
         }

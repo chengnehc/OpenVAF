@@ -29,7 +29,7 @@ impl AstCache {
         let mut attrs = if ast::Var::can_cast(node.kind()) || ast::Param::can_cast(node.kind()) {
             ast::attrs(&node.parent().unwrap())
         } else {
-            ast::attrs(&node)
+            ast::attrs(node)
         };
         attrs.nth(idx)
     }

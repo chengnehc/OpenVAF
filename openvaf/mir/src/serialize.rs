@@ -37,9 +37,8 @@ impl Function {
         let mut inst_map = IndexSet::default();
         let bb_map = cfg
             .reverse_postorder(self)
-            .map(|bb| {
+            .inspect(|&bb| {
                 inst_map.extend(self.layout.block_insts(bb));
-                bb
             })
             .collect();
         let mut val_map: IndexSet<Value, RandomState> = IndexSet::default();

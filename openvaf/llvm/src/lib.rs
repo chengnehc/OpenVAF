@@ -360,4 +360,4 @@ pub fn get_version() -> (u32, u32, u32) {
 /// Empty string, to be used where LLVM expects an instruction name, indicating
 /// that the instruction is to be left unnamed (i.e. numbered, in textual IR).
 // FIXME(eddyb) pass `&CStr` directly to FFI once it's a thin pointer.
-pub const UNNAMED: *const c_char = b"\0".as_ptr() as *const c_char;
+pub const UNNAMED: *const c_char = c"".as_ptr() as *const c_char;

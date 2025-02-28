@@ -1,11 +1,10 @@
 use std::cell::UnsafeCell;
-use std::mem::swap;
-use std::ptr;
+use std::{mem, ptr};
+use stdx::iter::zip;
 
 use anyhow::Result;
 use indexmap::IndexSet;
 use libc::c_void;
-use stdx::iter::zip;
 
 pub const ALPHA: f64 = 0.172;
 
@@ -114,7 +113,7 @@ impl MockSimulation {
 
     pub(crate) fn next_iter(&mut self) {
         self.solve.fill(0.0);
-        swap(&mut self.state_1, &mut self.state_2);
+        mem::swap(&mut self.state_1, &mut self.state_2);
         self.clear();
     }
 }
@@ -247,7 +246,7 @@ impl OsdiInstance {
             flags: flags.bits(),
         };
         let flags = self.descriptor.eval(
-            b"foo\0".as_ptr() as *mut c_void,
+            c"foo".as_ptr() as *mut c_void,
             self.data,
             model.data,
             &mut sim_info,

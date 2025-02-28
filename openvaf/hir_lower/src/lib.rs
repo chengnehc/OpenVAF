@@ -169,7 +169,7 @@ pub struct HirInterner {
 /*
 pub type LiveParams<'a> = FilterMap<
     map::Iter<'a, Param, ParamKind, Value>,
-    impl FnMut((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)>,
+    impl FnMut((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)> + Clone,
 >;
 */
 

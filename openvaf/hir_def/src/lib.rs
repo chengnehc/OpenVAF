@@ -136,7 +136,7 @@ impl<N: ItemTreeNode> ItemLoc<N> {
 //#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 impl<N: ItemTreeNode> Clone for ItemLoc<N> {
     fn clone(&self) -> Self {
-        Self { scope: self.scope, id: self.id }
+        *self
     }
 }
 impl<N: ItemTreeNode> Copy for ItemLoc<N> {}

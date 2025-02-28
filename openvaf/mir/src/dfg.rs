@@ -269,7 +269,7 @@ impl DataFlowGraph {
         self.values.num()
     }
 
-    pub fn values(&self) -> impl Iterator<Item = Value> + ExactSizeIterator {
+    pub fn values(&self) -> impl ExactSizeIterator<Item = Value> {
         self.values.iter()
     }
 

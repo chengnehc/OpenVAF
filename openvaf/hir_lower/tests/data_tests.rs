@@ -14,7 +14,7 @@ use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, projec
 fn lower_to_mir(db: &CompilationDB, is_output: &impl Fn(PlaceKind) -> bool) -> Vec<Function> {
     let unit = db.compilation_unit();
     // ensure that the HIR contains no errors first
-    assert_eq!(unit.test_diagnostics(&db), "");
+    assert_eq!(unit.test_diagnostics(db), "");
     // a builder context that remains undropped across different lowering pass
     let mut ctx = FunctionBuilderContext::default();
 

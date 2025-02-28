@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::fs::{read_dir, read_to_string, DirEntry};
 use std::mem::swap;
 
@@ -148,7 +149,7 @@ impl<'a> HeaderParser<'a> {
             let typedef_pos = self.src().find("typedef");
             let define_pos = self.src().find("#define");
             if let Some(pos) = typedef_pos {
-                if define_pos.map_or(true, |define_pos| pos < define_pos) {
+                if define_pos.is_none_or(|define_pos| pos < define_pos) {
                     self.off += pos;
                     assert!(self.eat("typedef"));
                     if self.eat("struct") {
@@ -749,5 +750,8 @@ fn gen_llvm_tys<'a>(tys: &IndexMap<&'a str, OsdiStruct<'a>, RandomState>) -> Str
 }
 
 fn gen_defines(defines: &[(&str, &str)]) -> String {
-    defines.iter().map(|(ident, val)| format!("pub const {ident}: u32 = {val};")).collect()
+    defines.iter().fold(String::new(), |mut output, (ident, val)| {
+        let _ = write!(output, "pub const {ident}: u32 = {val};");
+        output
+    })
 }

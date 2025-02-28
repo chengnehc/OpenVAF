@@ -487,7 +487,7 @@ impl<'a, 'u> DerivativeBuilder<'a, 'u> {
 
         let op = self.func.dfg.insts[inst].opcode();
         let args = self.func.dfg.instr_args(inst);
-        let arg0 = args.get(0).copied().unwrap_or_else(Value::reserved_value);
+        let arg0 = args.first().copied().unwrap_or_else(Value::reserved_value);
         let arg1 = args.get(1).copied().unwrap_or_else(Value::reserved_value);
         let res = self.func.dfg.first_result(inst);
 
@@ -634,7 +634,7 @@ impl<'a, 'u> DerivativeBuilder<'a, 'u> {
         let op = self.func.dfg.insts[inst].opcode();
 
         let args = self.func.dfg.instr_args(inst);
-        let arg0 = args.get(0).copied().unwrap_or_else(Value::reserved_value);
+        let arg0 = args.first().copied().unwrap_or_else(Value::reserved_value);
         let arg1 = args.get(1).copied().unwrap_or_else(Value::reserved_value);
         let arg_derivative = |sel: &mut DerivativeBuilder, i| {
             sel.derivative_of_1(sel.func.dfg.instr_args(inst)[i], unknown)

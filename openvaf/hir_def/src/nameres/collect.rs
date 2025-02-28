@@ -143,10 +143,10 @@ impl DefCollector<'_> {
                 let declarations = scope
                     .declarations
                     .iter()
-                    .filter_map(|(name, decl)| {
+                    .filter(|&(_, decl)| {
                         matches!(decl, ScopeItemDef::ParamId(_) | ScopeItemDef::FunctionId(_))
-                            .then(|| (name.clone(), *decl))
                     })
+                    .map(|(name, decl)| (name.clone(), *decl))
                     .collect();
 
                 debug_assert_eq!(scope.parent, Some(root_def_map.root_scope()));

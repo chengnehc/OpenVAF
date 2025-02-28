@@ -174,8 +174,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 .module
                 .intern
                 .params
-                .get_index(param)
-                .map_or(true, |(kind, _)| !kind.op_dependent()),
+                .get_index(param).is_none_or(|(kind, _)| !kind.op_dependent()),
             ValueDef::Const(_) => true,
             ValueDef::Invalid => unreachable!(),
         }

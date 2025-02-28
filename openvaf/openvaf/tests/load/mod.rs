@@ -1,19 +1,15 @@
 use std::alloc::{alloc_zeroed, handle_alloc_error, Layout};
 use std::cell::Cell;
 use std::ffi::{c_char, CStr};
-use std::fmt::Debug;
-use std::mem::{align_of, swap};
-use std::panic::catch_unwind;
-use std::process::exit;
-use std::{ptr, slice};
+use std::{fmt, mem, panic, process, ptr, slice};
+use stdx::format_to;
+use stdx::iter::zip;
 
 use anyhow::{bail, Result};
 use bitflags::bitflags;
 use camino::Utf8Path;
 use libc::c_void;
 use libloading::Library;
-use stdx::format_to;
-use stdx::iter::zip;
 
 #[allow(warnings)]
 mod osdi_0_3;
@@ -159,7 +155,7 @@ impl OsdiModel {
 
         let mut res = OsdiInitInfo { flags: 0, num_errors: 0, errors: ptr::null_mut() };
         self.descriptor.setup_model(
-            b"foo\0".as_ptr() as *mut c_void,
+            c"foo".as_ptr() as *mut c_void,
             self.data,
             &mut sim_params,
             &mut res,
@@ -263,7 +259,7 @@ impl OsdiInstance {
 
             // ensure that to is always the smaller node
             if !collapse_to_gnd && mapped_from < mapped_to {
-                swap(&mut mapped_from, &mut mapped_to)
+                mem::swap(&mut mapped_from, &mut mapped_to)
             }
 
             // replace nodes mapped to from with to and reduce the number of nodes
@@ -297,7 +293,7 @@ impl OsdiInstance {
 
         let mut res = OsdiInitInfo { flags: 0, num_errors: 0, errors: ptr::null_mut() };
         self.descriptor.setup_instance(
-            b"foo\0".as_ptr() as *mut c_void,
+            c"foo".as_ptr() as *mut c_void,
             self.data,
             model.data,
             temp,
@@ -360,7 +356,7 @@ pub unsafe fn load_osdi_lib(path: &Utf8Path) -> Result<&'static [OsdiDescriptor]
 }
 
 unsafe extern "C" fn osdi_log(handle: *mut c_void, msg: *const c_char, lvl: u32) {
-    let _ = catch_unwind(|| osdi_log_impl(handle, msg, lvl));
+    let _ = panic::catch_unwind(|| osdi_log_impl(handle, msg, lvl));
 }
 
 unsafe extern "C" fn osdi_pnjlim(
@@ -371,13 +367,14 @@ unsafe extern "C" fn osdi_pnjlim(
     vt: f64,
     vcrit: f64,
 ) -> f64 {
-    if let Ok((res, check_)) = catch_unwind(|| osdi_pnjlim_impl(init, vnew, vold, vt, vcrit)) {
+    if let Ok((res, check_)) = panic::catch_unwind(|| osdi_pnjlim_impl(init, vnew, vold, vt, vcrit))
+    {
         if check_ {
             *check = true;
         }
         res
     } else {
-        exit(-1)
+        process::exit(-1)
     }
 }
 
@@ -412,7 +409,7 @@ unsafe fn osdi_log_impl(handle: *mut c_void, msg: *const c_char, lvl: u32) {
     }
 }
 
-impl Debug for OsdiDescriptor {
+impl fmt::Debug for OsdiDescriptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         macro_rules! w {
             ($($tt: tt)*) => {
