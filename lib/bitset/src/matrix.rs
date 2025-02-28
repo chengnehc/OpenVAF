@@ -411,7 +411,7 @@ where
     /// `row` reach `column`?
     #[inline]
     pub fn contains(&self, row: R, column: C) -> bool {
-        self.row(row).map_or(false, |r| r.contains(column))
+        self.row(row).is_some_and(|r| r.contains(column))
     }
 
     /// Union a row, `from`, into the `into` row.

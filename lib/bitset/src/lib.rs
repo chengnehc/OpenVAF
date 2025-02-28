@@ -9,7 +9,7 @@
 // BitSet -> DensenBitSet, SparseBitSet -> ChunkedBitSet
 // HybridBitSet -> MixedBitSet
 
-use std::fmt::{self, Debug, Write};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::{mem, slice};
 
@@ -387,12 +387,11 @@ where
     }
 }
 
-impl<T> ToString for BitSet<T>
+impl<T> Display for BitSet<T>
 where
     T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
 {
-    fn to_string(&self) -> String {
-        let mut result = String::new();
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let mut sep = '[';
 
         // Note: this is a little endian printout of bytes.
@@ -409,7 +408,7 @@ where
                 assert!(mask <= 0xFF);
                 let byte = word & mask;
 
-                write!(result, "{}{:02x}", sep, byte).unwrap();
+                write!(f, "{}{:02x}", sep, byte).unwrap();
 
                 if remain <= 8 {
                     break;
@@ -420,9 +419,7 @@ where
             }
             sep = '|';
         }
-        result.push(']');
-
-        result
+        write!(f, "]")
     }
 }
 

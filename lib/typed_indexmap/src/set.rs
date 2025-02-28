@@ -133,16 +133,16 @@ where
         (id.into(), changed)
     }
 
-    pub fn index<Q: ?Sized>(&self, val: &Q) -> Option<K>
+    pub fn index<Q>(&self, val: &Q) -> Option<K>
     where
-        Q: Hash + Equivalent<V>,
+        Q: ?Sized + Hash + Equivalent<V>,
     {
         self.raw.get_index_of(val).map(K::from)
     }
 
-    pub fn contains<Q: ?Sized>(&self, val: &Q) -> bool
+    pub fn contains<Q>(&self, val: &Q) -> bool
     where
-        Q: Hash + Equivalent<V>,
+        Q: ?Sized + Hash + Equivalent<V>,
     {
         self.raw.contains(val)
     }
