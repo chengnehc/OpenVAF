@@ -19,17 +19,6 @@ checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
 [[package]]
 name = "ahash"
-version = "0.7.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891477e0c6a8957309ee5c45a6368af3ae14bb510732d2684ffa19af310920f9"
-dependencies = [
- "getrandom",
- "once_cell",
- "version_check",
-]
-
-[[package]]
-name = "ahash"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
@@ -159,11 +148,11 @@ version = "1.0.0"
 name = "basedb"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "arena",
  "codespan-reporting",
  "expect-test",
- "indexmap 2.7.1",
+ "indexmap",
  "mini_harness",
  "parking_lot",
  "salsa",
@@ -412,6 +401,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "foldhash"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0d2fde1f7b3d48b8395d5f2de76c18a528bd6a9cdde438df747bfcba3e05d6f"
+
+[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -430,26 +425,11 @@ checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 
 [[package]]
 name = "hashbrown"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
-dependencies = [
- "ahash 0.7.8",
-]
-
-[[package]]
-name = "hashbrown"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
-name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "allocator-api2",
 ]
 
@@ -458,14 +438,17 @@ name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
+dependencies = [
+ "foldhash",
+]
 
 [[package]]
 name = "hashlink"
-version = "0.7.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7249a3129cbc1ffccd74857f81464a323a152173cdb134e0fd81bc803b29facf"
+checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
 dependencies = [
- "hashbrown 0.11.2",
+ "hashbrown 0.15.2",
 ]
 
 [[package]]
@@ -498,7 +481,7 @@ dependencies = [
  "expect-test",
  "hir_def",
  "hir_ty",
- "indexmap 2.7.1",
+ "indexmap",
  "mini_harness",
  "parking_lot",
  "salsa",
@@ -512,11 +495,11 @@ dependencies = [
 name = "hir_def"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "arena",
  "basedb",
  "expect-test",
- "indexmap 2.7.1",
+ "indexmap",
  "mini_harness",
  "once_cell",
  "parking_lot",
@@ -530,12 +513,12 @@ dependencies = [
 name = "hir_lower"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "basedb",
  "bitset",
  "expect-test",
  "hir",
- "indexmap 2.7.1",
+ "indexmap",
  "lasso",
  "mini_harness",
  "mir",
@@ -552,7 +535,7 @@ dependencies = [
 name = "hir_ty"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "arena",
  "basedb",
  "hir_def",
@@ -560,16 +543,6 @@ dependencies = [
  "stdx",
  "syntax",
  "typed-index-collections",
-]
-
-[[package]]
-name = "indexmap"
-version = "1.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
-dependencies = [
- "autocfg",
- "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -625,7 +598,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e14eda50a3494b3bf7b9ce51c52434a761e383d7238ce1dd5dcec2fbc13e9fb"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "hashbrown 0.14.5",
 ]
 
@@ -640,9 +613,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.169"
+version = "0.2.170"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
+checksum = "875b3680cb2f8f71bdcf9a30f38d48282f5d3c95cbf9b3fa57269bb5d5c06828"
 
 [[package]]
 name = "libloading"
@@ -695,7 +668,7 @@ dependencies = [
 name = "llvm"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "cc",
  "libc",
 ]
@@ -726,13 +699,13 @@ checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 name = "melange-core"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "anyhow",
  "bitflags",
  "camino",
  "cli-table",
  "directories-next",
- "indexmap 2.7.1",
+ "indexmap",
  "klu-rs",
  "lasso",
  "libc",
@@ -781,12 +754,12 @@ dependencies = [
 name = "mir"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "bforest",
  "bitset",
  "dot",
  "expect-test",
- "indexmap 2.7.1",
+ "indexmap",
  "lasso",
  "list_pool",
  "stdx",
@@ -798,12 +771,12 @@ dependencies = [
 name = "mir_autodiff"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "arena",
  "bitset",
  "expect-test",
  "float-cmp",
- "indexmap 2.7.1",
+ "indexmap",
  "mir",
  "mir_interpret",
  "mir_reader",
@@ -841,7 +814,7 @@ dependencies = [
 name = "mir_llvm"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "arrayvec",
  "base_n",
  "lasso",
@@ -857,7 +830,7 @@ dependencies = [
 name = "mir_opt"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "bitset",
  "expect-test",
  "hashbrown 0.14.5",
@@ -939,7 +912,7 @@ dependencies = [
  "expect-test",
  "float-cmp",
  "hir",
- "indexmap 2.7.1",
+ "indexmap",
  "libc",
  "libloading",
  "linker",
@@ -981,14 +954,14 @@ dependencies = [
 name = "osdi"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "base_n",
  "camino",
  "expect-test",
  "float-cmp",
  "hir",
  "hir_lower",
- "indexmap 2.7.1",
+ "indexmap",
  "lasso",
  "llvm",
  "log",
@@ -1066,7 +1039,7 @@ version = "0.0.0"
 name = "preprocessor"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "expect-test",
  "lexer",
  "stdx",
@@ -1196,13 +1169,13 @@ checksum = "700de91d5fd6091442d00fdd9ee790af6d4f0f480562b0f5a1e8f59e90aafe73"
 [[package]]
 name = "salsa"
 version = "0.17.0-pre.2"
-source = "git+https://github.com/chengnehc/salsa?branch=salsa-0.17#754eea8b5f8a31b1100ba313d59e41260b494225"
+source = "git+https://github.com/chengnehc/salsa?branch=salsa-0.17#994317caa69b7a56f8b37d46d0a4002f102a3e89"
 dependencies = [
  "arc-swap",
  "crossbeam-utils",
  "dashmap",
  "hashlink",
- "indexmap 1.9.3",
+ "indexmap",
  "lock_api",
  "log",
  "oorandom",
@@ -1215,7 +1188,7 @@ dependencies = [
 [[package]]
 name = "salsa-macros"
 version = "0.17.0-pre.2"
-source = "git+https://github.com/chengnehc/salsa?branch=salsa-0.17#754eea8b5f8a31b1100ba313d59e41260b494225"
+source = "git+https://github.com/chengnehc/salsa?branch=salsa-0.17#994317caa69b7a56f8b37d46d0a4002f102a3e89"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1239,14 +1212,14 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 name = "sim_back"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "bitset",
  "cov-mark",
  "expect-test",
  "float-cmp",
  "hir",
  "hir_lower",
- "indexmap 2.7.1",
+ "indexmap",
  "indoc",
  "lasso",
  "mir",
@@ -1269,16 +1242,16 @@ checksum = "7fcf8323ef1faaee30a44a340193b1ac6814fd9b7b4e88e9d4519a3e4abe1cfd"
 
 [[package]]
 name = "smol_str"
-version = "0.2.2"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
+checksum = "9676b89cd56310a87b93dec47b11af744f34d5fc9f367b829474eec0a891350d"
 
 [[package]]
 name = "sourcegen"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
- "indexmap 2.7.1",
+ "ahash",
+ "indexmap",
  "proc-macro2",
  "quote",
  "stdx",
@@ -1399,8 +1372,8 @@ checksum = "9db9d52cbe79f2c778128f00190032aad34a34b9aaffad910a7f92b402e4189a"
 name = "typed_indexmap"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
- "indexmap 2.7.1",
+ "ahash",
+ "indexmap",
 ]
 
 [[package]]
@@ -1437,7 +1410,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 name = "verilogae"
 version = "1.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "anyhow",
  "base_n",
  "basedb",
@@ -1446,7 +1419,7 @@ dependencies = [
  "directories-next",
  "hir",
  "hir_lower",
- "indexmap 2.7.1",
+ "indexmap",
  "lasso",
  "libloading",
  "linker",
@@ -1495,10 +1468,10 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vfs"
 version = "0.0.0"
 dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "chardetng",
  "encoding_rs",
- "indexmap 2.7.1",
+ "indexmap",
  "paths",
 ]
 
