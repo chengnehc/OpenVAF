@@ -149,7 +149,7 @@ impl ModelInfo {
     pub(crate) fn collect(db: &CompilationDB, file_name: &str, name: Option<&str>) -> Result<Self> {
         let mut sink = ConsoleSink::new(db);
         let cu = db.compilation_unit();
-        cu.diagnostics(db, &mut sink);
+        cu.collect_diagnostics(db, &mut sink);
 
         if sink.summary(&file_name) {
             bail!("compiation failed");
@@ -172,7 +172,7 @@ impl ModelInfo {
         let mut functions: Vec<_> = Vec::new();
         let mut var_names = AHashMap::new();
         let mut op_vars = Vec::new();
-        let ast = cu.ast(db);
+        let ast = cu.ast_cache(db);
 
         let mut resolved_attrs = AHashSet::new();
         let mut add_diagnostic = |attr: ast::Attr, diag: &dyn Diagnostic| {
