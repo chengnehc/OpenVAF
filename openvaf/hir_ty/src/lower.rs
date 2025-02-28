@@ -169,7 +169,8 @@ impl DisciplineTy {
         if self.flow.is_some_and(|flow| NatureTy::compatible(db, flow, nature)) {
             Some(DisciplineAccess::Flow)
         } else if self
-            .potential.is_some_and(|potential| NatureTy::compatible(db, potential, nature))
+            .potential
+            .is_some_and(|potential| NatureTy::compatible(db, potential, nature))
         {
             Some(DisciplineAccess::Potential)
         } else {

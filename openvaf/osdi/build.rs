@@ -27,7 +27,8 @@ fn main() {
         if file.extension().is_none_or(|ext| ext != "h")
             || !file
                 .file_stem()
-                .and_then(|name| name.to_str()).is_some_and(|name| name.starts_with("osdi_"))
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("osdi_"))
         {
             continue;
         }

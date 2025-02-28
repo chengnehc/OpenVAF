@@ -335,7 +335,8 @@ impl<'a> super::Builder<'a> {
                             return Evaluation::Equation;
                         } else if self
                             .topology
-                            .as_contribution(val).is_some_and(|it| !it.is_reactive())
+                            .as_contribution(val)
+                            .is_some_and(|it| !it.is_reactive())
                         {
                             contributes.push((val, F_ZERO))
                         } else {
