@@ -51,6 +51,7 @@ Type =
 
 Stmt =
   EmptyStmt
+| BlockStmt
 | ExprStmt
 | AssignStmt
 | IfStmt
@@ -58,10 +59,15 @@ Stmt =
 | ForStmt
 | CaseStmt
 | EventStmt
-| BlockStmt
 
 EmptyStmt =
   AttrList* ';'
+
+BlockStmt =
+  AttrList* 'begin'
+    BlockScope?
+    items:BlockItem*
+  'end'
 
 ExprStmt =
   AttrList* Expr ';'?
@@ -97,12 +103,6 @@ Case =
 EventStmt =
   AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases:('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
 
-BlockStmt =
-  AttrList* 'begin'
-    BlockScope?
-    items:BlockItem*
-  'end'
-
 BlockScope =
   ':' Name
 
@@ -113,12 +113,12 @@ Expr =
   Literal
 | PrefixExpr
 | BinExpr
-| ParenExpr
-| ArrayExpr
 | SelectExpr
+| ParenExpr
 | Call
 | PathExpr
 | PortFlow
+| ArrayExpr
 
 Literal =
   'int_number' | 'str_lit' | 'std_real_number' | 'si_real_number' | 'inf'
@@ -136,15 +136,11 @@ BinExpr =
   )
   rhs:Expr
 
-ParenExpr =
-  '(' Expr ')'
-
-// Consider removing this as it is not suitable for compact model
-ArrayExpr =
-  '\'{' (Expr (',' Expr)*)? '}'
-
 SelectExpr =
   condition:Expr '?' then_val:Expr ':' else_val:Expr
+
+ParenExpr =
+  '(' Expr ')'
 
 Call =
   FunctionRef ArgList?
@@ -164,6 +160,10 @@ PathExpr =
 
 PortFlow =
   '<' port:Path '>'
+
+// Consider removing this as it is not suitable for compact model
+ArrayExpr =
+  '\'{' (Expr (',' Expr)*)? '}'
 
 
 //*************************//

@@ -9,7 +9,7 @@
 //! - https://docs.rs/ra_ap_parser/0.0.259/ra_ap_parser/
 //! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/parser
 
-pub(crate) use tokens::SyntaxKind;
+pub(crate) use tokens::{SyntaxKind, T};
 
 mod error;
 mod event;

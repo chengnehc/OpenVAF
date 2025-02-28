@@ -477,12 +477,12 @@ impl Ctx {
                             ast::BlockStmt(block) => {
                                 let ast_id = self.source_ast_id_map.ast_id_of(&block);
                                 let name = block.block_scope().and_then(|it| Some(it.name()?.as_name()));
-                                let block_info = Block { name, scope_items: Vec::new()};
+                                let block_info = Block { name, block_items: Vec::new()};
                                 if block.block_scope().is_some() {
                                     match block_scope_stack.last() {
                                         Some(block) => {
                                             let block = blocks.get_mut(block).unwrap();
-                                             block.scope_items.push(ast_id.into());
+                                             block.block_items.push(ast_id.into());
                                         }
                                         None =>  parent_scope.push(ast_id.into()),
                                     };
@@ -497,7 +497,7 @@ impl Ctx {
                               match block_stack.last() {
                                     Some(block) => {
                                         let block = blocks.get_mut(block).unwrap();
-                                        self.lower_var(var, &mut block.scope_items)
+                                        self.lower_var(var, &mut block.block_items)
                                     }
                                     None => self.lower_var(var, parent_scope),
                                 }
@@ -506,7 +506,7 @@ impl Ctx {
                               match block_stack.last() {
                                     Some(block) => {
                                         let block = blocks.get_mut(block).unwrap();
-                                        self.lower_param(param, &mut block.scope_items)
+                                        self.lower_param(param, &mut block.block_items)
                                     }
                                  None => self.lower_param(param, parent_scope),
                                 }
@@ -579,7 +579,7 @@ impl Ctx {
                 src,
                 ast_id: self.source_ast_id_map.ast_id_of(&decl),
             };
-            let param = self.tree.data.alias_parameters.push_and_get_key(param);
+            let param = self.tree.data.aliasparams.push_and_get_key(param);
             dst.push(param.into())
         }
     }

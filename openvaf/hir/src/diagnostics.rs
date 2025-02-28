@@ -1,6 +1,6 @@
 use hir_def::{
     db::HirDefDB,
-    nameres::{DefDiagnosticWrapped, DefMap, LocalScopeId, ScopeDefItem, ScopeOrigin},
+    nameres::{DefDiagnosticWrapped, DefMap, LocalScopeId, ScopeItemDef, ScopeOrigin},
     DefWithBodyId::{self, ModuleId},
     ItemTree,
 };
@@ -71,8 +71,8 @@ fn collect_scope(
         }
 
         let def_map = match def {
-            ScopeDefItem::FunctionId(fun) => db.function_def_map(*fun),
-            ScopeDefItem::BlockId(block) => {
+            ScopeItemDef::FunctionId(fun) => db.function_def_map(*fun),
+            ScopeItemDef::BlockId(block) => {
                 if let Some(def_map) = db.block_def_map(*block) {
                     def_map
                 } else {

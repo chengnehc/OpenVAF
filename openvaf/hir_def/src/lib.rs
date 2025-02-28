@@ -23,7 +23,7 @@ mod path;
 mod types;
 
 pub use crate::builtin::{BuiltIn, ParamSysFun};
-pub use crate::data::FunctionArg;
+pub use crate::data::FunctionArgData;
 use crate::db::HirDefDB;
 pub use crate::expr::{Case, Expr, ExprId, Literal, Stmt, StmtId};
 pub use crate::item_tree::{
@@ -31,7 +31,7 @@ pub use crate::item_tree::{
     ItemTreeNode, Module, Nature, NatureAttr, NatureRef, NatureRefKind, NodeTypeDecl, Param, Var,
 };
 use crate::nameres::{
-    DefMap, DefMapSource, PathResolveError, ResolvedPath, ScopeDefItem, ScopeDefItemKind,
+    DefMap, DefMapSource, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind,
 };
 pub use crate::path::Path;
 pub use crate::types::Type;
@@ -39,22 +39,24 @@ pub use crate::types::Type;
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct ScopeId {
     pub root_file: FileId,
-    pub local_scope: nameres::LocalScopeId,
+    /// which kind of `DefMap` does this scope originate from?
     pub src: DefMapSource,
+    /// The scope's local ID in the `DefMap` from which it originates.
+    pub local_id: nameres::LocalScopeId,
 }
 
 impl ScopeId {
     /// Return the root scope of `root_file`.
     pub fn root(root_file: FileId) -> ScopeId {
-        ScopeId { root_file, local_scope: 0usize.into(), src: DefMapSource::Root }
+        ScopeId { root_file, src: DefMapSource::Root, local_id: 0usize.into() }
     }
 
-    /// Get the `DefMap` of this scope.
+    /// Return the `DefMap` of this scope.
     pub fn def_map(&self, db: &dyn HirDefDB) -> Arc<DefMap> {
         match self.src {
+            DefMapSource::Root => db.root_def_map(self.root_file),
             DefMapSource::Block(block) => db.block_def_map(block).unwrap(),
             DefMapSource::Function(fun) => db.function_def_map(fun),
-            DefMapSource::Root => db.root_def_map(self.root_file),
         }
     }
 
@@ -71,13 +73,11 @@ impl ScopeId {
                 self.def_map(db).resolve_root_path(&path.segments, db)
             }
 
-            _ => {
-                self.def_map(db).resolve_normal_path_in_scope(self.local_scope, &path.segments, db)
-            }
+            _ => self.def_map(db).resolve_normal_path_in_scope(self.local_id, &path.segments, db),
         }
     }
 
-    pub fn resolve_item_path<T: ScopeDefItemKind>(
+    pub fn resolve_item_path<T: ScopeItemKind>(
         &self,
         db: &dyn HirDefDB,
         path: &Path,
@@ -91,7 +91,7 @@ impl ScopeId {
             }
 
             _ => self.def_map(db).resolve_normal_item_path_in_scope(
-                self.local_scope,
+                self.local_id,
                 &path.segments,
                 db,
             ),
@@ -204,13 +204,13 @@ macro_rules! impl_intern {
 pub struct BlockId(salsa::InternId);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockLoc {
-    ast: AstId<ast::BlockStmt>,
     parent: ScopeId,
+    ast_id: AstId<ast::BlockStmt>,
 }
 impl BlockLoc {
     pub fn name(self, db: &dyn HirDefDB) -> Name {
         let tree = db.item_tree(self.parent.root_file);
-        tree[self.ast].name.clone().expect("BlockLocs are only created for named Blocks")
+        tree[self.ast_id].name.clone().expect("BlockLocs are only created for named Blocks")
     }
 }
 impl_intern!(BlockId, BlockLoc, intern_block, lookup_intern_block);
@@ -389,14 +389,14 @@ pub enum DefWithBodyId {
 
 impl_from!(ParamId, FunctionId, VarId, NatureAttrId, DisciplineAttrId for DefWithBodyId);
 
-impl TryFrom<ScopeDefItem> for DefWithBodyId {
+impl TryFrom<ScopeItemDef> for DefWithBodyId {
     type Error = ();
-    fn try_from(src: ScopeDefItem) -> Result<DefWithBodyId, ()> {
+    fn try_from(src: ScopeItemDef) -> Result<DefWithBodyId, ()> {
         let res = match src {
-            ScopeDefItem::VarId(var) => var.into(),
-            ScopeDefItem::ParamId(param) => param.into(),
-            ScopeDefItem::FunctionId(fun) => fun.into(),
-            ScopeDefItem::NatureAttrId(attr) => attr.into(),
+            ScopeItemDef::VarId(var) => var.into(),
+            ScopeItemDef::ParamId(param) => param.into(),
+            ScopeItemDef::FunctionId(fun) => fun.into(),
+            ScopeItemDef::NatureAttrId(attr) => attr.into(),
             _ => return Err(()),
         };
         Ok(res)

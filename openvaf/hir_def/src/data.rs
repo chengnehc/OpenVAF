@@ -7,7 +7,7 @@ use syntax::name::Name;
 use typed_index_collections::TiSlice;
 
 use crate::db::HirDefDB;
-use crate::item_tree::{self, BranchKind, DisciplineAttrKind, Domain, NatureRef};
+use crate::item_tree::{BranchKind, DisciplineAttrKind, Domain, FunctionArg, NatureRef};
 use crate::{
     AliasParamId, BranchId, DisciplineId, FunctionId, Intern, ItemTree, LocalFunctionArgId,
     LocalNatureAttrId, Lookup, ModuleId, NatureId, NodeId, NodeLoc, ParamId, Path, Type, VarId,
@@ -196,16 +196,16 @@ impl BranchData {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionArg {
+pub struct FunctionArgData {
     pub name: Name,
     pub ty: Type,
     pub is_input: bool,
     pub is_output: bool,
 }
 
-impl FunctionArg {
-    fn new(arg: &item_tree::FunctionArg, tree: &ItemTree) -> FunctionArg {
-        FunctionArg {
+impl FunctionArgData {
+    fn new(arg: &FunctionArg, tree: &ItemTree) -> FunctionArgData {
+        FunctionArgData {
             name: arg.name.clone(),
             ty: arg.ty(tree),
             is_input: arg.is_input,
@@ -218,7 +218,7 @@ impl FunctionArg {
 pub struct FunctionData {
     pub name: Name,
     pub return_ty: Type,
-    pub args: Box<TiSlice<LocalFunctionArgId, FunctionArg>>,
+    pub args: Box<TiSlice<LocalFunctionArgId, FunctionArgData>>,
 }
 
 impl FunctionData {
@@ -226,7 +226,7 @@ impl FunctionData {
         let loc = id.lookup(db);
         let item_tree = loc.item_tree(db);
         let fun = &item_tree[loc.id];
-        let args = fun.args.iter().map(|arg| FunctionArg::new(arg, &item_tree)).collect();
+        let args = fun.args.iter().map(|arg| FunctionArgData::new(arg, &item_tree)).collect();
         Arc::new(FunctionData {
             name: fun.name.clone(),
             return_ty: item_tree[loc.id].ty.clone(),

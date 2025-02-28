@@ -98,10 +98,10 @@ impl Body {
 
                 let scope = ScopeId {
                     root_file,
-                    local_scope: LocalScopeId::from(0u32),
+                    local_id: LocalScopeId::from(0u32),
                     src: DefMapSource::Function(fun),
                 };
-                debug_assert_eq!(scope.local_scope, db.function_def_map(fun).entry_scope());
+                debug_assert_eq!(scope.local_id, db.function_def_map(fun).entry_scope());
 
                 let ast_id = item_tree[id].ast_id();
                 let ast_node = ast_id_map.get(ast_id).to_node(ast.syntax());

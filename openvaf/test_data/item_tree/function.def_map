@@ -1,5 +1,4 @@
 test = module;
-
     $angle = hierarchical parameter system function;
     $hflip = hierarchical parameter system function;
     $mfactor = hierarchical parameter system function;
@@ -7,7 +6,6 @@ test = module;
     $xposition = hierarchical parameter system function;
     $yposition = hierarchical parameter system function;
     hypsmooth = function;
-
         c = function argument;
         hypsmooth = variable;
         l = function argument;

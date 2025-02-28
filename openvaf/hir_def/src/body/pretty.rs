@@ -1,5 +1,4 @@
-use core::fmt;
-use std::fmt::Write;
+use std::fmt::{self, Write};
 
 use crate::db::HirDefDB;
 use crate::expr::CaseCond;
@@ -8,35 +7,16 @@ use crate::{Expr, ExprId, Lookup, Stmt, StmtId};
 
 use super::Body;
 
-macro_rules! wln {
-    ($dst:expr) => {
-        { let _ = writeln!($dst); }
-    };
-    ($dst:expr, $($arg:tt)*) => {
-        { let _ = writeln!($dst, $($arg)*); }
-    };
-}
-
-macro_rules! w {
-    ($dst:expr) => {
-        { let _ = write!($dst); }
-    };
-    ($dst:expr, $($arg:tt)*) => {
-        { let _ = write!($dst, $($arg)*); }
-    };
-}
-
 impl Body {
-    pub fn dump(&self, db: &dyn HirDefDB) -> String {
-        let mut printer =
+    pub fn dump(&self, db: &dyn HirDefDB) -> Result<String, fmt::Error> {
+        let mut p =
             Printer { body: self, db, buf: String::new(), indent_level: 0, needs_indent: true };
-
-        for stmt in &*self.entry_stmts {
-            w!(&mut printer, "analog ");
-            printer.pretty_print_stmt(*stmt)
+        for stmt in &self.entry_stmts {
+            write!(&mut p, "analog ")?;
+            p.pretty_print_stmt(*stmt)?;
         }
 
-        printer.buf
+        Ok(p.buf)
     }
 }
 
@@ -49,143 +29,151 @@ struct Printer<'a> {
 }
 
 impl Printer<'_> {
-    fn indented(&mut self, f: impl FnOnce(&mut Self)) {
+    fn indented(&mut self, f: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
         self.indent_level += 1;
-        wln!(self);
-        f(self);
+        writeln!(self)?;
+        f(self)?;
         self.indent_level -= 1;
         self.buf = self.buf.trim_end_matches('\n').to_string();
+
+        Ok(())
     }
 
-    pub fn pretty_print_stmt(&mut self, s: StmtId) {
+    pub fn pretty_print_stmt(&mut self, s: StmtId) -> fmt::Result {
         match self.body.stmts[s] {
-            Stmt::Missing => wln!(self, "<missing>;"),
-            Stmt::Empty => wln!(self, ";"),
+            Stmt::Missing => writeln!(self, "<missing>;")?,
+            Stmt::Empty => writeln!(self, ";")?,
             Stmt::Expr(e) => {
-                self.pretty_print_expr(e);
-                wln!(self, ";");
+                self.pretty_print_expr(e)?;
+                writeln!(self, ";")?;
             }
             Stmt::EventControl { ref event, body } => {
-                wln!(self, "@({:?})", event);
-                self.pretty_print_stmt(body)
+                writeln!(self, "@({:?})", event)?;
+                self.pretty_print_stmt(body)?;
             }
             Stmt::Assignment { dst, val, op_kind } => {
-                self.pretty_print_expr(dst);
-                w!(self, " {:?} ", op_kind);
-                self.pretty_print_expr(val);
-                wln!(self, ";");
+                self.pretty_print_expr(dst)?;
+                write!(self, " {:?} ", op_kind)?;
+                self.pretty_print_expr(val)?;
+                writeln!(self, ";")?;
             }
             Stmt::Block { ref body } => {
-                w!(self, "begin");
+                write!(self, "begin")?;
                 if let Some(first) = body.iter().next() {
                     if let DefMapSource::Block(block) = self.body.stmt_scopes[*first].src {
                         let parent = block.lookup(self.db).parent;
-                        w!(self, ": {:?} ({:?})", block, parent);
+                        write!(self, ": {:?} ({:?})", block, parent)?;
                     } else {
-                        w!(self, ": ({:?})", self.body.stmt_scopes[s].src);
+                        write!(self, ": ({:?})", self.body.stmt_scopes[s].src)?;
                     }
                 }
-                wln!(self);
-                self.indented(|sel| {
+                self.indented(|p| {
                     for stmt in body {
-                        sel.pretty_print_stmt(*stmt)
+                        p.pretty_print_stmt(*stmt)?;
                     }
-                });
-                wln!(self, "end");
+                    Ok(())
+                })?;
+                writeln!(self, "end")?;
             }
             Stmt::If { cond, then_branch, else_branch } => {
-                w!(self, "if ");
-                self.pretty_print_expr(cond);
-                wln!(self);
-                self.pretty_print_stmt(then_branch);
-                wln!(self, "else");
-                self.pretty_print_stmt(else_branch)
+                write!(self, "if ")?;
+                self.pretty_print_expr(cond)?;
+                writeln!(self)?;
+                self.pretty_print_stmt(then_branch)?;
+                writeln!(self, "else")?;
+                self.pretty_print_stmt(else_branch)?;
             }
             Stmt::ForLoop { init, cond, incr, body } => {
-                w!(self, "for(");
+                write!(self, "for(")?;
                 self.indented(|sel| {
-                    sel.pretty_print_stmt(init);
-                    sel.pretty_print_expr(cond);
-                    wln!(sel, ";");
-                    sel.pretty_print_stmt(incr);
-                });
-                wln!(self, ")");
-                self.pretty_print_stmt(body)
+                    sel.pretty_print_stmt(init)?;
+                    sel.pretty_print_expr(cond)?;
+                    writeln!(sel, ";")?;
+                    sel.pretty_print_stmt(incr)?;
+                    Ok(())
+                })?;
+                writeln!(self, ")")?;
+                self.pretty_print_stmt(body)?;
             }
             Stmt::WhileLoop { cond, body } => {
-                w!(self, "while(");
-                self.pretty_print_expr(cond);
-                wln!(self, ")");
-                self.indented(|sel| sel.pretty_print_stmt(body))
+                write!(self, "while(")?;
+                self.pretty_print_expr(cond)?;
+                writeln!(self, ")")?;
+                self.indented(|p| p.pretty_print_stmt(body))?;
             }
             Stmt::Case { discr, ref case_arms } => {
-                w!(self, "case(");
-                self.pretty_print_expr(discr);
-                self.indented(|sel| {
+                write!(self, "case(")?;
+                self.pretty_print_expr(discr)?;
+                self.indented(|p| {
                     for case in case_arms {
                         match case.cond {
-                            CaseCond::Default => w!(sel, "default"),
+                            CaseCond::Default => write!(p, "default")?,
                             CaseCond::Vals(ref vals) => {
                                 for val in vals {
-                                    sel.pretty_print_expr(*val);
-                                    wln!(sel, ", ")
+                                    p.pretty_print_expr(*val)?;
+                                    writeln!(p, ", ")?;
                                 }
                             }
                         }
-                        w!(sel, ":");
-                        sel.pretty_print_stmt(case.body)
+                        write!(p, ":")?;
+                        p.pretty_print_stmt(case.body)?;
                     }
-                });
-                wln!(self, "endcase");
+                    Ok(())
+                })?;
+                writeln!(self, "endcase")?;
             }
         }
+
+        Ok(())
     }
 
-    pub fn pretty_print_expr(&mut self, e: ExprId) {
+    pub fn pretty_print_expr(&mut self, e: ExprId) -> fmt::Result {
         match self.body.exprs[e] {
-            Expr::Missing => w!(self, "<missing>"),
-            Expr::Path { ref path, port: false } => w!(self, "{:?}", path),
-            Expr::Path { ref path, port: true } => w!(self, "<{:?}>", path),
+            Expr::Missing => write!(self, "<missing>")?,
+            Expr::Path { ref path, port: false } => write!(self, "{:?}", path)?,
+            Expr::Path { ref path, port: true } => write!(self, "<{:?}>", path)?,
             Expr::BinaryOp { lhs, rhs, op } => {
-                self.pretty_print_expr(lhs);
+                self.pretty_print_expr(lhs)?;
                 match op {
-                    Some(op) => w!(self, " {} ", op),
-                    None => w!(self, " <ivalid> "),
+                    Some(op) => write!(self, " {} ", op)?,
+                    None => write!(self, " <invalid> ")?,
                 }
-                self.pretty_print_expr(rhs)
+                self.pretty_print_expr(rhs)?;
             }
             Expr::UnaryOp { expr, op } => {
-                w!(self, "{}", op);
-                self.pretty_print_expr(expr)
+                write!(self, "{}", op)?;
+                self.pretty_print_expr(expr)?;
             }
             Expr::Select { cond, then_val, else_val } => {
-                self.pretty_print_expr(cond);
-                w!(self, "?");
-                self.pretty_print_expr(then_val);
-                w!(self, ":");
-                self.pretty_print_expr(else_val);
+                self.pretty_print_expr(cond)?;
+                write!(self, "?")?;
+                self.pretty_print_expr(then_val)?;
+                write!(self, ":")?;
+                self.pretty_print_expr(else_val)?;
             }
             Expr::Call { ref fun, ref args } => {
                 match fun {
-                    Some(path) => w!(self, "{:?}", path),
-                    None => w!(self, "<missing>"),
+                    Some(path) => write!(self, "{:?}", path)?,
+                    None => write!(self, "<missing>")?,
                 }
-                w!(self, "(");
+                write!(self, "(")?;
                 for arg in args {
-                    self.pretty_print_expr(*arg);
-                    w!(self, ", ");
+                    self.pretty_print_expr(*arg)?;
+                    write!(self, ", ")?;
                 }
-                w!(self, ")");
+                write!(self, ")")?;
             }
             Expr::Array(ref vals) => {
-                w!(self, "'{{");
+                write!(self, "'{{")?;
                 for val in vals {
-                    self.pretty_print_expr(*val)
+                    self.pretty_print_expr(*val)?;
                 }
-                w!(self, "}}");
+                write!(self, "}}")?;
             }
-            Expr::Literal(ref lit) => w!(self, "{:?}", lit),
+            Expr::Literal(ref lit) => write!(self, "{:?}", lit)?,
         }
+
+        Ok(())
     }
 }
 
@@ -197,14 +185,12 @@ impl<'a> Write for Printer<'a> {
                     Some('\n') | None => {}
                     _ => self.buf.push('\n'),
                 }
-
                 if line != "\n" {
                     // don't indent empty lines! required to play nice with expect_test
                     self.buf.push_str(&"    ".repeat(self.indent_level));
                 }
                 self.needs_indent = false;
             }
-
             self.buf.push_str(line);
             self.needs_indent = line.ends_with('\n');
         }

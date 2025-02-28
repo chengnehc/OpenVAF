@@ -186,14 +186,14 @@ impl Ctx<'_> {
 
     pub fn collect_block(&mut self, block: &ast::BlockStmt) -> Stmt {
         let ast = self.ast_id_map.ast_id_of(block);
-        let id = BlockLoc { ast, parent: self.curr_scope.0 }.intern(self.db);
+        let id = BlockLoc { ast_id: ast, parent: self.curr_scope.0 }.intern(self.db);
         let scope = self.db.block_def_map(id);
 
         let parent_scope = match scope {
             Some(def_map) => {
                 let scope = ScopeId {
                     root_file: self.curr_scope.0.root_file,
-                    local_scope: def_map.entry_scope(),
+                    local_id: def_map.entry_scope(),
                     src: DefMapSource::Block(id),
                 };
 

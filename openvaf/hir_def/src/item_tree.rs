@@ -1,7 +1,7 @@
 //! A simplified AST that only contains items.
 //!
 //! This is the primary IR used throughout `hir_def`. It is the input to the name resolution
-//! algorithm
+//! algorithm.
 //!
 //! One important purpose of this layer is to provide an "invalidation barrier" for incremental
 //! computations: when typing inside an item body, the `ItemTree` of the modified file is typically
@@ -31,18 +31,16 @@ use crate::{
 mod lower;
 mod pretty;
 
-/// The item tree of a source file.
-#[derive(Debug, Eq, PartialEq)]
+/// An item tree is a simplified AST that only contains items.
+#[derive(Debug, Eq, PartialEq, Default)]
 pub struct ItemTree {
     pub top_level: Box<[RootItem]>,
+
     pub(crate) data: ItemTreeData,
+    /// mapping from block statement ast node to a seqential block item
     pub(crate) blocks: AHashMap<AstId<BlockStmt>, Block>,
 }
-impl Default for ItemTree {
-    fn default() -> Self {
-        Self { top_level: Default::default(), data: Default::default(), blocks: AHashMap::new() }
-    }
-}
+
 impl ItemTree {
     pub(crate) fn file_item_tree_query(db: &dyn HirDefDB, file: FileId) -> Arc<ItemTree> {
         let syntax_tree = db.parse(file).tree();
@@ -55,35 +53,36 @@ impl ItemTree {
 
     fn shrink_to_fit(&mut self) {
         let ItemTreeData {
-            modules,
             disciplines,
+            discipline_attrs,
             natures,
             nature_attrs,
-            discipline_attrs,
+            modules,
+            ports,
+            nets,
+            branches,
             variables,
             parameters,
-            alias_parameters,
-            nets,
-            ports,
-            branches,
+            aliasparams,
             functions,
         } = &mut self.data;
-        modules.shrink_to_fit();
         disciplines.shrink_to_fit();
+        discipline_attrs.shrink_to_fit();
         natures.shrink_to_fit();
+        nature_attrs.shrink_to_fit();
+        modules.shrink_to_fit();
+        ports.shrink_to_fit();
+        nets.shrink_to_fit();
+        branches.shrink_to_fit();
         variables.shrink_to_fit();
         parameters.shrink_to_fit();
-        alias_parameters.shrink_to_fit();
-        nets.shrink_to_fit();
-        ports.shrink_to_fit();
-        ports.shrink_to_fit();
-        branches.shrink_to_fit();
+        aliasparams.shrink_to_fit();
         functions.shrink_to_fit();
-        nature_attrs.shrink_to_fit();
-        discipline_attrs.shrink_to_fit();
     }
 }
 
+/// An item that is defined at top level of source file (in the root scope),
+/// i.e. `discipline`, `nature` and `module`
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum RootItem {
     Module(ItemTreeId<Module>),
@@ -98,17 +97,17 @@ impl_from_typed! (
 
 #[derive(Default, Debug, Eq, PartialEq)]
 pub(crate) struct ItemTreeData {
-    pub modules: Arena<Module>,
     pub disciplines: Arena<Discipline>,
     pub discipline_attrs: Arena<DisciplineAttr>,
     pub natures: Arena<Nature>,
     pub nature_attrs: Arena<NatureAttr>,
+    pub modules: Arena<Module>,
+    pub ports: Arena<Port>,
+    pub nets: Arena<Net>,
+    pub branches: Arena<Branch>,
     pub variables: Arena<Var>,
     pub parameters: Arena<Param>,
-    pub alias_parameters: Arena<AliasParam>,
-    pub nets: Arena<Net>,
-    pub ports: Arena<Port>,
-    pub branches: Arena<Branch>,
+    pub aliasparams: Arena<AliasParam>,
     pub functions: Arena<Function>,
 }
 
@@ -182,23 +181,24 @@ macro_rules! item_tree_nodes {
 }
 
 item_tree_nodes! {
-    Module in modules -> ast::ModuleDecl,
     Discipline in disciplines -> ast::DisciplineDecl,
+    DisciplineAttr in discipline_attrs -> ast::DisciplineAttr,
     Nature in natures -> ast::NatureDecl,
+    NatureAttr in nature_attrs -> ast::NatureAttr,
+    Module in modules -> ast::ModuleDecl,
+    Port in ports -> ast::PortDecl,
+    Net in nets -> ast::NetDecl,
+    Branch in branches -> ast::BranchDecl,
     Var in variables -> ast::Var,
     Param in parameters -> ast::Param,
-    AliasParam in alias_parameters -> ast::AliasParam,
-    Net in nets -> ast::NetDecl,
-    Port in ports -> ast::PortDecl,
-    Branch in branches -> ast::BranchDecl,
+    AliasParam in aliasparams -> ast::AliasParam,
     Function in functions -> ast::Function,
-    NatureAttr in nature_attrs -> ast::NatureAttr,
-    DisciplineAttr in discipline_attrs -> ast::DisciplineAttr,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Module {
     pub name: Name,
+    // TODO(JW) why separate nodes field?
     pub nodes: TiVec<LocalNodeId, Node>,
     pub num_ports: u32,
     pub items: Vec<ModuleItem>,
@@ -206,22 +206,22 @@ pub struct Module {
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ModuleItem {
-    Scope(AstId<BlockStmt>),
-    Parameter(ItemTreeId<Param>),
-    AliasParameter(ItemTreeId<AliasParam>),
-    Variable(ItemTreeId<Var>),
-    Branch(ItemTreeId<Branch>),
-    Function(ItemTreeId<Function>),
     Node(LocalNodeId),
+    Branch(ItemTreeId<Branch>),
+    Parameter(ItemTreeId<Param>),
+    AliasParam(ItemTreeId<AliasParam>),
+    Variable(ItemTreeId<Var>),
+    Function(ItemTreeId<Function>),
+    Block(AstId<BlockStmt>),
 }
 impl_from_typed! (
-    Scope(AstId<BlockStmt>),
-    Parameter(ItemTreeId<Param>),
-    AliasParameter(ItemTreeId<AliasParam>),
-    Variable(ItemTreeId<Var>),
+    Node(LocalNodeId),
     Branch(ItemTreeId<Branch>),
+    Parameter(ItemTreeId<Param>),
+    AliasParam(ItemTreeId<AliasParam>),
+    Variable(ItemTreeId<Var>),
     Function(ItemTreeId<Function>),
-    Node(LocalNodeId) for ModuleItem
+    Block(AstId<BlockStmt>) for ModuleItem
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -335,9 +335,9 @@ pub struct Branch {
 }
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum BranchKind {
-    PortFlow(Path),
-    NodeGnd(Path),
     Nodes(Path, Path),
+    NodeGnd(Path),
+    PortFlow(Path),
     Missing,
 }
 
@@ -351,13 +351,13 @@ pub struct Function {
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum FunctionItem {
-    Scope(AstId<BlockStmt>),
+    Block(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
     Variable(ItemTreeId<Var>),
     FunctionArg(LocalFunctionArgId),
 }
 impl_from_typed! (
-    Scope(AstId<BlockStmt>),
+    Block(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
     Variable(ItemTreeId<Var>),
     FunctionArg(LocalFunctionArgId) for FunctionItem
@@ -380,8 +380,8 @@ impl FunctionArg {
 
 /// `Node` is an abstraction over `Net` and `Port`.
 ///
-/// A `Node` can be declared as `Net` or `Port` multiple times.
-/// A `Port` requires direction specification, while a `Net` doesn't.
+/// A `Node` can be declared as `Net` or `Port`. `Port` requires direction
+/// specification, while `Net` doesn't.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub name: Name,
@@ -470,24 +470,33 @@ impl NodeTypeDecl {
     */
 }
 
-/// A block (or scope) that is marked with 'begin'/'end' pair.
+/// A sequential block is a means of grouping procedural statements.
+/// It is delimited by keywords 'begin' and 'end'.
 ///
-/// `Block` is not an item-tree node.
+/// An named block retains a static scope, allowing local variables to
+/// be declared. Variables and parameters defined in the named block
+/// cannot be assigned outside the scope.
+///
+/// See [LRM 5.3].
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Block {
     pub name: Option<Name>,
-    pub scope_items: Vec<BlockScopeItem>,
+    pub block_items: Vec<BlockItem>,
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum BlockScopeItem {
-    Scope(AstId<BlockStmt>),
+
+/// # Note:
+/// Item tree nodes are NOT created for un-named blocks. Instead,
+/// sequential block uses ast node id as its internal representation.
+pub enum BlockItem {
+    Block(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
     Variable(ItemTreeId<Var>),
 }
 impl_from_typed! (
-    Scope(AstId<BlockStmt>),
+    Block(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>) for BlockScopeItem
+    Variable(ItemTreeId<Var>) for BlockItem
 );
 
 impl Index<AstId<BlockStmt>> for ItemTree {

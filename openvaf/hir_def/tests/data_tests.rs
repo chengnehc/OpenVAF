@@ -4,7 +4,7 @@ use basedb::diagnostics::sink::Buffer;
 use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
 use basedb::{AbsPathBuf, BaseDB, FileId, SourceDatabase, Vfs, VfsEntry, VfsPath, VfsStorage};
 use hir_def::db::{HirDefDB, HirDefDatabase, InternDatabase};
-use hir_def::nameres::{DefMap, LocalScopeId, ScopeDefItem, ScopeOrigin};
+use hir_def::nameres::{DefMap, LocalScopeId, ScopeItemDef, ScopeOrigin};
 use hir_def::DefWithBodyId;
 use parking_lot::RwLock;
 
@@ -67,7 +67,7 @@ impl TestDataBase {
                 let diagnostics = &self.body_source_map(id).diagnostics;
                 dst.add_diagnostics(diagnostics, root_file, self);
             }
-            if let ScopeDefItem::FunctionId(fun) = *declaration {
+            if let ScopeItemDef::FunctionId(fun) = *declaration {
                 let def_map = self.function_def_map(fun);
                 let entry = self.function_def_map(fun).entry_scope();
                 self.lower_and_check_rec(entry, &def_map, dst)
@@ -114,10 +114,10 @@ fn body(file: &Path) -> Result {
     for (_, scope) in &def_map[def_map.entry_scope()].children {
         if let ScopeOrigin::Module(module) = def_map[*scope].origin {
             let analog_block = DefWithBodyId::ModuleId { initial: false, module };
-            actual.push_str(&db.body(analog_block).dump(&db));
+            actual.push_str(&db.body(analog_block).dump(&db)?);
             for (_, scope) in &def_map[*scope].children {
                 if let ScopeOrigin::Function(func) = def_map[*scope].origin {
-                    actual.push_str(&db.body(func.into()).dump(&db))
+                    actual.push_str(&db.body(func.into()).dump(&db)?)
                 }
             }
         }
@@ -131,7 +131,7 @@ fn body(file: &Path) -> Result {
 
 fn item_tree(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
-    let actual = db.item_tree(db.root_file()).dump();
+    let actual = db.item_tree(db.root_file()).dump()?;
 
     // std::fs::write(file.with_extension("item_tree"), actual)?;
     expect_file![file.with_extension("item_tree")].assert_eq(&actual);
@@ -141,7 +141,7 @@ fn item_tree(file: &Path) -> Result {
 
 fn def_map(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
-    let actual = db.root_def_map(db.root_file()).dump(&db);
+    let actual = db.root_def_map(db.root_file()).dump(&db)?;
 
     // std::fs::write(file.with_extension("def_map"), actual)?;
     expect_file![file.with_extension("def_map")].assert_eq(&actual);

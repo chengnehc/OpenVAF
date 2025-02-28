@@ -1,5 +1,4 @@
 test = module;
-
     $angle = hierarchical parameter system function;
     $hflip = hierarchical parameter system function;
     $mfactor = hierarchical parameter system function;
@@ -9,11 +8,8 @@ test = module;
     bar = parameter;
     foo = parameter;
     test = block scope;
-
         foo = parameter;
         test_nested = block scope;
-
             bar = parameter;
     test2 = block scope;
-
         bar = variable;

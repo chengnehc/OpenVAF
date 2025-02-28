@@ -349,11 +349,11 @@ fn generate_builtins() {
             }
         }
 
-        pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeDefItem, RandomState>){
+        pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){
             #(dst.insert(#kw_types::#kws,BuiltIn::#variants.into());)*
         }
 
-        pub fn insert_module_builtin_scope(dst: &mut IndexMap<Name, ScopeDefItem, RandomState>){
+        pub fn insert_module_builtin_scope(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){
             #(dst.insert(sysfun::#params,ParamSysFun::#params.into());)*
         }
     };
@@ -362,7 +362,7 @@ fn generate_builtins() {
         use indexmap::IndexMap;
         use syntax::name::{kw, sysfun, Name};
 
-        use crate::nameres::ScopeDefItem;
+        use crate::nameres::ScopeItemDef;
     ";
     let hir_def = format!("{}\n{}", header, hir_def);
     let hir_def = add_preamble("generate_builtins", reformat(hir_def));

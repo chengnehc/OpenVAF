@@ -75,6 +75,18 @@ impl EmptyStmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BlockStmt {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ast::AttrsOwner for BlockStmt {}
+impl BlockStmt {
+    pub fn begin_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![begin]) }
+    pub fn block_scope(&self) -> Option<BlockScope> { support::child(&self.syntax) }
+    pub fn items(&self) -> AstChildren<BlockItem> { support::children(&self.syntax) }
+    pub fn end_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![end]) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExprStmt {
     pub(crate) syntax: SyntaxNode,
 }
@@ -166,15 +178,12 @@ impl EventStmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BlockStmt {
+pub struct BlockScope {
     pub(crate) syntax: SyntaxNode,
 }
-impl ast::AttrsOwner for BlockStmt {}
-impl BlockStmt {
-    pub fn begin_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![begin]) }
-    pub fn block_scope(&self) -> Option<BlockScope> { support::child(&self.syntax) }
-    pub fn items(&self) -> AstChildren<BlockItem> { support::children(&self.syntax) }
-    pub fn end_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![end]) }
+impl BlockScope {
+    pub fn colon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![:]) }
+    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -192,15 +201,6 @@ impl Case {
     pub fn default_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![default]) }
     pub fn colon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![:]) }
     pub fn stmt(&self) -> Option<Stmt> { support::child(&self.syntax) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BlockScope {
-    pub(crate) syntax: SyntaxNode,
-}
-impl BlockScope {
-    pub fn colon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![:]) }
-    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -255,28 +255,6 @@ pub struct BinExpr {
 impl BinExpr {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ParenExpr {
-    pub(crate) syntax: SyntaxNode,
-}
-impl ParenExpr {
-    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
-    pub fn expr(&self) -> Option<Expr> { support::child(&self.syntax) }
-    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ArrayExpr {
-    pub(crate) syntax: SyntaxNode,
-}
-impl ArrayExpr {
-    pub fn l_curly_arr_token(&self) -> Option<SyntaxToken> {
-        support::token(&self.syntax, T!["'{"])
-    }
-    pub fn exprs(&self) -> AstChildren<Expr> { support::children(&self.syntax) }
-    pub fn r_curly_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['}']) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SelectExpr {
     pub(crate) syntax: SyntaxNode,
 }
@@ -284,6 +262,16 @@ impl SelectExpr {
     pub fn condition(&self) -> Option<Expr> { support::child(&self.syntax) }
     pub fn question_mark_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![?]) }
     pub fn colon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![:]) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ParenExpr {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ParenExpr {
+    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
+    pub fn expr(&self) -> Option<Expr> { support::child(&self.syntax) }
+    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -311,6 +299,18 @@ impl PortFlow {
     pub fn l_angle_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![<]) }
     pub fn port(&self) -> Option<Path> { support::child(&self.syntax) }
     pub fn r_angle_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![>]) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ArrayExpr {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ArrayExpr {
+    pub fn l_curly_arr_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, T!["'{"])
+    }
+    pub fn exprs(&self) -> AstChildren<Expr> { support::children(&self.syntax) }
+    pub fn r_curly_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['}']) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -592,18 +592,19 @@ impl FunctionArg {
 pub enum Expr {
     PrefixExpr(PrefixExpr),
     BinExpr(BinExpr),
-    ParenExpr(ParenExpr),
-    ArrayExpr(ArrayExpr),
     SelectExpr(SelectExpr),
+    ParenExpr(ParenExpr),
     Call(Call),
     PathExpr(PathExpr),
     PortFlow(PortFlow),
+    ArrayExpr(ArrayExpr),
     Literal(Literal),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Stmt {
     EmptyStmt(EmptyStmt),
+    BlockStmt(BlockStmt),
     ExprStmt(ExprStmt),
     AssignStmt(AssignStmt),
     IfStmt(IfStmt),
@@ -611,7 +612,6 @@ pub enum Stmt {
     ForStmt(ForStmt),
     CaseStmt(CaseStmt),
     EventStmt(EventStmt),
-    BlockStmt(BlockStmt),
 }
 impl ast::AttrsOwner for Stmt {}
 
@@ -746,6 +746,17 @@ impl AstNode for EmptyStmt {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
+impl AstNode for BlockStmt {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == BLOCK_STMT }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
 impl AstNode for ExprStmt {
     fn can_cast(kind: SyntaxKind) -> bool { kind == EXPR_STMT }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
@@ -823,8 +834,8 @@ impl AstNode for EventStmt {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for BlockStmt {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == BLOCK_STMT }
+impl AstNode for BlockScope {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == BLOCK_SCOPE }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -847,17 +858,6 @@ impl AstNode for Assign {
 }
 impl AstNode for Case {
     fn can_cast(kind: SyntaxKind) -> bool { kind == CASE }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
-impl AstNode for BlockScope {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == BLOCK_SCOPE }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -922,30 +922,19 @@ impl AstNode for BinExpr {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for ParenExpr {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == PAREN_EXPR }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
-impl AstNode for ArrayExpr {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == ARRAY_EXPR }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
 impl AstNode for SelectExpr {
     fn can_cast(kind: SyntaxKind) -> bool { kind == SELECT_EXPR }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
+impl AstNode for ParenExpr {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == PAREN_EXPR }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -979,6 +968,17 @@ impl AstNode for PathExpr {
 }
 impl AstNode for PortFlow {
     fn can_cast(kind: SyntaxKind) -> bool { kind == PORT_FLOW }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
+impl AstNode for ArrayExpr {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == ARRAY_EXPR }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1247,14 +1247,11 @@ impl From<PrefixExpr> for Expr {
 impl From<BinExpr> for Expr {
     fn from(node: BinExpr) -> Expr { Expr::BinExpr(node) }
 }
-impl From<ParenExpr> for Expr {
-    fn from(node: ParenExpr) -> Expr { Expr::ParenExpr(node) }
-}
-impl From<ArrayExpr> for Expr {
-    fn from(node: ArrayExpr) -> Expr { Expr::ArrayExpr(node) }
-}
 impl From<SelectExpr> for Expr {
     fn from(node: SelectExpr) -> Expr { Expr::SelectExpr(node) }
+}
+impl From<ParenExpr> for Expr {
+    fn from(node: ParenExpr) -> Expr { Expr::ParenExpr(node) }
 }
 impl From<Call> for Expr {
     fn from(node: Call) -> Expr { Expr::Call(node) }
@@ -1265,14 +1262,17 @@ impl From<PathExpr> for Expr {
 impl From<PortFlow> for Expr {
     fn from(node: PortFlow) -> Expr { Expr::PortFlow(node) }
 }
+impl From<ArrayExpr> for Expr {
+    fn from(node: ArrayExpr) -> Expr { Expr::ArrayExpr(node) }
+}
 impl From<Literal> for Expr {
     fn from(node: Literal) -> Expr { Expr::Literal(node) }
 }
 impl AstNode for Expr {
     fn can_cast(kind: SyntaxKind) -> bool {
         match kind {
-            PREFIX_EXPR | BIN_EXPR | PAREN_EXPR | ARRAY_EXPR | SELECT_EXPR | CALL | PATH_EXPR
-            | PORT_FLOW => true,
+            PREFIX_EXPR | BIN_EXPR | SELECT_EXPR | PAREN_EXPR | CALL | PATH_EXPR | PORT_FLOW
+            | ARRAY_EXPR => true,
             _ => Literal::can_cast(kind),
         }
     }
@@ -1280,12 +1280,12 @@ impl AstNode for Expr {
         let res = match syntax.kind() {
             PREFIX_EXPR => Expr::PrefixExpr(PrefixExpr { syntax }),
             BIN_EXPR => Expr::BinExpr(BinExpr { syntax }),
-            PAREN_EXPR => Expr::ParenExpr(ParenExpr { syntax }),
-            ARRAY_EXPR => Expr::ArrayExpr(ArrayExpr { syntax }),
             SELECT_EXPR => Expr::SelectExpr(SelectExpr { syntax }),
+            PAREN_EXPR => Expr::ParenExpr(ParenExpr { syntax }),
             CALL => Expr::Call(Call { syntax }),
             PATH_EXPR => Expr::PathExpr(PathExpr { syntax }),
             PORT_FLOW => Expr::PortFlow(PortFlow { syntax }),
+            ARRAY_EXPR => Expr::ArrayExpr(ArrayExpr { syntax }),
             _ => Expr::Literal(Literal::cast(syntax)?),
         };
         Some(res)
@@ -1294,18 +1294,21 @@ impl AstNode for Expr {
         match self {
             Expr::PrefixExpr(it) => &it.syntax,
             Expr::BinExpr(it) => &it.syntax,
-            Expr::ParenExpr(it) => &it.syntax,
-            Expr::ArrayExpr(it) => &it.syntax,
             Expr::SelectExpr(it) => &it.syntax,
+            Expr::ParenExpr(it) => &it.syntax,
             Expr::Call(it) => &it.syntax,
             Expr::PathExpr(it) => &it.syntax,
             Expr::PortFlow(it) => &it.syntax,
+            Expr::ArrayExpr(it) => &it.syntax,
             Expr::Literal(it) => it.syntax(),
         }
     }
 }
 impl From<EmptyStmt> for Stmt {
     fn from(node: EmptyStmt) -> Stmt { Stmt::EmptyStmt(node) }
+}
+impl From<BlockStmt> for Stmt {
+    fn from(node: BlockStmt) -> Stmt { Stmt::BlockStmt(node) }
 }
 impl From<ExprStmt> for Stmt {
     fn from(node: ExprStmt) -> Stmt { Stmt::ExprStmt(node) }
@@ -1328,20 +1331,18 @@ impl From<CaseStmt> for Stmt {
 impl From<EventStmt> for Stmt {
     fn from(node: EventStmt) -> Stmt { Stmt::EventStmt(node) }
 }
-impl From<BlockStmt> for Stmt {
-    fn from(node: BlockStmt) -> Stmt { Stmt::BlockStmt(node) }
-}
 impl AstNode for Stmt {
     fn can_cast(kind: SyntaxKind) -> bool {
         match kind {
-            EMPTY_STMT | EXPR_STMT | ASSIGN_STMT | IF_STMT | WHILE_STMT | FOR_STMT | CASE_STMT
-            | EVENT_STMT | BLOCK_STMT => true,
+            EMPTY_STMT | BLOCK_STMT | EXPR_STMT | ASSIGN_STMT | IF_STMT | WHILE_STMT | FOR_STMT
+            | CASE_STMT | EVENT_STMT => true,
             _ => false,
         }
     }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         let res = match syntax.kind() {
             EMPTY_STMT => Stmt::EmptyStmt(EmptyStmt { syntax }),
+            BLOCK_STMT => Stmt::BlockStmt(BlockStmt { syntax }),
             EXPR_STMT => Stmt::ExprStmt(ExprStmt { syntax }),
             ASSIGN_STMT => Stmt::AssignStmt(AssignStmt { syntax }),
             IF_STMT => Stmt::IfStmt(IfStmt { syntax }),
@@ -1349,7 +1350,6 @@ impl AstNode for Stmt {
             FOR_STMT => Stmt::ForStmt(ForStmt { syntax }),
             CASE_STMT => Stmt::CaseStmt(CaseStmt { syntax }),
             EVENT_STMT => Stmt::EventStmt(EventStmt { syntax }),
-            BLOCK_STMT => Stmt::BlockStmt(BlockStmt { syntax }),
             _ => return None,
         };
         Some(res)
@@ -1357,6 +1357,7 @@ impl AstNode for Stmt {
     fn syntax(&self) -> &SyntaxNode {
         match self {
             Stmt::EmptyStmt(it) => &it.syntax,
+            Stmt::BlockStmt(it) => &it.syntax,
             Stmt::ExprStmt(it) => &it.syntax,
             Stmt::AssignStmt(it) => &it.syntax,
             Stmt::IfStmt(it) => &it.syntax,
@@ -1364,7 +1365,6 @@ impl AstNode for Stmt {
             Stmt::ForStmt(it) => &it.syntax,
             Stmt::CaseStmt(it) => &it.syntax,
             Stmt::EventStmt(it) => &it.syntax,
-            Stmt::BlockStmt(it) => &it.syntax,
         }
     }
 }
@@ -1693,6 +1693,11 @@ impl std::fmt::Display for EmptyStmt {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
+impl std::fmt::Display for BlockStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
 impl std::fmt::Display for ExprStmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
@@ -1728,7 +1733,7 @@ impl std::fmt::Display for EventStmt {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for BlockStmt {
+impl std::fmt::Display for BlockScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
@@ -1739,11 +1744,6 @@ impl std::fmt::Display for Assign {
     }
 }
 impl std::fmt::Display for Case {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
-impl std::fmt::Display for BlockScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
@@ -1773,17 +1773,12 @@ impl std::fmt::Display for BinExpr {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for ParenExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
-impl std::fmt::Display for ArrayExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
 impl std::fmt::Display for SelectExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
+impl std::fmt::Display for ParenExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
@@ -1799,6 +1794,11 @@ impl std::fmt::Display for PathExpr {
     }
 }
 impl std::fmt::Display for PortFlow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
+impl std::fmt::Display for ArrayExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }

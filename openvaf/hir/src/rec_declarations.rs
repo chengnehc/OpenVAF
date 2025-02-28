@@ -5,7 +5,7 @@ use std::mem::transmute;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use hir_def::nameres::{self, DefMap, LocalScopeId, ScopeDefItem};
+use hir_def::nameres::{self, DefMap, LocalScopeId, ScopeItemDef};
 use smol_str::SmolStr;
 use syntax::name::Name;
 
@@ -16,13 +16,13 @@ use crate::{
 
 struct Scope {
     _def_map: Arc<DefMap>,
-    iter: indexmap::map::Iter<'static, Name, nameres::ScopeDefItem>,
+    iter: indexmap::map::Iter<'static, Name, nameres::ScopeItemDef>,
     def: Option<(Name, ScopeDef)>,
 }
 impl Scope {
     fn new(def_map: Arc<DefMap>, scope: LocalScopeId, block: Option<(Name, ScopeDef)>) -> Scope {
         // safety: def_map is a immutable/an arc that will live at least as long as the scope
-        let iter: indexmap::map::Iter<'_, Name, nameres::ScopeDefItem> =
+        let iter: indexmap::map::Iter<'_, Name, nameres::ScopeItemDef> =
             def_map[scope].declarations.iter();
         let iter = unsafe { transmute(iter) };
         Scope { _def_map: def_map, iter, def: block }
@@ -63,7 +63,7 @@ impl Iterator for RecDeclarations<'_> {
             let scope = self.stack.last_mut()?;
             if let Some((name, &item)) = scope.iter.next() {
                 let def = match item {
-                    ScopeDefItem::BlockId(id) => {
+                    ScopeItemDef::BlockId(id) => {
                         if let Some(def_map) = self.db.block_def_map(id) {
                             let entry = def_map.entry_scope();
                             self.stack.push(Scope::new(
@@ -74,14 +74,14 @@ impl Iterator for RecDeclarations<'_> {
                         }
                         continue;
                     }
-                    ScopeDefItem::ModuleId(id) => ScopeDef::ModuleInstance(Module { id }),
-                    ScopeDefItem::NodeId(id) => ScopeDef::Node(Node { id }),
-                    ScopeDefItem::VarId(id) => ScopeDef::Variable(Variable { id }),
-                    ScopeDefItem::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
-                    ScopeDefItem::AliasParamId(id) => {
+                    ScopeItemDef::ModuleId(id) => ScopeDef::ModuleInstance(Module { id }),
+                    ScopeItemDef::NodeId(id) => ScopeDef::Node(Node { id }),
+                    ScopeItemDef::VarId(id) => ScopeDef::Variable(Variable { id }),
+                    ScopeItemDef::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
+                    ScopeItemDef::AliasParamId(id) => {
                         ScopeDef::AliasParameter(AliasParameter { id })
                     }
-                    ScopeDefItem::BranchId(id) => ScopeDef::Branch(Branch { id }),
+                    ScopeItemDef::BranchId(id) => ScopeDef::Branch(Branch { id }),
                     _ => continue,
                 };
                 return Some((name.clone(), def));

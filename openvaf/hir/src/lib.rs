@@ -9,10 +9,11 @@
 //! Many types are not self-contained, and explicitly use local indexes, arenas, etc.
 
 use std::sync::Arc;
+use stdx::impl_debug;
 
 use basedb::{BaseDB, FileId};
 use hir_def::db::HirDefDB;
-use hir_def::nameres::{DefMap, LocalScopeId, ScopeDefItem};
+use hir_def::nameres::{DefMap, LocalScopeId, ScopeItemDef};
 use hir_def::{
     AliasParamId, BlockId, BranchId, DefWithBodyId, DisciplineId, FunctionId, LocalFunctionArgId,
     Lookup, ModuleId, ModuleLoc, NatureAttrId, NatureId, NodeId, ParamId, VarId,
@@ -56,7 +57,8 @@ pub mod signatures {
 }
 
 /// A compilation unit is represented by a root file (entry file),
-/// while as a result of '`include' statements:
+///
+/// As a result of '`include' statements,
 /// - a compilation unit may contain multiple physical files
 /// - a physical file may be a part of multiple compilation units
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -93,7 +95,7 @@ impl CompilationUnit {
             .declarations
             .iter()
             .filter_map(|(_, def)| {
-                if let ScopeDefItem::ModuleId(id) = *def {
+                if let ScopeItemDef::ModuleId(id) = *def {
                     Some(Module { id })
                 } else {
                     None
@@ -102,7 +104,7 @@ impl CompilationUnit {
             .collect()
     }
 
-    /// Collect all diagnostics to console sink and generate diagnostics for testing.
+    /// Generate and collect all diagnostics to console sink diagnostics for testing.
     pub fn test_diagnostics(&self, db: &CompilationDB) -> String {
         use basedb::diagnostics::sink::Buffer;
         use basedb::diagnostics::ConsoleSink;
@@ -123,13 +125,11 @@ impl CompilationUnit {
 pub struct Module {
     id: ModuleId,
 }
-
-stdx::impl_debug! {
+impl_debug! {
     match Module{
         Module{ id } => "{id:?}";
     }
 }
-
 impl Module {
     pub fn name(self, db: &CompilationDB) -> String {
         db.module_data(self.id).name.to_string()
@@ -146,10 +146,6 @@ impl Module {
     pub fn uuid(self, _db: &CompilationDB) -> u32 {
         self.id.as_intern_id().as_u32()
     }
-
-    fn lookup(self, db: &CompilationDB) -> ModuleLoc {
-        self.id.lookup(db)
-    }
     /* JW: not used
         /// list of all child scopes.
         pub fn child_scopes(self, db: &CompilationDB) -> Vec<Scope> {
@@ -165,11 +161,11 @@ impl Module {
         RecDeclarations::new(Scope::Module(self), db)
     }
 
-    pub fn analog_initial_block(&self, db: &CompilationDB) -> Body {
+    pub fn analog_initial_body(&self, db: &CompilationDB) -> Body {
         Body::new(DefWithBodyId::ModuleId { initial: true, module: self.id }, db)
     }
 
-    pub fn analog_block(&self, db: &CompilationDB) -> Body {
+    pub fn analog_body(&self, db: &CompilationDB) -> Body {
         Body::new(DefWithBodyId::ModuleId { initial: false, module: self.id }, db)
     }
 
@@ -179,8 +175,12 @@ impl Module {
         db: &CompilationDB,
         path: &Path,
     ) -> Result<Variable, PathResolveError> {
-        let scope = self.id.lookup(db).scope;
+        let scope = self.lookup(db).scope;
         scope.resolve_item_path(db, path).map(|id| Variable { id })
+    }
+
+    fn lookup(self, db: &CompilationDB) -> ModuleLoc {
+        self.id.lookup(db)
     }
 }
 
@@ -189,13 +189,11 @@ impl Module {
 pub struct Block {
     id: BlockId,
 }
-
-stdx::impl_debug! {
+impl_debug! {
     match Block{
         Block{ id } => "{id:?}";
     }
 }
-
 impl Block {
     pub fn name(self, db: &CompilationDB) -> String {
         self.id.lookup(db).name(db).to_string()
@@ -206,13 +204,11 @@ impl Block {
 pub struct Function {
     id: FunctionId,
 }
-
-stdx::impl_debug! {
+impl_debug! {
     match Function{
         Function{ id } => "{id:?}";
     }
 }
-
 impl Function {
     pub fn name(self, db: &CompilationDB) -> String {
         db.function_data(self.id).name.to_string()
@@ -223,8 +219,8 @@ impl Function {
     }
 
     pub fn args(self, db: &CompilationDB) -> impl Iterator<Item = FunctionArg> + Clone {
-        let args = db.function_data(self.id).args.len();
-        (0..args).map(move |i| FunctionArg { fun_id: self.id, arg_id: i.into() })
+        let num = db.function_data(self.id).args.len();
+        (0..num).map(move |i| FunctionArg { fun_id: self.id, arg_id: i.into() })
     }
 
     pub fn arg(self, idx: usize, db: &CompilationDB) -> FunctionArg {
@@ -243,7 +239,6 @@ pub struct FunctionArg {
     fun_id: FunctionId,
     arg_id: LocalFunctionArgId,
 }
-
 impl FunctionArg {
     pub fn function(self) -> Function {
         Function { id: self.fun_id }
@@ -271,7 +266,6 @@ pub enum BranchWrite {
     Named(Branch),
     Unnamed { hi: Node, lo: Option<Node> },
 }
-
 impl BranchWrite {
     pub fn nodes(self, db: &CompilationDB) -> (Node, Option<Node>) {
         match self {
@@ -284,7 +278,6 @@ impl BranchWrite {
         }
     }
 }
-
 impl From<inference::BranchWrite> for BranchWrite {
     #[inline]
     fn from(inner: inference::BranchWrite) -> Self {
@@ -296,22 +289,22 @@ impl From<inference::BranchWrite> for BranchWrite {
         }
     }
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scope {
     Module(Module),
     Block(Block),
     Function(Function),
 }
-
 impl Scope {
     fn def_map_and_scope(self, db: &CompilationDB) -> (LocalScopeId, Arc<DefMap>) {
         match self {
             Scope::Module(module) => {
                 let loc = module.lookup(db);
-                (loc.scope.local_scope, loc.def_map(db))
+                (loc.scope.local_id, loc.def_map(db))
             }
             Scope::Block(block) => {
-                let def_map = db.block_def_map(block.id).expect("block is named");
+                let def_map = db.block_def_map(block.id).expect("block should be named");
                 (def_map.entry_scope(), def_map)
             }
             Scope::Function(func) => {
@@ -378,13 +371,11 @@ impl Scope {
 pub struct Node {
     id: NodeId,
 }
-
-stdx::impl_debug! {
+impl_debug! {
     match Node{
         Node{ id } => "{id:?}";
     }
 }
-
 impl Node {
     #[inline]
     pub fn name(self, db: &CompilationDB) -> SmolStr {
@@ -422,13 +413,11 @@ impl Node {
 pub struct Variable {
     id: VarId,
 }
-
-stdx::impl_debug! {
+impl_debug! {
     match Variable{
         Variable{ id } => "{id:?}";
     }
 }
-
 impl Variable {
     pub fn name(self, db: &CompilationDB) -> SmolStr {
         db.var_data(self.id).name.clone().into()
@@ -451,7 +440,6 @@ impl Variable {
 pub struct Parameter {
     id: ParamId,
 }
-
 impl Parameter {
     pub fn name(self, db: &CompilationDB) -> String {
         db.param_data(self.id).name.to_string()
@@ -482,13 +470,11 @@ impl Parameter {
 pub struct AliasParameter {
     id: AliasParamId,
 }
-
-stdx::impl_debug! {
+impl_debug! {
     match AliasParameter{
         AliasParameter{ id } => "{id:?}";
     }
 }
-
 impl AliasParameter {
     pub fn name(self, db: &CompilationDB) -> String {
         db.alias_data(self.id).name.to_string()
@@ -517,7 +503,6 @@ pub enum BranchKind {
     NodeGnd(Node),
     Nodes(Node, Node),
 }
-
 impl BranchKind {
     pub fn unwrap_hi_node(self) -> Node {
         match self {
@@ -538,13 +523,11 @@ impl BranchKind {
 pub struct Branch {
     id: BranchId,
 }
-
-stdx::impl_debug! {
+impl_debug! {
     match Branch{
         Branch{ id } => "{id:?}";
     }
 }
-
 impl Branch {
     pub fn name(self, db: &CompilationDB) -> String {
         db.branch_data(self.id).name.to_string()
@@ -574,7 +557,6 @@ impl Branch {
 pub struct Discipline {
     id: DisciplineId,
 }
-
 impl Discipline {
     pub fn name(self, db: &CompilationDB) -> String {
         db.discipline_data(self.id).name.to_string()
@@ -593,7 +575,6 @@ impl Discipline {
 pub struct Nature {
     id: NatureId,
 }
-
 impl Nature {
     pub fn name(self, db: &CompilationDB) -> String {
         db.nature_data(self.id).name.to_string()
@@ -608,7 +589,6 @@ impl Nature {
 pub struct NatureAttribute {
     id: NatureAttrId,
 }
-
 impl NatureAttribute {
     pub fn value(&self, db: &CompilationDB) -> Body {
         Body::new(self.id.into(), db)

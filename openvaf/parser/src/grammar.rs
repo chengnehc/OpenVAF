@@ -10,11 +10,9 @@
 //! available to the grammar, and see docs for [`Event`](super::event::Event)
 //! to learn how this actually manages to produce parse trees.
 
-use tokens::T;
-
 use crate::parser::{CompletedMarker, Marker, Parser};
 use crate::SyntaxKind::{self, *};
-use crate::TokenSet;
+use crate::{TokenSet, T};
 
 mod attributes;
 mod call;

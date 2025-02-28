@@ -1,35 +1,19 @@
 use std::fmt::{self, Write};
 
-use super::ScopeDefItem;
 use crate::db::HirDefDB;
 use crate::nameres::{DefMap, LocalScopeId};
 
+use super::ScopeItemDef;
+
 impl DefMap {
-    pub fn dump(&self, db: &dyn HirDefDB) -> String {
-        let mut printer = Printer { db, buf: String::new(), indent_level: 0, needs_indent: true };
-        printer.print_def_map_root(self);
-        printer.buf.push('\n');
-        printer.buf
+    pub fn dump(&self, db: &dyn HirDefDB) -> Result<String, fmt::Error> {
+        let mut p = Printer { db, buf: String::new(), indent_level: 0, needs_indent: true };
+        p.print_def_map_root(self)?;
+        p.buf.push('\n');
+
+        Ok(p.buf)
     }
 }
-
-macro_rules! wln {
-    ($dst:expr) => {
-        { let _ = writeln!($dst); }
-    };
-    ($dst:expr, $($arg:tt)*) => {
-        { let _ = writeln!($dst, $($arg)*); }
-    };
-}
-
-// macro_rules! w {
-//     ($dst:expr) => {
-//         { let _ = write!($dst); }
-//     };
-//     ($dst:expr, $($arg:tt)*) => {
-//         { let _ = write!($dst, $($arg)*); }
-//     };
-// }
 
 struct Printer<'a> {
     db: &'a dyn HirDefDB,
@@ -39,23 +23,25 @@ struct Printer<'a> {
 }
 
 impl<'a> Printer<'a> {
-    fn indented(&mut self, f: impl FnOnce(&mut Self)) {
+    fn indented(&mut self, f: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
         self.indent_level += 1;
-        wln!(self);
-        f(self);
+        writeln!(self)?;
+        f(self)?;
         self.indent_level -= 1;
         self.buf = self.buf.trim_end_matches('\n').to_string();
+
+        Ok(())
     }
 
-    fn print_def_map_root(&mut self, map: &DefMap) {
+    fn print_def_map_root(&mut self, map: &DefMap) -> fmt::Result {
         self.print_scope(map, map.root_scope())
     }
 
-    fn print_def_map(&mut self, map: &DefMap) {
+    fn print_def_map(&mut self, map: &DefMap) -> fmt::Result {
         self.print_scope(map, map.entry_scope())
     }
 
-    fn print_scope(&mut self, map: &DefMap, local_scope: LocalScopeId) {
+    fn print_scope(&mut self, map: &DefMap, local_scope: LocalScopeId) -> fmt::Result {
         let mut declarations: Vec<_> = map.scopes[local_scope]
             .declarations
             .iter()
@@ -63,25 +49,28 @@ impl<'a> Printer<'a> {
             .collect();
         declarations.sort_unstable_by_key(|(name, _)| name.clone());
         for (name, def) in declarations {
-            wln!(self, "{} = {};", name, def.item_kind());
-
+            write!(self, "{} = {};", name, def.item_kind())?;
             match def {
-                ScopeDefItem::BlockId(block) => {
+                ScopeItemDef::BlockId(block) => {
                     if let Some(def_map) = self.db.block_def_map(block) {
-                        self.indented(|s| s.print_def_map(&def_map));
+                        self.indented(|s| s.print_def_map(&def_map))?;
                     }
                 }
-                ScopeDefItem::FunctionId(fun) => {
+                ScopeItemDef::FunctionId(fun) => {
                     let def_map = self.db.function_def_map(fun);
-                    self.indented(|s| s.print_def_map(&def_map));
+                    self.indented(|s| s.print_def_map(&def_map))?;
                 }
                 _ => {
                     if let Some(child) = map.scopes[local_scope].children.get(&name) {
-                        self.indented(|s| s.print_scope(map, *child))
+                        self.indented(|s| s.print_scope(map, *child))?;
+                    } else {
+                        writeln!(self)?;
                     }
                 }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -93,14 +82,12 @@ impl<'a> Write for Printer<'a> {
                     Some('\n') | None => {}
                     _ => self.buf.push('\n'),
                 }
-
                 if line != "\n" {
                     // don't indent empty lines! required to play nice with expect_test
                     self.buf.push_str(&"    ".repeat(self.indent_level));
                 }
                 self.needs_indent = false;
             }
-
             self.buf.push_str(line);
             self.needs_indent = line.ends_with('\n');
         }

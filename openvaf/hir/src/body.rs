@@ -175,9 +175,7 @@ impl<'a> BodyRef<'a> {
         match self.body.stmts[stmnt] {
             hir_def::Stmt::Empty | hir_def::Stmt::Missing => None,
             hir_def::Stmt::Expr(e) => Some(Stmt::Expr(e)),
-            hir_def::Stmt::EventControl { ref event, body } => {
-                Some(Stmt::EventControl { event, body })
-            }
+            hir_def::Stmt::Block { ref body } => Some(Stmt::Block { body }),
             hir_def::Stmt::Assignment { val, .. } => {
                 let stmt = match self.infere.assignment_destination[&stmnt] {
                     inference::AssignDst::Var(id) => {
@@ -204,7 +202,6 @@ impl<'a> BodyRef<'a> {
                 };
                 Some(stmt)
             }
-            hir_def::Stmt::Block { ref body } => Some(Stmt::Block { body }),
             hir_def::Stmt::If { cond, then_branch, else_branch } => {
                 Some(Stmt::If { cond, then_branch, else_branch })
             }
@@ -213,6 +210,9 @@ impl<'a> BodyRef<'a> {
             }
             hir_def::Stmt::WhileLoop { cond, body } => Some(Stmt::WhileLoop { cond, body }),
             hir_def::Stmt::Case { discr, ref case_arms } => Some(Stmt::Case { discr, case_arms }),
+            hir_def::Stmt::EventControl { ref event, body } => {
+                Some(Stmt::EventControl { event, body })
+            }
         }
     }
 
@@ -241,35 +241,32 @@ pub enum ContributeKind {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Stmt<'a> {
     Expr(ExprId),
-    EventControl { event: &'a Event, body: StmtId },
-    Contribute { kind: ContributeKind, branch: BranchWrite, rhs: ExprId },
-    Assignment { lhs: AssignmentLhs, rhs: ExprId },
     Block { body: &'a [StmtId] },
+    Assignment { lhs: AssignmentLhs, rhs: ExprId },
+    Contribute { kind: ContributeKind, branch: BranchWrite, rhs: ExprId },
     If { cond: ExprId, then_branch: StmtId, else_branch: StmtId },
-    ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
     WhileLoop { cond: ExprId, body: StmtId },
+    ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
     Case { discr: ExprId, case_arms: &'a [Case] }, // TODO lint on unreachable
+    EventControl { event: &'a Event, body: StmtId },
 }
 impl Stmt<'_> {
     #[inline]
     pub fn unwrap_expr(&self) -> ExprId {
-        if let Stmt::Expr(e) = self {
-            *e
-        } else {
-            unreachable!("Called unwrap_expr on {:?}", self)
-        }
+        let Stmt::Expr(e) = self else { unreachable!("Called unwrap_expr on {:?}", self) };
+        *e
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr<'a> {
     Read(Ref),
-    BinaryOp { lhs: ExprId, rhs: ExprId, op: BinaryOp },
+    Literal(&'a Literal),
     UnaryOp { expr: ExprId, op: UnaryOp },
+    BinaryOp { lhs: ExprId, rhs: ExprId, op: BinaryOp },
     Select { cond: ExprId, then_val: ExprId, else_val: ExprId },
     Call { fun: ResolvedFun, args: &'a [ExprId] },
     Array(&'a [ExprId]),
-    Literal(&'a Literal),
 }
 impl Expr<'_> {
     pub fn is_zero(&self) -> bool {
