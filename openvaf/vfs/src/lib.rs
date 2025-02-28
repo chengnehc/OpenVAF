@@ -231,9 +231,9 @@ impl Vfs {
         if old == &contents {
             return false;
         }
-        let change_kind = if old.err.as_ref().map_or(false, |err| err.is_io()) {
+        let change_kind = if old.err.as_ref().is_some_and(|err| err.is_io()) {
             ChangeKind::Create
-        } else if contents.err.as_ref().map_or(false, |err| err.is_io()) {
+        } else if contents.err.as_ref().is_some_and(|err| err.is_io()) {
             ChangeKind::Delete
         } else {
             ChangeKind::Modify

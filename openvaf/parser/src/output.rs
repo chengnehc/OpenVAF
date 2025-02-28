@@ -60,7 +60,7 @@ impl Output {
 
     // Step::Exit
     pub(crate) fn leave_node(&mut self) {
-        let e = 2 << 4 | 1;
+        let e = (2 << 4) | 1;
         self.event.push(e)
     }
 

@@ -127,9 +127,8 @@ pub fn run_harness(args: &Arguments, mut tests: Vec<Test>) -> TestSummary {
 
     // Set up prettifier
     let pretty = args.pretty();
-    let name_width = pretty
-        .then_some(tests.iter().map(|t| t.name.chars().count()).max().unwrap_or(0))
-        .unwrap_or(0);
+    let name_width =
+        if pretty { tests.iter().map(|t| t.name.chars().count()).max().unwrap_or(0) } else { 0 };
 
     // If `--list` is specified, just list all tests and return.
     if args.list {
@@ -253,7 +252,7 @@ impl Arguments {
     }
 
     fn pretty(&self) -> bool {
-        self.format.map_or(true, |it| it == Format::Pretty)
+        self.format.is_none_or(|it| it == Format::Pretty)
     }
 }
 
@@ -349,7 +348,6 @@ impl fmt::Display for TestSummary {
 ///     Test::new("data_test::hardcoded", &|| data_test(Path::new("hardcoded_file")))
 /// ];
 /// ```
-
 #[macro_export]
 macro_rules! harness {
     ($($tests: expr),*) => {

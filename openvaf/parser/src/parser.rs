@@ -190,7 +190,7 @@ impl<'t> Parser<'t> {
     /// Unless the token is in the `recovery` set, it will be consumed.
     pub(crate) fn expect_ts_recover(&mut self, kinds: TokenSet, recovery: TokenSet) -> bool {
         if self.expect_ts(kinds) {
-            return true;
+            true
         } else {
             if !self.at_ts(recovery) {
                 self.bump_any();

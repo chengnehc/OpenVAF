@@ -141,7 +141,7 @@ impl AstIdMap {
 
     /// Get the position of attribute with `name` of AST node `id`, if any.
     pub fn get_attr<N: AstNode>(&self, id: AstId<N>, name: &str) -> Option<usize> {
-        self.arena[id.raw].attrs.iter().position(|attr| &*attr.deref() == name)
+        self.arena[id.raw].attrs.iter().position(|attr| attr.deref() == name)
     }
 
     pub(crate) fn get_parent(&self, id: ErasedAstId) -> Option<ErasedAstId> {
