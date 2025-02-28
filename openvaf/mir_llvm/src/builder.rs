@@ -399,7 +399,7 @@ impl<'ll> Builder<'_, '_, 'll> {
         self.select_bb(bb);
 
         for inst in self.mir_func.layout.block_insts(bb) {
-            let fast_math = self.mir_func.srclocs.get(inst).map_or(false, |loc| loc.0 < 0);
+            let fast_math = self.mir_func.srclocs.get(inst).map_or(false, |loc| loc.bits() < 0);
             self.build_inst(
                 inst,
                 if fast_math { FastMathMode::Partial } else { FastMathMode::Disabled },

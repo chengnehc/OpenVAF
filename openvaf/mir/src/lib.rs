@@ -20,12 +20,9 @@
 //! found in the `hir_lower` crate which is the only bridge between various MIR crates and the HIR.
 //!
 //! [`cranelift`]: https://github.com/bytecodealliance/wasmtime/tree/main/cranelift
+//! [`cranelift_codgen`]: https://docs.rs/cranelift-codegen/latest/cranelift_codegen/index.html
 //! [`llvm`]: https://github.com/llvm/llvm-project
 //! [SSA]: https://en.wikipedia.org/wiki/Static_single_assignment_form
-//!
-//! See Also:
-//!
-//! https://docs.rs/cranelift-codegen/latest/cranelift_codegen/index.html
 
 use core::fmt;
 use stdx::{impl_debug, impl_display, impl_idx_from};
@@ -66,41 +63,22 @@ pub use crate::instructions::{
 };
 pub use crate::layout::{InstCursor, InstIter, Layout};
 
-/// A MIR function
+/// A MIR function.
 ///
 /// Functions can be cloned, but it is not a very fast operation.
 /// The clone will have all the same entity numbers as the original.
 #[derive(Clone, Default)]
 pub struct Function {
     pub name: String,
-
     /// Data flow graph containing the primary definition of all instructions, blocks and values.
     pub dfg: DataFlowGraph,
-
     /// Layout of blocks and instructions in the function body.
     pub layout: Layout,
-
-    /// Source locations.
-    ///
-    /// Track the original source location for each instruction. The source locations are not
-    /// interpreted, only preserved.
+    /// The original source locations for each instruction. Not interpreted, only preserved.
     pub srclocs: SourceLocs,
 }
 
-impl AsRef<Function> for Function {
-    fn as_ref(&self) -> &Function {
-        self
-    }
-}
-
-impl AsMut<Function> for Function {
-    fn as_mut(&mut self) -> &mut Function {
-        self
-    }
-}
-
 impl Function {
-    /// Clear all data structures in this function.
     pub fn clear(&mut self) {
         self.dfg.clear();
         self.layout.clear();
@@ -120,6 +98,43 @@ impl Function {
         let mut func = Function::new();
         func.name = name;
         func
+    }
+
+    pub fn to_debug_string(&self) -> String {
+        format!("{:?}", self)
+    }
+
+    pub fn print<'a>(&'a self, interner: &'a dyn lasso::Resolver) -> DisplayFunction<'a> {
+        DisplayFunction { fun: self, interner }
+    }
+}
+
+impl AsRef<Function> for Function {
+    fn as_ref(&self) -> &Function {
+        self
+    }
+}
+
+impl AsMut<Function> for Function {
+    fn as_mut(&mut self) -> &mut Function {
+        self
+    }
+}
+
+impl fmt::Debug for Function {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write::write_function(fmt, self, &DummyResolver)
+    }
+}
+
+pub struct DisplayFunction<'a> {
+    fun: &'a Function,
+    interner: &'a dyn lasso::Resolver,
+}
+
+impl fmt::Display for DisplayFunction<'_> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write::write_function(fmt, self.fun, self.interner)
     }
 }
 
@@ -192,6 +207,8 @@ impl Function {
             }
         }
     }
+
+    // TODO(JW): what is opt barriers for?
     /* JW: not used.
         pub fn remove_opt_barriers(&mut self) {
             for inst in self.dfg.insts.iter() {
@@ -208,46 +225,14 @@ impl Function {
     */
 }
 
-// Print a MIR function to text.
-pub struct PrintableFunction<'a> {
-    fun: &'a Function,
-    resolver: &'a dyn lasso::Resolver,
-}
-
-impl fmt::Display for PrintableFunction<'_> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write::write_function(fmt, self.fun, self.resolver)
-    }
-}
-
-impl Function {
-    pub fn print<'a>(&'a self, resolver: &'a dyn lasso::Resolver) -> PrintableFunction<'a> {
-        PrintableFunction { fun: self, resolver }
-    }
-
-    pub fn to_debug_string(&self) -> String {
-        format!("{:?}", self)
-    }
-}
-
-impl fmt::Debug for Function {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write::write_function(fmt, self, &DummyResolver)
-    }
-}
-
 /// Source locations for instructions.
 pub type SourceLocs = TiVec<Inst, SourceLoc>;
 
-/// A source location.
-///
-/// This is an opaque 32-bit number attached to each IR instruction.
-///
-// JW: cranelift IR uses the all-ones bit pattern `!0` as default, which is not the case here.
+/// An opaque 32-bit repr for source location of instructions
 ///
 /// Default value is used for instructions that can't be given a real source location.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub struct SourceLoc(pub i32); // consider making the inner representation private
+pub struct SourceLoc(i32);
 
 impl SourceLoc {
     /// Create a new source location with the given bits.
@@ -264,7 +249,20 @@ impl SourceLoc {
     pub fn bits(self) -> i32 {
         self.0
     }
+
+    pub fn inv(&mut self) {
+        self.0 *= -1;
+    }
 }
+
+// JW: cranelift IR uses the all-ones bit pattern `!0` as default instead
+/*
+impl Default for SourceLoc {
+    fn default() -> Self {
+        Self(!0)
+    }
+}
+*/
 
 impl fmt::Display for SourceLoc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -290,7 +288,7 @@ pub struct KnownDerivatives {
     // pub standin_calls: AHashMap<FuncRef, u32>,
 }
 
-// TODO(JW) what is the purpose of this func?
+// TODO(JW) what is the purpose of this？
 pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
     let func = func.as_ref();
     while let Some(inst) = func.dfg.value_def(val).inst() {

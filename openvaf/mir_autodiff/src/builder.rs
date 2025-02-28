@@ -114,7 +114,8 @@ impl<'a, 'u> DerivativeBuilder<'a, 'u> {
             let mut cursor = self.func.layout.block_inst_cursor(*bb);
             while let Some(inst) = cursor.next(&self.func.layout) {
                 let mut srcloc = self.func.srclocs.get(inst).copied().unwrap_or_default();
-                srcloc.0 *= -1;
+                // ?
+                srcloc.inv();
                 self.dst = (inst, srcloc);
                 self.build_inst_derivatives(&mut cache);
             }

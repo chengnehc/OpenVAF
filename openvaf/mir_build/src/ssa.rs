@@ -1,5 +1,9 @@
 //! A SSA-building API that handles incomplete CFGs.
 //!
+//! This API will give you the correct SSA values to use as arguments of your instructions,
+//! as well as modify the jump instruction and `Block` parameters to account for the SSA
+//! Phi functions.
+//!
 //! The algorithm is based upon Braun M., Buchwald S., Hack S., Leißa R., Mallon C.,
 //! Zwinkau A. (2013) Simple and Efficient Construction of Static Single Assignment Form.
 //! In: Jhala R., De Bosschere K. (eds) Compiler Construction. CC 2013.
@@ -7,23 +11,6 @@
 //!
 //! <https://link.springer.com/content/pdf/10.1007/978-3-642-37051-9_6.pdf>
 //!
-//! Here is how it should be used when translating to MIR:
-//!
-//! - for each basic block, create a corresponding data for SSA construction with `declare_block`;
-//!
-//! - while traversing a basic block and translating instruction, use `def_var` and `use_var`
-//!   to record definitions and uses of variables, these methods will give you the corresponding
-//!   SSA values;
-//!
-//! - when all the instructions in a basic block have translated, the block is said _filled_ and
-//!   only then you can add it as a predecessor to other blocks with `declare_block_predecessor`;
-//!
-//! - when you have constructed all the predecessor to a basic block,
-//!   call `seal_block` on it with the `Function` that you are building.
-//!
-//! This API will give you the correct SSA values to use as arguments of your instructions,
-//! as well as modify the jump instruction and `Block` parameters to account for the SSA
-//! Phi functions.
 
 use std::{iter, slice};
 use stdx::iter::zip;
@@ -88,6 +75,49 @@ impl<'c> ControlFlowGraph for &'c CompleteCfg {
     }
 }
 
+// Here is how it should be used when translating to MIR:
+//
+// - for each basic block, create a corresponding data for SSA construction with `declare_block`;
+//
+// - while traversing a basic block and translating instruction, use `def_var` and `use_var`
+//   to record definitions and uses of variables, these methods will give you the corresponding
+//   SSA values;
+//
+// - when all the instructions in a basic block have been translated, the block is said _filled_
+// and only then you can add it as a predecessor to other blocks with `declare_block_predecessor`;
+//
+// - when you have constructed all the predecessor to a basic block, call `seal_block` on it
+//   with the `Function` that you are building.
+pub(crate) struct IncompleteCfg {
+    blocks: TiVec<Block, SSABlockData>,
+}
+
+impl ControlFlowGraph for IncompleteCfg {
+    type Predecessors<'a> = iter::Copied<slice::Iter<'a, Block>>;
+    type PredecessorsRev<'a> = iter::Copied<iter::Rev<slice::Iter<'a, Block>>>;
+    const NEEDS_TAG: bool = true;
+
+    fn predecessors(&self, bb: Block) -> Self::Predecessors<'_> {
+        self.blocks[bb].predecessors.iter().copied()
+    }
+
+    fn has_single_predecessor(&self, bb: Block) -> bool {
+        self.blocks[bb].predecessors.len() == 1
+    }
+
+    fn predecessors_rev(&self, bb: Block) -> Self::PredecessorsRev<'_> {
+        self.blocks[bb].predecessors.iter().rev().copied()
+    }
+
+    fn sealed(&self, bb: Block) -> bool {
+        self.blocks[bb].sealed
+    }
+
+    fn push_undef_phis(&mut self, bb: Block, var: Place, val: Value) {
+        self.blocks[bb].undef_phis.push((var, val));
+    }
+}
+
 /// Structure containing the data relevant the construction of SSA for a given function.
 ///
 /// The parameter struct `Variable` corresponds to the way variables are represented in the
@@ -101,27 +131,31 @@ impl<'c> ControlFlowGraph for &'c CompleteCfg {
 /// A basic block is said _filled_ if all the instruction that it contains have been translated,
 /// and it is said _sealed_ if all of its predecessors have been declared. Only filled predecessors
 /// can be declared.
-pub(crate) struct SSABuilder<Blocks> {
-    // TODO: Consider a sparse representation rather than SecondaryMap-of-SecondaryMap.
+pub(crate) struct SSABuilder<Blocks: ControlFlowGraph> {
+    // TODO: Consider a sparse representation rather than Map-of-Map.
     /// Records for every variable and for every relevant block, the last definition of
     /// the variable in the block.
     variables: TiVec<Place, TiVec<Block, PackedOption<Value>>>,
 
     /// Records the position of the basic blocks and the list of values used but not defined in the
-    /// block.
+    /// block. It could be `CompleteCfg` or `IncompleteCfg`.
     cfg: Blocks,
 
-    // visited: BitSet<Block>,
     /// Call stack for use in the `use_var`/`predecessors_lookup` state machine.
     calls: Vec<Call>,
+
     /// Result stack for use in the `use_var`/`predecessors_lookup` state machine.
     results: Vec<Value>,
+    // /// Reused storage for cycle-detection.
+    // visited: BitSet<Block>,
 }
 
 #[derive(Clone, Default)]
 struct SSABlockData {
     // The predecessors of the Block with the block and branch instruction.
-    // The elements of this array MUST be kept in order.
+    //
+    // # Note
+    // The elements of this smallvec MUST be kept in order.
     // Ideally only `add_predecessor` is used to modify it
     predecessors: SmallVec<[Block; 4]>,
     // A block is sealed if all of its predecessors have been declared.
@@ -133,11 +167,12 @@ struct SSABlockData {
 impl SSABlockData {
     fn add_predecessor(&mut self, new_pred: Block) {
         debug_assert!(!self.sealed, "sealed blocks cannot accept new predecessors");
-        if let Some(i) = self.predecessors.iter().position(|&e| e >= new_pred) {
-            debug_assert_ne!(self.predecessors[i], new_pred);
-            self.predecessors.insert(i, new_pred);
+        // keep all predecesso blocks in order
+        if let Some(pos) = self.predecessors.iter().position(|&e| e >= new_pred) {
+            debug_assert_ne!(self.predecessors[pos], new_pred);
+            self.predecessors.insert(pos, new_pred);
         } else {
-            // `elem` is larger than all existing elements.
+            // the id of new predecessor is larger than all existing ones
             self.predecessors.push(new_pred);
         };
     }
@@ -160,8 +195,21 @@ impl<'a> SSABuilder<&'a CompleteCfg> {
     }
 }
 
+// Here is how it should be used when translating to MIR:
+//
+// - for each basic block, create a corresponding data for SSA construction with `declare_block`;
+//
+// - while traversing a basic block and translating instruction, use `def_var` and `use_var`
+//   to record definitions and uses of variables, these methods will give you the corresponding
+//   SSA values;
+//
+// - when all the instructions in a basic block have been translated, the block is said _filled_
+//   and only then you can add it as a predecessor to other blocks with `declare_block_predecessor`;
+//
+// - when you have constructed all the predecessor to a basic block, call `seal_block` on it
+//   with the `Function` that you are building.
 impl SSABuilder<IncompleteCfg> {
-    /// Allocate a new blank SSA builder struct. Use the API function to interact with the struct.
+    /// Allocate a new blank SSA builder struct.
     pub fn new() -> Self {
         Self {
             variables: TiVec::new(),
@@ -208,7 +256,7 @@ impl SSABuilder<IncompleteCfg> {
     /// Callers are expected to avoid adding the same predecessor more than once in the case
     /// of a jump table.
     pub fn declare_block_predecessor(&mut self, block: Block, pred: Block) {
-        debug_assert!(!self.is_sealed(block));
+        // debug_assert!(!self.is_sealed(block));
         self.cfg.blocks[block].add_predecessor(pred)
     }
 
@@ -246,11 +294,10 @@ impl SSABuilder<IncompleteCfg> {
         }
     }
 
-    /// Helper function for `seal_block` and
-    /// `seal_all_blocks`.
+    /// Helper function for `seal_block` and `seal_all_blocks`.
     fn seal_one_block(&mut self, block: Block, func: &mut Function) {
         let block_data = &mut self.cfg.blocks[block];
-        debug_assert!(!block_data.sealed, "Attempting to seal {} which is already sealed.", block);
+        debug_assert!(!block_data.sealed, "Attempting to seal {block} which is already sealed.");
 
         // Extract the undef_variables data from the block so that we
         // can iterate over it without borrowing the whole builder.
@@ -276,6 +323,7 @@ impl SSABuilder<IncompleteCfg> {
         // important, because no further predecessors will be added
         // to this block.
     }
+
     /// Returns whether the given Block has any predecessor or not.
     pub fn has_any_predecessors(&self, block: Block) -> bool {
         !self.cfg.blocks[block].predecessors.is_empty()
@@ -334,7 +382,6 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
                 return val;
             }
         }
-
         // Otherwise, use Global Value Numbering (Algorithm 2 in the paper).
         // This resolves the Value with respect to its predecessors.
         debug_assert!(self.calls.is_empty());
@@ -594,35 +641,5 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
         }
         debug_assert_eq!(self.results.len(), 1);
         self.results.pop().unwrap()
-    }
-}
-
-pub(crate) struct IncompleteCfg {
-    blocks: TiVec<Block, SSABlockData>,
-}
-
-impl ControlFlowGraph for IncompleteCfg {
-    type Predecessors<'a> = iter::Copied<slice::Iter<'a, Block>>;
-    type PredecessorsRev<'a> = iter::Copied<iter::Rev<slice::Iter<'a, Block>>>;
-    const NEEDS_TAG: bool = true;
-
-    fn predecessors(&self, bb: Block) -> Self::Predecessors<'_> {
-        self.blocks[bb].predecessors.iter().copied()
-    }
-
-    fn has_single_predecessor(&self, bb: Block) -> bool {
-        self.blocks[bb].predecessors.len() == 1
-    }
-
-    fn predecessors_rev(&self, bb: Block) -> Self::PredecessorsRev<'_> {
-        self.blocks[bb].predecessors.iter().rev().copied()
-    }
-
-    fn sealed(&self, bb: Block) -> bool {
-        self.blocks[bb].sealed
-    }
-
-    fn push_undef_phis(&mut self, bb: Block, var: Place, val: Value) {
-        self.blocks[bb].undef_phis.push((var, val));
     }
 }

@@ -46,6 +46,19 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 Ref::FunctionReturn(fun) => self.ctx.use_place(PlaceKind::FunctionReturn(fun)),
                 Ref::NatureAttr(attr) => self.lower_body(attr.value(self.ctx.db), 0),
             },
+            Expr::Literal(lit) => match *lit {
+                Literal::String(ref str) => self.ctx.sconst(str),
+                Literal::Int(val) => self.ctx.iconst(val),
+                Literal::Float(val) => self.ctx.fconst(val.into()),
+                Literal::Inf => {
+                    self.ctx.set_srcloc(old_loc);
+                    match self.body.expr_type(expr) {
+                        Type::Real => return INFINITY,
+                        Type::Integer => return self.ctx.iconst(i32::MAX),
+                        _ => unreachable!(),
+                    }
+                }
+            },
             Expr::BinaryOp { lhs, rhs, op } => self.lower_bin_op(expr, lhs, rhs, op),
             Expr::UnaryOp { expr: arg, op } => self.lower_unary_op(expr, arg, op),
             Expr::Select { cond, then_val, else_val } => {
@@ -61,20 +74,8 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 ResolvedFun::User { func, limit } => self.lower_user_fun(func, limit, args),
                 ResolvedFun::BuiltIn(builtin) => self.lower_builtin(expr, builtin, args),
             },
+            // TODO(JW): not supported
             Expr::Array(vals) => self.lower_array(expr, vals),
-            Expr::Literal(lit) => match *lit {
-                Literal::String(ref str) => self.ctx.sconst(str),
-                Literal::Int(val) => self.ctx.iconst(val),
-                Literal::Float(val) => self.ctx.fconst(val.into()),
-                Literal::Inf => {
-                    self.ctx.set_srcloc(old_loc);
-                    match self.body.expr_type(expr) {
-                        Type::Real => return INFINITY,
-                        Type::Integer => return self.ctx.iconst(i32::MAX),
-                        _ => unreachable!(),
-                    }
-                }
-            },
         };
 
         if let Some((src, dst)) = self.body.needs_cast(expr) {
@@ -93,7 +94,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
         let is_inf = self.body.as_literal(arg) == Some(&Literal::Inf);
         let arg_ = self.lower_expr(arg);
         match op {
-            // FIXME: incorrect bit negate?
+            // FIXME(JW) incorrect bit negate?
             UnaryOp::BitNegate => self.ctx.ins().ineg(arg_),
             UnaryOp::Not => self.ctx.ins().bnot(arg_),
             UnaryOp::Neg => {
@@ -523,10 +524,10 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 let pwr = self.lower_expr(args[0]);
                 let name = if signature == WHITE_NOISE_NAME {
                     let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
-                    self.ctx.func.interner.get_or_intern(name)
+                    self.ctx.func.strlit.get_or_intern(name)
                 } else {
                     let name = format!("unnamed{idx}");
-                    self.ctx.func.interner.get_or_intern(name)
+                    self.ctx.func.strlit.get_or_intern(name)
                 };
                 self.ctx.call1(CallBackKind::WhiteNoise { name, idx }, &[pwr])
             }
@@ -538,10 +539,10 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 let exp = self.lower_expr(args[1]);
                 let name = if signature == FLICKER_NOISE_NAME {
                     let name = self.body.as_literal(args[2]).unwrap().unwrap_str();
-                    self.ctx.func.interner.get_or_intern(name)
+                    self.ctx.func.strlit.get_or_intern(name)
                 } else {
                     let name = format!("unnamed{idx}");
-                    self.ctx.func.interner.get_or_intern(name)
+                    self.ctx.func.strlit.get_or_intern(name)
                 };
                 self.ctx.call1(CallBackKind::FlickerNoise { name, idx }, &[pwr, exp])
             }
@@ -552,10 +553,10 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 self.ctx.num_noise_sources += 1;
                 let name = if matches!(signature, NOISE_TABLE_INLINE_NAME | NOISE_TABLE_FILE_NAME) {
                     let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
-                    self.ctx.func.interner.get_or_intern(name)
+                    self.ctx.func.strlit.get_or_intern(name)
                 } else {
                     let name = format!("unnamed{idx}");
-                    self.ctx.func.interner.get_or_intern(name)
+                    self.ctx.func.strlit.get_or_intern(name)
                 };
                 let log = builtin == BuiltIn::noise_table_log;
                 let noise_table = NoiseTable::new([(0.0, 0.0)], log, name, idx);
@@ -682,7 +683,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
                 let state = self.ctx.start_limit(new_val);
                 let prev_val = self.ctx.use_param(ParamKind::PrevState(state));
                 let name = self.body.as_literal(args[1]).unwrap().unwrap_str();
-                let name = self.ctx.func.interner.get_or_intern(name);
+                let name = self.ctx.func.strlit.get_or_intern(name);
                 let mut call_args = vec![new_val, prev_val];
                 call_args.extend(args[2..].iter().map(|arg| self.lower_expr(*arg)));
 

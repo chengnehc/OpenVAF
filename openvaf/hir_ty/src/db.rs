@@ -3,7 +3,7 @@ use stdx::Upcast;
 
 use hir_def::{
     db::HirDefDB,
-    nameres::{ResolvedPath, ScopeDefItem},
+    nameres::{ResolvedPath, ScopeItemDef},
     {
         AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup, NatureAttrId, NatureId,
         NodeId, ParamId, ParamSysFun, Type,
@@ -88,11 +88,11 @@ fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Option<Alias> {
     let loc = id.lookup(db.upcast());
     let data = db.alias_data(id);
     match loc.scope.resolve_path(db.upcast(), data.src.as_ref()?).ok()? {
-        ResolvedPath::ScopeDefItem(ScopeDefItem::ParamId(param)) => Some(Alias::Param(param)),
-        ResolvedPath::ScopeDefItem(ScopeDefItem::ParamSysFun(param)) => {
+        ResolvedPath::ScopeItemDef(ScopeItemDef::ParamId(param)) => Some(Alias::Param(param)),
+        ResolvedPath::ScopeItemDef(ScopeItemDef::ParamSysFun(param)) => {
             Some(Alias::ParamSysFun(param))
         }
-        ResolvedPath::ScopeDefItem(ScopeDefItem::AliasParamId(alias)) => db.resolve_alias(alias),
+        ResolvedPath::ScopeItemDef(ScopeItemDef::AliasParamId(alias)) => db.resolve_alias(alias),
         _ => None,
     }
 }

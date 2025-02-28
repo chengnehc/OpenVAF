@@ -17,14 +17,15 @@ pub struct LoweringCtx<'a, 'c> {
 
     pub func: FunctionBuilder<'c>,
 
-    pub no_equations: bool,
-
     pub intern: &'a mut HirInterner,
     /// mutable memory locations for values
     pub places: TiSet<Place, PlaceKind>,
 
     tagged_vars: AHashSet<Variable>,
 
+    // do not lower equations
+    pub no_equations: bool,
+    // ?
     pub inside_lim: bool,
     /// We create a dedicated callback for each noise source
     /// by giving each callback a unique index. Kind of ineffcient

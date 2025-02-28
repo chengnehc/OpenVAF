@@ -6,35 +6,25 @@ use crate::body::BodyLoweringCtx;
 use crate::{CallBackKind, CurrentKind, ParamKind, PlaceKind};
 
 impl BodyLoweringCtx<'_, '_, '_> {
-    pub(super) fn lower_stmt(&mut self, stmnt: StmtId) {
-        let stmnt = if let Some(stmnt) = self.body.get_stmt(stmnt) {
-            stmnt
-        } else {
+    pub(super) fn lower_stmt(&mut self, stmt: StmtId) {
+        let Some(stmt) = self.body.get_stmt(stmt) else {
             return;
         };
-        match stmnt {
+        match stmt {
+            Stmt::Block { body } => body.iter().for_each(|&stmt| self.lower_stmt(stmt)),
             Stmt::Expr(expr) => {
                 self.lower_expr(expr);
             }
-            Stmt::EventControl { body, .. } => {
-                // TODO handle porperly
-                self.lower_stmt(body);
-            }
             Stmt::Assignment { lhs, rhs } => {
-                let val_ = self.lower_expr(rhs);
-                self.ctx.def_place(lhs.into(), val_);
+                let val = self.lower_expr(rhs);
+                self.ctx.def_place(lhs.into(), val);
             }
             Stmt::Contribute { kind, branch, rhs } => {
                 self.lower_contribute(kind == ContributeKind::Potential, branch, rhs)
             }
-            Stmt::Block { body } => {
-                for stmt in body {
-                    self.lower_stmt(*stmt)
-                }
-            }
             Stmt::If { cond, then_branch, else_branch } => {
-                let cond_ = self.lower_expr(cond);
-                self.ctx.make_cond(cond_, |ctx, branch| {
+                let cond = self.lower_expr(cond);
+                self.ctx.make_cond(cond, |ctx, branch| {
                     let stmt = if branch { then_branch } else { else_branch };
                     BodyLoweringCtx { body: self.body, path: self.path, ctx }.lower_stmt(stmt);
                 });
@@ -48,6 +38,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
             }
             Stmt::WhileLoop { cond, body } => self.lower_loop(cond, |s| s.lower_stmt(body)),
             Stmt::Case { discr, case_arms } => self.lower_case(discr, case_arms),
+            Stmt::EventControl { body, .. } => self.lower_stmt(body), // TODO handle properly
         }
     }
 
@@ -155,7 +146,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
             if matches!(dst, BranchWrite::Named(_)) {
                 self.lower_contribute_unnamed_branch(&mut negate, &mut hi, &mut lo, potential)
             }
-            // TODO: make this a 'place' instead?
+            // TODO(JW) make this a 'place' instead?
             self.ctx.call(CallBackKind::CollapseHint(hi, lo), &[]);
         }
 

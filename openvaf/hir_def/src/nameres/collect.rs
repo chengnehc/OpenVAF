@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::diagnostics::DefDiagnostic;
-use super::{DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeOrigin, ScopeItemDef};
+use super::{DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItemDef, ScopeOrigin};
 
 // Root items can only be `discipline`, `nature` or `module`.
 pub fn collect_root_def_map(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {

@@ -5,7 +5,7 @@ use ahash::{HashMap, HashSet};
 use basedb::FileId;
 use hir_def::{
     body::Body,
-    nameres::{DefMap, PathResolveError, ScopeDefItem},
+    nameres::{DefMap, PathResolveError, ScopeItemDef},
     AliasParamId, Branch, BranchId, BuiltIn, DefWithBodyId, DisciplineId, Expr, ExprId,
     FunctionArgLoc, ItemLoc, ItemTree, Literal, Lookup, ModuleId, ModuleLoc, NatureId, NodeId,
     NodeTypeDecl, Path, ScopeId, Stmt, StmtId,
@@ -667,9 +667,9 @@ impl TypeValidator<'_> {
         let root = &self.def_map[self.def_map.root_scope()];
         for def in root.declarations.values() {
             match *def {
-                ScopeDefItem::NatureId(nature) => self.verify_nature(nature),
-                ScopeDefItem::DisciplineId(discipline) => self.verify_discipline(discipline),
-                ScopeDefItem::ModuleId(module) => self.verify_module(module),
+                ScopeItemDef::NatureId(nature) => self.verify_nature(nature),
+                ScopeItemDef::DisciplineId(discipline) => self.verify_discipline(discipline),
+                ScopeItemDef::ModuleId(module) => self.verify_module(module),
                 _ => (),
             }
         }
@@ -677,12 +677,12 @@ impl TypeValidator<'_> {
 
     fn verify_module(&mut self, module: ModuleId) {
         let loc = module.lookup(self.db.upcast());
-        let scope = loc.scope.local_scope;
+        let scope = loc.scope.local_id;
         for item in self.def_map[scope].declarations.values() {
             match item {
-                ScopeDefItem::NodeId(node) => self.verify_node(*node, loc),
-                ScopeDefItem::BranchId(branch) => self.verify_branch(*branch),
-                ScopeDefItem::AliasParamId(alias) => self.verify_alias(*alias),
+                ScopeItemDef::NodeId(node) => self.verify_node(*node, loc),
+                ScopeItemDef::BranchId(branch) => self.verify_branch(*branch),
+                ScopeItemDef::AliasParamId(alias) => self.verify_alias(*alias),
                 _ => (),
             }
         }

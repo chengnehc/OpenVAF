@@ -28,12 +28,12 @@ mod tests;
 ///
 #[derive(Clone)]
 pub struct Layout {
-    /// Linked list nodes for the layout order of blocks Forms a doubly linked list, terminated in
-    /// both ends by `None`.
+    /// Linked list nodes for the layout order of blocks.
+    /// Forms a doubly linked list, terminated in both ends by `None`.
     blocks: TiVec<Block, BlockNode>,
 
-    /// Linked list nodes for the layout order of instructions. Forms a double linked list per block,
-    /// terminated in both ends by `None`.
+    /// Linked list nodes for the layout order of instructions.
+    /// Forms a double linked list per block, terminated in both ends by `None`.
     insts: TiVec<Inst, InstNode>,
 
     /// First block in the layout order, or `None` when no blocks have been laid out.

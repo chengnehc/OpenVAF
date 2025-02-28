@@ -40,18 +40,18 @@ pub struct MirBuilder<'a> {
     db: &'a CompilationDB,
 
     module: Module,
-    // predicate indicating whether A `Place` should be treated as output
+    // predicate indicating whether a `Place` should be treated as output
     is_output: &'a dyn Fn(PlaceKind) -> bool,
-    // for required output variables
+    // to store required output variables
     required_vars: &'a mut dyn Iterator<Item = Variable>,
     // for VerilogAE parameter extraction backend
     tagged_reads: AHashSet<Variable>,
     // for simulator backend
     tag_writes: bool,
-
-    ctx: Option<&'a mut FunctionBuilderContext>,
     // for simulator backend
     lower_equations: bool,
+
+    ctx: Option<&'a mut FunctionBuilderContext>,
 }
 
 impl<'a> MirBuilder<'a> {
@@ -64,12 +64,12 @@ impl<'a> MirBuilder<'a> {
         MirBuilder {
             db,
             module,
-            tagged_reads: AHashSet::new(),
             is_output,
             required_vars,
-            ctx: None,
-            lower_equations: false,
+            tagged_reads: AHashSet::new(),
             tag_writes: false,
+            lower_equations: false,
+            ctx: None,
         }
     }
 
@@ -102,26 +102,22 @@ impl<'a> MirBuilder<'a> {
         self
     }
 
-    /// Build all MIR functions by lowering, consuming the builder.
+    /// Build MIR function and consume the builder
     pub fn build(self, literals: &mut Rodeo) -> (Function, HirInterner) {
+        // let MirBuilder { db, module, is_output, required_vars, .. } = self;
         let mut func = Function::default();
         let mut interner = HirInterner::default();
-
-        let mut new_ctx;
-        let ctx = if let Some(ctx) = self.ctx {
-            ctx
-        } else {
-            new_ctx = FunctionBuilderContext::new();
-            &mut new_ctx
+        let ctx = match self.ctx {
+            Some(ctx) => ctx,
+            None => &mut FunctionBuilderContext::new(),
         };
-        let builder: FunctionBuilder<'_> =
-            FunctionBuilder::new(&mut func, literals, ctx, self.tag_writes);
-
-        let path = self.module.name(self.db);
-        let analog_initial_body = self.module.analog_initial_block(self.db);
-        let analog_body = self.module.analog_block(self.db);
+        let builder = FunctionBuilder::new(&mut func, literals, ctx, self.tag_writes);
         let mut ctx = LoweringCtx::new(self.db, builder, !self.lower_equations, &mut interner)
             .with_tagged_vars(self.tagged_reads);
+
+        let path = self.module.name(self.db);
+        let analog_initial_body = self.module.analog_initial_body(self.db);
+        let analog_body = self.module.analog_body(self.db);
         let mut body_ctx =
             BodyLoweringCtx { ctx: &mut ctx, body: analog_initial_body.borrow(), path: &path };
 
@@ -131,6 +127,7 @@ impl<'a> MirBuilder<'a> {
         body_ctx.body = analog_body.borrow();
         body_ctx.lower_entry_stmts();
 
+        // output variables
         for var in self.required_vars {
             ctx.dec_place(PlaceKind::Var(var));
         }
@@ -148,6 +145,7 @@ impl<'a> MirBuilder<'a> {
                 }
             })
             .collect();
+
         ctx.func.ins().ret();
         ctx.func.finalize();
 

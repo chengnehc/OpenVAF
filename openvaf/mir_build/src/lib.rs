@@ -3,7 +3,8 @@
 //! Provides a straightforward way to create a MIR function and fill it with
 //! instructions corresponding to Verilog-A.
 //!
-//! To get started, create an `FunctionBuilderContext` and pass it as an argument to a `FunctionBuilder`.
+//! To get started, create an `FunctionBuilderContext` and pass it as an
+//! argument to a `FunctionBuilder`.
 //!
 //! See Also:
 //!
@@ -23,7 +24,7 @@ use typed_index_collections::TiVec;
 mod ssa;
 use ssa::SSABuilder;
 
-/// An opaque reference to a place, a mutable memory location.
+/// An opaque reference to a place, namely a mutable memory location.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Place(u32);
 impl_idx_from!(Place(u32));
@@ -31,23 +32,22 @@ impl_debug_display!(
     match Place { Place(val) => "place{}", val;}
 );
 
-/// Temporary object used to build a single MIR `Function`.
 pub struct FunctionBuilder<'a> {
     /// The function currently being built.
     /// This field is public so the function can be re-borrowed.
     pub func: &'a mut Function,
     /// An interner for string literals
-    pub interner: &'a mut Rodeo,
+    pub strlit: &'a mut Rodeo,
     /// Source location to assign to all new instructions.
     srcloc: mir::SourceLoc,
-    /// For simulator backend
-    tag_writes: bool,
 
     func_ctx: &'a mut FunctionBuilderContext,
     /// Block that this builder is currently at.
     position: Block,
     /// Block that is the end of this function.
     end: Block,
+    /// for simulator backend
+    tag_writes: bool,
 }
 
 /// Structure used for translating a series of functions into MIR.
@@ -57,11 +57,12 @@ pub struct FunctionBuilder<'a> {
 /// functions, rather than dropped, preserving the underlying allocations.
 pub struct FunctionBuilderContext {
     ssa: SSABuilder<ssa::IncompleteCfg>,
-    blocks: TiVec<Block, BlockData>,
+    blocks: TiVec<Block, BlockStatus>,
 }
+
 impl FunctionBuilderContext {
-    /// Creates a `FunctionBuilderContext` structure. The structure is automatically cleared after
-    /// each `FunctionBuilder` completes translating a function.
+    /// Creates a `FunctionBuilderContext` structure. The structure is automatically
+    /// cleared after each `FunctionBuilder` completes translating a function.
     pub fn new() -> Self {
         Self { ssa: SSABuilder::<ssa::IncompleteCfg>::new(), blocks: TiVec::new() }
     }
@@ -75,16 +76,16 @@ impl FunctionBuilderContext {
         self.ssa.is_empty() && self.blocks.is_empty()
     }
 }
+
 impl Default for FunctionBuilderContext {
     fn default() -> Self {
         Self::new()
     }
 }
 
-// TODO(JW) cranelift switches to enum `BlockStatus`.
-// will that benefit performance?
+// TODO(JW) cranelift switches to enum `BlockStatus` with 1-byte memory footprint
 #[derive(Clone, Default)]
-struct BlockData {
+struct BlockStatus {
     /// A Block is "pristine" iff no instructions have been added since the last
     /// call to `switch_to_block()`.
     pristine: bool,
@@ -96,17 +97,19 @@ struct BlockData {
     filled: bool,
 }
 
-/// Implementation of the `InstBuilder` trait that has
+// Implementation of the [`InstInserter`] trait that has
 /// one convenience method per MIR instruction.
 pub struct FuncInstBuilder<'short, 'long: 'short> {
     builder: &'short mut FunctionBuilder<'long>,
     block: Block,
 }
+
 impl<'short, 'long> FuncInstBuilder<'short, 'long> {
     fn new(builder: &'short mut FunctionBuilder<'long>, block: Block) -> Self {
         Self { builder, block }
     }
 }
+
 impl<'short, 'long> InstInserterBase<'short> for FuncInstBuilder<'short, 'long> {
     fn data_flow_graph(&self) -> &DataFlowGraph {
         &self.builder.func.dfg
@@ -116,13 +119,9 @@ impl<'short, 'long> InstInserterBase<'short> for FuncInstBuilder<'short, 'long> 
         &mut self.builder.func.dfg
     }
 
-    // This implementation is richer than `InsertBuilder` because we use the data of the
-    // instruction being inserted to add related info to the DFG and the SSA building system,
-    // and perform debug sanity checks.
     fn insert_built_inst(self, inst: Inst) -> &'short mut DataFlowGraph {
         // We only insert the Block in the layout when an instruction is added to it
         self.builder.ensure_inserted_block();
-
         self.builder.func.layout.append_inst_to_bb(inst, self.block);
         self.builder.func.srclocs.push(self.builder.srcloc);
 
@@ -136,7 +135,6 @@ impl<'short, 'long> InstInserterBase<'short> for FuncInstBuilder<'short, 'long> 
                 self.builder.declare_successor(destination);
                 self.builder.fill_current_block()
             }
-
             _ => (),
         }
 
@@ -147,6 +145,7 @@ impl<'short, 'long> InstInserterBase<'short> for FuncInstBuilder<'short, 'long> 
 pub trait RetBuilder {
     fn ret(self) -> Inst;
 }
+
 impl<'short, 'long> RetBuilder for InsertBuilder<'short, FuncInstBuilder<'short, 'long>> {
     fn ret(self) -> Inst {
         let exit = self.inserter.builder.func.layout.last_block().unwrap();
@@ -182,7 +181,7 @@ impl<'a> FunctionBuilder<'a> {
     /// `FunctionBuilderContext`.
     pub fn new(
         func: &'a mut Function,
-        interner: &'a mut Rodeo,
+        literals: &'a mut Rodeo,
         func_ctx: &'a mut FunctionBuilderContext,
         tag_writes: bool,
     ) -> Self {
@@ -190,17 +189,17 @@ impl<'a> FunctionBuilder<'a> {
 
         // entry and exit are always empty to allow for easy prepending/appending
         let entry = func.layout.append_new_block();
-        func_ctx.blocks.push(BlockData { filled: false, pristine: true });
+        func_ctx.blocks.push(BlockStatus { filled: false, pristine: true });
         func_ctx.ssa.declare_block();
 
         let exit = func.layout.append_new_block();
-        func_ctx.blocks.push(BlockData { filled: false, pristine: true });
+        func_ctx.blocks.push(BlockStatus { filled: false, pristine: true });
         func_ctx.ssa.declare_block();
 
         let mut res = Self {
             func,
             srcloc: Default::default(),
-            interner,
+            strlit: literals,
             func_ctx,
             position: entry,
             end: exit,
@@ -249,20 +248,21 @@ impl<'a> FunctionBuilder<'a> {
         };
 
         for _bb in 0..func.layout.num_blocks() {
-            func_ctx.blocks.push(BlockData { filled: false, pristine: true });
+            func_ctx.blocks.push(BlockStatus { filled: false, pristine: true });
             func_ctx.ssa.declare_block();
         }
 
         let mut res = Self {
             func,
             srcloc: Default::default(),
-            interner,
+            strlit: interner,
             func_ctx,
             position: entry,
             end: exit,
             tag_writes,
         };
         res.seal_block(entry);
+
         (res, term)
     }
 
@@ -290,7 +290,7 @@ impl<'a> FunctionBuilder<'a> {
     /// Creates a new `Block` and returns its reference.
     pub fn create_block(&mut self) -> Block {
         let block = self.func.layout.make_block();
-        self.func_ctx.blocks.push(BlockData { filled: false, pristine: true });
+        self.func_ctx.blocks.push(BlockStatus { filled: false, pristine: true });
         self.func_ctx.ssa.declare_block();
         block
     }
@@ -339,7 +339,7 @@ impl<'a> FunctionBuilder<'a> {
         self.func_ctx.ssa.seal_all_blocks(self.func);
     }
 
-    /// Ensure the block under current position is inserted into the layout and sealed.
+    /// Ensure the block at current position is inserted into the layout and sealed.
     pub fn ensured_sealed(&mut self) {
         self.ensure_inserted_block();
         if !self.is_sealed() {
@@ -347,7 +347,7 @@ impl<'a> FunctionBuilder<'a> {
         }
     }
 
-    /// Make sure that the block under current position is inserted in the layout.
+    /// Make sure that the block at current position is inserted in the layout.
     pub fn ensure_inserted_block(&mut self) {
         let block = self.position;
         if self.is_pristine(block) {
@@ -365,7 +365,7 @@ impl<'a> FunctionBuilder<'a> {
         }
     }
 
-    /* Handling value definitions */
+    /* Handling constants and string literals */
 
     pub fn make_param(&mut self, param: Param) -> Value {
         self.func.dfg.make_param(param)
@@ -380,11 +380,13 @@ impl<'a> FunctionBuilder<'a> {
     }
 
     pub fn sconst(&mut self, val: &str) -> Value {
-        let val = self.interner.get_or_intern(val);
+        let val = self.strlit.get_or_intern(val);
         self.func.dfg.sconst(val)
     }
 
-    /// Register a new definition of a user variable to the block under current position.
+    /* Handling value definitions */
+
+    /// Register a new definition of a user variable to the current block.
     ///
     /// The type of the value must be the same as the type registered for the variable.
     pub fn def_var(&mut self, var: Place, val: Value) {
@@ -430,44 +432,52 @@ impl<'a> FunctionBuilder<'a> {
         InsertBuilder::new(FuncInstBuilder::new(self, self.position))
     }
 
-    /// Declare that translation of the current function is complete. This
-    /// resets the state of the `FunctionBuilder` in preparation to be used
-    /// for another function.
+    /// Declare that translation of the current function is complete.
+    ///
+    /// This resets the state of the [`FunctionBuilderContext`] in preparation
+    /// to be used for another function.
     pub fn finalize(&mut self) {
-        //if let Some(exit) = self.func.layout.last_block() {
-        //    if !self.func_ctx.ssa.is_sealed(exit) {
-        //        self.seal_block(exit);
-        //    }
-        //}
         // Check that all the `Block`s are filled and sealed.
         #[cfg(debug_assertions)]
         {
             for (block, block_data) in self.func_ctx.blocks.iter_enumerated() {
                 assert!(
                     block_data.pristine || self.func_ctx.ssa.is_sealed(block),
-                    "FunctionBuilder finalized, but block {} is not sealed",
-                    block,
+                    "FunctionBuilder finalized, but block {block} is not sealed",
                 );
                 assert!(
                     block_data.pristine || block_data.filled,
-                    "FunctionBuilder finalized, but block {} is not filled",
-                    block,
+                    "FunctionBuilder finalized, but block {block} is not filled",
                 );
             }
         }
+        /*
+                // In debug mode, check that all blocks are valid basic blocks.
+                #[cfg(debug_assertions)]
+                {
+                    // Iterate manually to provide more helpful error messages.
+                    for block in self.func_ctx.blocks.keys() {
+                        if let Err((inst, msg)) = self.func.(block) {
+                            let inst_str = self.func.dfg.display_inst(inst);
+                            panic!("{block} failed basic block invariants on {inst_str}: {msg}");
+                        }
+                    }
+                }
+        */
 
+        // TODO(JW): ?
         self.func.dfg.strip_alias();
         // Clear the state (but preserve the allocated buffers) in preparation
         // for translation another function.
         self.func_ctx.clear();
+        // TODO(JW) is this necessary?
         // Reset srcloc and position to initial states.
-        self.srcloc = Default::default();
+        // self.srcloc = Default::default();
         // self.position = Default::default();
     }
 }
 
-/// The functions below help you inspect the `Function` you're creating and
-/// modify it in ways that can be unsafe if used incorrectly.
+/// Inspect the function being built.
 impl<'a> FunctionBuilder<'a> {
     /// Returns the result values of an instruction.
     pub fn inst_results(&self, inst: Inst) -> &[Value] {
@@ -504,7 +514,7 @@ impl<'a> FunctionBuilder<'a> {
     }
 }
 
-// Helper functions
+/// Modify the function in ways that can be unsafe if used incorrectly.
 impl<'a> FunctionBuilder<'a> {
     /// Fill the block under current position.
     ///
@@ -513,18 +523,20 @@ impl<'a> FunctionBuilder<'a> {
         self.func_ctx.blocks[self.position].filled = true;
     }
 
-    /// Declare the given `dest_block` a successor of the `Block` under current position.
-    fn declare_successor(&mut self, dest_block: Block) {
-        self.func_ctx.ssa.declare_block_predecessor(dest_block, self.position);
+    /// Declare the given `dst` block a successor of the current block.
+    fn declare_successor(&mut self, dst: Block) {
+        self.func_ctx.ssa.declare_block_predecessor(dst, self.position);
     }
 }
 
-/// Add (potentially mutable) values to an already finished
-/// MIR function that will be available at the end of the
-/// function just like a place during building
+// JW: for sim_back
+
+/// Add (potentially mutable) values to an already finished MIR function
+/// It will be available at the end of the function just like a place during building.
 pub struct SSAVariableBuilder<'a> {
     ssa: SSABuilder<&'a ssa::CompleteCfg>,
 }
+
 impl<'a> SSAVariableBuilder<'a> {
     pub fn new(cfg: &'a ControlFlowGraph) -> Self {
         Self { ssa: SSABuilder::<&'a ssa::CompleteCfg>::new(cfg) }

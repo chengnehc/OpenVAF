@@ -9,7 +9,7 @@ use hir_def::{
     body::Body,
     db::HirDefDB,
     expr::{CaseCond, Literal},
-    nameres::{NatureAccess, PathResolveError, ResolvedPath, ScopeDefItem, ScopeDefItemKind},
+    nameres::{NatureAccess, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind},
     BranchId, BuiltIn, DefWithBodyId, Expr, ExprId, FunctionArgLoc, FunctionId, LocalFunctionArgId,
     Lookup, NatureId, NodeId, ParamSysFun, Path, Stmt, StmtId, Type, VarId,
 };
@@ -289,13 +289,13 @@ impl Ctx<'_> {
             }
 
             Expr::Path { ref path, port: false } => match self.resolve_path(stmt, expr, path)? {
-                ScopeDefItem::BlockId(_) | ScopeDefItem::ModuleId(_) => Ty::Scope,
-                ScopeDefItem::NatureId(nature) => Ty::Nature(nature),
-                ScopeDefItem::DisciplineId(discipline) => Ty::Discipline(discipline),
-                ScopeDefItem::NodeId(node) => Ty::Node(node),
-                ScopeDefItem::VarId(var) => Ty::Var(self.db.var_data(var).ty.clone(), var),
-                ScopeDefItem::ParamId(param) => Ty::Param(self.db.param_ty(param), param),
-                ScopeDefItem::AliasParamId(param) => match self.db.resolve_alias(param)? {
+                ScopeItemDef::BlockId(_) | ScopeItemDef::ModuleId(_) => Ty::Scope,
+                ScopeItemDef::NatureId(nature) => Ty::Nature(nature),
+                ScopeItemDef::DisciplineId(discipline) => Ty::Discipline(discipline),
+                ScopeItemDef::NodeId(node) => Ty::Node(node),
+                ScopeItemDef::VarId(var) => Ty::Var(self.db.var_data(var).ty.clone(), var),
+                ScopeItemDef::ParamId(param) => Ty::Param(self.db.param_ty(param), param),
+                ScopeItemDef::AliasParamId(param) => match self.db.resolve_alias(param)? {
                     Alias::Cycle => return None,
                     Alias::Param(param) => Ty::Param(self.db.param_ty(param), param),
                     Alias::ParamSysFun(param) => {
@@ -303,16 +303,16 @@ impl Ctx<'_> {
                         Ty::Val(Type::Real)
                     }
                 },
-                ScopeDefItem::BranchId(branch) => Ty::Branch(branch),
-                ScopeDefItem::BuiltIn(_) | ScopeDefItem::NatureAccess(_) => Ty::BuiltInFunction,
+                ScopeItemDef::BranchId(branch) => Ty::Branch(branch),
+                ScopeItemDef::BuiltIn(_) | ScopeItemDef::NatureAccess(_) => Ty::BuiltInFunction,
 
-                ScopeDefItem::FunctionId(fun) => Ty::UserFunction(fun),
-                ScopeDefItem::FunctionReturn(fun) => Ty::FunctionVar {
+                ScopeItemDef::FunctionId(fun) => Ty::UserFunction(fun),
+                ScopeItemDef::FunctionReturn(fun) => Ty::FunctionVar {
                     fun,
                     ty: self.db.function_data(fun).return_ty.clone(),
                     arg: None,
                 },
-                ScopeDefItem::FunctionArgId(arg) => {
+                ScopeItemDef::FunctionArgId(arg) => {
                     let FunctionArgLoc { fun, id } = arg.lookup(self.db.upcast());
                     Ty::FunctionVar {
                         fun,
@@ -320,10 +320,10 @@ impl Ctx<'_> {
                         arg: Some(id),
                     }
                 }
-                ScopeDefItem::NatureAttrId(attr) => {
+                ScopeItemDef::NatureAttrId(attr) => {
                     Ty::NatureAttr(self.db.nature_attr_ty(attr)?, attr)
                 }
-                ScopeDefItem::ParamSysFun(_) => Ty::Val(Type::Real),
+                ScopeItemDef::ParamSysFun(_) => Ty::Val(Type::Real),
             },
 
             Expr::BinaryOp { op: None, lhs, rhs } => {
@@ -423,16 +423,16 @@ impl Ctx<'_> {
     ) -> Option<Ty> {
         let def = self.resolve_path(stmt, expr, fun)?;
         match def {
-            ScopeDefItem::NatureAccess(access) => {
+            ScopeItemDef::NatureAccess(access) => {
                 self.infere_nature_access(stmt, expr, access, args);
                 Some(Ty::Val(Type::Real))
             }
-            ScopeDefItem::FunctionId(fun) => self.infere_user_fun_call(stmt, expr, fun, args),
-            ScopeDefItem::BuiltIn(builtin) => {
+            ScopeItemDef::FunctionId(fun) => self.infere_user_fun_call(stmt, expr, fun, args),
+            ScopeItemDef::BuiltIn(builtin) => {
                 self.result.resolved_calls.insert(expr, ResolvedFun::BuiltIn(builtin));
                 self.infere_builtin(stmt, expr, builtin, args).0
             }
-            ScopeDefItem::ParamSysFun(param) => {
+            ScopeItemDef::ParamSysFun(param) => {
                 self.result.resolved_calls.insert(expr, ResolvedFun::Param(param));
                 if !args.is_empty() {
                     let err = InferDiagnostic::ArgCntMismatch {
@@ -449,7 +449,7 @@ impl Ctx<'_> {
                 self.result.diagnostics.push(InferDiagnostic::PathResolveError {
                     err: PathResolveError::ExpectedItemKind {
                         expected: "a function",
-                        found: ResolvedPath::ScopeDefItem(found),
+                        found: ResolvedPath::ScopeItemDef(found),
                         name: fun.segments.last().unwrap().to_owned(),
                     },
                     expr,
@@ -1151,7 +1151,7 @@ impl Ctx<'_> {
         res
     }
 
-    fn resolve_path(&mut self, stmt: StmtId, expr: ExprId, path: &Path) -> Option<ScopeDefItem> {
+    fn resolve_path(&mut self, stmt: StmtId, expr: ExprId, path: &Path) -> Option<ScopeItemDef> {
         let resolved_path = match self.body.stmt_scopes[stmt].resolve_path(self.db.upcast(), path) {
             Ok(resolved_path) => resolved_path,
             Err(err) => {
@@ -1169,7 +1169,7 @@ impl Ctx<'_> {
                 BranchTy::potential_attr(self.db, branch, name)?
             }
 
-            ResolvedPath::ScopeDefItem(def) => return Some(def),
+            ResolvedPath::ScopeItemDef(def) => return Some(def),
         };
 
         match attr {
@@ -1181,7 +1181,7 @@ impl Ctx<'_> {
         }
     }
 
-    fn resolve_item_path<T: ScopeDefItemKind>(
+    fn resolve_item_path<T: ScopeItemKind>(
         &mut self,
         stmt: StmtId,
         expr: ExprId,
