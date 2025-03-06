@@ -60,7 +60,7 @@ impl Ctx<'_> {
             ast::Expr::Call(call) => {
                 let fun = call.function_ref().and_then(|fun| match fun {
                     FunctionRef::Path(path) => Path::resolve(path),
-                    FunctionRef::SysFun(fun) => Some(Path::new_ident(fun.as_name())),
+                    FunctionRef::SysFun(fun) => Some(Path::from_ident(fun.as_name())),
                 });
 
                 let args = if let Some(args) = call.arg_list().map(|list| list.args()) {
@@ -185,7 +185,7 @@ impl Ctx<'_> {
     }
 
     pub fn collect_block(&mut self, block: &ast::BlockStmt) -> Stmt {
-        let ast = self.ast_id_map.ast_id_of(block);
+        let ast = self.ast_id_map.id_of(block);
         let id = BlockLoc { ast_id: ast, parent: self.curr_scope.0 }.intern(self.db);
         let scope = self.db.block_def_map(id);
 

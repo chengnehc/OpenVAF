@@ -1,0 +1,130 @@
+SOURCE_FILE@0..242
+  MODULE_DECL@0..242
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    BODY_PORT_DECL@17..41
+      PORT_DECL@17..40
+        DIRECTION@17..22
+          INOUT_KW@17..22 "inout"
+        WHITESPACE@22..23 " "
+        NAME_REF@23..33
+          IDENT@23..33 "electrical"
+        WHITESPACE@33..34 " "
+        NAME@34..36
+          IDENT@34..36 "di"
+        COMMA@36..37 ","
+        WHITESPACE@37..38 " "
+        NAME@38..40
+          IDENT@38..40 "si"
+      SEMICOLON@40..41 ";"
+    WHITESPACE@41..46 "\n    "
+    PARAM_DECL@46..76
+      PARAMETER_KW@46..55 "parameter"
+      WHITESPACE@55..56 " "
+      TYPE@56..63
+        INTEGER_KW@56..63 "integer"
+      WHITESPACE@63..64 " "
+      PARAM@64..75
+        NAME@64..71
+          IDENT@64..71 "BULKMOD"
+        WHITESPACE@71..72 " "
+        EQ@72..73 "="
+        WHITESPACE@73..74 " "
+        LITERAL@74..75
+          INT_NUMBER@74..75 "0"
+      SEMICOLON@75..76 ";"
+    WHITESPACE@76..81 "\n    "
+    VAR_DECL@81..101
+      TYPE@81..88
+        INTEGER_KW@81..88 "integer"
+      WHITESPACE@88..89 " "
+      VAR@89..100
+        NAME@89..96
+          IDENT@89..96 "devsign"
+        WHITESPACE@96..97 " "
+        EQ@97..98 "="
+        WHITESPACE@98..99 " "
+        LITERAL@99..100
+          INT_NUMBER@99..100 "1"
+      SEMICOLON@100..101 ";"
+    WHITESPACE@101..106 "\n    "
+    ANALOG_BEHAVIOUR@106..232
+      ANALOG_KW@106..112 "analog"
+      WHITESPACE@112..113 " "
+      BLOCK_STMT@113..232
+        BEGIN_KW@113..118 "begin"
+        WHITESPACE@118..127 "\n        "
+        IF_STMT@127..224
+          IF_KW@127..129 "if"
+          WHITESPACE@129..130 " "
+          L_PAREN@130..131 "("
+          BIN_EXPR@131..143
+            PATH_EXPR@131..138
+              PATH@131..138
+                IDENT@131..138 "BULKMOD"
+            WHITESPACE@138..139 " "
+            NEQ@139..141 "!="
+            WHITESPACE@141..142 " "
+            LITERAL@142..143
+              INT_NUMBER@142..143 "0"
+          R_PAREN@143..144 ")"
+          WHITESPACE@144..157 "\n            "
+          ASSIGN_STMT@157..177
+            ASSIGN@157..176
+              CALL@157..165
+                PATH@157..158
+                  IDENT@157..158 "I"
+                ARG_LIST@158..165
+                  L_PAREN@158..159 "("
+                  PATH_EXPR@159..161
+                    PATH@159..161
+                      IDENT@159..161 "di"
+                  COMMA@161..162 ","
+                  WHITESPACE@162..163 " "
+                  PATH_EXPR@163..164
+                    PATH@163..164
+                      IDENT@163..164 "e"
+                  R_PAREN@164..165 ")"
+              WHITESPACE@165..166 " "
+              CONTR@166..168 "<+"
+              WHITESPACE@168..169 " "
+              PATH_EXPR@169..176
+                PATH@169..176
+                  IDENT@169..176 "devsign"
+            SEMICOLON@176..177 ";"
+          WHITESPACE@177..186 "\n        "
+          ELSE_KW@186..190 "else"
+          WHITESPACE@190..203 "\n            "
+          ASSIGN_STMT@203..224
+            ASSIGN@203..223
+              CALL@203..211
+                PATH@203..204
+                  IDENT@203..204 "I"
+                ARG_LIST@204..211
+                  L_PAREN@204..205 "("
+                  PATH_EXPR@205..207
+                    PATH@205..207
+                      IDENT@205..207 "di"
+                  COMMA@207..208 ","
+                  WHITESPACE@208..209 " "
+                  PATH_EXPR@209..210
+                    PATH@209..210
+                      IDENT@209..210 "e"
+                  R_PAREN@210..211 ")"
+              WHITESPACE@211..212 " "
+              CONTR@212..214 "<+"
+              WHITESPACE@214..215 " "
+              PREFIX_EXPR@215..223
+                MINUS@215..216 "-"
+                PATH_EXPR@216..223
+                  PATH@216..223
+                    IDENT@216..223 "devsign"
+            SEMICOLON@223..224 ";"
+        WHITESPACE@224..229 "\n    "
+        END_KW@229..232 "end"
+    WHITESPACE@232..233 "\n"
+    ENDMODULE_KW@233..242 "endmodule"

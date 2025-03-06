@@ -16,7 +16,7 @@ pub(super) fn module_ports(p: &mut Parser) {
         }
         m.complete(p, MODULE_PORT);
         if !p.at(T![')']) {
-            p.expect_with(T![,], &[T![,], T![')']]);
+            p.expect_with(T![,], vec![T![,], T![')']]);
         }
     }
     p.expect(T![')']);
@@ -42,7 +42,7 @@ fn port_decl<const MODULE_HEAD: bool>(p: &mut Parser, m: Marker) {
     p.eat(T![net_type]);
 
     if MODULE_HEAD {
-        decl_list(p, T![')'], module_port, MODULE_PORT_RECOVERY);
+        decl_list(p, module_port, T![')'], MODULE_PORT_RECOVERY);
     } else {
         net_dec_list(p);
     }
@@ -78,7 +78,7 @@ pub(super) const MODULE_ITEM_OR_ATTR_RECOVERY: TokenSet =
 
 pub(super) fn module_items(p: &mut Parser) {
     let mut error_range: Option<CompletedMarker> = None;
-    while !p.at_ts(ITEM_RECOVERY_SET.union(TokenSet::unique(T![endmodule]))) {
+    while !p.at_ts(ITEM_RECOVERY.union(TokenSet::unique(T![endmodule]))) {
         let m = p.start();
         attrs(p, MODULE_ITEM_RECOVERY);
 
@@ -94,8 +94,8 @@ pub(super) fn module_items(p: &mut Parser) {
             T![net_type] => net_decl::<true>(p, m),
             T![ident] => net_decl::<false>(p, m),
             T![branch] => branch_decl(p, m),
-            T![parameter] | T![localparam] => parameter_decl(p, m),
-            T![aliasparam] => alias_parameter_decl(p, m),
+            T![parameter] | T![localparam] => param_decl(p, m),
+            T![aliasparam] => aliasparam_decl(p, m),
             T![integer] | T![real] | T![string] => var_decl(p, m),
             _ => {
                 error_range = if let Some(error_range) = error_range {
@@ -106,10 +106,12 @@ pub(super) fn module_items(p: &mut Parser) {
                     }
                     Some(error_range.undo_completion(p).complete(p, ERROR))
                 } else {
-                    let err = p.err_with_expected_syntaxes(&[
-                        FUNCTION,
-                        PORT_DECL,
+                    let err = p.err_with_expected_syntaxes(vec![
                         NET_DECL,
+                        BRANCH_DECL,
+                        VAR_DECL,
+                        PARAM_DECL,
+                        FUNCTION,
                         ANALOG_BEHAVIOUR,
                     ]);
                     p.error(err);
@@ -141,7 +143,7 @@ fn net_decl<const NET_TYPE_FIRST: bool>(p: &mut Parser, m: Marker) {
 
 const NET_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![endmodule]]);
 fn net_dec_list(p: &mut Parser) {
-    decl_list(p, T![;], decl_name, NET_RECOVERY);
+    decl_list(p, decl_name, T![;], NET_RECOVERY);
 }
 
 fn branch_decl(p: &mut Parser, m: Marker) {
@@ -150,12 +152,12 @@ fn branch_decl(p: &mut Parser, m: Marker) {
         p.error(p.err_with_expected_syntax(T!['(']));
     }
     arg_list(p);
-    decl_list(p, T![;], decl_name, MODULE_ITEM_OR_ATTR_RECOVERY);
+    decl_list(p, decl_name, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
     p.eat(T![;]);
     m.complete(p, BRANCH_DECL);
 }
 
-fn alias_parameter_decl(p: &mut Parser, m: Marker) {
+fn aliasparam_decl(p: &mut Parser, m: Marker) {
     p.bump(T![aliasparam]);
     name_r(p, TokenSet::new(&[T![;], T![=]]));
     p.expect(T![=]);
@@ -190,7 +192,7 @@ fn func_decl(p: &mut Parser, m: Marker) {
         if p.at_ts(TYPE_TS) {
             var_decl(p, m)
         } else if p.at_ts(TokenSet::new(&[T![parameter], T![localparam]])) {
-            parameter_decl(p, m)
+            param_decl(p, m)
         } else if p.at_ts(DIRECTION_TS) {
             func_arg(p, m);
         } else {
@@ -208,7 +210,7 @@ fn func_arg(p: &mut Parser, m: Marker) {
     p.bump_ts(DIRECTION_TS);
     direction.complete(p, DIRECTION);
 
-    decl_list(p, T![;], decl_name, FUNC_ARG_RECOVERY);
+    decl_list(p, decl_name, T![;], FUNC_ARG_RECOVERY);
     p.eat(T![;]);
     m.complete(p, FUNCTION_ARG);
 }

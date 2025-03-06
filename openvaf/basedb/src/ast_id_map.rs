@@ -126,7 +126,7 @@ impl AstIdMap {
         res
     }
 
-    pub fn ast_id_of<N: AstNode>(&self, item: &N) -> AstId<N> {
+    pub fn id_of<N: AstNode>(&self, item: &N) -> AstId<N> {
         let raw = self.erased_ast_id(item.syntax());
         AstId { raw, _ty: PhantomData }
     }

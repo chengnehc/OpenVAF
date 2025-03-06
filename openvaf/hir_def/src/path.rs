@@ -1,3 +1,7 @@
+//! A `Path` is a list of hierarchial names separated by `.`
+//!
+//! See: LRM chapter 6.7
+
 use stdx::{impl_debug, pretty};
 use syntax::ast::{self, PathSegmentKind};
 use syntax::name::{AsIdent, AsName, Name};
@@ -9,7 +13,7 @@ pub struct Path {
 }
 
 impl Path {
-    pub fn new_ident(ident: Name) -> Path {
+    pub fn from_ident(ident: Name) -> Path {
         Path { is_root: false, segments: vec![ident] }
     }
 
@@ -19,13 +23,14 @@ impl Path {
         let segment = syntax.segment()?;
 
         match (prefix, segment.kind) {
-            (Some(_), PathSegmentKind::Root) => None,
+            (Some(_), PathSegmentKind::Root) => None, // incorrect `$root` path
             (Some(mut prefix), PathSegmentKind::Name) => {
                 prefix.segments.push(segment.as_name());
                 Some(prefix)
             }
-            (None, PathSegmentKind::Root) => Some(Path { is_root: true, segments: vec![] }),
+            (None, PathSegmentKind::Root) => Some(Path { is_root: true, segments: vec![] }), // correct `$root` path
             (None, PathSegmentKind::Name) => {
+                // correct normal path
                 Some(Path { is_root: false, segments: vec![segment.as_name()] })
             }
         }

@@ -122,16 +122,14 @@ pub fn lookup_nature(
 ) -> Result<NatureId, PathResolveError> {
     let (nature, attr) = match nature_ref.kind {
         NatureRefKind::Nature => {
-            return def_map.resolve_local_item_in_scope(def_map.root_scope(), &nature_ref.name)
+            return def_map.resolve_item_in(def_map.root_scope(), &nature_ref.name)
         }
         NatureRefKind::DisciplinePotential => {
-            let discipline =
-                def_map.resolve_local_item_in_scope(def_map.root_scope(), &nature_ref.name)?;
+            let discipline = def_map.resolve_item_in(def_map.root_scope(), &nature_ref.name)?;
             (db.discipline_info(discipline).potential, kw::potential)
         }
         NatureRefKind::DisciplineFlow => {
-            let discipline =
-                def_map.resolve_local_item_in_scope(def_map.root_scope(), &nature_ref.name)?;
+            let discipline = def_map.resolve_item_in(def_map.root_scope(), &nature_ref.name)?;
             (db.discipline_info(discipline).flow, kw::flow)
         }
     };

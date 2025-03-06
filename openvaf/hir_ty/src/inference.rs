@@ -990,7 +990,7 @@ impl Ctx<'_> {
             BinaryOp::LeftShift
             | BinaryOp::RightShift
             | BinaryOp::BitwiseXor
-            | BinaryOp::BitwiseEq
+            | BinaryOp::BitwiseXnor
             | BinaryOp::BitwiseOr
             | BinaryOp::BitwiseAnd => &[SignatureData::INT_BIN_OP],
             BinaryOp::Power => &[SignatureData::REAL_BIN_OP],
@@ -1154,11 +1154,11 @@ impl Ctx<'_> {
         };
 
         let attr = match resolved_path {
-            ResolvedPath::FlowAttribute { branch, ref name } => {
+            ResolvedPath::FlowAccess { branch, ref name } => {
                 BranchTy::flow_attr(self.db, branch, name)?
             }
 
-            ResolvedPath::PotentialAttribute { branch, ref name } => {
+            ResolvedPath::PotentialAccess { branch, ref name } => {
                 BranchTy::potential_attr(self.db, branch, name)?
             }
 

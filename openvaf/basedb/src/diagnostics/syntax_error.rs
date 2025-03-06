@@ -185,7 +185,7 @@ impl Diagnostic for SyntaxError {
                     },
                 ])
             }
-            SyntaxError::BlockItemsAfterStmt { ref items, first_stmt } => {
+            SyntaxError::BlockDeclsAfterStmt { decls: ref items, first_stmt } => {
                 let ranges: Vec<_> =
                     once(first_stmt).chain(items.iter().map(|item| item.text_range())).collect();
 
@@ -215,7 +215,7 @@ impl Diagnostic for SyntaxError {
 
                 Report::error().with_labels(labels)
             }
-            SyntaxError::BlockItemsWithoutScope { ref items, begin_token } => {
+            SyntaxError::BlockDeclsWithoutScope { decls: ref items, begin_token } => {
                 let ranges: Vec<_> =
                     once(begin_token).chain(items.iter().map(|item| item.text_range())).collect();
 

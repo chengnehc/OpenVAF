@@ -5,32 +5,32 @@ use super::*;
 mod module;
 use module::{module_items, module_ports, MODULE_ITEM_OR_ATTR_RECOVERY};
 
-pub(super) const ITEM_RECOVERY_SET: TokenSet =
+pub(super) const ITEM_RECOVERY: TokenSet =
     TokenSet::new(&[T![discipline], T![nature], T![module], EOF]);
 
-const DISCIPLINE_RECOVERY_SET: TokenSet =
-    ITEM_RECOVERY_SET.union(TokenSet::unique(T![enddiscipline]));
+const DISCIPLINE_RECOVERY: TokenSet = ITEM_RECOVERY.union(TokenSet::unique(T![enddiscipline]));
 
 pub(super) fn discipline(p: &mut Parser, m: Marker) {
     p.bump(T![discipline]);
-    name_r(p, TokenSet::new(&[T![;]]));
+    name_r(p, TokenSet::unique(T![;]));
     p.eat(T![;]);
-    while !p.at_ts(DISCIPLINE_RECOVERY_SET) {
+    while !p.at_ts(DISCIPLINE_RECOVERY) {
         let m = p.start();
         path(p);
         p.eat(T![=]);
         expr(p);
         if !p.eat(T![;]) {
             let err = p.err_with_expected_syntax(T![;]);
-            p.err_recover(err, DISCIPLINE_RECOVERY_SET.union(TokenSet::unique(T![ident])));
+            p.err_recover(err, DISCIPLINE_RECOVERY.union(TokenSet::unique(T![ident])));
         }
+        // p.expect_recover(T![;], DISCIPLINE_RECOVERY.union(TokenSet::unique(T![ident])));
         m.complete(p, DISCIPLINE_ATTR);
     }
     p.expect(T![enddiscipline]);
     m.complete(p, DISCIPLINE_DECL);
 }
 
-const NATURE_RECOVERY_SET: TokenSet = ITEM_RECOVERY_SET.union(TokenSet::unique(T![endnature]));
+const NATURE_RECOVERY: TokenSet = ITEM_RECOVERY.union(TokenSet::unique(T![endnature]));
 
 pub(super) fn nature(p: &mut Parser, m: Marker) {
     p.bump(T![nature]);
@@ -39,14 +39,14 @@ pub(super) fn nature(p: &mut Parser, m: Marker) {
         name_ref_r(p, TokenSet::unique(T![;]));
     }
     p.eat(T![;]);
-    while !p.at_ts(NATURE_RECOVERY_SET) {
+    while !p.at_ts(NATURE_RECOVERY) {
         let m = p.start();
         name_r(p, TokenSet::unique(T![=]));
         p.expect(T![=]);
         expr(p);
         if !p.eat(T![;]) {
             let err = p.err_with_expected_syntax(T![;]);
-            p.err_recover(err, NATURE_RECOVERY_SET.union(TokenSet::unique(T![ident])));
+            p.err_recover(err, NATURE_RECOVERY.union(TokenSet::unique(T![ident])));
         }
         m.complete(p, NATURE_ATTR);
     }
@@ -57,9 +57,7 @@ pub(super) fn nature(p: &mut Parser, m: Marker) {
 pub(super) fn module(p: &mut Parser, m: Marker) {
     p.bump(T![module]);
     name_r(p, TokenSet::new(&[T!['('], T![;]]));
-    if p.at(T!['(']) {
-        // module ports are optional
-        p.bump(T!['(']);
+    if p.eat(T!['(']) {
         module_ports(p);
     }
     p.expect(T![;]);
@@ -70,19 +68,19 @@ pub(super) fn module(p: &mut Parser, m: Marker) {
 
 pub(super) fn decl_list(
     p: &mut Parser,
-    terminator: SyntaxKind,
     mut parse_entry: impl FnMut(&mut Parser) -> bool,
+    terminator: SyntaxKind,
     recovery: TokenSet,
 ) {
-    let recovery = recovery.union(TokenSet::new(&[terminator]));
-    if p.at_ts(recovery) {
-        p.error(p.err_with_expected_syntax(T![ident]));
-    } else {
+    let recovery = recovery.union(TokenSet::unique(terminator));
+    if !p.at_ts(recovery) {
         while !p.at_ts(recovery) && parse_entry(p) {
             if !p.at(terminator) {
-                p.expect_with(T![,], &[T![,], terminator]);
+                p.expect_with(T![,], vec![T![,], terminator]);
             }
         }
+    } else {
+        p.error(p.err_with_expected_syntax(T![ident]));
     }
 }
 
@@ -93,12 +91,12 @@ fn decl_name(p: &mut Parser) -> bool {
 
 pub(super) fn var_decl(p: &mut Parser, m: Marker) {
     ty(p);
-    decl_list(p, T![;], var, MODULE_ITEM_OR_ATTR_RECOVERY);
+    decl_list(p, variable, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
     p.eat(T![;]);
     m.complete(p, VAR_DECL);
 }
 
-fn var(p: &mut Parser) -> bool {
+fn variable(p: &mut Parser) -> bool {
     let m = p.start();
     name_r(p, TokenSet::new(&[T![,], T![=], T![;]]));
     if p.eat(T![=]) {
@@ -108,10 +106,10 @@ fn var(p: &mut Parser) -> bool {
     true
 }
 
-pub(super) fn parameter_decl(p: &mut Parser, m: Marker) {
-    p.bump_any();
+pub(super) fn param_decl(p: &mut Parser, m: Marker) {
+    p.bump_any(); // bump the parameter/localparam keyword
     eat_ty(p);
-    decl_list(p, T![;], parameter, MODULE_ITEM_OR_ATTR_RECOVERY);
+    decl_list(p, parameter, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
     p.eat(T![;]);
     m.complete(p, PARAM_DECL);
 }

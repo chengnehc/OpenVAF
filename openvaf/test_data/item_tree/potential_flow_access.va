@@ -1,0 +1,18 @@
+module measure1(p);
+    output p;
+    electrical p;
+    parameter real V = 1.1;
+    analog begin
+        $strobe("%M: voltage ratio is %g", potential(p) / V);
+    end
+endmodule
+
+module resistor(p, n);
+    inout p, n;
+    electrical p, n;
+    branch (p,n) res;
+    parameter real R = 50;
+    analog begin
+        V(res) <+ R*I(res);
+    end
+endmodule

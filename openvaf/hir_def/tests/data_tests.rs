@@ -21,11 +21,11 @@ pub struct TestDataBase {
 }
 
 impl TestDataBase {
-    pub fn new(root_file_path: VfsPath, root_file: VfsEntry) -> Self {
-        let mut res = Self { storage: salsa::Storage::default(), vfs: None, root_file: None };
+    pub fn new(root_file_path: VfsPath, root_file_contents: VfsEntry) -> Self {
         let vfs = RwLock::new(Vfs::default());
+        let mut res = Self { storage: salsa::Storage::default(), vfs: None, root_file: None };
         let db: &mut dyn BaseDB = &mut res;
-        let root_file = db.setup_test_db(root_file_path, root_file, &mut vfs.write());
+        let root_file = db.setup_test_db(root_file_path, root_file_contents, &mut vfs.write());
         res.root_file = Some(root_file);
         res.vfs = Some(vfs);
         res
@@ -47,35 +47,35 @@ impl TestDataBase {
 
     pub fn lower_and_check(&self) -> String {
         let root_file = self.root_file();
-        let def_map = self.root_def_map(root_file);
+        let root_def_map = self.root_def_map(root_file);
         let mut buf = Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(self, &mut buf);
             sink.annonymize_paths();
-            let root_scope = def_map.entry_scope();
-            self.lower_and_check_rec(root_scope, &def_map, &mut sink);
+            let root_scope = root_def_map.entry_scope();
+            self.lower_and_check_rec(root_scope, &root_def_map, &mut sink);
         }
         let data = buf.into_inner();
         String::from_utf8(data).unwrap()
     }
 
-    fn lower_and_check_rec(&self, scope: LocalScopeId, def_map: &DefMap, dst: &mut ConsoleSink) {
+    fn lower_and_check_rec(&self, scope: LocalScopeId, def_map: &DefMap, sink: &mut ConsoleSink) {
         let root_file = self.root_file();
 
         for (_, declaration) in &def_map[scope].declarations {
             if let Ok(id) = (*declaration).try_into() {
                 let diagnostics = &self.body_source_map(id).diagnostics;
-                dst.add_diagnostics(diagnostics, root_file, self);
+                sink.add_diagnostics(diagnostics, root_file, self);
             }
             if let ScopeItemDef::FunctionId(fun) = *declaration {
                 let def_map = self.function_def_map(fun);
                 let entry = self.function_def_map(fun).entry_scope();
-                self.lower_and_check_rec(entry, &def_map, dst)
+                self.lower_and_check_rec(entry, &def_map, sink)
             }
         }
 
         for (_, child) in &def_map[scope].children {
-            self.lower_and_check_rec(*child, def_map, dst)
+            self.lower_and_check_rec(*child, def_map, sink)
         }
     }
 }

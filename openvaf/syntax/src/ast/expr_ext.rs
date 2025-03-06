@@ -1,10 +1,22 @@
-//! Various extension methods to ast Expr Nodes, which are hard to code-generate.
+//! Various extension methods to ast Expr and Stmt nodes, which are hard to code-generate.
 
 use crate::ast::operators::{AssignOp, BinaryOp, UnaryOp};
-use crate::ast::{self, support, AstChildren, AstNode, AstToken};
+use crate::ast::{self, support, AstChildTokens, AstChildren, AstNode, AstToken};
 use crate::{SyntaxToken, T};
 
 impl ast::Expr {
+    pub fn as_raw_ident(&self) -> Option<SyntaxToken> {
+        self.as_path()?.as_raw_ident()
+    }
+
+    pub fn as_path(&self) -> Option<ast::Path> {
+        if let ast::Expr::PathExpr(path_expr) = self {
+            path_expr.path()
+        } else {
+            None
+        }
+    }
+
     pub fn as_literal(&self) -> Option<LiteralKind> {
         if let ast::Expr::Literal(lit) = self {
             Some(lit.kind())
@@ -102,7 +114,7 @@ impl ast::BinExpr {
                 T![|] => BinaryOp::BitwiseOr,
                 T![&] => BinaryOp::BitwiseAnd,
                 T![**] => BinaryOp::Power,
-                T![~^] | T![^~] => BinaryOp::BitwiseEq,
+                T![~^] | T![^~] => BinaryOp::BitwiseXnor,
                 _ => return None,
             };
             Some((c, bin_op))
@@ -133,9 +145,14 @@ impl ast::BinExpr {
     // }
 }
 
-pub enum ArrayExprKind {
-    Repeat { initializer: Option<ast::Expr>, repeat: Option<ast::Expr> },
-    ElementList(AstChildren<ast::Expr>),
+impl ast::SelectExpr {
+    pub fn then_val(&self) -> Option<ast::Expr> {
+        support::children(self.syntax()).nth(1)
+    }
+
+    pub fn else_val(&self) -> Option<ast::Expr> {
+        support::children(self.syntax()).nth(2)
+    }
 }
 
 impl ast::ArrayExpr {
@@ -155,17 +172,18 @@ impl ast::ArrayExpr {
     }
 }
 
-impl ast::SelectExpr {
-    pub fn then_val(&self) -> Option<ast::Expr> {
-        support::children(self.syntax()).nth(1)
-    }
-
-    pub fn else_val(&self) -> Option<ast::Expr> {
-        support::children(self.syntax()).nth(2)
-    }
+pub enum ArrayExprKind {
+    Repeat { initializer: Option<ast::Expr>, repeat: Option<ast::Expr> },
+    ElementList(AstChildren<ast::Expr>),
 }
 
 /* Statements */
+
+impl ast::BlockStmt {
+    pub fn body(&self) -> AstChildren<ast::Stmt> {
+        support::children(self.syntax())
+    }
+}
 
 impl ast::Assign {
     pub fn op(&self) -> Option<AssignOp> {
@@ -184,5 +202,35 @@ impl ast::Assign {
 
     pub fn rval(&self) -> Option<ast::Expr> {
         support::children(self.syntax()).nth(1)
+    }
+}
+
+impl ast::IfStmt {
+    pub fn then_branch(&self) -> Option<ast::Stmt> {
+        support::children(self.syntax()).next()
+    }
+
+    pub fn else_branch(&self) -> Option<ast::Stmt> {
+        support::children(self.syntax()).nth(1)
+    }
+}
+
+impl ast::ForStmt {
+    pub fn init(&self) -> Option<ast::Stmt> {
+        support::child(self.syntax())
+    }
+
+    pub fn incr(&self) -> Option<ast::Stmt> {
+        support::children(self.syntax()).nth(1)
+    }
+
+    pub fn for_body(&self) -> Option<ast::Stmt> {
+        support::children(self.syntax()).nth(2)
+    }
+}
+
+impl ast::EventStmt {
+    pub fn sim_phases(&self) -> AstChildTokens<ast::StrLit> {
+        support::child_tokens(self.syntax())
     }
 }

@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use stdx::{impl_display, pretty};
 
 use basedb::diagnostics::{Diagnostic, Label, LabelStyle, Report};
@@ -26,7 +25,7 @@ impl_display! {
         NotFoundIn{name, scope} => "'{}' was not found in '{}'", name, scope;
         ExpectedScope{name, found} => "expected a scope but found {} '{}'", found.item_kind(), name;
         ExpectedItemKind{name, expected, found} => "expected {} but found {} '{}'", expected, found, name;
-        ExpectedNatureAttrIdent{found} => "expected a nature attribute identifier found path {}", pretty::List::path(found.deref());
+        ExpectedNatureAttrIdent{found} => "expected a nature attribute identifier found path {}", pretty::List::path(found.clone());
     }
 }
 
@@ -54,9 +53,10 @@ impl_display! {
 }
 
 // This wrapper is needed since the methods provided by `Diagnostic` trait
-// takes argument type `&dyn BaseDB` but `DefDiagnostic` requires data from
-// `&dyn HirDefDB`.
-// TODO(JW) can we make the `Diagnostic` trait accept upcasted BaseDB like `HirDefDB`?
+// takes argument with type `&dyn BaseDB` while `DefDiagnostic` requires data from
+// `HirDefDB`.
+//
+// TODO(JW) can we make the `Diagnostic` trait accept upcast db like `HirDefDB`?
 pub struct DefDiagnosticWrapped<'a> {
     pub db: &'a dyn HirDefDB,
     pub diag: &'a DefDiagnostic,

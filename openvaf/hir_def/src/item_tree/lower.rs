@@ -30,12 +30,12 @@ fn is_output(direction: &Option<ast::Direction>) -> bool {
 
 pub(super) struct Ctx {
     tree: ItemTree,
-    source_ast_id_map: Arc<AstIdMap>,
+    ast_id_map: Arc<AstIdMap>,
 }
 
 impl Ctx {
     pub(super) fn new(db: &dyn HirDefDB, file: FileId) -> Self {
-        Self { tree: ItemTree::default(), source_ast_id_map: db.ast_id_map(file) }
+        Self { tree: ItemTree::default(), ast_id_map: db.ast_id_map(file) }
     }
 
     pub(super) fn lower_root_items(mut self, file: &ast::SourceFile) -> ItemTree {
@@ -55,7 +55,7 @@ impl Ctx {
     fn lower_discipline(&mut self, decl: ast::DisciplineDecl) -> Option<ItemTreeId<Discipline>> {
         use kw::raw as kw;
         let name = decl.name()?.as_name();
-        let ast_id = self.source_ast_id_map.ast_id_of(&decl);
+        let ast_id = self.ast_id_map.id_of(&decl);
 
         let mut potential = None;
         let mut flow = None;
@@ -75,7 +75,7 @@ impl Ctx {
                 };
 
                 if let Some(name) = name.segment_token().map(|t| t.as_name()) {
-                    let ast_id = self.source_ast_id_map.ast_id_of(&attr);
+                    let ast_id = self.ast_id_map.id_of(&attr);
 
                     match &*name {
                         kw::potential if potential.is_none() => {
@@ -171,7 +171,7 @@ impl Ctx {
             if let Some(name) = attr.name().map(|name| name.as_name()) {
                 use kw::raw as kw;
 
-                let ast_id = self.source_ast_id_map.ast_id_of(&attr);
+                let ast_id = self.ast_id_map.id_of(&attr);
 
                 match &*name {
                     kw::access if access.is_none() => {
@@ -208,7 +208,7 @@ impl Ctx {
         }
 
         let attr_end = self.tree.data.nature_attrs.next_key();
-        let ast_id = self.source_ast_id_map.ast_id_of(&decl);
+        let ast_id = self.ast_id_map.id_of(&decl);
 
         let res = Nature {
             ast_id,
@@ -226,7 +226,7 @@ impl Ctx {
 
     fn lower_module(&mut self, decl: ast::ModuleDecl) -> Option<ItemTreeId<Module>> {
         let name = decl.name()?.as_name();
-        let ast_id = self.source_ast_id_map.ast_id_of(&decl);
+        let ast_id = self.ast_id_map.id_of(&decl);
 
         let mut nodes = TiVec::new();
         let mut items = Vec::new();
@@ -272,7 +272,7 @@ impl Ctx {
                     self.lower_fun(fun, dst);
                 }
                 ast::ModuleItem::BranchDecl(branch) => self.lower_branch(branch, dst),
-                ast::ModuleItem::AliasParam(alias) => self.lower_alias_param(alias, dst),
+                ast::ModuleItem::AliasParam(alias) => self.lower_aliasparam(alias, dst),
             };
         }
     }
@@ -285,7 +285,7 @@ impl Ctx {
                 ast::FunctionItem::ParamDecl(decl) => self.lower_param(decl, &mut items),
                 ast::FunctionItem::VarDecl(decl) => self.lower_var(decl, &mut items),
                 ast::FunctionItem::FunctionArg(arg) => {
-                    let ast_id = self.source_ast_id_map.ast_id_of(&arg);
+                    let ast_id = self.ast_id_map.id_of(&arg);
                     let is_input = is_input(&arg.direction());
                     let is_output = is_output(&arg.direction());
                     for (name_idx, name) in arg.names().enumerate() {
@@ -326,7 +326,7 @@ impl Ctx {
                 ty: fun.ty().map_or(Type::Real, |ty| ty.as_type()),
                 args,
                 items,
-                ast_id: self.source_ast_id_map.ast_id_of(&fun),
+                ast_id: self.ast_id_map.id_of(&fun),
             };
             let fun = self.tree.data.functions.push_and_get_key(fun);
             dst.push(fun.into())
@@ -334,7 +334,7 @@ impl Ctx {
     }
 
     fn lower_branch(&mut self, decl: ast::BranchDecl, dst: &mut Vec<ModuleItem>) {
-        let ast_id = self.source_ast_id_map.ast_id_of(&decl);
+        let ast_id = self.ast_id_map.id_of(&decl);
         let kind = decl
             .branch_kind()
             .and_then(|kind| {
@@ -364,7 +364,7 @@ impl Ctx {
         dst: &mut Vec<ModuleItem>,
     ) {
         for port in ports.ports() {
-            let ast_id = self.source_ast_id_map.ast_id_of(&port);
+            let ast_id = self.ast_id_map.id_of(&port);
             match port.kind() {
                 ast::ModulePortKind::Name(name) => {
                     let name = name.as_name();
@@ -395,7 +395,7 @@ impl Ctx {
         let direction = decl.direction();
 
         let is_gnd = decl.net_type_token().is_some_and(|it| it.text() == kw::raw::ground);
-        let ast_id = self.source_ast_id_map.ast_id_of(&decl);
+        let ast_id = self.ast_id_map.id_of(&decl);
         for (name_idx, name) in decl.names().enumerate() {
             let name = name.as_name();
             let id = self.tree.data.ports.push_and_get_key(Port {
@@ -430,7 +430,7 @@ impl Ctx {
         dst: &mut Vec<ModuleItem>,
     ) {
         let discipline = decl.discipline().map(|it| it.as_name());
-        let ast_id = self.source_ast_id_map.ast_id_of(&decl);
+        let ast_id = self.ast_id_map.id_of(&decl);
 
         let is_gnd = decl.net_type_token().is_some_and(|it| it.text() == kw::raw::ground);
         for (name_idx, name) in decl.names().enumerate() {
@@ -475,7 +475,7 @@ impl Ctx {
                     match_ast! {
                         match node {
                             ast::BlockStmt(block) => {
-                                let ast_id = self.source_ast_id_map.ast_id_of(&block);
+                                let ast_id = self.ast_id_map.id_of(&block);
                                 let name = block.block_scope().and_then(|it| Some(it.name()?.as_name()));
                                 let block_info = Block { name, block_items: Vec::new()};
                                 if block.block_scope().is_some() {
@@ -535,7 +535,7 @@ impl Ctx {
             if let Some(name) = var.name() {
                 let var = Var {
                     name: name.as_name(),
-                    ast_id: self.source_ast_id_map.ast_id_of(&var),
+                    ast_id: self.ast_id_map.id_of(&var),
                     ty: ty.clone(),
                 };
                 let id = self.tree.data.variables.push_and_get_key(var);
@@ -548,7 +548,7 @@ impl Ctx {
         let ty = decl.ty().map(|ty| ty.as_type());
         for param in decl.paras() {
             if let Some(name) = param.name() {
-                let ast_id = self.source_ast_id_map.ast_id_of(&param);
+                let ast_id = self.ast_id_map.id_of(&param);
                 let param = Param {
                     name: name.as_name(),
                     is_local: decl.localparam_token().is_some(),
@@ -561,7 +561,7 @@ impl Ctx {
         }
     }
 
-    fn lower_alias_param<T: From<ItemTreeId<AliasParam>>>(
+    fn lower_aliasparam<T: From<ItemTreeId<AliasParam>>>(
         &mut self,
         decl: ast::AliasParam,
         dst: &mut Vec<T>,
@@ -572,13 +572,10 @@ impl Ctx {
         if let (Some(name), Some(src)) = (name, src) {
             let src = match src {
                 ParamRef::Path(path) => Path::resolve(path),
-                ParamRef::SysFun(fun) => Some(Path::new_ident(fun.as_name())),
+                ParamRef::SysFun(fun) => Some(Path::from_ident(fun.as_name())),
             };
-            let param = AliasParam {
-                name: name.as_name(),
-                src,
-                ast_id: self.source_ast_id_map.ast_id_of(&decl),
-            };
+            let param =
+                AliasParam { name: name.as_name(), src, ast_id: self.ast_id_map.id_of(&decl) };
             let param = self.tree.data.aliasparams.push_and_get_key(param);
             dst.push(param.into())
         }

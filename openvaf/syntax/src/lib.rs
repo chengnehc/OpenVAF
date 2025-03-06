@@ -138,7 +138,7 @@ impl<T> Parse<T> {
             })
             .ok()
             .map(|i| self.ctx_map[i])
-            .expect("No range in the sourcemap covers the requested position")
+            .expect("The source map should cover the requested position")
     }
 }
 

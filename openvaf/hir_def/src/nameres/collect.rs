@@ -20,47 +20,37 @@ use crate::{
 use super::diagnostics::DefDiagnostic;
 use super::{DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItemDef, ScopeOrigin};
 
-// Root items can only be `discipline`, `nature` or `module`.
-pub fn collect_root_def_map(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {
+pub fn root_def_map(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {
     let tree = &db.item_tree(root_file);
     let scope_cnt = tree.data.natures.len() + tree.data.disciplines.len() + tree.data.modules.len();
-    let mut collector = DefCollector {
-        def_map: DefMap {
-            src: DefMapSource::Root,
-            scopes: Arena::with_capacity(scope_cnt),
-            root_id: LocalScopeId::from(0u32),
-            diagnostics: Vec::new(),
-        },
-        tree,
-        db,
-        root_file,
+    let def_map = DefMap {
+        src: DefMapSource::Root,
+        scopes: Arena::with_capacity(scope_cnt),
+        root_scope: LocalScopeId::from(0u32),
+        diagnostics: Vec::new(),
     };
+    let mut collector = DefCollector { root_file, db, tree, def_map };
     collector.collect_root_map();
 
     Arc::new(collector.def_map)
 }
 
-pub fn collect_function_map(db: &dyn HirDefDB, function: FunctionId) -> Arc<DefMap> {
-    let FunctionLoc { scope: ScopeId { root_file, local_id: local_scope, .. }, id } =
-        function.lookup(db);
+pub fn function_def_map(db: &dyn HirDefDB, function: FunctionId) -> Arc<DefMap> {
+    let FunctionLoc { scope: ScopeId { root_file, local_id, .. }, id } = function.lookup(db);
     let tree = &db.item_tree(root_file);
-    let mut collector = DefCollector {
-        def_map: DefMap {
-            src: DefMapSource::Function(function),
-            scopes: Arena::with_capacity(tree.data.modules.len() + 1),
-            root_id: LocalScopeId::from(0u32), // This will be changed once the scope has been created
-            diagnostics: Vec::new(),
-        },
-        tree,
-        db,
-        root_file,
+    let def_map = DefMap {
+        src: DefMapSource::Function(function),
+        scopes: Arena::with_capacity(tree.data.modules.len() + 1),
+        root_scope: LocalScopeId::from(0u32), // This will be changed once the scope has been created
+        diagnostics: Vec::new(),
     };
-    collector.collect_function_map(id, local_scope, function);
+    let mut collector = DefCollector { root_file, db, tree, def_map };
+    collector.collect_function_map(id, local_id, function);
 
     Arc::new(collector.def_map)
 }
 
-pub fn collect_block_map(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
+pub fn block_def_map(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
     // Note: `BlockLoc`s are only created for named blocks.
     let BlockLoc { parent, ast_id } = block.lookup(db);
     let tree = &db.item_tree(parent.root_file);
@@ -68,17 +58,13 @@ pub fn collect_block_map(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap
     if items.is_empty() {
         return None;
     }
-    let mut collector = DefCollector {
-        def_map: DefMap {
-            src: DefMapSource::Block(block),
-            scopes: Arena::with_capacity(1),
-            root_id: LocalScopeId::from(0u32),
-            diagnostics: Vec::new(),
-        },
-        tree,
-        db,
-        root_file: parent.root_file,
+    let def_map = DefMap {
+        src: DefMapSource::Block(block),
+        scopes: Arena::with_capacity(1),
+        root_scope: LocalScopeId::from(0u32),
+        diagnostics: Vec::new(),
     };
+    let mut collector = DefCollector { def_map, tree, db, root_file: parent.root_file };
     collector.collect_block_map(block, items);
 
     Some(Arc::new(collector.def_map))
@@ -127,7 +113,7 @@ impl DefCollector<'_> {
         }
 
         let root = self.def_map.new_root_scope(ScopeOrigin::Root);
-        self.def_map.root_id = root;
+        self.def_map.root_scope = root;
         debug_assert_eq!(self.def_map.root_scope(), root);
 
         // Copy the modules and their parameters since these are the only declarations outside
@@ -174,32 +160,29 @@ impl DefCollector<'_> {
         self.def_map[scope].parent = parent_module_;
     }
 
-    fn collect_block_map(&mut self, id: BlockId, items: &[BlockItem]) {
-        let scope = self.def_map.new_root_scope(id.into());
+    fn collect_block_map(&mut self, block: BlockId, items: &[BlockItem]) {
+        let scope = self.def_map.new_root_scope(block.into());
         debug_assert_eq!(scope, self.def_map.entry_scope());
         for item in items {
             match *item {
-                BlockItem::Block(ast) => {
-                    if let Some(name) = &self.tree[ast].name {
-                        let loc = BlockLoc {
-                            ast_id: ast,
-                            parent: ScopeId {
-                                root_file: self.root_file,
-                                local_id: scope,
-                                src: self.def_map.src,
-                            },
-                        };
-                        let id = loc.intern(self.db);
-                        self.insert_decl(scope, name.clone(), id);
-                    } else {
-                        debug_assert!(false)
-                    }
-                }
                 BlockItem::Parameter(id) => {
                     self.insert_item_decl(scope, self.tree[id].name.clone(), id)
                 }
                 BlockItem::Variable(id) => {
                     self.insert_item_decl(scope, self.tree[id].name.clone(), id)
+                }
+                BlockItem::Block(ast_id) => {
+                    if let Some(name) = &self.tree[ast_id].name {
+                        let parent = ScopeId {
+                            root_file: self.root_file,
+                            local_id: scope,
+                            src: self.def_map.src,
+                        };
+                        let id = BlockLoc { ast_id, parent }.intern(self.db);
+                        self.insert_decl(scope, name.clone(), id);
+                    } else {
+                        panic!("Item tree must only contain named blocks")
+                    }
                 }
             }
         }
@@ -209,6 +192,9 @@ impl DefCollector<'_> {
     // I am guessing this is an oversight but until this is clarified we are not adding this
     // TODO talk to committee about discipline attributes
 
+    // Items under root scope are `discipline`, `nature` and `module`s.
+    // Identifiers defined in natures and disciplines can be used in modules.
+    // Therefore
     fn collect_root_map(&mut self) {
         let root_scope = self.def_map.new_root_scope(ScopeOrigin::Root);
 
@@ -219,24 +205,23 @@ impl DefCollector<'_> {
             match *item {
                 RootItem::Module(module) => self.collect_module(module, root_scope),
                 RootItem::Nature(nature) => {
-                    let id = NatureLoc { root_file: self.root_file, id: nature }.intern(self.db);
-                    self.insert_decl(root_scope, self.tree[nature].name.clone(), id);
-                    if let Some((name, attr)) = self.tree[nature].access.clone() {
-                        self.insert_decl(
-                            root_scope,
-                            name,
-                            ScopeItemDef::NatureAccess(
-                                NatureAttrLoc { nature: id, id: attr }.intern(self.db).into(),
-                            ),
-                        )
+                    // Intern and insert nature definition
+                    let nature_id =
+                        NatureLoc { root_file: self.root_file, id: nature }.intern(self.db);
+                    self.insert_decl(root_scope, self.tree[nature].name.clone(), nature_id);
+                    // Intern and insert nature access functions as well
+                    if let Some((name, local_id)) = self.tree[nature].access.clone() {
+                        let attr_id =
+                            NatureAttrLoc { nature: nature_id, id: local_id }.intern(self.db);
+                        let access_id = ScopeItemDef::NatureAccess(attr_id.into());
+                        self.insert_decl(root_scope, name, access_id)
                     }
                 }
                 RootItem::Discipline(discipline) => {
-                    self.insert_decl(
-                        root_scope,
-                        self.tree[discipline].name.clone(),
-                        DisciplineLoc { root_file: self.root_file, id: discipline }.intern(self.db),
-                    );
+                    let name = self.tree[discipline].name.clone();
+                    let disc_id =
+                        DisciplineLoc { root_file: self.root_file, id: discipline }.intern(self.db);
+                    self.insert_decl(root_scope, name, disc_id);
                 }
             }
         }
@@ -246,16 +231,15 @@ impl DefCollector<'_> {
         let module = &self.tree[id];
         let module_name = module.name.clone();
         let module_id = ModuleLoc { scope: self.next_scope(), id }.intern(self.db);
-        let scope = self.def_map.new_scope(ScopeOrigin::Module(module_id), parent);
 
-        self.insert_scope(scope, parent, module_name, module_id);
+        let scope = self.def_map.new_scope(ScopeOrigin::Module(module_id), parent);
+        self.insert_child_scope(scope, parent, module_name, module_id);
         insert_module_builtin_scope(&mut self.def_map[scope].declarations);
 
         for item in &module.items {
             match *item {
                 ModuleItem::Node(local_id) => {
-                    let loc = NodeLoc { module: module_id, id: local_id };
-                    let id = loc.intern(self.db);
+                    let id = NodeLoc { module: module_id, id: local_id }.intern(self.db);
                     self.insert_decl(scope, module.nodes[local_id].name.clone(), id)
                 }
                 ModuleItem::Branch(id) => {
@@ -288,12 +272,12 @@ impl DefCollector<'_> {
 
     fn collect_block(&mut self, scope: LocalScopeId, block: AstId<ast::BlockStmt>) {
         let parent = ScopeId { root_file: self.root_file, local_id: scope, src: self.def_map.src };
-        let decl = BlockLoc { ast_id: block, parent }.intern(self.db);
+        let block_id = BlockLoc { parent, ast_id: block }.intern(self.db);
         let name = self.tree[block].name.clone().expect("Item tree must only contain named blocks");
-        self.insert_decl(scope, name, decl);
+        self.insert_decl(scope, name, block_id);
     }
 
-    fn insert_scope(
+    fn insert_child_scope(
         &mut self,
         scope: LocalScopeId,
         parent: LocalScopeId,

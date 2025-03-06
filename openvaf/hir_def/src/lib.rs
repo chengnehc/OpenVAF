@@ -8,50 +8,49 @@ use stdx::{impl_debug_display, impl_from};
 
 use arena::Idx;
 use basedb::{AstId, ErasedAstId, FileId};
-use syntax::ast;
 use syntax::name::Name;
-use syntax::{AstNode, AstPtr};
+use syntax::{ast, AstNode, AstPtr};
 
 pub mod body;
-mod builtin;
-mod data;
 pub mod db;
 pub mod expr;
-mod item_tree;
 pub mod nameres;
+
+mod builtin;
+mod data;
+mod item_tree;
 mod path;
 mod types;
 
 pub use crate::builtin::{BuiltIn, ParamSysFun};
 pub use crate::data::FunctionArgData;
-use crate::db::HirDefDB;
 pub use crate::expr::{Case, Expr, ExprId, Literal, Stmt, StmtId};
 pub use crate::item_tree::{
     AliasParam, Branch, BranchKind, Discipline, DisciplineAttr, Function, ItemTree, ItemTreeId,
     ItemTreeNode, Module, Nature, NatureAttr, NatureRef, NatureRefKind, NodeTypeDecl, Param, Var,
 };
+pub use crate::path::Path;
+pub use crate::types::Type;
+
+use crate::db::HirDefDB;
 use crate::nameres::{
     DefMap, DefMapSource, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind,
 };
-pub use crate::path::Path;
-pub use crate::types::Type;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct ScopeId {
     pub root_file: FileId,
-    /// which kind of `DefMap` does this scope originate from?
+    /// Which kind of `DefMap` does this scope correspond to?
     pub src: DefMapSource,
-    /// The scope's local ID in the `DefMap` from which it originates.
+    /// The scope's ID **local** to the `DefMap`
     pub local_id: nameres::LocalScopeId,
 }
 
 impl ScopeId {
-    /// Return the root scope of `root_file`.
-    pub fn root(root_file: FileId) -> ScopeId {
-        ScopeId { root_file, src: DefMapSource::Root, local_id: 0usize.into() }
+    pub fn root(root_file: FileId) -> Self {
+        Self { root_file, src: DefMapSource::Root, local_id: 0usize.into() }
     }
 
-    /// Return the `DefMap` of this scope.
     pub fn def_map(&self, db: &dyn HirDefDB) -> Arc<DefMap> {
         match self.src {
             DefMapSource::Root => db.root_def_map(self.root_file),
@@ -72,8 +71,7 @@ impl ScopeId {
             DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
                 self.def_map(db).resolve_root_path(&path.segments, db)
             }
-
-            _ => self.def_map(db).resolve_normal_path_in_scope(self.local_id, &path.segments, db),
+            _ => self.def_map(db).resolve_normal_path_in(self.local_id, &path.segments, db),
         }
     }
 
@@ -89,12 +87,7 @@ impl ScopeId {
             DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
                 self.def_map(db).resolve_root_item_path(&path.segments, db)
             }
-
-            _ => self.def_map(db).resolve_normal_item_path_in_scope(
-                self.local_id,
-                &path.segments,
-                db,
-            ),
+            _ => self.def_map(db).resolve_normal_item_path_in(self.local_id, &path.segments, db),
         }
     }
 }
@@ -132,20 +125,20 @@ impl<N: ItemTreeNode> ItemLoc<N> {
     }
 }
 
-//#[allow(unknown_lints)]
-//#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 impl<N: ItemTreeNode> Clone for ItemLoc<N> {
     fn clone(&self) -> Self {
         *self
     }
 }
 impl<N: ItemTreeNode> Copy for ItemLoc<N> {}
+
 impl<N: ItemTreeNode> PartialEq for ItemLoc<N> {
     fn eq(&self, other: &Self) -> bool {
         self.scope == other.scope && self.id == other.id
     }
 }
 impl<N: ItemTreeNode> Eq for ItemLoc<N> {}
+
 impl<N: ItemTreeNode> Hash for ItemLoc<N> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.scope.hash(state);
@@ -164,6 +157,12 @@ pub trait Lookup {
 }
 
 // Macros for implementing `Intern` and `Lookup` trait for HIR items.
+macro_rules! impl_intern {
+    ($id:ident, $loc:ident, $intern:ident, $lookup:ident) => {
+        impl_intern_key!($id);
+        impl_intern_lookup!($id, $loc, $intern, $lookup);
+    };
+}
 macro_rules! impl_intern_key {
     ($name:ident) => {
         impl salsa::InternKey for $name {
@@ -191,12 +190,6 @@ macro_rules! impl_intern_lookup {
                 db.$lookup(*self)
             }
         }
-    };
-}
-macro_rules! impl_intern {
-    ($id:ident, $loc:ident, $intern:ident, $lookup:ident) => {
-        impl_intern_key!($id);
-        impl_intern_lookup!($id, $loc, $intern, $lookup);
     };
 }
 

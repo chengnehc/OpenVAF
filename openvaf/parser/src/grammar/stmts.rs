@@ -1,4 +1,4 @@
-use crate::grammar::items::{parameter_decl, var_decl};
+use crate::grammar::items::{param_decl, var_decl};
 
 use super::*;
 
@@ -13,10 +13,9 @@ pub(super) const STMT_TS: TokenSet = TokenSet::new(&[
     T![sysfun],
     T![@],
 ]);
-
 pub(super) const STMT_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![endmodule], T![;]]);
 pub(super) const STMT_ATTR_RECOVERY: TokenSet =
-    STMT_RECOVERY.union(TokenSet::new(&[T![if], T![while], T![for], T![case], T![begin], T![;]]));
+    STMT_RECOVERY.union(TokenSet::new(&[T![if], T![while], T![for], T![case], T![begin]]));
 
 pub(super) fn stmt_with_attrs(p: &mut Parser) {
     let m = p.start();
@@ -24,20 +23,20 @@ pub(super) fn stmt_with_attrs(p: &mut Parser) {
     stmt(p, m, STMT_TS, STMT_RECOVERY)
 }
 
-pub(super) fn stmt(p: &mut Parser, m: Marker, expected: TokenSet, recover: TokenSet) {
+pub(super) fn stmt(p: &mut Parser, m: Marker, expected: TokenSet, recovery: TokenSet) {
     match p.current() {
         T![;] => empty_stmt(p, m),
+        T![ident] | T![sysfun] => expr_or_assign_stmt::<true>(p, m),
+        T![begin] => block_stmt(p, m),
         T![if] => if_stmt(p, m),
         T![while] => while_stmt(p, m),
         T![for] => for_stmt(p, m),
         T![case] => case_stmt(p, m),
-        T![begin] => block_stmt(p, m),
         T![@] => event_stmt(p, m),
-        T![ident] | T![sysfun] => expr_or_assign_stmt::<true>(p, m),
         _ => {
             m.abandon(p);
-            let err = p.err_with_expected_syntaxes(expected.iter().collect::<Vec<_>>().as_ref());
-            p.err_recover(err, recover.union(recover));
+            let err = p.err_with_expected_syntaxes(expected.iter().collect());
+            p.err_recover(err, recovery);
         }
     }
 }
@@ -48,14 +47,14 @@ fn empty_stmt(p: &mut Parser, m: Marker) {
 }
 
 fn expr_or_assign_stmt<const SEMICOLON: bool>(p: &mut Parser, m: Marker) {
-    let kind = if assign_or_expr(p) { ASSIGN_STMT } else { EXPR_STMT };
+    let kind = if eat_assign(p) { ASSIGN_STMT } else { EXPR_STMT };
     if SEMICOLON {
         p.expect(T![;]);
     }
     m.complete(p, kind);
 }
 
-fn assign_or_expr(p: &mut Parser) -> bool {
+fn eat_assign(p: &mut Parser) -> bool {
     let m = p.start();
     expr(p);
     if p.eat_ts(TokenSet::new(&[T![<+], T![=]])) {
@@ -66,6 +65,35 @@ fn assign_or_expr(p: &mut Parser) -> bool {
         m.abandon(p);
         false
     }
+}
+
+const PARAM_TS: TokenSet = TokenSet::new(&[T![parameter], T![localparam]]);
+const BLOCK_EXPECTED: TokenSet = STMT_TS.union(TYPE_TS).union(PARAM_TS);
+const BLOCK_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![end], T![endmodule]]);
+const BLOCK_ATTR_RECOVERY: TokenSet =
+    BLOCK_RECOVERY.union(STMT_ATTR_RECOVERY).union(TYPE_TS).union(PARAM_TS);
+
+fn block_stmt(p: &mut Parser, m: Marker) {
+    p.bump(T![begin]);
+    if p.at(T![:]) {
+        let m = p.start();
+        p.bump(T![:]);
+        name(p);
+        m.complete(p, BLOCK_SCOPE);
+    }
+    while !p.at_ts(BLOCK_RECOVERY) {
+        let m = p.start();
+        attrs(p, BLOCK_ATTR_RECOVERY);
+        if p.at_ts(TYPE_TS) {
+            var_decl(p, m);
+        } else if p.at_ts(PARAM_TS) {
+            param_decl(p, m);
+        } else {
+            stmt(p, m, BLOCK_EXPECTED, BLOCK_RECOVERY)
+        }
+    }
+    p.expect(T![end]);
+    m.complete(p, BLOCK_STMT);
 }
 
 fn if_stmt(p: &mut Parser, m: Marker) {
@@ -113,6 +141,7 @@ fn for_stmt(p: &mut Parser, m: Marker) {
 }
 
 const CASE_ITEM_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![endcase], T![endmodule]]);
+const CASE_COND_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![:], T![endcase], T![endmodule]]);
 fn case_stmt(p: &mut Parser, m: Marker) {
     p.bump(T![case]);
     p.expect(T!['(']);
@@ -126,8 +155,6 @@ fn case_stmt(p: &mut Parser, m: Marker) {
     p.expect(ENDCASE_KW);
     m.complete(p, CASE_STMT);
 }
-
-const CASE_COND_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![:], T![endcase], T![endmodule]]);
 
 fn case_item(p: &mut Parser) {
     let m = p.start();
@@ -143,40 +170,11 @@ fn vals_or_default(p: &mut Parser) {
         while !p.at_ts(CASE_COND_RECOVERY) {
             expr(p);
             if !p.at(T![:]) {
-                p.expect_with(T![,], &[T![:], T![,]]);
+                p.expect_with(T![,], vec![T![:], T![,]]);
             }
         }
         p.expect(T![:]);
     }
-}
-
-const BLOCK_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![end], T![endmodule]]);
-const BLOCK_STMT_TS: TokenSet =
-    STMT_TS.union(TYPE_TS).union(TokenSet::new(&[T![parameter], T![localparam]]));
-const BLOCK_ATTR_RECOVERY: TokenSet =
-    STMT_ATTR_RECOVERY.union(TYPE_TS).union(TokenSet::new(&[T![parameter], T![localparam]]));
-fn block_stmt(p: &mut Parser, m: Marker) {
-    p.bump(T![begin]);
-    if p.at(T![:]) {
-        let m = p.start();
-        p.bump(T![:]);
-        name(p);
-        m.complete(p, BLOCK_SCOPE);
-    }
-
-    while !p.at_ts(BLOCK_RECOVERY) {
-        let m = p.start();
-        attrs(p, BLOCK_RECOVERY.union(BLOCK_ATTR_RECOVERY));
-        if p.at_ts(TYPE_TS) {
-            var_decl(p, m);
-        } else if p.at_ts(TokenSet::new(&[T![parameter], T![localparam]])) {
-            parameter_decl(p, m);
-        } else {
-            stmt(p, m, BLOCK_STMT_TS, BLOCK_RECOVERY)
-        }
-    }
-    p.expect(T![end]);
-    m.complete(p, BLOCK_STMT);
 }
 
 fn event_stmt(p: &mut Parser, m: Marker) {
@@ -190,7 +188,7 @@ fn event_stmt(p: &mut Parser, m: Marker) {
         while !p.at_ts(TokenSet::new(&[T![')'], T![begin], T![endmodule]])) {
             let mut succ = p.expect(STR_LIT);
             if !p.at(T![')']) {
-                succ |= p.expect_with(T![,], &[T![')'], T![,]]);
+                succ |= p.expect_with(T![,], vec![T![')'], T![,]]);
                 if !succ {
                     p.bump_any()
                 }

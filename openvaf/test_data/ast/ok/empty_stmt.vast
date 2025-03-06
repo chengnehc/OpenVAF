@@ -1,0 +1,28 @@
+SOURCE_FILE@0..71
+  MODULE_DECL@0..71
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    ANALOG_BEHAVIOUR@17..25
+      ANALOG_KW@17..23 "analog"
+      WHITESPACE@23..24 " "
+      EMPTY_STMT@24..25
+        SEMICOLON@24..25 ";"
+    WHITESPACE@25..30 "\n    "
+    ANALOG_BEHAVIOUR@30..61
+      ANALOG_KW@30..36 "analog"
+      WHITESPACE@36..37 " "
+      BLOCK_STMT@37..61
+        BEGIN_KW@37..42 "begin"
+        WHITESPACE@42..51 "\n        "
+        EMPTY_STMT@51..52
+          SEMICOLON@51..52 ";"
+        EMPTY_STMT@52..53
+          SEMICOLON@52..53 ";"
+        WHITESPACE@53..58 "\n    "
+        END_KW@58..61 "end"
+    WHITESPACE@61..62 "\n"
+    ENDMODULE_KW@62..71 "endmodule"

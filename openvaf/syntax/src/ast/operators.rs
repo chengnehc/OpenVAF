@@ -53,10 +53,10 @@ pub enum BinaryOp {
     LeftShift,
     /// The `>>` operator for right shift
     RightShift,
-    /// The `^` operator for bitwise XOR
+    /// The `^` operator for bitwise XOR (exclusive OR)
     BitwiseXor,
-    /// The `~^`/`^~` operator for bitwise XOR
-    BitwiseEq,
+    /// The `~^`/`^~` operator for bitwise XNOR (exclusive NOR), also named bitwise equivalence
+    BitwiseXnor,
     /// The `|` operator for bitwise OR
     BitwiseOr,
     /// The `&` operator for bitwise AND
@@ -83,7 +83,7 @@ impl_display! {
         BinaryOp::LeftShift => "<<";
         BinaryOp::RightShift => ">>";
         BinaryOp::BitwiseXor => "^";
-        BinaryOp::BitwiseEq => "~^";
+        BinaryOp::BitwiseXnor => "~^";
         BinaryOp::BitwiseOr => "|";
         BinaryOp::BitwiseAnd => "&";
         BinaryOp::Power => "**";

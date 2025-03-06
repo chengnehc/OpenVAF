@@ -1,0 +1,6 @@
+module test;
+    branch (a,b,c) foo;
+    branch (mod.a) baz;
+    branch (<a>,<b>) qux;
+    branch (<a.$root>) hik;
+endmodule

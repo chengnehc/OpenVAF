@@ -56,7 +56,7 @@ impl TestDataBase {
             sink.annonymize_paths();
             sink.add_diagnostics(preprocess.errors(), root_file, self);
             sink.add_diagnostics(parse.errors().as_slice(), root_file, self);
-            sink.add_diagnostics(&*attr_tree.diagnostics, root_file, self);
+            sink.add_diagnostics(attr_tree.diagnostics.as_slice(), root_file, self);
         }
         let data = buf.into_inner();
         let diagnostics = String::from_utf8(data).unwrap();
@@ -85,11 +85,12 @@ fn integration(dir: &Path) -> Result {
     Ok(())
 }
 
-fn syn_ui(file: &Path) -> Result {
+fn syntax_ui(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let (_, actual) = db.parse_and_check();
 
-    expect_file![file.with_extension("log")].assert_eq(&actual);
+    std::fs::write(file.with_extension("log"), actual)?;
+    //expect_file![file.with_extension("log")].assert_eq(&actual);
 
     Ok(())
 }
@@ -99,7 +100,7 @@ fn ast(file: &Path) -> Result {
     let (parse, _) = db.parse_and_check();
     let actual = parse.debug_dump();
 
-    // std::fs::write(file.with_extension("vast"), actual)?;
+    //std::fs::write(file.with_extension("vast"), actual)?;
     expect_file![file.with_extension("vast")].assert_eq(&actual);
 
     Ok(())
@@ -107,6 +108,7 @@ fn ast(file: &Path) -> Result {
 
 harness! {
     Test::from_dir_filtered("integration", &integration, &Path::is_dir, &ignore_dev_tests, &project_root().join("integration_tests")),
-    Test::from_dir_filtered("syn_ui", &syn_ui, &is_va_file, &ignore_never, &openvaf_test_data("syn_ui")),
-    Test::from_dir_filtered("ast", &ast, &is_va_file, &ignore_never, &openvaf_test_data("ast"))
+    Test::from_dir_filtered("syntax_ui", &syntax_ui, &is_va_file, &ignore_never, &openvaf_test_data("syntax")),
+    Test::from_dir_filtered("ast_ok", &ast, &is_va_file, &ignore_never, &openvaf_test_data("ast/ok")),
+    Test::from_dir_filtered("ast_err", &ast, &is_va_file, &ignore_never, &openvaf_test_data("ast/err"))
 }

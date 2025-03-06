@@ -1,0 +1,90 @@
+SOURCE_FILE@0..144
+  MODULE_DECL@0..143
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    WHITESPACE@11..12 " "
+    L_PAREN@12..13 "("
+    MODULE_PORTS@13..14
+      R_PAREN@13..14 ")"
+    SEMICOLON@14..15 ";"
+    WHITESPACE@15..20 "\n    "
+    VAR_DECL@20..31
+      TYPE@20..24
+        REAL_KW@20..24 "real"
+      WHITESPACE@24..25 " "
+      VAR@25..30
+        NAME@25..26
+          IDENT@25..26 "x"
+        EQ@26..27 "="
+        LITERAL@27..30
+          STD_REAL_NUMBER@27..30 "1.0"
+      SEMICOLON@30..31 ";"
+    WHITESPACE@31..36 "\n    "
+    VAR_DECL@36..50
+      TYPE@36..43
+        INTEGER_KW@36..43 "integer"
+      WHITESPACE@43..44 " "
+      VAR@44..47
+        NAME@44..45
+          IDENT@44..45 "y"
+        EQ@45..46 "="
+        LITERAL@46..47
+          INT_NUMBER@46..47 "0"
+      COMMA@47..48 ","
+      VAR@48..49
+        NAME@48..49
+          IDENT@48..49 "z"
+      SEMICOLON@49..50 ";"
+    WHITESPACE@50..55 "\n    "
+    VAR_DECL@55..62
+      TYPE@55..59
+        REAL_KW@55..59 "real"
+      WHITESPACE@59..60 " "
+      VAR@60..61
+        NAME@60..61
+          IDENT@60..61 "t"
+      SEMICOLON@61..62 ";"
+    WHITESPACE@62..67 "\n    "
+    VAR_DECL@67..76
+      TYPE@67..73
+        STRING_KW@67..73 "string"
+      WHITESPACE@73..74 " "
+      VAR@74..75
+        NAME@74..75
+          IDENT@74..75 "s"
+      SEMICOLON@75..76 ";"
+    WHITESPACE@76..81 "\n    "
+    NET_DECL@81..88
+      NAME_REF@81..84
+        IDENT@81..84 "int"
+      WHITESPACE@84..85 " "
+      NAME@85..87
+        IDENT@85..87 "rt"
+      SEMICOLON@87..88 ";"
+    WHITESPACE@88..90 "  "
+    COMMENT@90..112 "// this is problematic"
+    WHITESPACE@112..117 "\n    "
+    ANALOG_BEHAVIOUR@117..133
+      ANALOG_KW@117..123 "analog"
+      WHITESPACE@123..124 " "
+      ASSIGN_STMT@124..133
+        ASSIGN@124..132
+          PATH_EXPR@124..125
+            PATH@124..125
+              IDENT@124..125 "x"
+          WHITESPACE@125..126 " "
+          EQ@126..127 "="
+          WHITESPACE@127..128 " "
+          BIN_EXPR@128..132
+            LITERAL@128..129
+              INT_NUMBER@128..129 "2"
+            EQ2@129..131 "=="
+            PATH_EXPR@131..132
+              PATH@131..132
+                IDENT@131..132 "y"
+        SEMICOLON@132..133 ";"
+    WHITESPACE@133..134 "\n"
+    ENDMODULE_KW@134..143 "endmodule"
+  WHITESPACE@143..144 "\n"

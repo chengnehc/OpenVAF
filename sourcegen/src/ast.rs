@@ -27,24 +27,24 @@ use self::src::{
 };
 
 #[test]
-pub fn ast() {
+pub fn gen_ast() {
     let grammar = fs::read_to_string(project_root().join("openvaf/syntax/veriloga.ungram"))
         .unwrap()
         .parse()
         .unwrap();
-    let ast = lower(&grammar);
+    let ast_src = lower(&grammar);
+
+    let ast_tokens_file = project_root().join("openvaf/syntax/src/ast/generated/tokens.rs");
+    let contents = generate_tokens(&ast_src);
+    ensure_file_contents(ast_tokens_file.as_path(), &contents);
+
+    let ast_nodes_file = project_root().join("openvaf/syntax/src/ast/generated/nodes.rs");
+    let contents = generate_nodes(&ast_src, KINDS_SRC);
+    ensure_file_contents(ast_nodes_file.as_path(), &contents);
 
     let syntax_kinds_file = project_root().join("openvaf/tokens/src/syntax_kind/generated.rs");
     let syntax_kinds = generate_syntax_kinds(KINDS_SRC);
     ensure_file_contents(syntax_kinds_file.as_path(), &syntax_kinds);
-
-    let ast_tokens_file = project_root().join("openvaf/syntax/src/ast/generated/tokens.rs");
-    let contents = generate_tokens(&ast);
-    ensure_file_contents(ast_tokens_file.as_path(), &contents);
-
-    let ast_nodes_file = project_root().join("openvaf/syntax/src/ast/generated/nodes.rs");
-    let contents = generate_nodes(KINDS_SRC, &ast);
-    ensure_file_contents(ast_nodes_file.as_path(), &contents);
 }
 
 fn generate_tokens(grammar: &AstSrc) -> String {
@@ -86,7 +86,7 @@ fn generate_tokens(grammar: &AstSrc) -> String {
     .replace("#[derive", "\n#[derive")
 }
 
-fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
+fn generate_nodes(grammar: &AstSrc, kinds: KindsSrc<'_>) -> String {
     let (node_defs, node_boilerplate_impls): (Vec<_>, Vec<_>) = grammar
         .nodes
         .iter()
@@ -97,11 +97,9 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
                 let trait_name = format_ident!("{}", trait_name);
                 quote!(impl ast::#trait_name for #name {})
             });
-
             let methods = node.fields.iter().map(|field| {
                 let method_name = field.method_name();
                 let ty = field.ty();
-
                 if field.is_many() {
                     quote! {
                         pub fn #method_name(&self) -> AstChildren<#ty> {
@@ -152,47 +150,38 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
     let (enum_defs, enum_boilerplate_impls): (Vec<_>, Vec<_>) = grammar
         .enums
         .iter()
-        .map(|en| {
+        .map(|enm| {
+            let name = format_ident!("{}", enm.name);
             let kinds: Vec<_> =
-                en.variants.iter().map(|var| format_ident!("{}", var.syntax_kind())).collect();
-            let variants: Vec<_> = en
-                .variants
-                .iter()
-                .map(|var| format_ident!("{}", var.name()))
-                .chain(en.nested_variant.as_ref().map(|it| format_ident!("{}", it)))
+                enm.variants.iter().map(|var| format_ident!("{}", var.syntax_kind())).collect();
+            let simple_variants = enm.variants.iter().map(|var| format_ident!("{}", var.name()));
+            let variants: Vec<_> = simple_variants
+                .clone()
+                .chain(enm.nested_variant.as_ref().map(|it| format_ident!("{}", it)))
                 .collect();
-            let name = format_ident!("{}", en.name);
-            let simple_variants: Vec<_> =
-                en.variants.iter().map(|var| format_ident!("{}", var.name())).collect();
-            let default_cast = en.nested_variant.clone().map_or_else(
-                || quote! {return None},
-                |default_case| {
-                    let variant = format_ident!("{}", default_case);
-                    quote! {#name::#variant(#variant::cast(syntax)?)}
-                },
-            );
-
-            let default_can_cast = en.nested_variant.clone().map_or_else(
+            let traits = enm.traits.iter().map(|trait_name| {
+                let trait_name = format_ident!("{}", trait_name);
+                quote!(impl ast::#trait_name for #name {})
+            });
+            let default_can_cast = enm.nested_variant.clone().map_or_else(
                 || quote! {false},
                 |default_case| {
                     let variant = format_ident!("{}", default_case);
                     quote! {#variant::can_cast(kind)}
                 },
             );
-
-            let nested_syntax = en.nested_variant.clone().map(|n| {
+            let default_cast = enm.nested_variant.clone().map_or_else(
+                || quote! {return None},
+                |default_case| {
+                    let variant = format_ident!("{}", default_case);
+                    quote! {#name::#variant(#variant::cast(syntax)?)}
+                },
+            );
+            let nested_syntax = enm.nested_variant.clone().map(|n| {
                 let variant = format_ident!("{}", n);
-                quote! {
-                    #name::#variant(it) => it.syntax()
-                }
+                quote! {#name::#variant(it) => it.syntax()}
             });
-
-            let traits = en.traits.iter().map(|trait_name| {
-                let trait_name = format_ident!("{}", trait_name);
-                quote!(impl ast::#trait_name for #name {})
-            });
-
-            let ast_node = if MANUAL_ENUMS.contains(&&*en.name) {
+            let ast_node = if MANUAL_ENUMS.contains(&enm.name.as_str()) {
                 quote!()
             } else {
                 quote! {
@@ -223,7 +212,6 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
                     }
                 }
             };
-
             (
                 quote! {
                     #[pretty_doc_comment_placeholder_workaround]
@@ -235,11 +223,11 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
                 },
                 quote! {
                     #(
-                        impl From<#variants> for #name {
-                            fn from(node: #variants) -> #name {
-                                #name::#variants(node)
-                            }
+                    impl From<#variants> for #name {
+                        fn from(node: #variants) -> #name {
+                            #name::#variants(node)
                         }
+                    }
                     )*
                     #ast_node
                 },
@@ -247,9 +235,8 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
         })
         .unzip();
 
-    let enum_names = grammar.enums.iter().map(|it| &it.name);
     let node_names = grammar.nodes.iter().map(|it| &it.name);
-
+    let enum_names = grammar.enums.iter().map(|it| &it.name);
     let display_impls =
         enum_names.chain(node_names.clone()).map(|it| format_ident!("{}", it)).map(|name| {
             quote! {
@@ -262,14 +249,12 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
         });
 
     let defined_nodes: HashSet<_> = node_names.collect();
-
     for node in kinds
         .nodes
         .iter()
         .map(|kind| to_pascal_case(kind))
         .filter(|name| !defined_nodes.contains(name))
     {
-        // FIXME restore this
         eprintln!("Warning: node {} not defined in ast source", node);
         drop(node);
     }
@@ -285,14 +270,11 @@ fn generate_nodes(kinds: KindsSrc<'_>, grammar: &AstSrc) -> String {
         #(#enum_boilerplate_impls)*
         #(#display_impls)*
     };
-
     let ast = ast.to_string().replace("T ! [", "T![");
 
     let mut res = String::with_capacity(ast.len() * 2);
-
     let mut docs =
         grammar.nodes.iter().map(|it| &it.doc).chain(grammar.enums.iter().map(|it| &it.doc));
-
     for chunk in ast.split("# [pretty_doc_comment_placeholder_workaround] ") {
         res.push_str(chunk);
         if let Some(doc) = docs.next() {
@@ -428,10 +410,13 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
                     Self::SYSFUN => "system function identifier",
                     Self::WHITESPACE => "whitespace",
                     Self::COMMENT => "comment",
-                    Self::FUNCTION => "function decl.",
+                    Self::FUNCTION => "analog function decl.",
                     Self::PORT_DECL => "port decl.",
                     Self::NET_DECL => "net decl.",
-                    Self::ANALOG_BEHAVIOUR => "analog block",
+                    Self::BRANCH_DECL => "branch decl.",
+                    Self::VAR_DECL => "variable decl.",
+                    Self::PARAM_DECL => "parameter decl.",
+                    Self::ANALOG_BEHAVIOUR => "analog procedural block",
                     _ => return std::fmt::Debug::fmt(self, f)
                 };
                 write!(f, "{}", pretty)
@@ -525,9 +510,7 @@ fn lower(grammar: &Grammar) -> AstSrc {
         enums: vec![],
     };
 
-    let nodes = grammar.iter().collect::<Vec<_>>();
-
-    for &node in &nodes {
+    for node in grammar.iter() {
         let name = grammar[node].name.clone();
         let rule = &grammar[node].rule;
         match lower_enum(grammar, rule) {
@@ -557,17 +540,16 @@ fn lower(grammar: &Grammar) -> AstSrc {
 }
 
 fn lower_enum(grammar: &Grammar, rule: &Rule) -> Option<(Vec<AstEnumVariant>, Option<String>)> {
-    let alternatives = match rule {
-        Rule::Alt(it) => it,
-        _ => return None,
+    let Rule::Alt(alts) = rule else {
+        return None;
     };
     let mut variants = Vec::new();
     let mut nested = None;
-    let mut seen_non_token = false; // Don't generated enum when all alternatives are tokens
-    for alternative in alternatives {
-        match alternative {
+    let mut seen_non_token = false; // Don't generate enum when all alternatives are tokens
+    for alt in alts {
+        match alt {
             Rule::Node(it) if matches!(grammar[*it].rule, Rule::Alt(_)) => {
-                assert_eq!(nested, None, "only a single nested enum is supported");
+                assert!(nested.is_none(), "only a single nested enum is supported");
                 seen_non_token = true;
                 nested = Some(grammar[*it].name.clone());
             }
@@ -584,6 +566,32 @@ fn lower_enum(grammar: &Grammar, rule: &Rule) -> Option<(Vec<AstEnumVariant>, Op
     seen_non_token.then_some((variants, nested))
 }
 
+const MANUAL_LABEL: [&str; 16] = [
+    // PrefixExpr, BinExpr, Assign
+    "op",
+    "lhs",
+    "rhs",
+    "lval",
+    "rval",
+    // SelectExpr
+    "then_val",
+    "else_val",
+    // IfStmt
+    "then_branch",
+    "else_branch",
+    // ForStmt
+    "init",
+    "incr",
+    "for_body",
+    // Range
+    "start",
+    "end",
+    // ModulePort
+    "kind",
+    // EventStmt
+    "sim_phases",
+];
+
 fn lower_rule(acc: &mut Vec<Field>, grammar: &Grammar, label: Option<&String>, rule: &Rule) {
     if lower_comma_list(acc, grammar, label, rule) {
         return;
@@ -597,13 +605,9 @@ fn lower_rule(acc: &mut Vec<Field>, grammar: &Grammar, label: Option<&String>, r
             acc.push(field);
         }
         Rule::Token(token) => {
-            assert_eq!(label, None);
+            assert!(label.is_none(), "labels are only applicable to nodes");
             let mut name = grammar[*token].name.clone();
-            if name != "int_number"
-                && name != "str_lit"
-                && name != "std_real_number"
-                && name != "si_real_number"
-            {
+            if !matches!(&*name, "int_number" | "str_lit" | "std_real_number" | "si_real_number") {
                 if "[]{}()".contains(&name) {
                     name = format!("'{}'", name);
                 } else if name == "'{" || name == "(*" || name == "*)" {
@@ -614,38 +618,15 @@ fn lower_rule(acc: &mut Vec<Field>, grammar: &Grammar, label: Option<&String>, r
             }
         }
         Rule::Rep(inner) => {
-            if let Rule::Node(node) = &**inner {
-                let ty = grammar[*node].name.clone();
-                let name = label.cloned().unwrap_or_else(|| pluralize(&to_lower_snake_case(&ty)));
-                let field = Field::Node { name, ty, cardinality: Cardinality::Many };
-                acc.push(field);
-                return;
-            }
-            panic!("unhandled rule: {:?}", rule)
+            let Rule::Node(node) = **inner else { panic!("unhandled rule: {:?}", rule) };
+            let ty = grammar[node].name.clone();
+            let name = label.cloned().unwrap_or_else(|| pluralize(&to_lower_snake_case(&ty)));
+            let field = Field::Node { name, ty, cardinality: Cardinality::Many };
+            acc.push(field);
         }
         Rule::Labeled { label: l, rule } => {
-            assert_eq!(label, None, "double label (new label {})", l);
-            let manually_implemented = matches!(
-                l.as_str(),
-                "op" | "lhs"
-                    | "rhs"
-                    | "lval"
-                    | "rval"
-                    | "then_branch"
-                    | "else_branch"
-                    | "then_val"
-                    | "else_val"
-                    | "start"
-                    | "end"
-                    | "ident"
-                    | "literal"
-                    | "init"
-                    | "incr"
-                    | "kind"
-                    | "for_body"
-                    | "sim_phases"
-            );
-            if manually_implemented {
+            assert!(label.is_none(), "double label (new label {})", l);
+            if MANUAL_LABEL.contains(&l.as_str()) {
                 return;
             }
             lower_rule(acc, grammar, Some(l), rule);
@@ -666,18 +647,9 @@ fn lower_comma_list(
     label: Option<&String>,
     rule: &Rule,
 ) -> bool {
-    let rule = match rule {
-        Rule::Seq(it) => it,
-        _ => return false,
-    };
-    let (node, repeat) = match rule.as_slice() {
-        [Rule::Node(node), Rule::Rep(repeat)] => (node, repeat),
-        _ => return false,
-    };
-    let repeat = match &**repeat {
-        Rule::Seq(it) => it,
-        _ => return false,
-    };
+    let Rule::Seq(rule) = rule else { return false };
+    let [Rule::Node(node), Rule::Rep(repeat)] = rule.as_slice() else { return false };
+    let Rule::Seq(repeat) = &**repeat else { return false };
     match repeat.as_slice() {
         [_comma, Rule::Node(n)] if n == node => (),
         _ => return false,
@@ -686,6 +658,7 @@ fn lower_comma_list(
     let name = label.cloned().unwrap_or_else(|| pluralize(&to_lower_snake_case(&ty)));
     let field = Field::Node { name, ty, cardinality: Cardinality::Many };
     acc.push(field);
+
     true
 }
 
@@ -754,7 +727,7 @@ fn extract_struct_trait(node: &mut AstNodeSrc, trait_name: &str, methods: &[&str
 
 fn extract_enum_traits(ast: &mut AstSrc) {
     for enm in &mut ast.enums {
-        if MANUAL_ENUMS.contains(&&*enm.name) {
+        if MANUAL_ENUMS.contains(&enm.name.as_str()) {
             continue;
         }
         let nodes = &ast.nodes;
@@ -770,10 +743,7 @@ fn extract_enum_traits(ast: &mut AstSrc) {
             })
             .map(|node| node.traits.iter().cloned().collect::<BTreeSet<_>>());
 
-        let mut enum_traits = match variant_traits.next() {
-            Some(it) => it,
-            None => continue,
-        };
+        let Some(mut enum_traits) = variant_traits.next() else { continue };
         for traits in variant_traits {
             enum_traits = enum_traits.intersection(&traits).cloned().collect();
         }

@@ -62,7 +62,7 @@ impl<C: Debug> Debug for List<C> {
     }
 }
 
-impl<X: Display, T: Deref<Target = [X]>> Display for List<T> {
+impl<T: Display, C: Deref<Target = [T]>> Display for List<C> {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self.data.deref() {

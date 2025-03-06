@@ -1,0 +1,170 @@
+SOURCE_FILE@0..305
+  MODULE_DECL@0..305
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    PARAM_DECL@17..43
+      PARAMETER_KW@17..26 "parameter"
+      WHITESPACE@26..27 " "
+      TYPE@27..34
+        INTEGER_KW@27..34 "integer"
+      WHITESPACE@34..35 " "
+      PARAM@35..42
+        NAME@35..38
+          IDENT@35..38 "foo"
+        WHITESPACE@38..39 " "
+        EQ@39..40 "="
+        WHITESPACE@40..41 " "
+        LITERAL@41..42
+          INT_NUMBER@41..42 "0"
+      SEMICOLON@42..43 ";"
+    WHITESPACE@43..48 "\n    "
+    PARAM_DECL@48..74
+      PARAMETER_KW@48..57 "parameter"
+      WHITESPACE@57..58 " "
+      TYPE@58..65
+        INTEGER_KW@58..65 "integer"
+      WHITESPACE@65..66 " "
+      PARAM@66..73
+        NAME@66..69
+          IDENT@66..69 "bar"
+        WHITESPACE@69..70 " "
+        EQ@70..71 "="
+        WHITESPACE@71..72 " "
+        LITERAL@72..73
+          INT_NUMBER@72..73 "0"
+      SEMICOLON@73..74 ";"
+    WHITESPACE@74..79 "\n    "
+    VAR_DECL@79..89
+      TYPE@79..83
+        REAL_KW@79..83 "real"
+      WHITESPACE@83..84 " "
+      VAR@84..88
+        NAME@84..88
+          IDENT@84..88 "test"
+      SEMICOLON@88..89 ";"
+    WHITESPACE@89..94 "\n    "
+    VAR_DECL@94..105
+      TYPE@94..98
+        REAL_KW@94..98 "real"
+      WHITESPACE@98..99 " "
+      VAR@99..104
+        NAME@99..104
+          IDENT@99..104 "test2"
+      SEMICOLON@104..105 ";"
+    WHITESPACE@105..110 "\n    "
+    ANALOG_BEHAVIOUR@110..295
+      ANALOG_KW@110..116 "analog"
+      WHITESPACE@116..117 " "
+      CASE_STMT@117..295
+        CASE_KW@117..121 "case"
+        L_PAREN@121..122 "("
+        BIN_EXPR@122..134
+          CALL@122..130
+            PATH@122..125
+              IDENT@122..125 "abs"
+            ARG_LIST@125..130
+              L_PAREN@125..126 "("
+              PATH_EXPR@126..129
+                PATH@126..129
+                  IDENT@126..129 "foo"
+              R_PAREN@129..130 ")"
+          PLUS@130..131 "+"
+          PATH_EXPR@131..134
+            PATH@131..134
+              IDENT@131..134 "bar"
+        R_PAREN@134..135 ")"
+        WHITESPACE@135..144 "\n        "
+        CASE@144..160
+          LITERAL@144..145
+            INT_NUMBER@144..145 "0"
+          COLON@145..146 ":"
+          WHITESPACE@146..147 " "
+          ASSIGN_STMT@147..160
+            ASSIGN@147..159
+              PATH_EXPR@147..151
+                PATH@147..151
+                  IDENT@147..151 "test"
+              WHITESPACE@151..152 " "
+              EQ@152..153 "="
+              WHITESPACE@153..154 " "
+              LITERAL@154..159
+                STD_REAL_NUMBER@154..159 "3.141"
+            SEMICOLON@159..160 ";"
+        WHITESPACE@160..169 "\n        "
+        CASE@169..256
+          LITERAL@169..170
+            INT_NUMBER@169..170 "1"
+          COMMA@170..171 ","
+          LITERAL@171..172
+            INT_NUMBER@171..172 "2"
+          COMMA@172..173 ","
+          LITERAL@173..174
+            INT_NUMBER@173..174 "3"
+          COLON@174..175 ":"
+          WHITESPACE@175..176 " "
+          BLOCK_STMT@176..256
+            BEGIN_KW@176..181 "begin"
+            WHITESPACE@181..194 "\n            "
+            ASSIGN_STMT@194..213
+              ASSIGN@194..212
+                PATH_EXPR@194..198
+                  PATH@194..198
+                    IDENT@194..198 "test"
+                WHITESPACE@198..199 " "
+                EQ@199..200 "="
+                WHITESPACE@200..201 " "
+                BIN_EXPR@201..212
+                  PATH_EXPR@201..204
+                    PATH@201..204
+                      IDENT@201..204 "foo"
+                  WHITESPACE@204..205 " "
+                  SLASH@205..206 "/"
+                  WHITESPACE@206..207 " "
+                  LITERAL@207..212
+                    STD_REAL_NUMBER@207..212 "3.141"
+              SEMICOLON@212..213 ";"
+            WHITESPACE@213..226 "\n            "
+            ASSIGN_STMT@226..244
+              ASSIGN@226..243
+                PATH_EXPR@226..231
+                  PATH@226..231
+                    IDENT@226..231 "test2"
+                WHITESPACE@231..232 " "
+                EQ@232..233 "="
+                WHITESPACE@233..234 " "
+                CALL@234..243
+                  PATH@234..237
+                    IDENT@234..237 "sin"
+                  ARG_LIST@237..243
+                    L_PAREN@237..238 "("
+                    PATH_EXPR@238..242
+                      PATH@238..242
+                        IDENT@238..242 "test"
+                    R_PAREN@242..243 ")"
+              SEMICOLON@243..244 ";"
+            WHITESPACE@244..253 "\n        "
+            END_KW@253..256 "end"
+        WHITESPACE@256..265 "\n        "
+        CASE@265..283
+          DEFAULT_KW@265..272 "default"
+          COLON@272..273 ":"
+          WHITESPACE@273..274 " "
+          ASSIGN_STMT@274..283
+            ASSIGN@274..282
+              PATH_EXPR@274..278
+                PATH@274..278
+                  IDENT@274..278 "test"
+              WHITESPACE@278..279 " "
+              EQ@279..280 "="
+              WHITESPACE@280..281 " "
+              LITERAL@281..282
+                INT_NUMBER@281..282 "0"
+            SEMICOLON@282..283 ";"
+        WHITESPACE@283..288 "\n    "
+        ENDCASE_KW@288..295 "endcase"
+    WHITESPACE@295..296 "\n"
+    ENDMODULE_KW@296..305 "endmodule"

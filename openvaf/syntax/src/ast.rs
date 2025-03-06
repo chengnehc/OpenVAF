@@ -64,7 +64,7 @@ pub trait AstToken {
     where
         Self: Sized;
 
-    /// cast a `SyntaxToken` to corresponding `AstToken`
+    /// cast a `SyntaxToken` to an `AstToken`, if possible
     fn cast(syntax: SyntaxToken) -> Option<Self>
     where
         Self: Sized;
@@ -72,7 +72,7 @@ pub trait AstToken {
     /// unwrap the `AstNode` to get inner `SynatxNode`
     fn syntax(&self) -> &SyntaxToken;
 
-    // Not used. --Jingwei
+    /// return the text string of this token
     fn text(&self) -> &str {
         self.syntax().text()
     }
@@ -143,23 +143,23 @@ pub(crate) mod support {
         AstChildTokens, AstChildren, AstNode, AstToken, RevAstChildren, SyntaxKind, SyntaxNode,
         SyntaxToken,
     };
-    /// the first immediate child node of `parent`
+    /// Return the first immediate child node typed `N` of `parent`.
     pub(crate) fn child<N: AstNode>(parent: &SyntaxNode) -> Option<N> {
         parent.children().find_map(N::cast)
     }
-    /// the iterator containing all children nodes of `parent`
+    /// Iterate through children nodes typed `N` of `parent`.
     pub(crate) fn children<N: AstNode>(parent: &SyntaxNode) -> AstChildren<N> {
         AstChildren::new(parent)
     }
-    /// the reverse iterator containing all children nodes of `parent`
+    /// Iterate reversely through children nodes typed `N` of `parent`.
     pub(crate) fn rev_children<N: AstNode>(parent: &SyntaxNode) -> RevAstChildren<N> {
         RevAstChildren::new(parent)
     }
-    /// the iterator containing both children nodes and tokens of `parent`
+    /// Iterate through child token nodes typed `N` of `parent`.
     pub(crate) fn child_tokens<N: AstToken>(parent: &SyntaxNode) -> AstChildTokens<N> {
         AstChildTokens::new(parent)
     }
-    /// get the child token of `parent` with specified syntax kind
+    /// Get the child token of `parent` according to specified syntax `kind`.
     pub(crate) fn token(parent: &SyntaxNode, kind: SyntaxKind) -> Option<SyntaxToken> {
         parent.children_with_tokens().filter_map(|it| it.into_token()).find(|it| it.kind() == kind)
     }

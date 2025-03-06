@@ -5,6 +5,15 @@ use super::*;
 
 const EXPR_EXPECTED: &[SyntaxKind] =
     &[T!['('], T!["'{"], SYSFUN, NAME, LITERAL, T![~], T![!], T![+], T![-]];
+const EXPR_RECOVERY: TokenSet = TokenSet::new(&[
+    T![;],
+    T![endmodule],
+    T![endfunction],
+    T![endnature],
+    T![enddiscipline],
+    T![endcase],
+    T![end],
+]);
 
 pub(super) fn expr(p: &mut Parser) -> Option<CompletedMarker> {
     // start from `bp = 1` since `0` is reserved as `NOT_AN_OP`
@@ -65,7 +74,6 @@ fn current_op(p: &Parser) -> (u8, SyntaxKind) {
 /// Parses expression with binding power of at least `bp`.
 fn expr_bp(p: &mut Parser, bp: u8) -> Option<CompletedMarker> {
     let mut lhs = atom_expr(p)?;
-
     loop {
         let (op_bp, op) = current_op(p);
         // parse expressions with relatively high binding power,
@@ -92,32 +100,26 @@ fn expr_bp(p: &mut Parser, bp: u8) -> Option<CompletedMarker> {
     Some(lhs)
 }
 
-pub(crate) const EXPR_RECOVERY: TokenSet = TokenSet::new(&[
-    T![;],
-    T![endmodule],
-    T![endfunction],
-    T![endnature],
-    T![enddiscipline],
-    T![endcase],
-    T![end],
-]);
-
 fn atom_expr(p: &mut Parser) -> Option<CompletedMarker> {
     let done = match p.current() {
-        // parenthesized expression introduces recursion
+        // Literal
+        INT_NUMBER | SI_REAL_NUMBER | STD_REAL_NUMBER | STR_LIT | T![inf] => {
+            let m = p.start();
+            p.bump_any();
+            m.complete(p, LITERAL)
+        }
+        // ParenExpr
         T!['('] => paren_expr(p),
-
-        // TODO properly implement arrays
-        // T!["'{"] => array_expr(p)
-
-        // expression with unary prefixes is not atomic and introduces recursion
+        // PortFlow
+        T![<] => port_flow(p),
+        // PrefixExpr
         T![~] | T![!] | T![-] | T![+] => {
             let m = p.start();
             p.bump_any();
             atom_expr(p);
             m.complete(p, PREFIX_EXPR)
         }
-
+        // PathExpr or Call
         T![ident] | T![root] => {
             let cm = path(p);
             if p.at(T!('(')) {
@@ -127,19 +129,11 @@ fn atom_expr(p: &mut Parser) -> Option<CompletedMarker> {
                 m.complete(p, PATH_EXPR)
             }
         }
-
         T![sysfun] => sys_fun_call(p),
-
-        T![<] => port_flow(p),
-
-        INT_NUMBER | SI_REAL_NUMBER | STD_REAL_NUMBER | STR_LIT | T![inf] => {
-            let m = p.start();
-            p.bump_any();
-            m.complete(p, LITERAL)
-        }
-
+        // TODO properly implement arrays
+        // T!["'{"] => array_expr(p)
         _ => {
-            p.err_recover(p.err_with_expected_syntaxes(EXPR_EXPECTED), EXPR_RECOVERY);
+            p.err_recover(p.err_with_expected_syntaxes(EXPR_EXPECTED.to_owned()), EXPR_RECOVERY);
             return None;
         }
     };
@@ -151,17 +145,15 @@ fn paren_expr(p: &mut Parser) -> CompletedMarker {
     p.bump(T!['(']);
 
     // JW: this is for tuple-like expressions: (expr1, expr2, ..)
-    // that is not described in VAMS LRM, to the best of my knowledge.
-    /*
-        while !p.at(EOF) && !p.at(T![')']) {
-            if expr(p).is_none() {
-                break;
-            }
-            if !p.at(T![')']) {
-                p.expect(T![,]);
-            }
+    // which is not described in VAMS LRM, to the best of my knowledge.
+    /*  while !p.at(EOF) && !p.at(T![')']) {
+        if expr(p).is_none() {
+            break;
         }
-    */
+        if !p.at(T![')']) {
+            p.expect(T![,]);
+        }
+    } */
 
     // only this is allowed: (expr)
     expr(p);

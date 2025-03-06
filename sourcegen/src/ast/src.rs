@@ -2,6 +2,7 @@
 
 use crate::to_upper_snake_case;
 
+/// `SyntaxKind` sources
 pub(crate) struct KindsSrc<'a> {
     pub(crate) punct: &'a [(&'a str, &'a str)],
     pub(crate) keywords: &'a [&'a str],
@@ -99,18 +100,20 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
     literals: &["INT_NUMBER", "STD_REAL_NUMBER", "SI_REAL_NUMBER", "STR_LIT"],
     tokens: &["ERROR", "IDENT", "SYSFUN", "NET_TYPE", "WHITESPACE", "COMMENT"],
     nodes: &[
+        "ALIAS_PARAM",
         "ANALOG_BEHAVIOUR",
-        "ARG",
+        // "ARG",
         "ARG_LIST",
         "ARRAY_EXPR",
         "ASSIGN",
         "ASSIGN_STMT",
-        "ASSIGN_OR_EXPR",
+        // "ASSIGN_OR_EXPR",
         "ATTR",
         "ATTR_LIST",
         "BIN_EXPR",
         "BLOCK_SCOPE",
         "BLOCK_STMT",
+        "BODY_PORT_DECL",
         "BRANCH_DECL",
         "CALL",
         "CASE",
@@ -119,7 +122,9 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
         "DIRECTION",
         "DISCIPLINE_DECL",
         "DISCIPLINE_ATTR",
+        "EMPTY_STMT",
         "EVENT_STMT",
+        "EXPR_STMT",
         "FOR_STMT",
         "FUNCTION",
         "FUNCTION_ARG",
@@ -130,34 +135,32 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
         "MODULE_PORTS",
         "NAME",
         "NAME_REF",
-        "SYS_FUN",
-        "BODY_PORT_DECL",
         "NATURE_DECL",
         "NATURE_ATTR",
         "NET_DECL",
-        "NETS",
+        // "NETS",
         "PARAM",
-        "ALIAS_PARAM",
         "PARAM_DECL",
         "PAREN_EXPR",
         "PATH",
         "PATH_EXPR",
         "PORT_DECL",
-        "PORTS",
+        "PORT_FLOW",
+        // "PORTS",
         "PREFIX_EXPR",
         "RANGE",
         "SELECT_EXPR",
+        "SOURCE_FILE",
+        "SYS_FUN",
         "TYPE",
         "VAR",
         "VAR_DECL",
         "WHILE_STMT",
-        "EMPTY_STMT",
-        "EXPR_STMT",
-        "PORT_FLOW",
-        "SOURCE_FILE",
     ],
 };
 
+/// The parsed ungrammar `Grammar` will be lowered into `AstSrc` for
+/// source code generation.
 #[derive(Default, Debug)]
 pub(crate) struct AstSrc {
     pub(crate) tokens: Vec<String>,
@@ -169,8 +172,8 @@ pub(crate) struct AstSrc {
 pub(crate) struct AstNodeSrc {
     pub(crate) doc: Vec<String>,
     pub(crate) name: String,
-    pub(crate) traits: Vec<String>,
     pub(crate) fields: Vec<Field>,
+    pub(crate) traits: Vec<String>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -181,8 +184,8 @@ pub(crate) enum Field {
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum Cardinality {
-    Optional,
-    Many,
+    Optional, // ?
+    Many,     // *
 }
 
 pub(crate) const MANUAL_ENUMS: [&str; 1] = ["Literal"];
@@ -191,9 +194,9 @@ pub(crate) const MANUAL_ENUMS: [&str; 1] = ["Literal"];
 pub(crate) struct AstEnumSrc {
     pub(crate) doc: Vec<String>,
     pub(crate) name: String,
-    pub(crate) traits: Vec<String>,
     pub(crate) variants: Vec<AstEnumVariant>,
     pub(crate) nested_variant: Option<String>,
+    pub(crate) traits: Vec<String>,
 }
 
 #[derive(Debug)]

@@ -1,6 +1,8 @@
+// no ports at all
 module test1;
 endmodule
 
+// port declared within body
 module test2 (a,b,c,d,e,f,g);
     output a;
     input b;
@@ -10,5 +12,10 @@ module test2 (a,b,c,d,e,f,g);
     inout electrical ground g;
 endmodule
 
+// ports declared within header
 module test3 (output a,b, input electrical c,d,e, (*foo*) inout electrical ground f);
+endmodule
+
+// no ports, but with parens
+module test4();
 endmodule

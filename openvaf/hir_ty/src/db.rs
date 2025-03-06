@@ -101,7 +101,7 @@ fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
     let def_map = id.lookup(db.upcast()).module.lookup(db.upcast()).scope.def_map(db.upcast());
     let node = db.node_data(id);
     let discipline = node.discipline.as_ref()?;
-    def_map.resolve_local_item_in_scope(def_map.root_scope(), discipline).ok()
+    def_map.resolve_item_in(def_map.root_scope(), discipline).ok()
 }
 
 fn param_ty(db: &dyn HirTyDB, param: ParamId) -> Type {

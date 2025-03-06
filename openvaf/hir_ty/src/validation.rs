@@ -846,10 +846,10 @@ impl TypeValidator<'_> {
 
         if let Some((decl, discipline)) = disciplines.next() {
             for (decl, discipline) in iter::once((decl, discipline)).chain(disciplines.clone()) {
-                if let Err(err) = self.def_map.resolve_local_item_in_scope::<DisciplineId>(
-                    self.def_map.root_scope(),
-                    discipline,
-                ) {
+                if let Err(err) = self
+                    .def_map
+                    .resolve_item_in::<DisciplineId>(self.def_map.root_scope(), discipline)
+                {
                     self.report(TypeDiagnostic::PathError {
                         err,
                         src: SyntaxNodePtr::new(

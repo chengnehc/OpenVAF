@@ -1,0 +1,11 @@
+module test;
+    inout electrical di, si;
+    parameter integer BULKMOD = 0;
+    integer devsign = 1;
+    analog begin
+        if (BULKMOD != 0)
+            I(di, e) <+ devsign;
+        else
+            I(di, e) <+ -devsign;
+    end
+endmodule

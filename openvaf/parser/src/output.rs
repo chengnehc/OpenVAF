@@ -1,4 +1,4 @@
-use crate::{SyntaxError, SyntaxKind};
+use crate::{Error, SyntaxKind};
 
 /// Output of the parser -- a DFS traversal of a concrete syntax tree.
 ///
@@ -11,7 +11,7 @@ pub struct Output {
     ///     |16 bit kind|8 bit leftovers|4 bit tag|4 bit leftover|
     ///
     event: Vec<u32>,
-    error: Vec<SyntaxError>,
+    error: Vec<Error>,
 }
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ pub enum Step<'a> {
     Token { kind: SyntaxKind }, // tag = 0000
     Enter { kind: SyntaxKind }, // tag = 0001
     Exit,                       // tag = 0010
-    Error { err: &'a SyntaxError },
+    Error { err: &'a Error },
 }
 
 impl Output {
@@ -65,7 +65,7 @@ impl Output {
     }
 
     // Step::Error
-    pub(crate) fn error(&mut self, error: SyntaxError) {
+    pub(crate) fn error(&mut self, error: Error) {
         let idx = self.error.len();
         self.error.push(error);
         let e = (idx as u32) << 1;

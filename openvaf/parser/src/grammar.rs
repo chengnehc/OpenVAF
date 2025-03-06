@@ -24,7 +24,7 @@ mod stmts;
 use attributes::attrs;
 use call::arg_list;
 use expressions::expr;
-use items::ITEM_RECOVERY_SET;
+use items::ITEM_RECOVERY;
 use stmts::{stmt, stmt_with_attrs};
 
 const TYPE_TS: TokenSet = TokenSet::new(&[T![real], T![integer], T![string]]);
@@ -38,7 +38,7 @@ pub(crate) fn source_file(p: &mut Parser) {
     let mut error_range: Option<CompletedMarker> = None;
     while !p.at(EOF) {
         let m = p.start();
-        attrs(p, ITEM_RECOVERY_SET);
+        attrs(p, ITEM_RECOVERY);
         match p.current() {
             T![discipline] => {
                 error_range.take();
@@ -56,16 +56,16 @@ pub(crate) fn source_file(p: &mut Parser) {
                 error_range = if let Some(error_range) = error_range {
                     m.abandon(p);
                     p.bump_any();
-                    while !p.at_ts(ITEM_RECOVERY_SET) {
+                    while !p.at_ts(ITEM_RECOVERY) {
                         p.bump_any();
                     }
                     Some(error_range.undo_completion(p).complete(p, ERROR))
                 } else {
                     let err =
-                        p.err_with_expected_syntaxes(&[T![discipline], T![nature], T![module]]);
+                        p.err_with_expected_syntaxes(vec![T![discipline], T![nature], T![module]]);
                     p.error(err);
                     p.bump_any();
-                    while !p.at_ts(ITEM_RECOVERY_SET) {
+                    while !p.at_ts(ITEM_RECOVERY) {
                         p.bump_any();
                     }
                     Some(m.complete(p, ERROR))
@@ -78,6 +78,8 @@ pub(crate) fn source_file(p: &mut Parser) {
 
 // start anyway, complete or abandon after
 // TODO(JW): does this undermine performance?
+
+/// Create a `Type` (integer, real, string) node or an error node.
 fn ty(p: &mut Parser) {
     let m = p.start();
     if p.expect_ts(TYPE_TS) {
@@ -87,6 +89,7 @@ fn ty(p: &mut Parser) {
     }
 }
 
+/// Try consuming a `Type` token or do nothing if it errs.
 fn eat_ty(p: &mut Parser) {
     let m = p.start();
     if p.eat_ts(TYPE_TS) {
@@ -96,20 +99,22 @@ fn eat_ty(p: &mut Parser) {
     }
 }
 
+fn name(p: &mut Parser) {
+    name_r(p, TokenSet::EMPTY);
+}
+
 // test the current token kind first
+
+/// Create a `Name` node, or an error node with `recovery` set.
 fn name_r(p: &mut Parser, recovery: TokenSet) {
     if p.at(T![ident]) {
         let m = p.start();
-        p.bump(T![ident]);
+        p.bump_any();
         m.complete(p, NAME);
     } else {
         let err = p.err_with_expected_syntax(NAME);
         p.err_recover(err, recovery);
     }
-}
-
-fn name(p: &mut Parser) {
-    name_r(p, TokenSet::EMPTY);
 }
 
 // fn expect_name(p: &mut Parser) -> bool {
@@ -122,6 +127,7 @@ fn name(p: &mut Parser) {
 //     }
 // }
 
+/// Try consuming a `Name` token or do nothing if it errs.
 fn eat_name(p: &mut Parser) -> bool {
     let m = p.start();
     if p.eat(T![ident]) {

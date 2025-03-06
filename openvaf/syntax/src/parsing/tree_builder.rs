@@ -9,27 +9,28 @@ use vfs::FileId;
 use crate::syntax_node::VerilogALanguage;
 use crate::{SyntaxError, SyntaxKind, TextRange, TextSize, T};
 
+type Text = Arc<str>;
+
 // TODO(JW) refactor the tree builder
 pub(crate) struct SyntaxTreeBuilder<'a> {
+    db: &'a dyn SourceProvider,
+    inner: GreenNodeBuilder<'static>,
+    state: State,
+
     tokens: &'a [Token],
     text_pos: TextSize,
     token_pos: usize,
-
-    state: State,
+    current_span: CtxSpan,
 
     errors: Vec<SyntaxError>,
     last_error: Option<SyntaxError>,
-
-    inner: GreenNodeBuilder<'static>,
-
-    db: &'a dyn SourceProvider,
-
-    current_src: Arc<str>,
-    panic: bool,
     err_depth: u32,
+    panic: bool,
+
     sm: &'a SourceMap,
+    current_text: Text,
+    /// (context range, context id, offset)
     ranges: Vec<(TextRange, SourceContextId, TextSize)>,
-    current_range: CtxSpan,
 }
 
 enum State {
@@ -39,6 +40,34 @@ enum State {
 }
 
 impl<'a> SyntaxTreeBuilder<'a> {
+    pub(super) fn new(
+        db: &'a dyn SourceProvider,
+        root_file: FileId,
+        tokens: &'a [Token],
+        sm: &'a SourceMap,
+    ) -> Self {
+        let current_text = db.file_text(root_file).unwrap_or_else(|_| Arc::from(""));
+        Self {
+            tokens,
+            text_pos: 0.into(),
+            token_pos: 0,
+            state: State::PendingStart,
+            inner: Default::default(),
+            db,
+            sm,
+            current_text,
+            ranges: Vec::with_capacity(128),
+            current_span: CtxSpan {
+                ctx: SourceContextId::ROOT,
+                range: TextRange::empty(TextSize::from(0)),
+            },
+            panic: false,
+            err_depth: u32::MAX,
+            errors: Vec::new(),
+            last_error: None,
+        }
+    }
+
     pub(super) fn finish(
         mut self,
     ) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContextId, TextSize)>) {
@@ -51,7 +80,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
         }
         let start = self.ranges.last().map_or(0.into(), |(range, _, _)| range.end());
         let range = TextRange::new(start, self.text_pos);
-        self.ranges.push((range, self.current_range.ctx, self.current_range.range.start()));
+        self.ranges.push((range, self.current_span.ctx, self.current_span.range.start()));
 
         (self.inner.finish(), self.errors, self.ranges)
     }
@@ -75,8 +104,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
         match mem::replace(&mut self.state, State::Normal) {
             State::PendingStart => {
                 self.inner.start_node(VerilogALanguage::kind_to_raw(kind));
-                // No need to attach trivia to previous node: there is no
-                // previous node.
+                // No need to attach trivia to previous node: there is no previous node.
                 return;
             }
             State::PendingFinish => self.inner.finish_node(),
@@ -106,7 +134,6 @@ impl<'a> SyntaxTreeBuilder<'a> {
                         *panic_end = Some(self.text_pos);
                     }
                 }
-
                 self.errors.push(err)
             }
             self.err_depth = u32::MAX;
@@ -115,20 +142,20 @@ impl<'a> SyntaxTreeBuilder<'a> {
         }
     }
 
-    pub(super) fn error(&mut self, error: parser::SyntaxError) {
+    /// Transform a parser error (UnexpectedToken) into a `SyntaxError`
+    pub(super) fn error(&mut self, error: parser::Error) {
+        let parser::Error::UnexpectedToken { expected, found } = error;
+        let missing_delimiter = found == T![end];
+        let expected_at = expected
+            .data
+            .iter()
+            .any(|t| *t == T![;] || *t == T![')'])
+            .then(|| TextRange::at(self.text_pos, 0.into()));
         let n_trivia =
             self.tokens[self.token_pos..].iter().take_while(|it| it.kind.is_trivia()).count();
-        let leading_trivia = &self.tokens[self.token_pos..self.token_pos + n_trivia];
-        let pos =
-            self.text_pos + leading_trivia.iter().map(|it| it.span.range.len()).sum::<TextSize>();
-        let parser::SyntaxError::UnexpectedToken { expected, found }: parser::SyntaxError = error;
-        let missing_delimiter = found == T![end];
-        if self.token_pos + n_trivia == self.tokens.len() {
-            let expected_at = expected
-                .data
-                .iter()
-                .any(|t| *t == T![;] || *t == T![')'])
-                .then(|| TextRange::at(self.text_pos, 0.into()));
+
+        // everything that follows is trivia
+        if self.tokens.len() == self.token_pos + n_trivia {
             let error = SyntaxError::UnexpectedToken {
                 expected,
                 found,
@@ -143,22 +170,20 @@ impl<'a> SyntaxTreeBuilder<'a> {
             self.errors.push(error);
             return;
         }
-        let len = self.tokens[self.token_pos + n_trivia].span.range.len();
 
+        // see if we should panic abort
         let panic = mem::replace(&mut self.panic, true);
         if panic && !missing_delimiter || self.last_error.is_some() {
             return;
         }
 
-        let expected_at = expected
-            .data
-            .iter()
-            .any(|t| *t == T![;] || *t == T![')'])
-            .then(|| TextRange::at(self.text_pos, 0.into()));
+        let trivia = &self.tokens[self.token_pos..self.token_pos + n_trivia];
+        let offset: TextSize = trivia.iter().map(|it| it.span.range.len()).sum();
+        let len = self.tokens[self.token_pos + n_trivia].span.range.len();
         let error = SyntaxError::UnexpectedToken {
             expected,
             found,
-            range: TextRange::at(pos, len),
+            range: TextRange::at(self.text_pos + offset, len),
             expected_at,
             missing_delimiter,
             panic_end: None,
@@ -166,68 +191,42 @@ impl<'a> SyntaxTreeBuilder<'a> {
         self.last_error = Some(error)
     }
 
-    pub(super) fn new(
-        db: &'a dyn SourceProvider,
-        root_file: FileId,
-        tokens: &'a [Token],
-        sm: &'a SourceMap,
-    ) -> Self {
-        let current_src = db.file_text(root_file).unwrap_or_else(|_| Arc::from(""));
-        Self {
-            tokens,
-            text_pos: 0.into(),
-            token_pos: 0,
-            state: State::PendingStart,
-            inner: Default::default(),
-            db,
-            sm,
-            current_src,
-            ranges: Vec::with_capacity(128),
-            current_range: CtxSpan {
-                ctx: SourceContextId::ROOT,
-                range: TextRange::empty(TextSize::from(0)),
-            },
-            panic: false,
-            err_depth: u32::MAX,
-            errors: Vec::new(),
-            last_error: None,
-        }
-    }
-
     fn eat_trivia(&mut self) {
         while let Some(&token) = self.tokens.get(self.token_pos) {
-            if !token.kind.is_trivia() {
+            if token.kind.is_trivia() {
+                self.do_token(token.kind, token.span);
+            } else {
                 break;
             }
-            self.do_token(token.kind, token.span);
         }
     }
 
     fn do_token(&mut self, kind: SyntaxKind, span: CtxSpan) {
-        let same_ctx = span.ctx == self.current_range.ctx;
-        let is_continuous = same_ctx && span.range.start() == self.current_range.range.end();
+        let is_same_ctx = span.ctx == self.current_span.ctx;
+        let is_continuous = is_same_ctx && span.range.start() == self.current_span.range.end();
+
         if is_continuous {
-            self.current_range.range = self.current_range.range.cover(span.range);
+            self.current_span.range = self.current_span.range.cover(span.range);
         } else {
             let start = self.ranges.last().map_or(0.into(), |(range, _, _)| range.end());
             let range = TextRange::new(start, self.text_pos);
-            let old_range = mem::replace(&mut self.current_range, span);
-            self.ranges.push((range, old_range.ctx, old_range.range.start()))
+            self.ranges.push((range, self.current_span.ctx, self.current_span.range.start()));
+            self.current_span = span;
         }
 
-        if !same_ctx {
-            // We are in a different ctx and therefore the text comes from somewhere else...
-            // Switch the src code
-            // Unwrap is okay here because the file was already read succesffully by he preprocessor or the SourceContext wouldn't exist
+        if !is_same_ctx {
+            // The source text comes from somewhere else, so context switch is needed.
+            // Unwrap is okay here because the file was already read successfully by the
+            // preprocessor, otherwise the SourceContext wouldn't exist.
             let decl = self.sm.ctx_data(span.ctx).decl;
-            let src = self.db.file_text(decl.file).unwrap();
-            self.current_src = src;
+            let text = self.db.file_text(decl.file).unwrap();
+            self.current_text = text;
         }
 
         let range = span.to_file_span(self.sm).range;
-        let text = &self.current_src[range];
+        let text = &self.current_text[range];
+        self.inner.token(VerilogALanguage::kind_to_raw(kind), text);
         self.text_pos += range.len();
         self.token_pos += 1;
-        self.inner.token(VerilogALanguage::kind_to_raw(kind), text);
     }
 }

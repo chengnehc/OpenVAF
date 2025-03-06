@@ -1,0 +1,33 @@
+SOURCE_FILE@0..58
+  MODULE_DECL@0..58
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    VAR_DECL@17..33
+      TYPE@17..24
+        INTEGER_KW@17..24 "integer"
+      WHITESPACE@24..25 " "
+      VAR@25..28
+        NAME@25..28
+          IDENT@25..28 "foo"
+      COMMA@28..29 ","
+      WHITESPACE@29..30 " "
+      VAR@30..33
+        NAME@30..33
+          IDENT@30..33 "baz"
+      ERROR@33..33
+    WHITESPACE@33..38 "\n    "
+    VAR_DECL@38..47
+      TYPE@38..42
+        REAL_KW@38..42 "real"
+      WHITESPACE@42..43 " "
+      VAR@43..46
+        NAME@43..46
+          IDENT@43..46 "qux"
+      SEMICOLON@46..47 ";"
+    WHITESPACE@47..49 " \n"
+    ENDMODULE_KW@49..58 "endmodule"
+error : unexpected token 'real'; expected ',' or ';'

@@ -1,0 +1,18 @@
+SOURCE_FILE@0..36
+  MODULE_DECL@0..35
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    NET_DECL@17..25
+      NAME_REF@17..20
+        IDENT@17..20 "foo"
+      WHITESPACE@20..21 " "
+      NAME@21..24
+        IDENT@21..24 "baz"
+      SEMICOLON@24..25 ";"
+    WHITESPACE@25..26 "\n"
+    ENDMODULE_KW@26..35 "endmodule"
+  WHITESPACE@35..36 "\n"

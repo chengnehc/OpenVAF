@@ -1,0 +1,6 @@
+module test;
+    analog ;
+    analog begin
+        ;;
+    end
+endmodule

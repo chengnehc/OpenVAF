@@ -1,0 +1,4 @@
+module test;
+    integer foo, baz
+    real qux; 
+endmodule

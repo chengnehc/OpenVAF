@@ -110,7 +110,7 @@ impl<'short, 'long> FuncInstBuilder<'short, 'long> {
     }
 }
 
-impl<'short, 'long> InstInserterBase<'short> for FuncInstBuilder<'short, 'long> {
+impl<'short> InstInserterBase<'short> for FuncInstBuilder<'short, '_> {
     fn data_flow_graph(&self) -> &DataFlowGraph {
         &self.builder.func.dfg
     }
@@ -146,7 +146,7 @@ pub trait RetBuilder {
     fn ret(self) -> Inst;
 }
 
-impl<'short, 'long> RetBuilder for InsertBuilder<'short, FuncInstBuilder<'short, 'long>> {
+impl<'short> RetBuilder for InsertBuilder<'short, FuncInstBuilder<'short, '_>> {
     fn ret(self) -> Inst {
         let exit = self.inserter.builder.func.layout.last_block().unwrap();
         self.jump(exit)

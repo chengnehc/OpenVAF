@@ -176,7 +176,7 @@ impl BodyLoweringCtx<'_, '_, '_> {
             BinaryOp::RightShift => Opcode::Ishr,
 
             BinaryOp::BitwiseXor => Opcode::Ixor,
-            BinaryOp::BitwiseEq => {
+            BinaryOp::BitwiseXnor => {
                 let lhs = self.lower_expr(lhs);
                 let rhs = self.lower_expr(rhs);
                 let res = self.ctx.ins().ixor(lhs, rhs);
@@ -771,7 +771,6 @@ impl BodyLoweringCtx<'_, '_, '_> {
         val
     }
 
-    /// TODO: arrays
     fn lower_array(&mut self, _expr: ExprId, _args: &[ExprId]) -> Value {
         todo!("arrays")
     }

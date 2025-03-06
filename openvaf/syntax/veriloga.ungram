@@ -1,17 +1,14 @@
-//  VerilogA Un-Grammar.
+//  Verilog-A Un-Grammar.
 //
-// This grammar specifies the structure of VerilogA's concrete syntax tree (CST).
-// It does not specify parsing rules (ambiguities, precedence, etc are out of scope).
+// This grammar specifies the structure of Verilog-A's concrete syntax tree (CST).
+// 
+// It does NOT specify parsing rules (ambiguities, precedence, etc are out of scope).
 //
 // Legend:
 //
 //   //          -- comment
 //   Name =      -- non-terminal definition
 //   'ident'     -- token (terminal)
-// TODO(JW) more accurate identifier type
-//        'ident'     -- keyword or punct token (terminal)
-//        '#ident'    -- generic token (terminal)
-//        '@ident'    -- literal token (terminal)
 //   A B         -- sequence
 //   A | B       -- alternation
 //   A*          -- option
@@ -19,12 +16,18 @@
 //   (A)         -- same as A
 //   label:A     -- suggested name for field of AST node
 
-// See Also: LRM Annex A & C, formal syntax definition in Backus-Naur Form (BNF).
+// TODO: more accurate identifier type
+//        'ident'     -- keyword or punct token (terminal)
+//        '#ident'    -- generic token (terminal)
+//        '@ident'    -- literal token (terminal)
+//
+// Changelog:
+// - added paramset support
 
 
-//*************************//
-// Names, Paths and Macros //
-//*************************//
+//**********************//
+//     Names, Paths     //
+//**********************//
 
 Name =
   'ident'
@@ -46,51 +49,68 @@ Type =
 
 
 //****************************//
-// Statements and Expressions //
+//  Statements & Expressions  //
 //****************************//
 
+// A.6.4 Statements
 Stmt =
   EmptyStmt
 | BlockStmt
 | ExprStmt
 | AssignStmt
-| IfStmt
 | WhileStmt
 | ForStmt
 | CaseStmt
+| IfStmt
 | EventStmt
+// TODO: JumpStmt, i.e. 'continue', 'break', 'return'
 
 EmptyStmt =
   AttrList* ';'
 
+// 5.3 Block statements
+// A.6.3 Sequential blocks
 BlockStmt =
-  AttrList* 'begin'
-    BlockScope?
-    items:BlockItem*
+  AttrList* 'begin' BlockScope?
+  items:BlockItem*
   'end'
 
+// Scoping rules:
+// - Variables declared for a named block are local to it, and static.
+// - All identifiers declared within a named block can be accessed outside the scope in which they are declared. 
+// - Named block variables cannot be assigned outside the scope of the block in which they are declared
+BlockScope =
+  ':' Name
+
+// A.2.8 Block item declarations
+BlockItem =
+  VarDecl | ParamDecl | Stmt
+
+// Usages:
+// - system task enable
+// - incr statement in `ForStmt`
 ExprStmt =
   AttrList* Expr ';'?
 
+// A.6.2 analog_procedural_assignment
+// A.6.10 Contribution statements
 AssignStmt =
-  AttrList* Assign ';'?
+  AttrList* Assign ';'
 
 Assign =
   lval:Expr op:('<+' | '=') rval:Expr
 
-IfStmt =
-  AttrList* 'if' '(' condition:Expr ')'
-  then_branch:Stmt
-  ('else' else_branch:Stmt)?
-
+// A.6.8 Looping statements
 WhileStmt =
   AttrList* 'while' '(' condition:Expr ')'
   body:Stmt
 
+// TODO: 'init' and 'incr' could be more detailed `AssignStmt`
 ForStmt =
   AttrList* 'for' '(' init:Stmt ';' condition:Expr ';' incr:Stmt ')'
   for_body:Stmt
 
+// A.6.7 Case statements
 CaseStmt =
   AttrList* 'case' '(' discriminant:Expr ')'
   Case*
@@ -99,29 +119,54 @@ CaseStmt =
 Case =
   (Expr (',' Expr)* | 'default') ':'? Stmt
 
-// Consider removing this as it is not suitable for compact model
+// A.6.6 Conditional statements
+IfStmt =
+  AttrList* 'if' '(' condition:Expr ')'
+  then_branch:Stmt
+  ('else' else_branch:Stmt)?
+
+// TODO: Consider removing this as it is not suitable for compact model
 EventStmt =
   AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases:('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
 
-BlockScope =
-  ':' Name
 
-BlockItem =
-  VarDecl | ParamDecl | Stmt
-
+// A.8 Expressions and Primaries
 Expr =
   Literal
+| PathExpr
+| ParenExpr
 | PrefixExpr
 | BinExpr
 | SelectExpr
-| ParenExpr
-| Call
-| PathExpr
-| PortFlow
 | ArrayExpr
+| PortFlow
+| Call
 
 Literal =
-  'int_number' | 'str_lit' | 'std_real_number' | 'si_real_number' | 'inf'
+  'int_number' | 'std_real_number' | 'si_real_number' | 'str_lit' | 'inf'
+
+// A.8.9 Analog references
+// 
+// See chapter 6.7.1 Usage of hierarchical references in terms of OOMR (out-of-module reference)
+//
+// - [OK] analog branches and nets refenece
+// - [OK] potential and flow access function for named and unnamed branches (including port branches)
+// — [OK] potential and flow contributions to named and unnamed branches
+// 
+// — [OK] analog user-defined functions
+// — [OK] parameter *access*
+// - [NO] parameter *declaration statements* (e.g., for setting default values)
+// — [NO] access and assignment to analog variable
+
+// TODO: rename this to reference
+// includes:
+// - variable/parameter/nature attribute reference
+// - branch/net/port/reference as arguments of access function call
+PathExpr =
+  Path
+
+ParenExpr =
+  '(' Expr ')'
 
 PrefixExpr =
   AttrList* op:( '-' | '!' | '~' | '+') Expr
@@ -139,73 +184,99 @@ BinExpr =
 SelectExpr =
   condition:Expr '?' then_val:Expr ':' else_val:Expr
 
-ParenExpr =
-  '(' Expr ')'
+// port reference wrapped with `< >`, as port probe function call argument
+PortFlow =
+  '<' port:Path '>'
 
+// A.8.2
+//
+// Zero/One/Multiple arguments:
+// * user-defined analog function call
+// * analog system function call
+// * analog builtin function call
+// * analog filter function call (analog operators)
+//
+// Strictly 2 arguments:
+// * branch probe function call =
+//      nature access attribute | 'flow' | 'potential'
+//    + branch reference | net reference (, net reference)?
+// 
+// Strictly 1 argument:
+// * port probe function call = 
+//      nature access attribute
+//    + '<' port reference '>'
+//
+// ? analog small-signal function call
+// ? analysis function call
 Call =
   FunctionRef ArgList?
-
-ArgList =
-  '(' args:(Expr (',' Expr)*)? ')'
 
 FunctionRef =
   Path | SysFun
 
+// generic token
 SysFun =
   'sysfun'
 
-// ?
-PathExpr =
-  Path
-
-PortFlow =
-  '<' port:Path '>'
-
-// Consider removing this as it is not suitable for compact model
-ArrayExpr =
-  '\'{' (Expr (',' Expr)*)? '}'
+ArgList =
+  '(' args:(Expr (',' Expr)*)? ')'
 
 
 //*************************//
 //          Items          //
 //*************************//
 
+// A.1.2
 SourceFile =
   Item*
 
 Item =
-  DisciplineDecl | NatureDecl | ModuleDecl
+  DisciplineDecl | NatureDecl | ModuleDecl //| ParamsetDecl
 
+// A.1.7
 DisciplineDecl =
-  AttrList* 'discipline' Name ';'
+  AttrList* 'discipline' Name ';'?
   DisciplineAttr*
   'enddiscipline'
 
+// the optional `=` is for nature attribute override
 DisciplineAttr =
   name:Path '='? val:Expr ';'
 
+// A.1.6
 NatureDecl =
-  AttrList* 'nature' Name (':' parent:Path)? ';'
+  AttrList* 'nature' Name (':' parent:Path)? ';'?
   NatureAttr*
   'endnature'
 
 NatureAttr =
   Name '=' val:Expr ';'
 
+// A.1.2 & A.1.3
 ModuleDecl =
   AttrList* 'module' Name ModulePorts? ';'
   ModuleItem*
   'endmodule'
 
 ModulePorts =
-  '('ports:(ModulePort (',' ModulePort)*)? ')'
+  '(' ports:(ModulePort (',' ModulePort)*)? ')'
 
+// TODO: simplify this by removing a layer of indirection:
+// let: ModulePort = PortDecl | Name
 ModulePort =
   kind:ModulePortKind
 
 ModulePortKind =
   PortDecl | Name
 
+// A.2.1.2
+PortDecl =
+  AttrList* Direction discipline:NameRef? 'net_type'? (Name (',' Name)*)
+
+Direction =
+  'inout' | 'input' | 'output'
+
+// A.1.4
 ModuleItem =
   BodyPortDecl
 | NetDecl
@@ -215,56 +286,105 @@ ModuleItem =
 | AliasParam
 | Function
 | AnalogBehaviour
+// Compact models do not need module instantiation
 
 BodyPortDecl =
   PortDecl ';'
 
-PortDecl =
-  AttrList* Direction discipline:NameRef? 'net_type'? (Name (',' Name)*)
-
-Direction =
-  'inout' | 'input' | 'output'
-
+// A.2.1.3
 NetDecl =
   AttrList* discipline:NameRef? 'net_type'? (Name (',' Name)*) ';'
 
+// A.2.1.3
 BranchDecl =
   AttrList* 'branch' ArgList (Name (',' Name)*) ';'
 
+// A.2.1.3
 VarDecl =
   AttrList* Type (Var (',' Var)*) ';'
 
+// A.2.2.1
 Var =
   Name ('=' default:Expr)?
 
+// A.2.1.1
 ParamDecl =
   AttrList* ('parameter' | 'localparam') Type? paras:(Param (',' Param)*) ';'
 
+// A.2.3 & A.2.4
 Param =
   Name '=' default:Expr Constraint*
 
+// A.2.5
 Constraint =
   ('from' | 'exclude') (Expr | Range)
 
 Range =
   ('(' | '[') start:Expr ':' end:Expr (')' | ']')
 
+// A.2.1.1
+// according to LRM, aliasparam should not contain attributes, but it's OK as-is anyway.
 AliasParam =
   AttrList* 'aliasparam' name:Name '=' src:ParamRef ';'
 
+// # Note:
+// - aliasparam should not use OOMR (should only point to parameters within the same module)
+// - only hierarchical parameter sysfuns are valid aliases.
 ParamRef =
   Path | SysFun
 
+// A.2.6
 Function =
   AttrList* 'analog' 'function' Type? Name ';'
   FunctionItem*
   'endfunction'
 
+// FunctionItem should not use:
+// * access functions
+// * contribution or event statements
+// * named blocks
+//
+// FunctionItem must contain:
+// * at least one argument
+// * data type declaration of all arguments (integer, real, string)
+// * argument direction specification (input, output, inout)
+//
+// Scoping rules for FunctionItem:
+// * should only reference locally-defined variables, parameters and arguments
+// * and module-level parameters if a locally-defined parameter with specified
+//   name does not exist
 FunctionItem =
-  ParamDecl | VarDecl | FunctionArg | Stmt
+  FunctionArg
+| ParamDecl 
+| VarDecl 
+| Stmt
 
 FunctionArg =
   AttrList* Direction (Name(',' Name)*) ';'
 
+// 5.2 analog procedural block
+// A.6.2
 AnalogBehaviour =
   AttrList* 'analog' 'initial'? Stmt
+
+/////////
+// WIP //
+/////////
+
+// A.1.9
+// ParamsetDecl = 
+//   AttrList* 'paramset' Name NameRef ';'
+//   ParamsetItem*
+//   'endparamset'
+// 
+// ParamsetItem =
+//   ParamDecl
+// | AliasParam
+// | VarDecl
+// | ParamsetStmt
+// 
+// ParamsetStmt = 
+//   '.' Name '=' (ParamRef | Expr) ';'
+
+ArrayExpr =
+  '\'{' (Expr (',' Expr)*)? '}'

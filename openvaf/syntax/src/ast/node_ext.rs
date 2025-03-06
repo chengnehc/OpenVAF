@@ -5,7 +5,7 @@ use std::iter::successors;
 
 use rowan::{GreenNodeData, GreenTokenData, NodeOrToken};
 
-use crate::ast::{self, support, ArgListOwner, AstChildTokens, AstChildren, AstNode};
+use crate::ast::{self, support, ArgListOwner, AstChildren, AstNode};
 use crate::SyntaxKind::{IDENT, ROOT_KW};
 use crate::{SyntaxNode, SyntaxToken, TokenText};
 
@@ -33,15 +33,7 @@ fn text_of_first_token(node: &SyntaxNode) -> TokenText<'_> {
 }
 
 impl ast::Path {
-    pub fn parent(&self) -> Option<ast::Path> {
-        self.syntax().parent().and_then(ast::Path::cast)
-    }
-
-    #[must_use]
-    pub fn top_path(&self) -> ast::Path {
-        successors(Some(self.clone()), ast::Path::parent).last().unwrap()
-    }
-
+    // TODO(JW): this is not used
     #[must_use]
     pub fn first_qualifier(&self) -> ast::Path {
         successors(Some(self.clone()), ast::Path::qualifier).last().unwrap()
@@ -49,6 +41,16 @@ impl ast::Path {
 
     pub fn qualifiers(&self) -> impl Iterator<Item = ast::Path> + Clone {
         successors(self.qualifier(), |p| p.qualifier())
+    }
+
+    /// the top level path, i.e. the ultimate parent node
+    #[must_use]
+    pub fn top_path(&self) -> ast::Path {
+        successors(Some(self.clone()), ast::Path::parent).last().unwrap()
+    }
+
+    pub fn parent(&self) -> Option<ast::Path> {
+        self.syntax().parent().and_then(ast::Path::cast)
     }
 
     pub fn segment(&self) -> Option<PathSegment> {
@@ -81,9 +83,9 @@ impl ast::Path {
     //    self.first_qualifier().segment()
     // }
 
-    //     pub fn last_segment(&self) -> Option<ast::PathSegment> {
-    //         self.top_path().segment()
-    //     }
+    // pub fn last_segment(&self) -> Option<ast::PathSegment> {
+    //     self.top_path().segment()
+    // }
 
     // pub fn segments(&self) -> impl Iterator<Item = PathSegment> + Clone {
     //    successors(self.first_segment(), |p| {
@@ -109,58 +111,6 @@ pub struct PathSegment {
 pub enum PathSegmentKind {
     Root,
     Name,
-}
-
-/* Expressions and Statements */
-
-impl ast::Expr {
-    pub fn as_raw_ident(&self) -> Option<SyntaxToken> {
-        self.as_path()?.as_raw_ident()
-    }
-
-    pub fn as_path(&self) -> Option<ast::Path> {
-        if let ast::Expr::PathExpr(path_expr) = self {
-            path_expr.path()
-        } else {
-            None
-        }
-    }
-}
-
-impl ast::IfStmt {
-    pub fn then_branch(&self) -> Option<ast::Stmt> {
-        support::children(self.syntax()).next()
-    }
-
-    pub fn else_branch(&self) -> Option<ast::Stmt> {
-        support::children(self.syntax()).nth(1)
-    }
-}
-
-impl ast::ForStmt {
-    pub fn init(&self) -> Option<ast::Stmt> {
-        support::child(self.syntax())
-    }
-
-    pub fn incr(&self) -> Option<ast::Stmt> {
-        support::children(self.syntax()).nth(1)
-    }
-
-    pub fn for_body(&self) -> Option<ast::Stmt> {
-        support::children(self.syntax()).nth(2)
-    }
-}
-
-impl ast::EventStmt {
-    pub fn sim_phases(&self) -> AstChildTokens<ast::StrLit> {
-        support::child_tokens(self.syntax())
-    }
-}
-
-impl ast::BlockStmt {
-    pub fn body(&self) -> AstChildren<ast::Stmt> {
-        support::children(self.syntax())
-    }
 }
 
 /* Items */
@@ -199,11 +149,10 @@ impl ast::ModulePorts {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BranchKind {
-    PortFlow(ast::PortFlow),
-    NodeGnd(ast::Path),
-    Nodes(ast::Path, ast::Path),
+impl ast::Function {
+    pub fn body(&self) -> AstChildren<ast::Stmt> {
+        support::children(self.syntax())
+    }
 }
 
 impl ast::BranchDecl {
@@ -211,7 +160,6 @@ impl ast::BranchDecl {
         let nodes = self.arg_list()?;
         let node1 = nodes.args().next()?;
         let node2 = nodes.args().nth(1);
-
         let kind = match node2 {
             Some(node2) => BranchKind::Nodes(node1.as_path()?, node2.as_path()?),
             None => {
@@ -229,16 +177,11 @@ impl ast::BranchDecl {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub enum ConstraintKind {
-    Exclude,
-    From,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum ConstraintValue {
-    Range(ast::Range),
-    Val(ast::Expr),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchKind {
+    PortFlow(ast::PortFlow),
+    NodeGnd(ast::Path),
+    Nodes(ast::Path, ast::Path),
 }
 
 impl ast::Constraint {
@@ -261,8 +204,20 @@ impl ast::Constraint {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+pub enum ConstraintKind {
+    Exclude,
+    From,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum ConstraintValue {
+    Range(ast::Range),
+    Val(ast::Expr),
+}
+
 impl ast::Range {
-    // if the range bound is missing we just assume inclusive here
+    // if the range bound is missing, we just assume inclusive here
 
     pub fn start_inclusive(&self) -> bool {
         self.l_brack_token().is_some()
@@ -278,11 +233,5 @@ impl ast::Range {
 
     pub fn end(&self) -> Option<ast::Expr> {
         support::children(self.syntax()).nth(1)
-    }
-}
-
-impl ast::Function {
-    pub fn body(&self) -> AstChildren<ast::Stmt> {
-        support::children(self.syntax())
     }
 }

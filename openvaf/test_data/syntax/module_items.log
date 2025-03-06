@@ -1,0 +1,33 @@
+error: branch declaration require 1 or 2 nets; found 3
+  --> /module_items.va:2:12
+  |
+2 |     branch (a,b,c) foo;
+  |            ^^^^^^^ expected 1 or 2 nets
+
+error: illegal expr was used to declare a branch node!
+  --> /module_items.va:3:13
+  |
+3 |     branch (mod.a) baz;
+  |             ^^^^^ unexpected expression
+  |
+  = help: expected an identifier or a port flow expression (<port>)
+
+error: illegal expr was used to declare a branch node!
+  --> /module_items.va:4:13
+  |
+4 |     branch (<a>,<b>) qux;
+  |             ^^^ ^^^ unexpected expression
+  |             |    
+  |             unexpected expression
+  |
+  = help: expected an identifier
+
+error: $root is only allowed as a prefix
+  --> /module_items.va:5:16
+  |
+5 |     branch (<a.$root>) hik;
+  |                ^^^^^
+  |                |   |
+  |                |   .<identifier> might be missing here
+  |                '$root' must be a prefix
+

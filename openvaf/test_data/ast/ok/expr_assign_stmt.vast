@@ -1,0 +1,98 @@
+SOURCE_FILE@0..229
+  MODULE_DECL@0..229
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    NET_DECL@17..30
+      NAME_REF@17..27
+        IDENT@17..27 "electrical"
+      WHITESPACE@27..28 " "
+      NAME@28..29
+        IDENT@28..29 "a"
+      SEMICOLON@29..30 ";"
+    WHITESPACE@30..35 "\n    "
+    VAR_DECL@35..51
+      TYPE@35..39
+        REAL_KW@35..39 "real"
+      WHITESPACE@39..40 " "
+      VAR@40..50
+        NAME@40..43
+          IDENT@40..43 "foo"
+        WHITESPACE@43..44 " "
+        EQ@44..45 "="
+        WHITESPACE@45..46 " "
+        LITERAL@46..50
+          STD_REAL_NUMBER@46..50 "3.14"
+      SEMICOLON@50..51 ";"
+    WHITESPACE@51..56 "\n    "
+    ANALOG_BEHAVIOUR@56..219
+      ANALOG_KW@56..62 "analog"
+      WHITESPACE@62..63 " "
+      BLOCK_STMT@63..219
+        BEGIN_KW@63..68 "begin"
+        WHITESPACE@68..77 "\n        "
+        COMMENT@77..100 "// expression statement"
+        WHITESPACE@100..109 "\n        "
+        EXPR_STMT@109..113
+          PATH_EXPR@109..112
+            PATH@109..112
+              IDENT@109..112 "baz"
+          SEMICOLON@112..113 ";"
+        WHITESPACE@113..122 "\n        "
+        EXPR_STMT@122..131
+          CALL@122..130
+            PATH@122..125
+              IDENT@122..125 "exp"
+            ARG_LIST@125..130
+              L_PAREN@125..126 "("
+              PATH_EXPR@126..129
+                PATH@126..129
+                  IDENT@126..129 "baz"
+              R_PAREN@129..130 ")"
+          SEMICOLON@130..131 ";"
+        WHITESPACE@131..140 "\n        "
+        COMMENT@140..163 "// assignment statement"
+        WHITESPACE@163..172 "\n        "
+        ASSIGN_STMT@172..185
+          ASSIGN@172..184
+            PATH_EXPR@172..175
+              PATH@172..175
+                IDENT@172..175 "foo"
+            WHITESPACE@175..176 " "
+            EQ@176..177 "="
+            WHITESPACE@177..178 " "
+            LITERAL@178..184
+              STD_REAL_NUMBER@178..184 "3.1415"
+          SEMICOLON@184..185 ";"
+        WHITESPACE@185..194 "\n        "
+        ASSIGN_STMT@194..211
+          ASSIGN@194..210
+            CALL@194..198
+              PATH@194..195
+                IDENT@194..195 "V"
+              ARG_LIST@195..198
+                L_PAREN@195..196 "("
+                PATH_EXPR@196..197
+                  PATH@196..197
+                    IDENT@196..197 "a"
+                R_PAREN@197..198 ")"
+            WHITESPACE@198..199 " "
+            CONTR@199..201 "<+"
+            WHITESPACE@201..202 " "
+            BIN_EXPR@202..210
+              LITERAL@202..204
+                SI_REAL_NUMBER@202..204 "1m"
+              WHITESPACE@204..205 " "
+              STAR@205..206 "*"
+              WHITESPACE@206..207 " "
+              PATH_EXPR@207..210
+                PATH@207..210
+                  IDENT@207..210 "foo"
+          SEMICOLON@210..211 ";"
+        WHITESPACE@211..216 "\n    "
+        END_KW@216..219 "end"
+    WHITESPACE@219..220 "\n"
+    ENDMODULE_KW@220..229 "endmodule"

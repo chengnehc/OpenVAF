@@ -37,12 +37,12 @@ pub enum SyntaxError {
     },
 
     /* Block */
-    BlockItemsAfterStmt {
-        items: Vec<AstPtr<ast::BlockItem>>,
+    BlockDeclsAfterStmt {
+        decls: Vec<AstPtr<ast::BlockItem>>,
         first_stmt: TextRange,
     },
-    BlockItemsWithoutScope {
-        items: Vec<AstPtr<ast::BlockItem>>,
+    BlockDeclsWithoutScope {
+        decls: Vec<AstPtr<ast::BlockItem>>,
         begin_token: TextRange,
     },
 
@@ -134,8 +134,8 @@ impl_display! {
         SurplusToken{found, ..} => "unexpected token {}", found;
         MissingToken{expected, ..} => "unexpected token; expected {}", expected;
         IllegalRootSegment{..} =>  "$root is only allowed as a prefix";
-        BlockItemsAfterStmt{..}  => "declarations in blocks are only allowed before the first stmt";
-        BlockItemsWithoutScope{..} => "declarations in blocks require an explicit scope";
+        BlockDeclsAfterStmt{..}  => "declarations in blocks are only allowed before the first stmt";
+        BlockDeclsWithoutScope{..} => "declarations in blocks require an explicit scope";
         ItemsAfterFuncBody{..} => "functions may not contain any items after the function body";
         MultipleFuncBodies{..} => "functions may only contain one body";
         FuncWithoutBody{..} => "function is missing a body";

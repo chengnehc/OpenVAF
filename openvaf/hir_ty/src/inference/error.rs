@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 use std::ops::Deref;
+use stdx::{impl_display, impl_from, pretty};
 
 use hir_def::nameres::PathResolveError;
 use hir_def::{ExprId, FunctionId, LocalFunctionArgId, StmtId, Type};
-use stdx::{impl_display, impl_from, pretty};
 use syntax::{ast, TextRange};
 use typed_index_collections::TiSlice;
 

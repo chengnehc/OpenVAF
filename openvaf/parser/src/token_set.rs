@@ -1,5 +1,3 @@
-//! A bit-set of `SyntaxKind`s.
-
 use std::convert::TryInto;
 
 use crate::SyntaxKind;

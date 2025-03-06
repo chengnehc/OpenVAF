@@ -64,7 +64,7 @@ pub(crate) enum Event {
     Token(SyntaxKind),
 
     Error {
-        err: crate::SyntaxError,
+        err: crate::Error,
     },
 }
 

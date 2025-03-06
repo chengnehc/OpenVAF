@@ -5,28 +5,27 @@
 //!
 //! The actual parsing happens in the [`grammar`] module.
 //!
+//! The parser doesn't have access to the *text* of the tokens, and makes decisions based
+//! solely on their classification(kind).
+//!
 //! See Also:
 //! - https://docs.rs/ra_ap_parser/0.0.259/ra_ap_parser/
 //! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/parser
 
+use stdx::pretty;
 pub(crate) use tokens::{SyntaxKind, T};
 
-mod error;
 mod event;
 mod grammar;
 mod output;
 mod parser;
 mod token_set;
 
-pub use error::SyntaxError;
 pub use output::{Output, Step};
 pub(crate) use token_set::TokenSet;
 
-/// The parser doesn't have access to the *text* of the tokens, and makes
-/// decisions based solely on their classification(kind).
-///
-/// Unlike tokens produced by the lexer, the input `tokens` doesn't include
-/// trivia (whitespace and comments).
+/// Parse a stream of tokens. Unlike tokens produced by the lexer, the input
+/// `tokens` doesn't include trivia (whitespace and comments).
 pub fn parse(tokens: &[SyntaxKind]) -> Output {
     let mut p = parser::Parser::new(tokens);
 
@@ -54,9 +53,27 @@ pub fn parse(tokens: &[SyntaxKind]) -> Output {
     output
 }
 
-/* JW: not used.
-pub struct Error {
-    pub expected: pretty::List<Vec<Token>>,
-    pub found: Token,
+type Token = crate::SyntaxKind;
+
+#[derive(Debug, Clone)]
+pub enum Error {
+    // #[display(fmt = "unexpected token {}; expected {}", "found", "expected")]
+    UnexpectedToken { expected: pretty::List<Vec<Token>>, found: Token },
+    //
+    // #[error("{name} was already declared in this Scope!")]
+    // AlreadyDeclaredInThisScope { declaration: Span, other_declaration: Span, name: Box<str> },
+    //
+    // #[error("Unexpected Token!")]
+    // MissingOrUnexpectedToken { expected: Token, expected_at: Span, span: Span },
+    //
+    // #[error("Reached 'endmodule' while still expecting an 'end' delimiter!")]
+    // MismatchedDecimeters { start: Span, end: Span },
+    //
+    // #[error("Unexpected EOF! Expected {expected}")]
+    // UnrecognizedEof { expected: ListFormatter<Vec<String>>, span: Span },
+    //
+    // ExtraToken { span: Span, token: Token },
+    //
+    // #[error("Unexpected Token!")]
+    // UnexpectedToken { span: Span, ignored: Option<Span> },
 }
-*/
