@@ -192,9 +192,9 @@ impl DefCollector<'_> {
     // I am guessing this is an oversight but until this is clarified we are not adding this
     // TODO talk to committee about discipline attributes
 
-    // Items under root scope are `discipline`, `nature` and `module`s.
-    // Identifiers defined in natures and disciplines can be used in modules.
-    // Therefore
+    // Root items are `discipline`, `nature` and `module`s.
+    // Identifiers defined in natures and disciplines are visible in modules,
+    // while each module creates its own scope.
     fn collect_root_map(&mut self) {
         let root_scope = self.def_map.new_root_scope(ScopeOrigin::Root);
 

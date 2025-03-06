@@ -1,7 +1,6 @@
 //! A simplified AST that only contains items.
 //!
-//! This is the primary IR used throughout `hir_def`. It is the input to the name resolution
-//! algorithm.
+//! This is the primary IR used throughout `hir_def` and input to name resolution algorithms.
 //!
 //! One important purpose of this layer is to provide an "invalidation barrier" for incremental
 //! computations: when typing inside an item body, the `ItemTree` of the modified file is typically
@@ -37,7 +36,7 @@ pub struct ItemTree {
     pub top_level: Box<[RootItem]>,
 
     pub(crate) data: ItemTreeData,
-    /// mapping from block statement ast node to a seqential block item
+    /// mapping from block statement AstId to a block item
     pub(crate) blocks: AHashMap<AstId<BlockStmt>, Block>,
 }
 
@@ -113,37 +112,47 @@ pub(crate) struct ItemTreeData {
 
 pub type ItemTreeId<N> = Idx<N>;
 
-/// Trait implemented by all item nodes in the item tree.
+/// Trait implemented by all nodes in the item tree.
 pub trait ItemTreeNode: Clone {
+    // This means: the trait has an associative type `Source`
+    // and it must satisfy trait bound `AstNode`.
     type Source: AstNode;
 
+    /// The name of this item.
     fn name(&self) -> &Name;
-
+    /// The `AstId` of this item, allowing to map it back to its surface syntax.
     fn ast_id(&self) -> AstId<Self::Source>;
-    /// Looks up a node of `Self` in an item tree.
+    /// Looks up an item typed `Self` in the `tree`.
     fn lookup(tree: &ItemTree, index: ItemTreeId<Self>) -> &Self;
-    /// Downcasts a generic `ScopeItem` to a `ItemTreeId`, if possible.
-    fn id_from_scope_item(mod_item: ScopeItem) -> Option<ItemTreeId<Self>>;
-    /// Upcasts a `ItemTreeId` to a generic `ScopeItem`.
-    fn id_to_scope_item(id: ItemTreeId<Self>) -> ScopeItem;
 }
 
-/// Marco that implements trait `ItemTreeNode` and its index access
 macro_rules! item_tree_nodes {
     ( $( $typ:ident in $fld:ident -> $ast:ty ),+ $(,)? ) => {
+        // generic item type
         #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
         pub enum ScopeItem {
             $( $typ(ItemTreeId<$typ>), )+
         }
-
+        // conversion between generic and typed items
         $(
         impl From<ItemTreeId<$typ>> for ScopeItem {
             fn from(id: ItemTreeId<$typ>) -> ScopeItem {
                 ScopeItem::$typ(id)
             }
         }
-        )+
+        impl TryFrom<ScopeItem> for ItemTreeId<$typ> {
+            type Error = ();
 
+            fn try_from(it: ScopeItem) -> Result<ItemTreeId<$typ>, ()> {
+                if let ScopeItem::$typ(id) = it {
+                    Ok(id)
+                } else {
+                    Err(())
+                }
+            }
+        }
+        )+
+        // `ItemTreeNode` trait impls
         $(
         impl ItemTreeNode for $typ {
             type Source = $ast;
@@ -157,18 +166,8 @@ macro_rules! item_tree_nodes {
             fn lookup(tree: &ItemTree, index: Idx<Self>) -> &Self {
                 &tree.data.$fld[index]
             }
-            fn id_from_scope_item(mod_item: ScopeItem) -> Option<ItemTreeId<Self>> {
-                if let ScopeItem::$typ(id) = mod_item {
-                    Some(id)
-                } else {
-                    None
-                }
-            }
-            fn id_to_scope_item(id: ItemTreeId<Self>) -> ScopeItem {
-                ScopeItem::$typ(id)
-            }
         }
-
+        // Index operator overload
         impl Index<Idx<$typ>> for ItemTree {
             type Output = $typ;
 
@@ -195,12 +194,14 @@ item_tree_nodes! {
     Function in functions -> ast::Function,
 }
 
+/* Item definitions that impls `ItemTreeNode` trait */
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Module {
     pub name: Name,
+    pub num_ports: u32,
     // TODO(JW) why separate nodes field?
     pub nodes: TiVec<LocalNodeId, Node>,
-    pub num_ports: u32,
     pub items: Vec<ModuleItem>,
     pub ast_id: AstId<ast::ModuleDecl>,
 }
@@ -379,9 +380,8 @@ impl FunctionArg {
 }
 
 /// `Node` is an abstraction over `Net` and `Port`.
-///
-/// A `Node` can be declared as `Net` or `Port`. `Port` requires direction
-/// specification, while `Net` doesn't.
+/// `Node` can be declared as either `Net` or `Port`.
+/// `Port` requires direction specification, while `Net` doesn't.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub name: Name,
@@ -486,8 +486,8 @@ pub struct Block {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 
 /// # Note:
-/// Item tree nodes are NOT created for un-named blocks. Instead,
-/// sequential block uses ast node id as its internal representation.
+/// Item tree nodes are NOT created for un-named blocks. Block uses ast
+/// node id as its internal representation.
 pub enum BlockItem {
     Block(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),

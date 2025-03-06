@@ -387,8 +387,8 @@ impl DefMap {
     ) -> Result<T, PathResolveError> {
         let resolved_path = self.resolve_normal_path_in(scope, segments, db)?;
         let res: Result<ScopeItemDef, _> = resolved_path.clone().try_into();
-        if let Ok(res) = res {
-            if let Ok(res) = res.try_into() {
+        if let Ok(item) = res {
+            if let Ok(res) = item.try_into() {
                 return Ok(res);
             }
         }
@@ -410,7 +410,7 @@ impl DefMap {
         let mut arc;
         let name = segments.first().unwrap();
         let decl = loop {
-            // try resolving in this scope
+            // try resolving in current scope
             if let Some(decl) = def_map[scope].declarations.get(name) {
                 break *decl;
             }
@@ -461,21 +461,6 @@ impl DefMap {
         def_map.resolve_path_in(scope, name, &segments, db)
     }
 
-    /// Resolve a path with `$root` prefix.
-    ///
-    /// See: LRM chapter 6.2.1
-    pub fn resolve_root_path(
-        &self,
-        segments: &[Name],
-        db: &dyn HirDefDB,
-    ) -> Result<ResolvedPath, PathResolveError> {
-        // JW: paths in named `Block` should be resolved in the root def map
-        // while paths in analog `Function` should be resolved in the function's own def map
-        // even if $root is given
-        debug_assert!(matches!(self.src, DefMapSource::Root | DefMapSource::Function(_)));
-        self.resolve_path_in(self.root_scope(), &kw::root, segments, db)
-    }
-
     pub fn resolve_root_item_path<T: ScopeItemKind>(
         &self,
         segments: &[Name],
@@ -495,6 +480,21 @@ impl DefMap {
         })
     }
 
+    /// Resolve a path with `$root` prefix.
+    ///
+    /// See: LRM chapter 6.2.1
+    pub fn resolve_root_path(
+        &self,
+        segments: &[Name],
+        db: &dyn HirDefDB,
+    ) -> Result<ResolvedPath, PathResolveError> {
+        // JW: paths in named block should be resolved in the root def map
+        // paths in analog function should be resolved in the function's own def map
+        // even if $root is given
+        debug_assert!(matches!(self.src, DefMapSource::Root | DefMapSource::Function(_)));
+        self.resolve_path_in(self.root_scope(), &kw::root, segments, db)
+    }
+
     fn resolve_path_in<'a>(
         &self,
         scope_id: LocalScopeId,
@@ -502,13 +502,13 @@ impl DefMap {
         segments: &'a [Name],
         db: &dyn HirDefDB,
     ) -> Result<ResolvedPath, PathResolveError> {
-        let [qualifiers @ .., name] = segments else { unreachable!() };
+        let [segments @ .., name] = segments else { unreachable!() };
         let mut scope = scope_id;
         let mut scope_name = scope_name;
         let mut arc;
         let mut def_map = self;
 
-        for (i, seg) in qualifiers.iter().enumerate() {
+        for (i, seg) in segments.iter().enumerate() {
             match def_map[scope].children.get(seg) {
                 Some(child) => scope = *child,
                 None => match def_map[scope].declarations.get(seg) {
@@ -519,15 +519,15 @@ impl DefMap {
                             scope = def_map.entry_scope();
                         } else {
                             return Err(PathResolveError::NotFoundIn {
-                                name: qualifiers[i + 1].clone(),
+                                name: segments[i + 1].clone(),
                                 scope: seg.clone(),
                             });
                         };
                     }
                     Some(ScopeItemDef::BranchId(branch))
-                        if qualifiers.get(i + 1) == Some(&kw::potential) =>
+                        if segments.get(i + 1) == Some(&kw::potential) =>
                     {
-                        let rem = &qualifiers[(i + 1)..];
+                        let rem = &segments[(i + 1)..];
                         if let [name] = rem {
                             return Ok(ResolvedPath::PotentialAccess {
                                 branch: *branch,
@@ -540,9 +540,9 @@ impl DefMap {
                         }
                     }
                     Some(ScopeItemDef::BranchId(branch))
-                        if qualifiers.get(i + 1) == Some(&kw::flow) =>
+                        if segments.get(i + 1) == Some(&kw::flow) =>
                     {
-                        let rem = &qualifiers[(i + 1)..];
+                        let rem = &segments[(i + 1)..];
                         if let [name] = rem {
                             return Ok(ResolvedPath::FlowAccess {
                                 branch: *branch,

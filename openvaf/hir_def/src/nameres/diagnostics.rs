@@ -25,7 +25,7 @@ impl_display! {
         NotFoundIn{name, scope} => "'{}' was not found in '{}'", name, scope;
         ExpectedScope{name, found} => "expected a scope but found {} '{}'", found.item_kind(), name;
         ExpectedItemKind{name, expected, found} => "expected {} but found {} '{}'", expected, found, name;
-        ExpectedNatureAttrIdent{found} => "expected a nature attribute identifier found path {}", pretty::List::path(found.clone());
+        ExpectedNatureAttrIdent{found} => "expected a nature attribute identifier but found path {}", pretty::List::path(found.clone());
     }
 }
 
