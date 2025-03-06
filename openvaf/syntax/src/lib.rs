@@ -232,7 +232,7 @@ impl SourceFile {
     }
 }
 
-/// Matches an untyped `SyntaxNode` against a typed `AstNode`
+/// Matches a `SyntaxNode` against a typed `AstNode`.
 ///
 /// # Example:
 ///

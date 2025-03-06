@@ -16,7 +16,7 @@ use crate::{BlockLoc, Case, Expr, ExprId, Intern, Literal, Path, ScopeId, Stmt, 
 
 use super::{Body, BodySourceMap};
 
-pub(super) struct Ctx<'a> {
+pub(super) struct Context<'a> {
     pub(super) db: &'a dyn HirDefDB,
     pub(super) body: &'a mut Body,
     pub(super) source_map: &'a mut BodySourceMap,
@@ -25,7 +25,7 @@ pub(super) struct Ctx<'a> {
     pub(super) registry: &'a LintRegistry,
 }
 
-impl Ctx<'_> {
+impl Context<'_> {
     pub fn collect_expr_opt(&mut self, expr: Option<ast::Expr>) -> ExprId {
         match expr {
             Some(expr) => self.collect_expr(expr),

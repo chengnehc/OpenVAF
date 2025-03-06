@@ -43,7 +43,7 @@ pub struct ItemTree {
 impl ItemTree {
     pub(crate) fn file_item_tree_query(db: &dyn HirDefDB, file: FileId) -> Arc<ItemTree> {
         let syntax_tree = db.parse(file).tree();
-        let ctx = lower::Ctx::new(db, file);
+        let ctx = lower::Context::new(db, file);
         let mut item_tree = ctx.lower_root_items(&syntax_tree);
         item_tree.shrink_to_fit();
 
@@ -97,6 +97,8 @@ impl_from_typed! (
 #[derive(Default, Debug, Eq, PartialEq)]
 pub(crate) struct ItemTreeData {
     pub disciplines: Arena<Discipline>,
+    // Disciplines all share the same arena of attributes, within which
+    // each discipline has a corresponding `IdxRange` of attributes.
     pub discipline_attrs: Arena<DisciplineAttr>,
     pub natures: Arena<Nature>,
     pub nature_attrs: Arena<NatureAttr>,
@@ -286,22 +288,22 @@ pub enum DisciplineAttrKind {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Port {
     pub name: Name,
+    pub name_idx: usize,
     pub discipline: Option<Name>,
-    pub is_gnd: bool,
     pub is_input: bool,
     pub is_output: bool,
+    pub is_gnd: bool,
 
-    pub name_idx: usize,
     pub ast_id: AstId<ast::PortDecl>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Net {
     pub name: Name,
+    pub name_idx: usize,
     pub discipline: Option<Name>,
     pub is_gnd: bool,
 
-    pub name_idx: usize,
     pub ast_id: AstId<ast::NetDecl>,
 }
 

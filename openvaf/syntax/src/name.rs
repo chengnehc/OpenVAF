@@ -3,10 +3,10 @@ use std::ops::Deref;
 
 use smol_str::SmolStr;
 
-use crate::ast;
-use crate::SyntaxToken;
+use crate::{ast, SyntaxToken};
 
 /// `Name` is a wrapper over a small string up to 23 bytes long.
+/// The main advantage is that it is very cheap to clone O(1).
 /// It is used in HIR for both references and declarations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Name(SmolStr);

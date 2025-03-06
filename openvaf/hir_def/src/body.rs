@@ -79,7 +79,7 @@ impl Body {
                 let ast_node = ast_id_map.get(ast_id).to_node(ast.syntax());
                 let curr_scope = (scope, ast_id.into());
 
-                let mut ctx = lower::Ctx {
+                let mut ctx = lower::Context {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -107,7 +107,7 @@ impl Body {
                 let ast_node = ast_id_map.get(ast_id).to_node(ast.syntax());
                 let curr_scope = (scope, ast_id.into());
 
-                let mut ctx = lower::Ctx {
+                let mut ctx = lower::Context {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -124,7 +124,7 @@ impl Body {
                 let ast_node = ast_id_map.get(ast_id).to_node(ast.syntax());
 
                 let curr_scope = (scope, ast_id.into());
-                let mut ctx = lower::Ctx {
+                let mut ctx = lower::Context {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -157,7 +157,7 @@ impl Body {
                 let ast = ast_id_map.get(attr.ast_id).to_node(ast.syntax());
                 let curr_scope = (ScopeId::root(root_file), attr.ast_id.into());
 
-                let mut ctx = lower::Ctx {
+                let mut ctx = lower::Context {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -179,7 +179,7 @@ impl Body {
                 let ast = ast_id_map.get(attr.ast_id).to_node(ast.syntax());
                 let curr_scope = (ScopeId::root(root_file), attr.ast_id.into());
 
-                let mut ctx = lower::Ctx {
+                let mut ctx = lower::Context {
                     db,
                     source_map: &mut source_map,
                     body: &mut body,
@@ -213,7 +213,7 @@ impl Body {
         let ast = ast_id_map.get(ast_id).to_node(ast.syntax());
 
         let registry = db.lint_registry();
-        let mut ctx = lower::Ctx {
+        let mut ctx = lower::Context {
             db,
             source_map: &mut source_map,
             body: &mut body,

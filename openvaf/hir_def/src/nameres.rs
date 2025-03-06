@@ -458,7 +458,7 @@ impl DefMap {
             _ => return Err(PathResolveError::ExpectedScope { name: name.clone(), found: decl }),
         };
 
-        def_map.resolve_path_in(scope, name, &segments, db)
+        def_map.resolve_path_in(scope, name, &segments[1..], db)
     }
 
     pub fn resolve_root_item_path<T: ScopeItemKind>(
