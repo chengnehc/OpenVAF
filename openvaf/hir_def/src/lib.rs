@@ -9,7 +9,7 @@ use stdx::{impl_debug_display, impl_from};
 use arena::Idx;
 use basedb::{AstId, ErasedAstId, FileId};
 use syntax::name::Name;
-use syntax::{ast, AstNode, AstPtr};
+use syntax::{ast, AstNode, AstPtr, SyntaxNodePtr};
 
 pub mod body;
 pub mod db;
@@ -38,7 +38,7 @@ use crate::nameres::{
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub struct ScopeId {
+pub struct Scope {
     pub root_file: FileId,
     /// Which kind of `DefMap` does this scope correspond to?
     pub src: DefMapSource,
@@ -46,7 +46,11 @@ pub struct ScopeId {
     pub local_id: nameres::LocalScopeId,
 }
 
-impl ScopeId {
+impl Scope {
+    pub fn new(root_file: FileId, src: DefMapSource, local_id: nameres::LocalScopeId) -> Self {
+        Self { root_file, src, local_id }
+    }
+
     pub fn root(root_file: FileId) -> Self {
         Self { root_file, src: DefMapSource::Root, local_id: 0usize.into() }
     }
@@ -94,7 +98,7 @@ impl ScopeId {
 
 #[derive(Debug)]
 pub struct ItemLoc<N: ItemTreeNode> {
-    pub scope: ScopeId,
+    pub scope: Scope,
     pub id: ItemTreeId<N>,
 }
 
@@ -214,12 +218,10 @@ impl DisciplineLoc {
         // JW: this should be more idiomatic
         Discipline::lookup(&self.item_tree(db), self.id).ast_id()
     }
-    /*
     pub fn source(self, db: &dyn HirDefDB) -> ast::DisciplineDecl {
         let ast_id = self.ast_id(db);
         db.ast_id_map(self.root_file).get(ast_id).to_node(db.parse(self.root_file).tree().syntax())
     }
-    */
 }
 impl_intern!(DisciplineId, DisciplineLoc, intern_discipline, lookup_intern_discipline);
 
@@ -237,12 +239,10 @@ impl NatureLoc {
     pub fn ast_id(self, db: &dyn HirDefDB) -> AstId<ast::NatureDecl> {
         Nature::lookup(&self.item_tree(db), self.id).ast_id()
     }
-    /*
     pub fn source(self, db: &dyn HirDefDB) -> ast::NatureDecl {
         let ast_id = self.ast_id(db);
         db.ast_id_map(self.root_file).get(ast_id).to_node(db.parse(self.root_file).tree().syntax())
     }
-    */
 }
 impl_intern!(NatureId, NatureLoc, intern_nature, lookup_intern_nature);
 
@@ -278,6 +278,10 @@ impl NatureAttrLoc {
             (u32::from(attrs.start()) + u32::from(self.id)).into();
         tree[attr_id].ast_id()
     }
+    pub fn ast_ptr(self, db: &dyn HirDefDB) -> AstPtr<ast::NatureAttr> {
+        let file = self.nature.lookup(db).root_file;
+        db.ast_id_map(file).get(self.ast_id(db))
+    }
 }
 impl_intern!(NatureAttrId, NatureAttrLoc, intern_nature_attr, lookup_intern_nature_attr);
 
@@ -299,6 +303,12 @@ impl NodeLoc {
     pub fn ast_id(self, db: &dyn HirDefDB) -> ErasedAstId {
         let module = self.module.lookup(db);
         module.item_tree(db)[module.id].nodes[self.id].ast_id
+    }
+    pub fn ast_ptr(self, db: &dyn HirDefDB) -> SyntaxNodePtr {
+        let module = self.module.lookup(db);
+        let ast_id = module.item_tree(db)[module.id].nodes[self.id].ast_id;
+        let file = module.scope.root_file;
+        db.ast_id_map(file).get_erased(ast_id)
     }
     pub fn discipline_ast_id(self, db: &dyn HirDefDB) -> Option<ErasedAstId> {
         let module = self.module.lookup(db);
@@ -355,13 +365,11 @@ impl FunctionArgLoc {
     pub fn ast_ptr(self, db: &dyn HirDefDB) -> AstPtr<ast::FunctionArg> {
         db.ast_id_map(self.fun.lookup(db).scope.root_file).get(self.ast_id(db))
     }
-    /*
     pub fn source(self, db: &dyn HirDefDB) -> ast::FunctionArg {
         let file = self.fun.lookup(db).scope.root_file;
         let ptr = db.ast_id_map(file).get(self.ast_id(db));
         ptr.to_node(db.parse(file).tree().syntax())
     }
-    */
 }
 impl_intern!(FunctionArgId, FunctionArgLoc, intern_function_arg, lookup_intern_function_arg);
 
@@ -369,13 +377,18 @@ impl_intern!(FunctionArgId, FunctionArgLoc, intern_function_arg, lookup_intern_f
 pub struct BlockId(salsa::InternId);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockLoc {
-    parent: ScopeId,
+    parent: Scope,
     ast_id: AstId<ast::BlockStmt>,
 }
 impl BlockLoc {
     pub fn name(self, db: &dyn HirDefDB) -> Name {
         let tree = db.item_tree(self.parent.root_file);
         tree[self.ast_id].name.clone().expect("BlockLocs are only created for named Blocks")
+    }
+    pub fn source(self, db: &dyn HirDefDB) -> ast::BlockStmt {
+        let file = self.parent.root_file;
+        let ptr = db.ast_id_map(file).get(self.ast_id);
+        ptr.to_node(db.parse(file).tree().syntax())
     }
 }
 impl_intern!(BlockId, BlockLoc, intern_block, lookup_intern_block);

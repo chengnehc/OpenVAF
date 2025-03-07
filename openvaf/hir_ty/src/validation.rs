@@ -8,7 +8,7 @@ use hir_def::{
     nameres::{DefMap, PathResolveError, ScopeItemDef},
     AliasParamId, Branch, BranchId, BuiltIn, DefWithBodyId, DisciplineId, Expr, ExprId,
     FunctionArgLoc, ItemLoc, ItemTree, Literal, Lookup, ModuleId, ModuleLoc, NatureId, NodeId,
-    NodeTypeDecl, Path, ScopeId, Stmt, StmtId,
+    NodeTypeDecl, Path, Scope, Stmt, StmtId,
 };
 use syntax::{
     ast::{ArgListOwner, AssignOp},
@@ -691,7 +691,7 @@ impl TypeValidator<'_> {
     fn resolve_node(
         &mut self,
         node: &Path,
-        scope: ScopeId,
+        scope: Scope,
         branch: &ItemLoc<Branch>,
     ) -> Option<NodeId> {
         let node = scope.resolve_item_path::<NodeId>(self.db.upcast(), node);

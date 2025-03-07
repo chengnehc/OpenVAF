@@ -244,7 +244,7 @@ impl ParamSysFun {
         }
     }
 }
-pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
+pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
     dst.insert(kw::ln, BuiltIn::ln.into());
     dst.insert(kw::log, BuiltIn::log.into());
     dst.insert(kw::exp, BuiltIn::exp.into());
@@ -377,7 +377,7 @@ pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>)
     dst.insert(kw::zi_np, BuiltIn::zi_np.into());
     dst.insert(kw::zi_nd, BuiltIn::zi_nd.into());
 }
-pub fn insert_module_builtin_scope(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
+pub fn insert_param_sysfun(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
     dst.insert(sysfun::mfactor, ParamSysFun::mfactor.into());
     dst.insert(sysfun::xposition, ParamSysFun::xposition.into());
     dst.insert(sysfun::yposition, ParamSysFun::yposition.into());

@@ -2,7 +2,6 @@
 
 use std::mem;
 
-use basedb::lints::LintRegistry;
 use basedb::{AstIdMap, ErasedAstId, LintAttrs};
 use syntax::ast::{self, ArgListOwner, AttrIter, AttrsOwner, FunctionRef};
 use syntax::name::AsName;
@@ -11,21 +10,19 @@ use syntax::AstPtr;
 use crate::db::HirDefDB;
 use crate::expr::{CaseCond, Event, GlobalEvent};
 use crate::nameres::DefMapSource;
-use crate::{BlockLoc, Case, Expr, ExprId, Intern, Literal, Path, ScopeId, Stmt, StmtId};
+use crate::{BlockLoc, Case, Expr, ExprId, Intern, Literal, Path, Scope, Stmt, StmtId};
 
 use super::{Body, BodySourceMap};
 
 pub(super) struct Context<'a> {
-    // Results
     pub(super) body: &'a mut Body,
     pub(super) src_map: &'a mut BodySourceMap,
 
     // for collecting block stmt, as a named block opens up a new scope
-    pub(super) curr_scope: (ScopeId, ErasedAstId),
+    pub(super) curr_scope: (Scope, ErasedAstId),
     pub(super) ast_id_map: &'a AstIdMap,
 
     pub(super) db: &'a dyn HirDefDB,
-    pub(super) registry: &'a LintRegistry,
 }
 
 impl Context<'_> {
@@ -104,8 +101,8 @@ impl Context<'_> {
     pub fn collect_stmt(&mut self, stmt: ast::Stmt) -> StmtId {
         let s = match &stmt {
             ast::Stmt::EmptyStmt(_) => Stmt::Empty,
-            ast::Stmt::BlockStmt(stmt) => self.collect_block(stmt),
             ast::Stmt::ExprStmt(stmt) => Stmt::Expr(self.collect_expr_opt(stmt.expr())),
+            ast::Stmt::BlockStmt(stmt) => self.collect_block(stmt),
             ast::Stmt::AssignStmt(stmt) => match stmt.assign() {
                 Some(a) => Stmt::Assignment {
                     dst: self.collect_expr_opt(a.lval()),
@@ -139,6 +136,22 @@ impl Context<'_> {
         self.alloc_stmt(s, AstPtr::new(&stmt), stmt.attrs())
     }
 
+    fn collect_block(&mut self, block: &ast::BlockStmt) -> Stmt {
+        let ast_id = self.ast_id_map.id_of(block);
+        let (curr, _) = self.curr_scope;
+        let id = BlockLoc { ast_id, parent: curr }.intern(self.db);
+        let next = if let Some(def_map) = self.db.block_def_map(id) {
+            Scope::new(curr.root_file, DefMapSource::Block(id), def_map.entry_scope())
+        } else {
+            curr
+        };
+        let parent_scope = mem::replace(&mut self.curr_scope, (next, ast_id.into()));
+        let body = block.body().map(|stmt| self.collect_stmt(stmt)).collect();
+        self.curr_scope = parent_scope;
+
+        Stmt::Block { body }
+    }
+
     fn collect_case_stmt(&mut self, case_stmt: &ast::CaseStmt) -> Stmt {
         let discr = self.collect_expr_opt(case_stmt.discriminant());
         let case_arms = case_stmt
@@ -156,30 +169,6 @@ impl Context<'_> {
             .collect();
 
         Stmt::Case { discr, case_arms }
-    }
-
-    fn collect_block(&mut self, block: &ast::BlockStmt) -> Stmt {
-        let ast_id = self.ast_id_map.id_of(block);
-        let (curr_scope, _) = self.curr_scope;
-        let id = BlockLoc { ast_id, parent: curr_scope }.intern(self.db);
-        let parent_scope = match self.db.block_def_map(id) {
-            Some(def_map) => {
-                let scope = ScopeId {
-                    root_file: curr_scope.root_file,
-                    local_id: def_map.entry_scope(),
-                    src: DefMapSource::Block(id),
-                };
-                mem::replace(&mut self.curr_scope, (scope, ast_id.into()))
-            }
-            None => {
-                let scope = curr_scope;
-                mem::replace(&mut self.curr_scope, (scope, ast_id.into()))
-            }
-        };
-        let body = block.body().map(|stmt| self.collect_stmt(stmt)).collect();
-        self.curr_scope = parent_scope;
-
-        Stmt::Block { body }
     }
 
     fn collect_event_stmt(&mut self, event_stmt: &ast::EventStmt) -> Stmt {
@@ -218,12 +207,9 @@ impl Context<'_> {
     }
 
     fn alloc_stmt(&mut self, stmt: Stmt, ptr: AstPtr<ast::Stmt>, attrs: AttrIter) -> StmtId {
-        let attrs = LintAttrs::resolve(
-            self.registry,
-            attrs,
-            &mut self.src_map.diagnostics,
-            self.curr_scope.1,
-        );
+        let registry = &self.db.lint_registry();
+        let attrs =
+            LintAttrs::resolve(registry, attrs, &mut self.src_map.diagnostics, self.curr_scope.1);
         let id = self.make_stmt(stmt, Some(ptr.clone()), attrs);
         self.src_map.stmt_map.insert(ptr, id);
         id

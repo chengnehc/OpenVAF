@@ -408,7 +408,6 @@ fn gen_instr_builder() {
     };
 
     let header = "use super::*;";
-
     let file =
         project_root().join("openvaf").join("mir").join("src").join("builder").join("generated.rs");
 

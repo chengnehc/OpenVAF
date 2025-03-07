@@ -66,12 +66,11 @@ impl Diagnostic for DefDiagnosticWrapped<'_> {
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
         let sm = db.sourcemap(root_file);
         let parse = db.parse(root_file);
-        let ast_id_map = db.ast_id_map(root_file);
 
         let report = match self.diag {
             DefDiagnostic::AlreadyDeclared { old, new, name } => {
                 let FileSpan { range, file } =
-                    parse.to_file_span(new.text_range(self.db, &ast_id_map, &parse).unwrap(), &sm);
+                    parse.to_file_span(new.text_range(self.db).unwrap(), &sm);
 
                 let mut labels = vec![Label {
                     style: LabelStyle::Primary,
@@ -80,7 +79,7 @@ impl Diagnostic for DefDiagnosticWrapped<'_> {
                     message: "already declared in this scope".to_owned(),
                 }];
 
-                if let Some(def) = old.text_range(self.db, &ast_id_map, &parse) {
+                if let Some(def) = old.text_range(self.db) {
                     let FileSpan { range, file } = parse.to_file_span(def, &sm);
                     labels.push(Label {
                         style: LabelStyle::Secondary,

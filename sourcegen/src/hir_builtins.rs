@@ -289,7 +289,7 @@ fn generate_builtins() {
 
     // for crate `hir_def`
     let hir_def = quote! {
-        #[derive(Eq,PartialEq,Copy,Clone, Hash,Debug)]
+        #[derive(Eq, PartialEq, Copy, Clone, Hash, Debug)]
         #[allow(nonstandard_style,unreachable_pub)]
         #[repr(u8)]
         pub enum BuiltIn{
@@ -349,12 +349,12 @@ fn generate_builtins() {
             }
         }
 
-        pub fn insert_builtin_scope(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){
-            #(dst.insert(#kw_types::#kws,BuiltIn::#variants.into());)*
+        pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){
+            #(dst.insert(#kw_types::#kws, BuiltIn::#variants.into());)*
         }
 
-        pub fn insert_module_builtin_scope(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){
-            #(dst.insert(sysfun::#params,ParamSysFun::#params.into());)*
+        pub fn insert_param_sysfun(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){
+            #(dst.insert(sysfun::#params, ParamSysFun::#params.into());)*
         }
     };
 
@@ -372,7 +372,6 @@ fn generate_builtins() {
     let const_cnt = constants.len();
     let hir_ty = quote! {
         const BUILTIN_INFO: [BuiltinInfo; #const_cnt] = [#(#constants),*];
-
         pub(crate) fn builtin_info(builtin: BuiltIn) -> BuiltinInfo{
             BUILTIN_INFO[builtin as u8 as usize]
         }

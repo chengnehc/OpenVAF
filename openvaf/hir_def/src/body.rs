@@ -5,14 +5,14 @@ use ahash::AHashMap as HashMap;
 use arena::{Arena, ArenaMap};
 use basedb::lints::{Lint, LintSrc};
 use basedb::{AttrDiagnostic, LintAttrs};
-use syntax::{ast, AstNode, AstPtr};
+use syntax::{ast, AstPtr};
 
 use crate::db::HirDefDB;
 use crate::item_tree::{DisciplineAttr, ItemTreeId, NatureAttr};
 use crate::nameres::{DefMapSource, LocalScopeId};
 use crate::{
     DefWithBodyId, DisciplineAttrLoc, DisciplineLoc, Expr, ExprId, Literal, Lookup, NatureAttrLoc,
-    NatureLoc, ParamId, ScopeId, Stmt, StmtId, Type,
+    NatureLoc, ParamId, Scope, Stmt, StmtId, Type,
 };
 
 mod lower;
@@ -24,7 +24,7 @@ pub struct Body {
     pub exprs: Arena<Expr>,
     pub stmts: Arena<Stmt>,
     pub entry_stmts: Box<[StmtId]>,
-    pub stmt_scopes: ArenaMap<Stmt, ScopeId>,
+    pub stmt_scopes: ArenaMap<Stmt, Scope>,
 }
 
 /// The mapping from AST node positions to HIR expression/statement IDs (and in reverse).
@@ -62,8 +62,7 @@ impl Body {
         let mut src_map = BodySourceMap::default();
 
         let root_file = def.file(db);
-        let ast_id_map = db.ast_id_map(root_file);
-        let registry = &db.lint_registry();
+        let ast_id_map = &db.ast_id_map(root_file);
 
         match def {
             DefWithBodyId::ParamId(param) => {
@@ -76,12 +75,11 @@ impl Body {
                 let ast_node = module.source(db);
                 let curr_scope = (module.scope, ast_id.into());
                 let mut ctxt = lower::Context {
-                    db,
                     src_map: &mut src_map,
                     body: &mut body,
-                    ast_id_map: &ast_id_map,
                     curr_scope,
-                    registry,
+                    ast_id_map,
+                    db,
                 };
 
                 body.entry_stmts = if initial {
@@ -94,11 +92,8 @@ impl Body {
                 };
             }
             DefWithBodyId::FunctionId(id) => {
-                let scope = ScopeId {
-                    root_file,
-                    local_id: LocalScopeId::from(0u32),
-                    src: DefMapSource::Function(id),
-                };
+                let scope =
+                    Scope::new(root_file, DefMapSource::Function(id), LocalScopeId::from(0u32));
                 debug_assert_eq!(scope.local_id, db.function_def_map(id).entry_scope());
 
                 let fun = id.lookup(db);
@@ -106,12 +101,11 @@ impl Body {
                 let ast_node = fun.source(db);
                 let curr_scope = (scope, ast_id.into());
                 let mut ctxt = lower::Context {
-                    db,
                     src_map: &mut src_map,
                     body: &mut body,
-                    ast_id_map: &ast_id_map,
                     curr_scope,
-                    registry,
+                    ast_id_map,
+                    db,
                 };
 
                 body.entry_stmts = ast_node.body().map(|stmt| ctxt.collect_stmt(stmt)).collect();
@@ -122,12 +116,11 @@ impl Body {
                 let ast_node = var.source(db);
                 let curr_scope = (var.scope, ast_id.into());
                 let mut ctxt = lower::Context {
-                    db,
                     src_map: &mut src_map,
                     body: &mut body,
-                    ast_id_map: &ast_id_map,
                     curr_scope,
-                    registry,
+                    ast_id_map,
+                    db,
                 };
                 let expr = if let Some(expr) = ast_node.default() {
                     ctxt.collect_expr(expr)
@@ -144,7 +137,7 @@ impl Body {
                 body.entry_stmts = Box::from([stmt])
             }
             DefWithBodyId::NatureAttrId(attr) => {
-                let ast = db.parse(root_file).tree();
+                let root = db.parse(root_file).syntax_node();
                 let item_tree = db.item_tree(root_file);
 
                 let NatureAttrLoc { nature, id } = attr.lookup(db);
@@ -153,15 +146,14 @@ impl Body {
                 let nature = &item_tree[nature_id];
                 let idx = usize::from(nature.attrs.start()) + usize::from(id);
                 let attr = &item_tree[ItemTreeId::<NatureAttr>::from(idx)];
-                let ast_node = ast_id_map.get(attr.ast_id).to_node(ast.syntax());
-                let curr_scope = (ScopeId::root(root_file), attr.ast_id.into());
+                let ast_node = ast_id_map.get(attr.ast_id).to_node(&root);
+                let curr_scope = (Scope::root(root_file), attr.ast_id.into());
                 let mut ctxt = lower::Context {
-                    db,
                     src_map: &mut src_map,
                     body: &mut body,
-                    ast_id_map: &ast_id_map,
                     curr_scope,
-                    registry,
+                    ast_id_map,
+                    db,
                 };
                 let expr = ctxt.collect_expr_opt(ast_node.val());
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
@@ -169,7 +161,7 @@ impl Body {
                 body.entry_stmts = Box::from([stmt])
             }
             DefWithBodyId::DisciplineAttrId(attr) => {
-                let ast = db.parse(root_file).tree();
+                let root = db.parse(root_file).syntax_node();
                 let item_tree = db.item_tree(root_file);
 
                 let DisciplineAttrLoc { discipline, id } = attr.lookup(db);
@@ -178,16 +170,14 @@ impl Body {
                 let discipline = &item_tree[discipline_id];
                 let idx = usize::from(discipline.attrs.start()) + usize::from(id);
                 let attr = &item_tree[ItemTreeId::<DisciplineAttr>::from(idx)];
-                let ast_node = ast_id_map.get(attr.ast_id).to_node(ast.syntax());
-                let curr_scope = (ScopeId::root(root_file), attr.ast_id.into());
-
+                let ast_node = ast_id_map.get(attr.ast_id).to_node(&root);
+                let curr_scope = (Scope::root(root_file), attr.ast_id.into());
                 let mut ctxt = lower::Context {
-                    db,
                     src_map: &mut src_map,
                     body: &mut body,
-                    ast_id_map: &ast_id_map,
                     curr_scope,
-                    registry,
+                    ast_id_map,
+                    db,
                 };
                 let expr = ctxt.collect_expr_opt(ast_node.val());
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
@@ -207,18 +197,16 @@ impl Body {
         let mut src_map = BodySourceMap::default();
         let root_file = id.lookup(db).scope.root_file;
         let ast_id_map = db.ast_id_map(root_file);
-        let registry = &db.lint_registry();
 
         let param = id.lookup(db);
         let ast_id = param.ast_id(db);
         let ast_node = param.source(db);
         let mut ctxt = lower::Context {
-            db,
             src_map: &mut src_map,
             body: &mut body,
             ast_id_map: &ast_id_map,
             curr_scope: (param.scope, ast_id.into()),
-            registry,
+            db,
         };
 
         let default = ctxt.collect_expr_opt(ast_node.default());

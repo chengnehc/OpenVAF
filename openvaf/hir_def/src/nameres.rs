@@ -1,17 +1,15 @@
 //！ Name resolution
 
 use std::ops::{Index, IndexMut};
-use std::sync::Arc;
 use stdx::{impl_display, impl_from, impl_from_typed};
 
 use arena::{Arena, Idx};
-use basedb::{AstIdMap, /*ErasedAstId,*/ FileId};
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use syntax::name::{kw, Name};
-use syntax::{AstNode, Parse, SourceFile, TextRange};
+use syntax::{AstNode, TextRange};
 
-use crate::builtin::{insert_builtin_scope, BuiltIn, ParamSysFun};
+use crate::builtin::{self, BuiltIn, ParamSysFun};
 use crate::db::HirDefDB;
 use crate::{
     AliasParamId, BlockId, BranchId, DisciplineId, FunctionArgId, FunctionId, Lookup, ModuleId,
@@ -144,22 +142,26 @@ impl From<NatureAttrId> for NatureAccess {
 /// Items that can be defined within a scope.
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeItemDef {
-    ModuleId(ModuleId),
+    DisciplineId(DisciplineId),
     NatureId(NatureId),
     NatureAttrId(NatureAttrId),
+    // Special treatment for nature access attribute(function)
     NatureAccess(NatureAccess),
-    DisciplineId(DisciplineId),
+    ModuleId(ModuleId),
     BlockId(BlockId),
     NodeId(NodeId),
     BranchId(BranchId),
     VarId(VarId),
     ParamId(ParamId),
-    ParamSysFun(ParamSysFun),
     AliasParamId(AliasParamId),
-    BuiltIn(BuiltIn),
+
     FunctionId(FunctionId),
-    FunctionArgId(FunctionArgId),
     FunctionReturn(FunctionId),
+    FunctionArgId(FunctionArgId),
+    // Buitlin math functions and sysfuns
+    BuiltIn(BuiltIn),
+    // Hierarchical system parameters
+    ParamSysFun(ParamSysFun),
 }
 
 impl ScopeItemDef {
@@ -187,80 +189,36 @@ impl ScopeItemDef {
     }
     */
 
-    pub fn text_range(
-        &self,
-        db: &dyn HirDefDB,
-        ast_id_map: &AstIdMap,
-        parse: &Parse<SourceFile>,
-    ) -> Option<TextRange> {
+    // JW: mainly for double declaration diagnostics
+    pub fn text_range(&self, db: &dyn HirDefDB) -> Option<TextRange> {
+        use ScopeItemDef::*;
+
         let res = match self {
-            ScopeItemDef::ModuleId(module) => ast_id_map
-                .get(module.lookup(db).ast_id(db))
-                .to_node(parse.tree().syntax())
-                .name()?
-                .syntax()
-                .text_range(),
-            ScopeItemDef::BlockId(block) => ast_id_map
-                .get(block.lookup(db).ast_id)
-                .to_node(parse.tree().syntax())
-                .block_scope()?
-                .name()?
-                .syntax()
-                .text_range(),
-            ScopeItemDef::NatureId(nature) => ast_id_map
-                .get(nature.lookup(db).ast_id(db))
-                .to_node(parse.tree().syntax())
-                .name()?
-                .syntax()
-                .text_range(),
-            ScopeItemDef::NatureAccess(access) => {
-                ast_id_map.get(access.0.lookup(db).ast_id(db)).text_range()
-            }
-            ScopeItemDef::DisciplineId(discipline) => ast_id_map
-                .get(discipline.lookup(db).ast_id(db))
-                .to_node(parse.tree().syntax())
-                .name()?
-                .syntax()
-                .text_range(),
-            ScopeItemDef::VarId(var) => ast_id_map.get(var.lookup(db).ast_id(db)).text_range(),
-            ScopeItemDef::ParamId(param) => {
-                ast_id_map.get(param.lookup(db).ast_id(db)).text_range()
-            }
-            ScopeItemDef::BranchId(branch) => {
+            DisciplineId(disc) => disc.lookup(db).source(db).name()?.syntax().text_range(),
+            NatureId(nature) => nature.lookup(db).source(db).name()?.syntax().text_range(),
+            NatureAttrId(attr) => attr.lookup(db).ast_ptr(db).text_range(),
+            NatureAccess(access) => access.0.lookup(db).ast_ptr(db).text_range(),
+            ModuleId(module) => module.lookup(db).source(db).name()?.syntax().text_range(),
+            BlockId(blk) => blk.lookup(db).source(db).block_scope()?.name()?.syntax().text_range(),
+            NodeId(node) => node.lookup(db).ast_ptr(db).text_range(),
+            BranchId(branch) => {
                 let branch = branch.lookup(db);
                 let pos = branch.item_tree(db)[branch.id].name_idx;
-                ast_id_map
-                    .get(branch.ast_id(db))
-                    .to_node(parse.tree().syntax())
-                    .names()
-                    .nth(pos)?
-                    .syntax()
-                    .text_range()
+                branch.source(db).names().nth(pos)?.syntax().text_range()
             }
-            ScopeItemDef::FunctionReturn(fun) | ScopeItemDef::FunctionId(fun) => ast_id_map
-                .get(fun.lookup(db).ast_id(db))
-                .to_node(parse.tree().syntax())
-                .name()?
-                .syntax()
-                .text_range(),
-            ScopeItemDef::FunctionArgId(arg) => {
+            VarId(var) => var.lookup(db).ast_ptr(db).text_range(),
+            ParamId(param) => param.lookup(db).ast_ptr(db).text_range(),
+            AliasParamId(alias) => alias.lookup(db).ast_ptr(db).text_range(),
+            FunctionId(fun) | FunctionReturn(fun) => {
+                fun.lookup(db).source(db).name()?.syntax().text_range()
+            }
+            FunctionArgId(arg) => {
                 let arg = arg.lookup(db);
                 let fun = arg.fun.lookup(db);
                 let pos = fun.item_tree(db)[fun.id].args[arg.id].name_idx;
-                ast_id_map
-                    .get(arg.ast_id(db))
-                    .to_node(parse.tree().syntax())
-                    .names()
-                    .nth(pos)?
-                    .syntax()
-                    .text_range()
+                arg.source(db).names().nth(pos)?.syntax().text_range()
             }
-            ScopeItemDef::NodeId(node) => {
-                ast_id_map.get_erased(node.lookup(db).ast_id(db)).text_range()
-            }
-            ScopeItemDef::BuiltIn(_) | ScopeItemDef::ParamSysFun(_) => return None,
-            ScopeItemDef::AliasParamId(id) => ast_id_map.get(id.lookup(db).ast_id(db)).text_range(),
-            ScopeItemDef::NatureAttrId(id) => ast_id_map.get(id.lookup(db).ast_id(db)).text_range(),
+            BuiltIn(_) | ParamSysFun(_) => return None,
         };
 
         Some(res)
@@ -268,23 +226,23 @@ impl ScopeItemDef {
 }
 
 impl_from! {
-    ModuleId,
+    DisciplineId,
+    // DisciplineAttrId,
     NatureId,
     NatureAttrId,
     NatureAccess,
-    DisciplineId,
-    // DisciplineAttrId,
+    ModuleId,
     BlockId,
     NodeId,
     BranchId,
     VarId,
     ParamId,
     AliasParamId,
-    ParamSysFun,
-    BuiltIn,
     FunctionId,
-    FunctionArgId
+    FunctionArgId,
     // FunctionReturn
+    BuiltIn,
+    ParamSysFun
 
     for ScopeItemDef
 }
@@ -309,43 +267,29 @@ macro_rules! scope_item_kinds {
 }
 
 scope_item_kinds! {
-    ModuleId => "module",
+    DisciplineId => "discipline",
     NatureId => "nature",
     NatureAttrId => "nature attribute",
     NatureAccess => "nature access function",
-    DisciplineId => "discipline",
+    ModuleId => "module",
     BlockId => "block scope",
     NodeId => "node",
     BranchId => "branch",
     VarId => "variable",
     ParamId => "parameter",
     AliasParamId => "parameter",
-    ParamSysFun => "hierarchical parameter system function",
-    BuiltIn => "function",
     FunctionId => "function",
-    FunctionArgId => "function argument"
+    FunctionArgId => "function argument",
+    BuiltIn => "function",
+    ParamSysFun => "hierarchical parameter system function"
 }
 
-/// DefMap queries
-impl DefMap {
-    pub fn root_def_map_query(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {
-        collect::root_def_map(db, root_file)
-    }
-
-    pub fn block_def_map_query(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
-        collect::block_def_map(db, block)
-    }
-
-    pub fn function_def_map_query(db: &dyn HirDefDB, fun: FunctionId) -> Arc<DefMap> {
-        collect::function_def_map(db, fun)
-    }
-}
-
-static BUILTIN_SCOPE: Lazy<IndexMap<Name, ScopeItemDef, ahash::RandomState>> = Lazy::new(|| {
-    let mut scope = IndexMap::default();
-    insert_builtin_scope(&mut scope);
-    scope
-});
+static BUILTIN_DEFINITIONS: Lazy<IndexMap<Name, ScopeItemDef, ahash::RandomState>> =
+    Lazy::new(|| {
+        let mut defs = IndexMap::default();
+        builtin::insert_builtin_def(&mut defs);
+        defs
+    });
 
 /// Name resolution algorithms
 impl DefMap {
@@ -426,8 +370,9 @@ impl DefMap {
                         def_map = &arc;
                     }
                     DefMapSource::Root | DefMapSource::Function(_) => {
-                        // TODO give hint if found in full def map
-                        let Some(builtin) = BUILTIN_SCOPE.get(name) else {
+                        // TODO when dealing with function def map, give hint if a builtin decl.
+                        // is found in root def map. So far, these two are identical.
+                        let Some(builtin) = BUILTIN_DEFINITIONS.get(name) else {
                             return Err(PathResolveError::NotFound { name: name.clone() });
                         };
                         break *builtin;
@@ -529,7 +474,7 @@ impl DefMap {
                     {
                         let rem = &segments[(i + 1)..];
                         if let [name] = rem {
-                            return Ok(ResolvedPath::PotentialAccess {
+                            return Ok(ResolvedPath::PotentialAttr {
                                 branch: *branch,
                                 name: name.clone(),
                             });
@@ -544,7 +489,7 @@ impl DefMap {
                     {
                         let rem = &segments[(i + 1)..];
                         if let [name] = rem {
-                            return Ok(ResolvedPath::FlowAccess {
+                            return Ok(ResolvedPath::FlowAttr {
                                 branch: *branch,
                                 name: name.clone(),
                             });
@@ -582,15 +527,15 @@ impl DefMap {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedPath {
-    FlowAccess { branch: BranchId, name: Name },
-    PotentialAccess { branch: BranchId, name: Name },
+    FlowAttr { branch: BranchId, name: Name },
+    PotentialAttr { branch: BranchId, name: Name },
     ScopeItemDef(ScopeItemDef),
 }
 
 impl_display! {
     match ResolvedPath{
-        ResolvedPath::FlowAccess{..}  => "nature access function";
-        ResolvedPath::PotentialAccess{..} => "nature access function";
+        ResolvedPath::FlowAttr{..}  => "nature attribute";
+        ResolvedPath::PotentialAttr{..} => "nature attribute";
         ResolvedPath::ScopeItemDef(item) => "{}", item.item_kind();
     }
 }

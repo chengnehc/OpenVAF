@@ -1154,11 +1154,11 @@ impl Ctx<'_> {
         };
 
         let attr = match resolved_path {
-            ResolvedPath::FlowAccess { branch, ref name } => {
+            ResolvedPath::FlowAttr { branch, ref name } => {
                 BranchTy::flow_attr(self.db, branch, name)?
             }
 
-            ResolvedPath::PotentialAccess { branch, ref name } => {
+            ResolvedPath::PotentialAttr { branch, ref name } => {
                 BranchTy::potential_attr(self.db, branch, name)?
             }
 
