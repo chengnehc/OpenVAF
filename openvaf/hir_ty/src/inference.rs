@@ -127,8 +127,8 @@ impl Ctx<'_> {
                 // TODO lint for side effect free expressions
                 self.infere_assignment(stmt, expr, self.expr_stmt_ty.clone());
             }
-            Stmt::Assignment { dst, val, op_kind: assignment_kind } => {
-                let dst_ty = self.infere_assignment_dst(stmt, dst, assignment_kind);
+            Stmt::Assignment { dst, val, op_kind } => {
+                let dst_ty = self.infere_assignment_dst(stmt, dst, op_kind);
                 self.infere_assignment(stmt, val, dst_ty);
             }
             Stmt::ForLoop { cond, .. } | Stmt::If { cond, .. } | Stmt::WhileLoop { cond, .. } => {

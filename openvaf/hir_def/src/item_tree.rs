@@ -43,8 +43,8 @@ pub struct ItemTree {
 impl ItemTree {
     pub(crate) fn file_item_tree_query(db: &dyn HirDefDB, file: FileId) -> Arc<ItemTree> {
         let syntax_tree = db.parse(file).tree();
-        let ctx = lower::Context::new(db, file);
-        let mut item_tree = ctx.lower_root_items(&syntax_tree);
+        let ctxt = lower::Context::new(db, file);
+        let mut item_tree = ctxt.lower_root_items(&syntax_tree);
         item_tree.shrink_to_fit();
 
         Arc::new(item_tree)
@@ -96,9 +96,10 @@ impl_from_typed! (
 
 #[derive(Default, Debug, Eq, PartialEq)]
 pub(crate) struct ItemTreeData {
+    // # Note
+    // Disciplines or Natures share the same arena of their attributes
+    // within which each discipline or nature owns a `IdxRange` of attributes.
     pub disciplines: Arena<Discipline>,
-    // Disciplines all share the same arena of attributes, within which
-    // each discipline has a corresponding `IdxRange` of attributes.
     pub discipline_attrs: Arena<DisciplineAttr>,
     pub natures: Arena<Nature>,
     pub nature_attrs: Arena<NatureAttr>,
@@ -124,7 +125,7 @@ pub trait ItemTreeNode: Clone {
     fn name(&self) -> &Name;
     /// The `AstId` of this item, allowing to map it back to its surface syntax.
     fn ast_id(&self) -> AstId<Self::Source>;
-    /// Looks up an item typed `Self` in the `tree`.
+    /// Looks up an item with this type in the tree.
     fn lookup(tree: &ItemTree, index: ItemTreeId<Self>) -> &Self;
 }
 
@@ -135,8 +136,7 @@ macro_rules! item_tree_nodes {
         pub enum ScopeItem {
             $( $typ(ItemTreeId<$typ>), )+
         }
-        // conversion between generic and typed items
-        $(
+        $( // conversion between generic and typed items
         impl From<ItemTreeId<$typ>> for ScopeItem {
             fn from(id: ItemTreeId<$typ>) -> ScopeItem {
                 ScopeItem::$typ(id)
@@ -154,22 +154,23 @@ macro_rules! item_tree_nodes {
             }
         }
         )+
-        // `ItemTreeNode` trait impls
-        $(
+        $( // `ItemTreeNode` trait impls
         impl ItemTreeNode for $typ {
             type Source = $ast;
-
+            #[inline]
             fn name(&self) -> &Name {
                 &self.name
             }
+            #[inline]
             fn ast_id(&self) -> AstId<Self::Source> {
                 self.ast_id
             }
+            #[inline]
             fn lookup(tree: &ItemTree, index: Idx<Self>) -> &Self {
                 &tree.data.$fld[index]
             }
         }
-        // Index operator overload
+        // [] operator overload of each arena of item tree data
         impl Index<Idx<$typ>> for ItemTree {
             type Output = $typ;
 
@@ -381,16 +382,15 @@ impl FunctionArg {
     }
 }
 
-/// `Node` is an abstraction over `Net` and `Port`.
-/// `Node` can be declared as either `Net` or `Port`.
-/// `Port` requires direction specification, while `Net` doesn't.
+/// `Node` is an abstraction over `Net` and `Port` and can be declared as either
+/// `Net` or `Port`. `Port` requires direction specification, while `Net` doesn't.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub name: Name,
     pub is_port: bool,
     // A node can have multiple declarations
     pub decls: Vec<NodeTypeDecl>, // TODO small vec?
-    pub ast_id: ErasedAstId,      // TODO use AstId<T>?
+    pub ast_id: ErasedAstId,      // TODO(JW) use AstId<T>?
 }
 impl Node {
     pub fn discipline(&self, tree: &ItemTree) -> Option<Name> {

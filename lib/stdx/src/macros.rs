@@ -53,7 +53,9 @@ macro_rules! impl_from {
                     }
                 }
                 impl TryFrom<$enum> for $sub_variant {
-                    type Error = ();
+                    // FIXME(JW) do not use `()` as Error type, for that conveys no useful message.
+                    // Use a unit struct instead.
+                   type Error = ();
 
                     fn try_from(it: $enum) -> Result<$sub_variant,()> {
                         if let $enum::$variant($variant::$sub_variant(it)) = it{
@@ -85,6 +87,8 @@ macro_rules! impl_from_typed {
                 }
             }
             impl TryFrom<$enum> for $ty {
+                // FIXME(JW) do not use `()` as Error type, for that conveys no useful message.
+                // Use a unit struct instead.
                 type Error = ();
 
                 fn try_from(it: $enum) -> Result<$ty,()> {

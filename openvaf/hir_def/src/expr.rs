@@ -1,4 +1,4 @@
-//! This module describes hir-level representation of expressions.
+//! This module describes hir-level representation of expressions and statements.
 //!
 //! This representation is:
 //!
@@ -18,48 +18,7 @@ use syntax::ast::{self, BinaryOp, LiteralKind, UnaryOp};
 
 use crate::Path;
 
-#[derive(Clone, Eq, PartialEq)]
-pub enum Literal {
-    String(Box<str>),
-    Int(i32),
-    Float(Ieee64),
-    Inf,
-}
-impl_debug! {
-    match Literal{
-        Literal::String(_) => "\"<literal>\"";
-        Literal::Int(val) => "{}",val;
-        Literal::Float(val) => "{}",f64::from(*val);
-        Literal::Inf => "inf";
-    }
-}
-
-use LiteralKind::*;
-
-impl Literal {
-    pub fn new(ast: LiteralKind) -> Literal {
-        match ast {
-            StrLit(lit) => Literal::String(lit.unescaped_value().into_boxed_str()),
-            IntNumber(lit) => Literal::Int(lit.value()),
-            SiRealNumber(lit) => Literal::Float(lit.value().into()),
-            StdRealNumber(lit) => Literal::Float(lit.value().into()),
-            Inf => Literal::Inf, // TODO check if this is allowed somewhere?
-        }
-    }
-
-    pub fn unwrap_str(&self) -> &str {
-        let Literal::String(lit) = self else { unreachable!("called unwrap str on {self:?}") };
-        lit
-    }
-
-    pub fn is_zero(&self) -> bool {
-        match self {
-            Literal::Int(0) => true,
-            Literal::Float(val) => val.is_zero(),
-            _ => false,
-        }
-    }
-}
+/* Expressions */
 
 pub type ExprId = Idx<Expr>;
 
@@ -67,18 +26,19 @@ pub type ExprId = Idx<Expr>;
 pub enum Expr {
     /// This is produced if the syntax tree does not have a required expression piece.
     Missing,
+    Literal(Literal),
     Path {
         path: Path,
         port: bool,
+    },
+    UnaryOp {
+        expr: ExprId,
+        op: UnaryOp,
     },
     BinaryOp {
         lhs: ExprId,
         rhs: ExprId,
         op: Option<BinaryOp>,
-    },
-    UnaryOp {
-        expr: ExprId,
-        op: UnaryOp,
     },
     Select {
         cond: ExprId,
@@ -90,7 +50,6 @@ pub enum Expr {
         args: Vec<ExprId>,
     },
     Array(Vec<ExprId>),
-    Literal(Literal),
 }
 
 impl Expr {
@@ -98,11 +57,11 @@ impl Expr {
     pub fn walk_child_exprs(&self, mut f: impl FnMut(ExprId)) {
         match *self {
             Expr::Missing | Expr::Path { .. } | Expr::Literal(_) => (),
+            Expr::UnaryOp { expr, .. } => f(expr),
             Expr::BinaryOp { lhs, rhs, .. } => {
                 f(lhs);
                 f(rhs);
             }
-            Expr::UnaryOp { expr, .. } => f(expr),
             Expr::Select { cond, then_val, else_val } => {
                 f(cond);
                 f(then_val);
@@ -122,29 +81,46 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
-pub enum GlobalEvent {
-    InitialStep,
-    FinalStep,
+#[derive(Clone, Eq, PartialEq)]
+pub enum Literal {
+    String(Box<str>),
+    Int(i32),
+    Float(Ieee64),
+    Inf,
+}
+impl_debug! {
+    match Literal{
+        Literal::String(_) => "\"<literal>\"";
+        Literal::Int(val) => "{}",val;
+        Literal::Float(val) => "{}",f64::from(*val);
+        Literal::Inf => "inf";
+    }
 }
 
-// non_exhaustive because currently the full standard is not implemented
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
-#[non_exhaustive]
-pub enum Event {
-    Global { kind: GlobalEvent, phases: Vec<String> },
-}
+use LiteralKind::*;
+impl Literal {
+    pub fn new(ast: LiteralKind) -> Literal {
+        match ast {
+            StrLit(lit) => Literal::String(lit.unescaped_value().into_boxed_str()),
+            IntNumber(lit) => Literal::Int(lit.value()),
+            SiRealNumber(lit) => Literal::Float(lit.value().into()),
+            StdRealNumber(lit) => Literal::Float(lit.value().into()),
+            Inf => Literal::Inf,
+        }
+    }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CaseCond {
-    Default,
-    Vals(Vec<ExprId>), // TODO PROFILE: SmallVec<[ExprId; 1]> here
-}
+    pub fn unwrap_str(&self) -> &str {
+        let Literal::String(lit) = self else { unreachable!("called unwrap str on {self:?}") };
+        lit
+    }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Case {
-    pub cond: CaseCond,
-    pub body: StmtId,
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Literal::Int(0) => true,
+            Literal::Float(val) => val.is_zero(),
+            _ => false,
+        }
+    }
 }
 
 /* Statements */
@@ -156,13 +132,13 @@ pub enum Stmt {
     Missing,
     Empty,
     Expr(ExprId),
-    EventControl { event: Event, body: StmtId },
-    Assignment { dst: ExprId, val: ExprId, op_kind: ast::AssignOp },
     Block { /*scope: Option<BlockId>,*/ body: Vec<StmtId> },
-    If { cond: ExprId, then_branch: StmtId, else_branch: StmtId },
+    Assignment { dst: ExprId, val: ExprId, op_kind: ast::AssignOp },
     ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
     WhileLoop { cond: ExprId, body: StmtId },
+    If { cond: ExprId, then_branch: StmtId, else_branch: StmtId },
     Case { discr: ExprId, case_arms: Vec<Case> }, // TODO lint on unreachable
+    EventControl { event: Event, body: StmtId },
 }
 
 impl Stmt {
@@ -176,14 +152,14 @@ impl Stmt {
             | Stmt::Expr(expr) => f(expr),
             Stmt::Assignment { dst, val, .. } => {
                 f(dst);
-                f(val)
+                f(val);
             }
             Stmt::Case { discr, ref case_arms, .. } => {
                 f(discr);
                 for case in case_arms {
                     if let CaseCond::Vals(ref vals) = case.cond {
                         for val in vals {
-                            f(*val)
+                            f(*val);
                         }
                     }
                 }
@@ -194,25 +170,25 @@ impl Stmt {
     #[inline]
     pub fn walk_child_stmts(&self, mut f: impl FnMut(StmtId)) {
         match *self {
-            Stmt::Expr(_) | Stmt::Assignment { .. } | Stmt::Missing | Stmt::Empty => (),
+            Stmt::Missing | Stmt::Empty | Stmt::Expr(_) | Stmt::Assignment { .. } => (),
             Stmt::WhileLoop { body, .. } | Stmt::EventControl { body, .. } => f(body),
-            Stmt::If { then_branch: true_stmt, else_branch: false_stmt, .. } => {
-                f(true_stmt);
-                f(false_stmt);
-            }
             Stmt::ForLoop { init, incr, body, .. } => {
                 f(init);
                 f(incr);
                 f(body);
             }
+            Stmt::If { then_branch, else_branch, .. } => {
+                f(then_branch);
+                f(else_branch);
+            }
             Stmt::Case { ref case_arms, .. } => {
                 for arm in case_arms {
-                    f(arm.body)
+                    f(arm.body);
                 }
             }
             Stmt::Block { ref body, .. } => {
                 for stmt in body {
-                    f(*stmt)
+                    f(*stmt);
                 }
             }
         }
@@ -223,4 +199,29 @@ impl Stmt {
         let Stmt::Expr(e) = self else { unreachable!("Called unwrap_expr on {:?}", self) };
         *e
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Case {
+    pub cond: CaseCond,
+    pub body: StmtId,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum CaseCond {
+    Default,
+    Vals(Vec<ExprId>), // TODO PROFILE: SmallVec<[ExprId; 1]> here
+}
+
+// non_exhaustive because currently the full standard is not implemented
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[non_exhaustive]
+pub enum Event {
+    Global { kind: GlobalEvent, phases: Vec<String> },
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
+pub enum GlobalEvent {
+    InitialStep,
+    FinalStep,
 }

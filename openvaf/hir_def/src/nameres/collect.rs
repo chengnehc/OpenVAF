@@ -29,7 +29,7 @@ pub fn root_def_map(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {
         root_scope: LocalScopeId::from(0u32),
         diagnostics: Vec::new(),
     };
-    let mut collector = DefCollector { root_file, db, tree, def_map };
+    let mut collector = Collector { root_file, db, tree, def_map };
     collector.collect_root_map();
 
     Arc::new(collector.def_map)
@@ -44,7 +44,7 @@ pub fn function_def_map(db: &dyn HirDefDB, function: FunctionId) -> Arc<DefMap> 
         root_scope: LocalScopeId::from(0u32), // This will be changed once the scope has been created
         diagnostics: Vec::new(),
     };
-    let mut collector = DefCollector { root_file, db, tree, def_map };
+    let mut collector = Collector { root_file, db, tree, def_map };
     collector.collect_function_map(id, local_id, function);
 
     Arc::new(collector.def_map)
@@ -64,20 +64,20 @@ pub fn block_def_map(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
         root_scope: LocalScopeId::from(0u32),
         diagnostics: Vec::new(),
     };
-    let mut collector = DefCollector { def_map, tree, db, root_file: parent.root_file };
+    let mut collector = Collector { def_map, tree, db, root_file: parent.root_file };
     collector.collect_block_map(block, items);
 
     Some(Arc::new(collector.def_map))
 }
 
-struct DefCollector<'a> {
+struct Collector<'a> {
     root_file: FileId,
     db: &'a dyn HirDefDB,
     tree: &'a ItemTree,
     def_map: DefMap,
 }
 
-impl DefCollector<'_> {
+impl Collector<'_> {
     fn collect_function_map(
         &mut self,
         item_tree: ItemTreeId<Function>,
@@ -292,7 +292,7 @@ impl DefCollector<'_> {
     where
         N: ItemTreeNode,
         ItemLoc<N>: Intern,
-        <ItemLoc<N> as Intern>::ID: Into<ScopeItemDef>,
+        <ItemLoc<N> as Intern>::Id: Into<ScopeItemDef>,
     {
         let scope = ScopeId { root_file: self.root_file, src: self.def_map.src, local_id: dst };
         let decl = ItemLoc { scope, id }.intern(self.db);

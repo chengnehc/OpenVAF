@@ -162,11 +162,11 @@ impl Module {
     }
 
     pub fn analog_initial_body(&self, db: &CompilationDB) -> Body {
-        Body::new(DefWithBodyId::ModuleId { initial: true, module: self.id }, db)
+        Body::new(DefWithBodyId::ModuleId { initial: true, id: self.id }, db)
     }
 
     pub fn analog_body(&self, db: &CompilationDB) -> Body {
-        Body::new(DefWithBodyId::ModuleId { initial: false, module: self.id }, db)
+        Body::new(DefWithBodyId::ModuleId { initial: false, id: self.id }, db)
     }
 
     // JW: for VerilogAE

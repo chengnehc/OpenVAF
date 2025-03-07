@@ -30,11 +30,11 @@ pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl Dia
 
     let root_scope = def_map.root_scope();
     for child in def_map[root_scope].children.values() {
-        if let ScopeOrigin::Module(module) = def_map[*child].origin {
+        if let ScopeOrigin::Module(id) = def_map[*child].origin {
             // first, `analog initial` block
-            collect_body(db, root_file, ModuleId { initial: true, module }, sink);
+            collect_body(db, root_file, ModuleId { initial: true, id }, sink);
             // and then, normal `analog` block
-            collect_body(db, root_file, ModuleId { initial: false, module }, sink)
+            collect_body(db, root_file, ModuleId { initial: false, id }, sink)
         }
         collect_scope(db, root_file, &def_map, *child, sink)
     }

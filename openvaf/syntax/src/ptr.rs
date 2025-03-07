@@ -123,7 +123,7 @@ impl<N: AstNode> AstPtr<N> {
         N::cast(syntax_node).unwrap()
     }
 
-    /// Cast the `AstPtr` to from pointing to `AstNode` type `N` to type `U`, if possible.
+    /// Cast the `AstPtr` to point to type `U`, if possible.
     #[inline]
     pub fn cast<U: AstNode>(self) -> Option<AstPtr<U>> {
         if !U::can_cast(self.raw.kind) {

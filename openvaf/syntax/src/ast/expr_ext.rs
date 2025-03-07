@@ -186,7 +186,7 @@ impl ast::BlockStmt {
 }
 
 impl ast::Assign {
-    pub fn op(&self) -> Option<AssignOp> {
+    pub fn op_kind(&self) -> Option<AssignOp> {
         if support::token(self.syntax(), T![=]).is_some() {
             Some(AssignOp::Assign)
         } else if support::token(self.syntax(), T![<+]).is_some() {

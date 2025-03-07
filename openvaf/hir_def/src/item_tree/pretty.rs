@@ -97,7 +97,7 @@ impl Printer<'_> {
         for item in &module.items {
             match *item {
                 ModuleItem::Block(block) => self.print_block(block)?,
-                ModuleItem::Parameter(param) => self.print_parameter(param)?,
+                ModuleItem::Parameter(param) => self.print_param(param)?,
                 ModuleItem::Variable(var) => self.print_var(var)?,
                 ModuleItem::Branch(branch) => {
                     let branch = &self.tree[branch];
@@ -131,13 +131,7 @@ impl Printer<'_> {
         Ok(())
     }
 
-    fn print_block(&mut self, block: AstId<ast::BlockStmt>) -> fmt::Result {
-        let block = &self.tree[block];
-        write!(self, "block {:?}", block.name)?;
-        self.indented(|s| s.print_block_items(&block.block_items))
-    }
-
-    fn print_parameter(&mut self, param: ItemTreeId<Param>) -> fmt::Result {
+    fn print_param(&mut self, param: ItemTreeId<Param>) -> fmt::Result {
         let param = &self.tree[param];
         writeln!(self, "param {} {}", param.ty.as_ref().unwrap_or(&crate::Type::Err), param.name)
     }
@@ -147,11 +141,17 @@ impl Printer<'_> {
         writeln!(self, "var {} {}", var.ty, var.name)
     }
 
+    fn print_block(&mut self, block: AstId<ast::BlockStmt>) -> fmt::Result {
+        let block = &self.tree[block];
+        write!(self, "block {:?}", block.name)?;
+        self.indented(|s| s.print_block_items(&block.block_items))
+    }
+
     fn print_block_items(&mut self, items: &[BlockItem]) -> fmt::Result {
         for item in items {
             match *item {
                 BlockItem::Block(block) => self.print_block(block)?,
-                BlockItem::Parameter(param) => self.print_parameter(param)?,
+                BlockItem::Parameter(param) => self.print_param(param)?,
                 BlockItem::Variable(var) => self.print_var(var)?,
             }
         }
@@ -163,7 +163,7 @@ impl Printer<'_> {
         for item in &function.items {
             match *item {
                 FunctionItem::Block(block) => self.print_block(block)?,
-                FunctionItem::Parameter(param) => self.print_parameter(param)?,
+                FunctionItem::Parameter(param) => self.print_param(param)?,
                 FunctionItem::Variable(var) => self.print_var(var)?,
                 FunctionItem::FunctionArg(arg) => {
                     let arg = &function.args[arg];

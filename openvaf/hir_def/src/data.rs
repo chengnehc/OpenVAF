@@ -33,7 +33,7 @@ impl DisciplineData {
         let loc = id.lookup(db);
         let tree = &loc.item_tree(db);
         let discipline = &tree[loc.id];
-        let attrs: Vec<_> = discipline
+        let attrs: Arena<_> = discipline
             .attrs
             .clone()
             .map(|attr| {
@@ -47,7 +47,7 @@ impl DisciplineData {
             potential: discipline.potential.clone().map(|(pot, _)| pot),
             flow: discipline.flow.clone().map(|(flow, _)| flow),
             domain: discipline.domain.map(|(domain, _)| domain),
-            attrs: Arena::from(attrs),
+            attrs,
         })
     }
 
@@ -55,13 +55,11 @@ impl DisciplineData {
         if self.domain.is_none() || other.domain.is_none() {
             return true;
         }
-
         if self.potential.is_none() && self.flow.is_none()
             || other.potential.is_none() && other.flow.is_none()
         {
             return self.domain == other.domain;
         }
-
         self.potential == other.potential && self.flow == other.flow && self.domain == other.domain
     }
 }
@@ -73,26 +71,24 @@ pub struct NatureAttrData {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NatureData {
-    // Predefined attributes
     pub name: Name,
     pub parent: Option<NatureRef>,
     pub idt_nature: Option<NatureRef>,
     pub ddt_nature: Option<NatureRef>,
     pub units: Option<String>,
     pub abstol: Option<LocalNatureAttrId>,
-    // (?) User-defined attributes
     pub attrs: Arena<NatureAttrData>,
 }
 
 impl NatureData {
     pub fn nature_data_query(db: &dyn HirDefDB, id: NatureId) -> Arc<NatureData> {
         let loc = id.lookup(db);
-        let tree = db.item_tree(loc.root_file);
-        let nature = &tree[loc.id];
-        let attrs: Vec<_> = nature
+        let itree = db.item_tree(loc.root_file);
+        let nature = &itree[loc.id];
+        let attrs: Arena<_> = nature
             .attrs
             .clone()
-            .map(|attr| NatureAttrData { name: tree[attr].name.clone() })
+            .map(|attr| NatureAttrData { name: itree[attr].name.clone() })
             .collect();
 
         Arc::new(NatureData {
@@ -102,50 +98,29 @@ impl NatureData {
             idt_nature: nature.idt_nature.clone().map(|(it, _)| it),
             ddt_nature: nature.ddt_nature.clone().map(|(it, _)| it),
             abstol: nature.abstol,
-            attrs: Arena::from(attrs),
+            attrs,
         })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VarData {
+pub struct ModuleData {
     pub name: Name,
-    pub ty: Type,
+    pub ports: Vec<NodeId>,
+    pub internal_nodes: Vec<NodeId>,
 }
 
-impl VarData {
-    pub fn var_data_query(db: &dyn HirDefDB, id: VarId) -> Arc<VarData> {
-        let loc = id.lookup(db);
-        let var = &loc.item_tree(db)[loc.id];
-        Arc::new(VarData { name: var.name.clone(), ty: var.ty.clone() })
-    }
-}
+impl ModuleData {
+    pub fn module_data_query(db: &dyn HirDefDB, module: ModuleId) -> Arc<ModuleData> {
+        let loc = module.lookup(db);
+        let itree = loc.item_tree(db);
+        let num_ports = itree[loc.id].num_ports;
+        let num_nodes = itree[loc.id].nodes.len() as u32;
+        let ports = (0..num_ports).map(|id| NodeLoc { module, id: id.into() }.intern(db)).collect();
+        let internal_nodes =
+            (num_ports..num_nodes).map(|id| NodeLoc { module, id: id.into() }.intern(db)).collect();
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParamData {
-    pub name: Name,
-    pub ty: Option<Type>,
-}
-
-impl ParamData {
-    pub fn param_data_query(db: &dyn HirDefDB, id: ParamId) -> Arc<ParamData> {
-        let loc = id.lookup(db);
-        let param = &loc.item_tree(db)[loc.id];
-        Arc::new(ParamData { name: param.name.clone(), ty: param.ty.clone() })
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct AliasParamData {
-    pub name: Name,
-    pub src: Option<Path>,
-}
-
-impl AliasParamData {
-    pub fn alias_data_query(db: &dyn HirDefDB, id: AliasParamId) -> Arc<AliasParamData> {
-        let loc = id.lookup(db);
-        let param = &loc.item_tree(db)[loc.id];
-        Arc::new(AliasParamData { name: param.name.clone(), src: param.src.clone() })
+        Arc::new(ModuleData { name: itree[loc.id].name.clone(), ports, internal_nodes })
     }
 }
 
@@ -162,16 +137,16 @@ impl NodeData {
     pub fn node_data_query(db: &dyn HirDefDB, id: NodeId) -> Arc<NodeData> {
         let loc = id.lookup(db);
         let module = loc.module.lookup(db);
-        let tree = module.item_tree(db);
-        let node = &tree[module.id].nodes[loc.id];
-        let (is_input, is_output) = node.direction(&tree);
+        let itree = module.item_tree(db);
+        let node = &itree[module.id].nodes[loc.id];
+        let (is_input, is_output) = node.direction(&itree);
 
         Arc::new(NodeData {
             name: node.name.clone(),
-            discipline: node.discipline(&tree),
+            discipline: node.discipline(&itree),
             is_input,
             is_output,
-            is_gnd: node.is_gnd(&tree),
+            is_gnd: node.is_gnd(&itree),
         })
     }
 
@@ -191,7 +166,53 @@ impl BranchData {
     pub fn branch_data_query(db: &dyn HirDefDB, id: BranchId) -> Arc<BranchData> {
         let loc = id.lookup(db);
         let branch = &loc.item_tree(db)[loc.id];
+
         Arc::new(BranchData { name: branch.name.clone(), kind: branch.kind.clone() })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VarData {
+    pub name: Name,
+    pub ty: Type,
+}
+
+impl VarData {
+    pub fn var_data_query(db: &dyn HirDefDB, id: VarId) -> Arc<VarData> {
+        let loc = id.lookup(db);
+        let var = &loc.item_tree(db)[loc.id];
+
+        Arc::new(VarData { name: var.name.clone(), ty: var.ty.clone() })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamData {
+    pub name: Name,
+    pub ty: Option<Type>,
+}
+
+impl ParamData {
+    pub fn param_data_query(db: &dyn HirDefDB, id: ParamId) -> Arc<ParamData> {
+        let loc = id.lookup(db);
+        let param = &loc.item_tree(db)[loc.id];
+
+        Arc::new(ParamData { name: param.name.clone(), ty: param.ty.clone() })
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct AliasParamData {
+    pub name: Name,
+    pub src: Option<Path>,
+}
+
+impl AliasParamData {
+    pub fn alias_data_query(db: &dyn HirDefDB, id: AliasParamId) -> Arc<AliasParamData> {
+        let loc = id.lookup(db);
+        let param = &loc.item_tree(db)[loc.id];
+
+        Arc::new(AliasParamData { name: param.name.clone(), src: param.src.clone() })
     }
 }
 
@@ -217,40 +238,17 @@ impl FunctionArgData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionData {
     pub name: Name,
-    pub return_ty: Type,
     pub args: Box<TiSlice<LocalFunctionArgId, FunctionArgData>>,
+    pub return_ty: Type,
 }
 
 impl FunctionData {
     pub fn function_data_query(db: &dyn HirDefDB, id: FunctionId) -> Arc<FunctionData> {
         let loc = id.lookup(db);
-        let item_tree = loc.item_tree(db);
-        let fun = &item_tree[loc.id];
-        let args = fun.args.iter().map(|arg| FunctionArgData::new(arg, &item_tree)).collect();
-        Arc::new(FunctionData {
-            name: fun.name.clone(),
-            return_ty: item_tree[loc.id].ty.clone(),
-            args,
-        })
-    }
-}
+        let itree = loc.item_tree(db);
+        let fun = &itree[loc.id];
+        let args = fun.args.iter().map(|arg| FunctionArgData::new(arg, &itree)).collect();
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModuleData {
-    pub name: Name,
-    pub ports: Vec<NodeId>,
-    pub internal_nodes: Vec<NodeId>,
-}
-
-impl ModuleData {
-    pub fn module_data_query(db: &dyn HirDefDB, module: ModuleId) -> Arc<ModuleData> {
-        let loc = module.lookup(db);
-        let item_tree = loc.item_tree(db);
-        let num_ports = item_tree[loc.id].num_ports;
-        let num_nodes = item_tree[loc.id].nodes.len() as u32;
-        let ports = (0..num_ports).map(|id| NodeLoc { module, id: id.into() }.intern(db)).collect();
-        let internal_nodes =
-            (num_ports..num_nodes).map(|id| NodeLoc { module, id: id.into() }.intern(db)).collect();
-        Arc::new(ModuleData { name: item_tree[loc.id].name.clone(), ports, internal_nodes })
+        Arc::new(FunctionData { name: fun.name.clone(), return_ty: itree[loc.id].ty.clone(), args })
     }
 }

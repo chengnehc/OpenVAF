@@ -53,10 +53,10 @@ struct BodyValidator<'a> {
 impl BodyValidator<'_> {
     fn validate_stmt(&mut self, stmt: StmtId) {
         let cond = match self.body.stmts[stmt] {
-            Stmt::Assignment { dst, val, op_kind: assignment_kind } => {
+            Stmt::Assignment { dst, val, op_kind } => {
                 self.validate_expr(val, stmt);
 
-                if assignment_kind == AssignOp::Contribute && !self.ctx.allow_contribute() {
+                if op_kind == AssignOp::Contribute && !self.ctx.allow_contribute() {
                     self.diagnostics.push(BodyDiagnostic::IllegalContribute { stmt, ctx: self.ctx })
                 }
                 // avoid duplicate errors

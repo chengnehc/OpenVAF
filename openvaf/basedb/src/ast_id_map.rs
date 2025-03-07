@@ -10,11 +10,10 @@
 //! https://github.com/rust-lang/rust-analyzer/blob/master/crates/span/src/ast_id.rs
 
 use std::any::type_name;
-use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::iter::repeat;
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::{fmt, iter};
 
 use arena::{Arena, ArenaMap, Idx, RawIdx};
 use syntax::name::{AsName, Name};
@@ -22,13 +21,11 @@ use syntax::{ast, AstNode, AstPtr, SyntaxKind, SyntaxNode, SyntaxNodePtr};
 
 use crate::{BaseDB, FileId};
 
-/// Maps items' `SyntaxNodePtr` (with attribute list) to their `ErasedAstId`.
-///
-/// Alternatively, the `parents` mapping is for lint attribute resolution.
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct AstIdMap {
     arena: Arena<MapEntry>,
-    parents: ArenaMap<MapEntry, Option<ErasedAstId>>,
+    /// reverse mapping for lint attribute resolution
+    parents: ArenaMap<MapEntry, Option<Idx<MapEntry>>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -45,39 +42,12 @@ pub struct AstId<N: AstNode> {
     raw: ErasedAstId,
     _ty: PhantomData<fn() -> N>,
 }
+
 impl<N: AstNode> AstId<N> {
     pub fn erased(&self) -> ErasedAstId {
         self.raw
     }
-}
-impl<N: AstNode> From<AstId<N>> for ErasedAstId {
-    fn from(id: AstId<N>) -> Self {
-        id.raw
-    }
-}
-impl<N: AstNode> Clone for AstId<N> {
-    fn clone(&self) -> AstId<N> {
-        *self
-    }
-}
-impl<N: AstNode> Copy for AstId<N> {}
-impl<N: AstNode> PartialEq for AstId<N> {
-    fn eq(&self, other: &Self) -> bool {
-        self.raw == other.raw
-    }
-}
-impl<N: AstNode> Eq for AstId<N> {}
-impl<N: AstNode> Hash for AstId<N> {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.raw.hash(hasher);
-    }
-}
-impl<N: AstNode> fmt::Debug for AstId<N> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AstId::<{}>({})", type_name::<N>(), RawIdx::from(self.raw))
-    }
-}
-impl<N: AstNode> AstId<N> {
+
     // Can't make this a From implementation because of coherence
     pub fn upcast<M: AstNode>(self) -> AstId<M>
     where
@@ -87,8 +57,40 @@ impl<N: AstNode> AstId<N> {
     }
 }
 
-/// Not every CST node needs to be stored in AST ID map.
-pub(crate) fn has_id_map_entry(kind: SyntaxKind) -> bool {
+impl<N: AstNode> From<AstId<N>> for ErasedAstId {
+    fn from(id: AstId<N>) -> Self {
+        id.raw
+    }
+}
+
+impl<N: AstNode> Clone for AstId<N> {
+    fn clone(&self) -> AstId<N> {
+        *self
+    }
+}
+impl<N: AstNode> Copy for AstId<N> {}
+
+impl<N: AstNode> PartialEq for AstId<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.raw == other.raw
+    }
+}
+impl<N: AstNode> Eq for AstId<N> {}
+
+impl<N: AstNode> Hash for AstId<N> {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.raw.hash(hasher);
+    }
+}
+
+impl<N: AstNode> fmt::Debug for AstId<N> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "AstId::<{}>({})", type_name::<N>(), RawIdx::from(self.raw))
+    }
+}
+
+/// Does this kind of CST node have an entry in `AstIdMap`?
+pub(crate) fn has_map_entry(kind: SyntaxKind) -> bool {
     if ast::BodyPortDecl::can_cast(kind) {
         // This just adds a semicolon to a port decl... No need to add the same port twice
         false
@@ -108,6 +110,7 @@ pub(crate) fn has_id_map_entry(kind: SyntaxKind) -> bool {
 }
 
 impl AstIdMap {
+    /// Create a `AstIdMap` from source file CST node.
     pub(crate) fn from_source(node: &SyntaxNode) -> AstIdMap {
         assert!(node.parent().is_none());
         let mut res = AstIdMap::default();
@@ -122,8 +125,13 @@ impl AstIdMap {
         // TODO does this hurt caching in any way?
         // Probably not: if the parent changes then something before changed
         // as well and the item is moved anyway.
-        bdfs(node, |it, parent| has_id_map_entry(it.kind()).then(|| res.alloc(it, parent)));
+        bdfs(node, |it, parent| has_map_entry(it.kind()).then(|| res.alloc(it, parent)));
         res
+    }
+
+    #[inline]
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (ErasedAstId, &MapEntry)> {
+        self.arena.iter_enumerated()
     }
 
     pub fn id_of<N: AstNode>(&self, item: &N) -> AstId<N> {
@@ -137,6 +145,20 @@ impl AstIdMap {
 
     pub fn get_erased(&self, id: ErasedAstId) -> SyntaxNodePtr {
         self.arena[id].syntax
+    }
+
+    #[inline]
+    fn erased_ast_id(&self, node: &SyntaxNode) -> ErasedAstId {
+        let ptr = SyntaxNodePtr::new(node);
+        self.erased_ast_id_for_ptr(ptr)
+    }
+
+    #[inline]
+    fn erased_ast_id_for_ptr(&self, ptr: SyntaxNodePtr) -> ErasedAstId {
+        let Some((id, _)) = self.entries().find(|(_id, e)| e.syntax == ptr) else {
+            panic!("Can't find {:?} in AstIdMap", ptr)
+        };
+        id
     }
 
     /// Get the position of attribute with `name` of AST node `id`, if any.
@@ -154,7 +176,7 @@ impl AstIdMap {
         db: &dyn BaseDB,
         root_file: FileId,
     ) -> Option<ErasedAstId> {
-        if has_id_map_entry(ptr.syntax_kind()) {
+        if has_map_entry(ptr.syntax_kind()) {
             Some(self.erased_ast_id_for_ptr(ptr))
         } else {
             let node = ptr.to_node(db.parse(root_file).tree().syntax());
@@ -163,45 +185,21 @@ impl AstIdMap {
     }
 
     pub(crate) fn nearest_ast_id_to_node(&self, mut node: SyntaxNode) -> Option<ErasedAstId> {
-        while !has_id_map_entry(node.kind()) {
+        while !has_map_entry(node.kind()) {
             node = node.parent()?;
         }
         Some(self.erased_ast_id(&node))
     }
 
-    pub(crate) fn erased_ast_id(&self, item: &SyntaxNode) -> ErasedAstId {
-        let ptr = SyntaxNodePtr::new(item);
-        self.erased_ast_id_for_ptr(ptr)
-    }
-
-    pub(crate) fn erased_ast_id_for_ptr(&self, ptr: SyntaxNodePtr) -> ErasedAstId {
-        match self.arena.iter_enumerated().find(|(_id, i)| i.syntax == ptr) {
-            Some((it, _)) => it,
-            None => panic!(
-                "Can't find {:?} in AstIdMap",
-                ptr,
-                // self.arena.iter_enumerated().map(|(_id, i)| i).collect::<Vec<_>>(),
-            ),
-        }
-    }
-
-    pub(crate) fn entries(&self) -> impl Iterator<Item = (ErasedAstId, &MapEntry)> {
-        self.arena.iter_enumerated()
-    }
-
     fn alloc(&mut self, item: &SyntaxNode, parent: Option<ErasedAstId>) -> ErasedAstId {
         let id1 = self.parents.push_and_get_key(parent);
-        // ???
         let attrs = if ast::Param::can_cast(item.kind()) || ast::Var::can_cast(item.kind()) {
             ast::attrs(&item.parent().unwrap())
         } else {
             ast::attrs(item)
         };
-        let attrs = attrs.filter_map(|attr| Some(attr.name()?.as_name()));
-        let id2 = self.arena.push_and_get_key(MapEntry {
-            syntax: SyntaxNodePtr::new(item),
-            attrs: attrs.collect(),
-        });
+        let attrs = attrs.filter_map(|attr| Some(attr.name()?.as_name())).collect();
+        let id2 = self.arena.push_and_get_key(MapEntry { syntax: SyntaxNodePtr::new(item), attrs });
         debug_assert_eq!(id1, id2);
         id2
     }
@@ -227,7 +225,7 @@ fn bdfs(
                 match event {
                     syntax::WalkEvent::Enter(node) => {
                         if let Some(it) = f(&node, id) {
-                            next_layer.extend(node.children().zip(repeat(Some(it))));
+                            next_layer.extend(node.children().zip(iter::repeat(Some(it))));
                             preorder.skip_subtree();
                         }
                     }

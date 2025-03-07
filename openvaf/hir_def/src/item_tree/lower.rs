@@ -271,21 +271,21 @@ impl Context {
         for item in items {
             match item {
                 ast::ModuleItem::BodyPortDecl(decl) => {
-                    if let Some(decl) = decl.port_decl() {
-                        self.lower_port(decl, nodes, dst);
+                    if let Some(port) = decl.port_decl() {
+                        self.lower_port(port, nodes, dst);
                     }
                 }
-                ast::ModuleItem::NetDecl(decl) => self.lower_net(decl, nodes, dst),
-                ast::ModuleItem::BranchDecl(branch) => self.lower_branch(branch, dst),
-                ast::ModuleItem::VarDecl(var) => self.lower_var(var, dst),
-                ast::ModuleItem::ParamDecl(param) => self.lower_param(param, dst),
-                ast::ModuleItem::AliasParam(alias) => self.lower_aliasparam(alias, dst),
-                ast::ModuleItem::Function(fun) => self.lower_func(fun, dst),
                 ast::ModuleItem::AnalogBehaviour(behaviour) => {
                     if let Some(stmt) = behaviour.stmt() {
                         self.lower_stmt(stmt, dst);
                     }
                 }
+                ast::ModuleItem::NetDecl(net) => self.lower_net(net, nodes, dst),
+                ast::ModuleItem::BranchDecl(branch) => self.lower_branch(branch, dst),
+                ast::ModuleItem::VarDecl(var) => self.lower_var(var, dst),
+                ast::ModuleItem::ParamDecl(param) => self.lower_param(param, dst),
+                ast::ModuleItem::AliasParam(alias) => self.lower_aliasparam(alias, dst),
+                ast::ModuleItem::Function(fun) => self.lower_func(fun, dst),
             };
         }
     }
@@ -298,7 +298,6 @@ impl Context {
     ) {
         let discipline = decl.discipline().map(|it| it.as_name());
         let direction = decl.direction();
-
         let is_gnd = decl.net_type_token().is_some_and(|it| it.text() == kw::raw::ground);
         let ast_id = self.ast_id_map.id_of(&decl);
 
@@ -439,8 +438,8 @@ impl Context {
 
         for item in fun.function_items() {
             match item {
-                ast::FunctionItem::ParamDecl(decl) => self.lower_param(decl, &mut items),
-                ast::FunctionItem::VarDecl(decl) => self.lower_var(decl, &mut items),
+                ast::FunctionItem::ParamDecl(param) => self.lower_param(param, &mut items),
+                ast::FunctionItem::VarDecl(var) => self.lower_var(var, &mut items),
                 ast::FunctionItem::Stmt(stmt) => self.lower_stmt(stmt, &mut items),
                 ast::FunctionItem::FunctionArg(arg) => {
                     let ast_id = self.ast_id_map.id_of(&arg);
@@ -513,7 +512,7 @@ impl Context {
                                 match block_scope_stack.last() {
                                     Some(block) => {
                                         let block = blocks.get_mut(block).unwrap();
-                                         block.block_items.push(ast_id.into());
+                                        block.block_items.push(ast_id.into());
                                     }
                                     None => parent_scope.push(ast_id.into()),
                                 };
@@ -523,7 +522,7 @@ impl Context {
                             block_stack.push(ast_id);
                         },
                         ast::VarDecl(var) => {
-                          match block_stack.last() {
+                            match block_stack.last() {
                                 Some(block) => {
                                     let block = blocks.get_mut(block).unwrap();
                                     self.lower_var(var, &mut block.block_items)
@@ -532,7 +531,7 @@ impl Context {
                             }
                         },
                         ast::ParamDecl(param) => {
-                          match block_stack.last() {
+                            match block_stack.last() {
                                 Some(block) => {
                                     let block = blocks.get_mut(block).unwrap();
                                     self.lower_param(param, &mut block.block_items)
@@ -554,7 +553,6 @@ impl Context {
                 }
             }
         }
-
         self.tree.blocks = blocks;
     }
 }
