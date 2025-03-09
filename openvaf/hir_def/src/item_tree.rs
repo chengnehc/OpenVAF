@@ -36,12 +36,12 @@ pub struct ItemTree {
     pub top_level: Box<[RootItem]>,
 
     pub(crate) data: ItemTreeData,
-    /// mapping from block statement AstId to a block item
+    /// mapping from block statement AstId to a block
     pub(crate) blocks: AHashMap<AstId<BlockStmt>, Block>,
 }
 
 impl ItemTree {
-    pub(crate) fn file_item_tree_query(db: &dyn HirDefDB, file: FileId) -> Arc<ItemTree> {
+    pub(crate) fn query(db: &dyn HirDefDB, file: FileId) -> Arc<ItemTree> {
         let syntax_tree = db.parse(file).tree();
         let ctxt = lower::Context::new(db, file);
         let mut item_tree = ctxt.lower_root_items(&syntax_tree);
@@ -52,10 +52,10 @@ impl ItemTree {
 
     fn shrink_to_fit(&mut self) {
         let ItemTreeData {
-            disciplines,
-            discipline_attrs,
             natures,
             nature_attrs,
+            disciplines,
+            discipline_attrs,
             modules,
             ports,
             nets,
@@ -65,10 +65,10 @@ impl ItemTree {
             aliasparams,
             functions,
         } = &mut self.data;
-        disciplines.shrink_to_fit();
-        discipline_attrs.shrink_to_fit();
         natures.shrink_to_fit();
         nature_attrs.shrink_to_fit();
+        disciplines.shrink_to_fit();
+        discipline_attrs.shrink_to_fit();
         modules.shrink_to_fit();
         ports.shrink_to_fit();
         nets.shrink_to_fit();
@@ -84,14 +84,15 @@ impl ItemTree {
 /// i.e. `discipline`, `nature` and `module`
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum RootItem {
-    Module(ItemTreeId<Module>),
     Nature(ItemTreeId<Nature>),
     Discipline(ItemTreeId<Discipline>),
+    Module(ItemTreeId<Module>),
 }
 impl_from_typed! (
-    Module(ItemTreeId<Module>),
     Nature(ItemTreeId<Nature>),
-    Discipline(ItemTreeId<Discipline>) for RootItem
+    Discipline(ItemTreeId<Discipline>),
+    Module(ItemTreeId<Module>)
+    for RootItem
 );
 
 #[derive(Default, Debug, Eq, PartialEq)]
@@ -99,10 +100,10 @@ pub(crate) struct ItemTreeData {
     // # Note
     // Disciplines or Natures share the same arena of their attributes
     // within which each discipline or nature owns a `IdxRange` of attributes.
-    pub disciplines: Arena<Discipline>,
-    pub discipline_attrs: Arena<DisciplineAttr>,
     pub natures: Arena<Nature>,
     pub nature_attrs: Arena<NatureAttr>,
+    pub disciplines: Arena<Discipline>,
+    pub discipline_attrs: Arena<DisciplineAttr>,
     pub modules: Arena<Module>,
     pub ports: Arena<Port>,
     pub nets: Arena<Net>,
@@ -183,10 +184,10 @@ macro_rules! item_tree_nodes {
 }
 
 item_tree_nodes! {
-    Discipline in disciplines -> ast::DisciplineDecl,
-    DisciplineAttr in discipline_attrs -> ast::DisciplineAttr,
     Nature in natures -> ast::NatureDecl,
     NatureAttr in nature_attrs -> ast::NatureAttr,
+    Discipline in disciplines -> ast::DisciplineDecl,
+    DisciplineAttr in discipline_attrs -> ast::DisciplineAttr,
     Module in modules -> ast::ModuleDecl,
     Port in ports -> ast::PortDecl,
     Net in nets -> ast::NetDecl,
@@ -197,49 +198,30 @@ item_tree_nodes! {
     Function in functions -> ast::Function,
 }
 
-/* Item definitions that impls `ItemTreeNode` trait */
+/* Items that impls `ItemTreeNode` trait */
 
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Module {
-    pub name: Name,
-    pub num_ports: u32,
-    // TODO(JW) why separate nodes field?
-    pub nodes: TiVec<LocalNodeId, Node>,
-    pub items: Vec<ModuleItem>,
-    pub ast_id: AstId<ast::ModuleDecl>,
-}
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum ModuleItem {
-    Node(LocalNodeId),
-    Branch(ItemTreeId<Branch>),
-    Parameter(ItemTreeId<Param>),
-    AliasParam(ItemTreeId<AliasParam>),
-    Variable(ItemTreeId<Var>),
-    Function(ItemTreeId<Function>),
-    Block(AstId<BlockStmt>),
-}
-impl_from_typed! (
-    Node(LocalNodeId),
-    Branch(ItemTreeId<Branch>),
-    Parameter(ItemTreeId<Param>),
-    AliasParam(ItemTreeId<AliasParam>),
-    Variable(ItemTreeId<Var>),
-    Function(ItemTreeId<Function>),
-    Block(AstId<BlockStmt>) for ModuleItem
-);
-
+/// [LRM 3.6.1] A nature is a collection of attributes.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Nature {
     pub name: Name,
     pub parent: Option<NatureRef>,
+    // Predefined nature attributes. 'units', 'access', 'abstol' are required
+    // for base nature, that is, natures not derived from any other nature.
     pub units: Option<(String, LocalNatureAttrId)>,
     pub access: Option<(Name, LocalNatureAttrId)>,
+    // TODO(JW) abstol is not fully supported
+    pub abstol: Option<LocalNatureAttrId>,
     pub ddt_nature: Option<(NatureRef, LocalNatureAttrId)>,
     pub idt_nature: Option<(NatureRef, LocalNatureAttrId)>,
-    pub abstol: Option<LocalNatureAttrId>,
+    // All attributes: pre-defined + user-defined
     pub attrs: IdxRange<NatureAttr>,
     pub ast_id: AstId<ast::NatureDecl>,
 }
+/// [LRM 3.6.1.1] A derived nature can declare additional attributes or override attribute
+/// values of the parent nature, with certain restrictions for the predefined attributes.
+///
+/// [LRM 3.6.2.6] A nature can be derived from the nature bound to the potential or flow
+/// in a discipline.
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct NatureRef {
     pub name: Name,
@@ -251,19 +233,23 @@ pub enum NatureRefKind {
     DisciplinePotential,
     DisciplineFlow,
 }
-
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct NatureAttr {
     pub name: Name,
     pub ast_id: AstId<ast::NatureAttr>,
 }
 
+/// [LRM 3.6.2] A discipline description consists of specifying a domain type and binding any
+/// natures to potential or flow.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Discipline {
     pub name: Name,
+    // nature binding
     pub potential: Option<(NatureRef, LocalDisciplineAttrId)>,
     pub flow: Option<(NatureRef, LocalDisciplineAttrId)>,
+    // domain binding
     pub domain: Option<(Domain, LocalDisciplineAttrId)>,
+    // All attributes: pre-defined + user-defined
     pub attrs: IdxRange<DisciplineAttr>,
     pub ast_id: AstId<ast::DisciplineDecl>,
 }
@@ -272,7 +258,6 @@ pub enum Domain {
     Discrete,
     Continuous,
 }
-
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct DisciplineAttr {
     pub name: Name,
@@ -281,10 +266,39 @@ pub struct DisciplineAttr {
 }
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
 pub enum DisciplineAttrKind {
-    FlowOverwrite,
-    PotentialOverwrite,
+    FlowOverride,
+    PotentialOverride,
     UserDefined,
 }
+
+/// [LRM 6.2]
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Module {
+    pub name: Name,
+    pub num_ports: u32,
+    pub nodes: TiVec<LocalNodeId, Node>,
+    pub items: Vec<ModuleItem>,
+    pub ast_id: AstId<ast::ModuleDecl>,
+}
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum ModuleItem {
+    Node(LocalNodeId),
+    Branch(ItemTreeId<Branch>),
+    Variable(ItemTreeId<Var>),
+    Parameter(ItemTreeId<Param>),
+    AliasParam(ItemTreeId<AliasParam>),
+    Function(ItemTreeId<Function>),
+    Block(AstId<BlockStmt>),
+}
+impl_from_typed! (
+    Node(LocalNodeId),
+    Branch(ItemTreeId<Branch>),
+    Variable(ItemTreeId<Var>),
+    Parameter(ItemTreeId<Param>),
+    AliasParam(ItemTreeId<AliasParam>),
+    Function(ItemTreeId<Function>),
+    Block(AstId<BlockStmt>) for ModuleItem
+);
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Port {
@@ -294,7 +308,6 @@ pub struct Port {
     pub is_input: bool,
     pub is_output: bool,
     pub is_gnd: bool,
-
     pub ast_id: AstId<ast::PortDecl>,
 }
 
@@ -304,8 +317,22 @@ pub struct Net {
     pub name_idx: usize,
     pub discipline: Option<Name>,
     pub is_gnd: bool,
-
     pub ast_id: AstId<ast::NetDecl>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Branch {
+    pub name: Name,
+    pub name_idx: usize,
+    pub kind: BranchKind,
+    pub ast_id: AstId<ast::BranchDecl>,
+}
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum BranchKind {
+    Nodes(Path, Path),
+    NodeGnd(Path),
+    PortFlow(Path),
+    Missing,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -328,21 +355,6 @@ pub struct AliasParam {
     pub name: Name,
     pub src: Option<Path>,
     pub ast_id: AstId<ast::AliasParam>,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Branch {
-    pub name: Name,
-    pub name_idx: usize,
-    pub kind: BranchKind,
-    pub ast_id: AstId<ast::BranchDecl>,
-}
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum BranchKind {
-    Nodes(Path, Path),
-    NodeGnd(Path),
-    PortFlow(Path),
-    Missing,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -382,15 +394,16 @@ impl FunctionArg {
     }
 }
 
-/// `Node` is an abstraction over `Net` and `Port` and can be declared as either
-/// `Net` or `Port`. `Port` requires direction specification, while `Net` doesn't.
+/// `Node` is an abstraction over `Net` and `Port`. A `Node` may be defined multiple
+/// times as `Port` or `Net` (abstracted by `NodeTypeDecl`).
+///
+/// `NodeTypeDecl` cannot be mapped to a concrete ast node, so `ErasedAstId` is used.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub name: Name,
     pub is_port: bool,
-    // A node can have multiple declarations
     pub decls: Vec<NodeTypeDecl>, // TODO small vec?
-    pub ast_id: ErasedAstId,      // TODO(JW) use AstId<T>?
+    pub ast_id: ErasedAstId,
 }
 impl Node {
     pub fn discipline(&self, tree: &ItemTree) -> Option<Name> {
@@ -430,7 +443,7 @@ impl NodeTypeDecl {
         }
     }
 
-    pub fn discipline_src(self, db: &dyn HirDefDB, root_file: FileId) -> Option<NameRef> {
+    pub fn discipline_source(self, db: &dyn HirDefDB, root_file: FileId) -> Option<NameRef> {
         let ast_id_map = db.ast_id_map(root_file);
         let tree = db.item_tree(root_file);
         let ast = db.parse(root_file).syntax_node();
@@ -439,6 +452,13 @@ impl NodeTypeDecl {
             NodeTypeDecl::Port(port) => {
                 ast_id_map.get(tree[port].ast_id).to_node(&ast).discipline()
             }
+        }
+    }
+
+    pub fn name<'a>(&self, tree: &'a ItemTree) -> &'a Name {
+        match *self {
+            NodeTypeDecl::Net(net) => &tree[net].name,
+            NodeTypeDecl::Port(port) => &tree[port].name,
         }
     }
 
@@ -462,34 +482,15 @@ impl NodeTypeDecl {
             NodeTypeDecl::Port(port) => tree[port].ast_id.into(),
         }
     }
-    /*
-        pub fn name<'a>(&self, tree: &'a ItemTree) -> &'a Name {
-            match *self {
-                NodeTypeDecl::Net(net) => &tree[net].name,
-                NodeTypeDecl::Port(port) => &tree[port].name,
-            }
-        }
-    */
 }
 
-/// A sequential block is a means of grouping procedural statements.
-/// It is delimited by keywords 'begin' and 'end'.
-///
-/// An named block retains a static scope, allowing local variables to
-/// be declared. Variables and parameters defined in the named block
-/// cannot be assigned outside the scope.
-///
-/// See [LRM 5.3].
+/// [LRM 5.3] Block Statements
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Block {
     pub name: Option<Name>,
     pub block_items: Vec<BlockItem>,
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-
-/// # Note:
-/// Item tree nodes are NOT created for un-named blocks. Block uses ast
-/// node id as its internal representation.
 pub enum BlockItem {
     Block(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),

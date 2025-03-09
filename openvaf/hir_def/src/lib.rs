@@ -47,7 +47,7 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn new(root_file: FileId, src: DefMapSource, local_id: nameres::LocalScopeId) -> Self {
+    pub fn from(root_file: FileId, src: DefMapSource, local_id: nameres::LocalScopeId) -> Self {
         Self { root_file, src, local_id }
     }
 
@@ -203,29 +203,6 @@ macro_rules! impl_intern_lookup {
 //   it can both be a instantiation of ItemLoc<T> or manually defined.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DisciplineId(salsa::InternId);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DisciplineLoc {
-    pub root_file: FileId, // disciplines have global scope
-    pub id: ItemTreeId<Discipline>,
-}
-impl DisciplineLoc {
-    pub fn item_tree(self, db: &dyn HirDefDB) -> Arc<ItemTree> {
-        db.item_tree(self.root_file)
-    }
-    pub fn ast_id(self, db: &dyn HirDefDB) -> AstId<ast::DisciplineDecl> {
-        // self.item_tree(db)[self.id].ast_id
-        // JW: this should be more idiomatic
-        Discipline::lookup(&self.item_tree(db), self.id).ast_id()
-    }
-    pub fn source(self, db: &dyn HirDefDB) -> ast::DisciplineDecl {
-        let ast_id = self.ast_id(db);
-        db.ast_id_map(self.root_file).get(ast_id).to_node(db.parse(self.root_file).tree().syntax())
-    }
-}
-impl_intern!(DisciplineId, DisciplineLoc, intern_discipline, lookup_intern_discipline);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NatureId(salsa::InternId);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NatureLoc {
@@ -245,21 +222,6 @@ impl NatureLoc {
     }
 }
 impl_intern!(NatureId, NatureLoc, intern_nature, lookup_intern_nature);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DisciplineAttrId(salsa::InternId);
-pub type LocalDisciplineAttrId = Idx<data::DisciplineAttrData>;
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct DisciplineAttrLoc {
-    pub discipline: DisciplineId,
-    pub id: LocalDisciplineAttrId,
-}
-impl_intern!(
-    DisciplineAttrId,
-    DisciplineAttrLoc,
-    intern_discipline_attr,
-    lookup_intern_discipline_attr
-);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NatureAttrId(salsa::InternId);
@@ -284,6 +246,44 @@ impl NatureAttrLoc {
     }
 }
 impl_intern!(NatureAttrId, NatureAttrLoc, intern_nature_attr, lookup_intern_nature_attr);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DisciplineId(salsa::InternId);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DisciplineLoc {
+    pub root_file: FileId, // disciplines have global scope
+    pub id: ItemTreeId<Discipline>,
+}
+impl DisciplineLoc {
+    pub fn item_tree(self, db: &dyn HirDefDB) -> Arc<ItemTree> {
+        db.item_tree(self.root_file)
+    }
+    pub fn ast_id(self, db: &dyn HirDefDB) -> AstId<ast::DisciplineDecl> {
+        // self.item_tree(db)[self.id].ast_id
+        // JW: this should be more idiomatic
+        Discipline::lookup(&self.item_tree(db), self.id).ast_id()
+    }
+    pub fn source(self, db: &dyn HirDefDB) -> ast::DisciplineDecl {
+        let ast_id = self.ast_id(db);
+        db.ast_id_map(self.root_file).get(ast_id).to_node(db.parse(self.root_file).tree().syntax())
+    }
+}
+impl_intern!(DisciplineId, DisciplineLoc, intern_discipline, lookup_intern_discipline);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DisciplineAttrId(salsa::InternId);
+pub type LocalDisciplineAttrId = Idx<data::DisciplineAttrData>;
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct DisciplineAttrLoc {
+    pub discipline: DisciplineId,
+    pub id: LocalDisciplineAttrId,
+}
+impl_intern!(
+    DisciplineAttrId,
+    DisciplineAttrLoc,
+    intern_discipline_attr,
+    lookup_intern_discipline_attr
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleId(salsa::InternId);
@@ -338,7 +338,7 @@ impl_intern!(ParamId, ParamLoc, intern_param, lookup_intern_param);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AliasParamId(salsa::InternId);
 pub type AliasParamLoc = ItemLoc<AliasParam>;
-impl_intern!(AliasParamId, AliasParamLoc, intern_alias_param, lookup_intern_alias_param);
+impl_intern!(AliasParamId, AliasParamLoc, intern_aliasparam, lookup_intern_aliasparam);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(salsa::InternId);

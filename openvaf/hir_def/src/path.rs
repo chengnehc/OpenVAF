@@ -23,14 +23,14 @@ impl Path {
         let segment = syntax.segment()?;
 
         match (prefix, segment.kind) {
-            (Some(_), PathSegmentKind::Root) => None, // incorrect `$root` path
+            // Error: `$root` is not the first segment
+            (Some(_), PathSegmentKind::Root) => None,
             (Some(mut prefix), PathSegmentKind::Name) => {
                 prefix.segments.push(segment.as_name());
                 Some(prefix)
             }
-            (None, PathSegmentKind::Root) => Some(Path { is_root: true, segments: vec![] }), // correct `$root` path
+            (None, PathSegmentKind::Root) => Some(Path { is_root: true, segments: vec![] }),
             (None, PathSegmentKind::Name) => {
-                // correct normal path
                 Some(Path { is_root: false, segments: vec![segment.as_name()] })
             }
         }

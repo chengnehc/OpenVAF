@@ -112,7 +112,7 @@ fn collect_body(
     // ast_id_map: &AstIdMap,
     sink: &mut impl DiagnosticSink,
 ) {
-    let body_sm = db.body_source_map(def);
+    let body_sm = db.body_srcmap(def);
 
     let diagnostics = &db.inference_result(def).diagnostics;
     for diag in diagnostics {

@@ -1,0 +1,96 @@
+SOURCE_FILE@0..380
+  COMMENT@0..8 "// 5.5.1"
+  WHITESPACE@8..9 "\n"
+  COMMENT@9..11 "//"
+  WHITESPACE@11..12 "\n"
+  COMMENT@12..89 "// The example below  ..."
+  WHITESPACE@89..90 "\n"
+  COMMENT@90..165 "// Note V cannot be u ..."
+  WHITESPACE@165..166 "\n"
+  COMMENT@166..201 "// called V declared  ..."
+  WHITESPACE@201..203 "\n\n"
+  MODULE_DECL@203..379
+    MODULE_KW@203..209 "module"
+    WHITESPACE@209..210 " "
+    NAME@210..218
+      IDENT@210..218 "measure1"
+    L_PAREN@218..219 "("
+    MODULE_PORTS@219..221
+      MODULE_PORT@219..220
+        NAME@219..220
+          IDENT@219..220 "p"
+      R_PAREN@220..221 ")"
+    SEMICOLON@221..222 ";"
+    WHITESPACE@222..227 "\n    "
+    BODY_PORT_DECL@227..236
+      PORT_DECL@227..235
+        DIRECTION@227..233
+          OUTPUT_KW@227..233 "output"
+        WHITESPACE@233..234 " "
+        NAME@234..235
+          IDENT@234..235 "p"
+      SEMICOLON@235..236 ";"
+    WHITESPACE@236..241 "\n    "
+    NET_DECL@241..254
+      NAME_REF@241..251
+        IDENT@241..251 "electrical"
+      WHITESPACE@251..252 " "
+      NAME@252..253
+        IDENT@252..253 "p"
+      SEMICOLON@253..254 ";"
+    WHITESPACE@254..259 "\n    "
+    PARAM_DECL@259..282
+      PARAMETER_KW@259..268 "parameter"
+      WHITESPACE@268..269 " "
+      TYPE@269..273
+        REAL_KW@269..273 "real"
+      WHITESPACE@273..274 " "
+      PARAM@274..281
+        NAME@274..275
+          IDENT@274..275 "V"
+        WHITESPACE@275..276 " "
+        EQ@276..277 "="
+        WHITESPACE@277..278 " "
+        LITERAL@278..281
+          STD_REAL_NUMBER@278..281 "1.1"
+      SEMICOLON@281..282 ";"
+    WHITESPACE@282..287 "\n    "
+    ANALOG_BEHAVIOUR@287..369
+      ANALOG_KW@287..293 "analog"
+      WHITESPACE@293..294 " "
+      BLOCK_STMT@294..369
+        BEGIN_KW@294..299 "begin"
+        WHITESPACE@299..308 "\n        "
+        EXPR_STMT@308..361
+          CALL@308..360
+            SYS_FUN@308..315
+              SYSFUN@308..315 "$strobe"
+            ARG_LIST@315..360
+              L_PAREN@315..316 "("
+              LITERAL@316..341
+                STR_LIT@316..341 "\"%M: voltage ratio is ..."
+              COMMA@341..342 ","
+              WHITESPACE@342..343 " "
+              BIN_EXPR@343..359
+                CALL@343..355
+                  PATH@343..352
+                    IDENT@343..352 "potential"
+                  ARG_LIST@352..355
+                    L_PAREN@352..353 "("
+                    PATH_EXPR@353..354
+                      PATH@353..354
+                        IDENT@353..354 "p"
+                    R_PAREN@354..355 ")"
+                WHITESPACE@355..356 " "
+                SLASH@356..357 "/"
+                WHITESPACE@357..358 " "
+                PATH_EXPR@358..359
+                  PATH@358..359
+                    IDENT@358..359 "V"
+              R_PAREN@359..360 ")"
+          SEMICOLON@360..361 ";"
+        WHITESPACE@361..366 "\n    "
+        END_KW@366..369 "end"
+    WHITESPACE@369..370 "\n"
+    ENDMODULE_KW@370..379 "endmodule"
+  WHITESPACE@379..380 "\n"

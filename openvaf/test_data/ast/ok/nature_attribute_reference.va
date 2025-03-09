@@ -1,0 +1,17 @@
+// 5.5.3 & A.8.9
+
+/* 
+  This syntax shall not be used for the access, ddt_nature, or idt_nature  attributes
+  of a nature, nor any other attribute whose value is not a constant expression. 
+*/
+
+module twocap(a, b, n1, n2);
+    inout a, b, n1, n2;
+    electrical a, b, n1, n2;
+    branch (n1, n2) cap;
+    parameter real c = 1p;
+    analog begin
+        I(a,b) <+ c*ddt(V(a,b), a.potential.abstol);
+        I(cap) <+ c*ddt(V(cap), n1.potential.abstol);
+    end
+endmodule

@@ -1,0 +1,21 @@
+// 5.6.1
+/*
+ The example below demonstrates the potential access functions being used
+ to contribute to a branch and the flow and potential access functions 
+ being used to probe branches. Note V and I cannot be used as access
+ functions because there are parameters called V and I declared in the
+ module.
+*/
+
+module measure2(p);
+    output p;
+    electrical p;
+    parameter real V = 1.1;
+    parameter real I = 1u;
+    parameter real R = 10k;
+    analog begin
+        potential(p) <+ flow(p) * R; // create a resistor
+        $strobe("voltage ratio at port 'p' is %g", potential(p) / V);
+        $strobe("current ratio through port 'p' is %g", flow(<p>) / I);
+    end
+endmodule

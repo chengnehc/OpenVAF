@@ -13,6 +13,45 @@ use crate::{
     LocalNatureAttrId, Lookup, ModuleId, NatureId, NodeId, NodeLoc, ParamId, Path, Type, VarId,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NatureData {
+    pub name: Name,
+    pub parent: Option<NatureRef>,
+    pub idt_nature: Option<NatureRef>,
+    pub ddt_nature: Option<NatureRef>,
+    pub units: Option<String>,
+    pub abstol: Option<LocalNatureAttrId>,
+    pub attrs: Arena<NatureAttrData>,
+}
+
+impl NatureData {
+    pub fn query(db: &dyn HirDefDB, id: NatureId) -> Arc<NatureData> {
+        let loc = id.lookup(db);
+        let itree = db.item_tree(loc.root_file);
+        let nature = &itree[loc.id];
+        let attrs: Arena<_> = nature
+            .attrs
+            .clone()
+            .map(|attr| NatureAttrData { name: itree[attr].name.clone() })
+            .collect();
+
+        Arc::new(NatureData {
+            name: nature.name.clone(),
+            parent: nature.parent.clone(),
+            units: nature.units.clone().map(|(it, _)| it),
+            idt_nature: nature.idt_nature.clone().map(|(it, _)| it),
+            ddt_nature: nature.ddt_nature.clone().map(|(it, _)| it),
+            abstol: nature.abstol,
+            attrs,
+        })
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct NatureAttrData {
+    pub name: Name,
+}
+
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct DisciplineAttrData {
     pub name: Name,
@@ -29,7 +68,7 @@ pub struct DisciplineData {
 }
 
 impl DisciplineData {
-    pub fn discipline_data_query(db: &dyn HirDefDB, id: DisciplineId) -> Arc<DisciplineData> {
+    pub fn query(db: &dyn HirDefDB, id: DisciplineId) -> Arc<DisciplineData> {
         let loc = id.lookup(db);
         let tree = &loc.item_tree(db);
         let discipline = &tree[loc.id];
@@ -64,45 +103,6 @@ impl DisciplineData {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct NatureAttrData {
-    pub name: Name,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NatureData {
-    pub name: Name,
-    pub parent: Option<NatureRef>,
-    pub idt_nature: Option<NatureRef>,
-    pub ddt_nature: Option<NatureRef>,
-    pub units: Option<String>,
-    pub abstol: Option<LocalNatureAttrId>,
-    pub attrs: Arena<NatureAttrData>,
-}
-
-impl NatureData {
-    pub fn nature_data_query(db: &dyn HirDefDB, id: NatureId) -> Arc<NatureData> {
-        let loc = id.lookup(db);
-        let itree = db.item_tree(loc.root_file);
-        let nature = &itree[loc.id];
-        let attrs: Arena<_> = nature
-            .attrs
-            .clone()
-            .map(|attr| NatureAttrData { name: itree[attr].name.clone() })
-            .collect();
-
-        Arc::new(NatureData {
-            name: nature.name.clone(),
-            parent: nature.parent.clone(),
-            units: nature.units.clone().map(|(it, _)| it),
-            idt_nature: nature.idt_nature.clone().map(|(it, _)| it),
-            ddt_nature: nature.ddt_nature.clone().map(|(it, _)| it),
-            abstol: nature.abstol,
-            attrs,
-        })
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleData {
     pub name: Name,
@@ -111,7 +111,7 @@ pub struct ModuleData {
 }
 
 impl ModuleData {
-    pub fn module_data_query(db: &dyn HirDefDB, module: ModuleId) -> Arc<ModuleData> {
+    pub fn query(db: &dyn HirDefDB, module: ModuleId) -> Arc<ModuleData> {
         let loc = module.lookup(db);
         let itree = loc.item_tree(db);
         let num_ports = itree[loc.id].num_ports;
@@ -134,7 +134,7 @@ pub struct NodeData {
 }
 
 impl NodeData {
-    pub fn node_data_query(db: &dyn HirDefDB, id: NodeId) -> Arc<NodeData> {
+    pub fn query(db: &dyn HirDefDB, id: NodeId) -> Arc<NodeData> {
         let loc = id.lookup(db);
         let module = loc.module.lookup(db);
         let itree = module.item_tree(db);
@@ -163,7 +163,7 @@ pub struct BranchData {
 }
 
 impl BranchData {
-    pub fn branch_data_query(db: &dyn HirDefDB, id: BranchId) -> Arc<BranchData> {
+    pub fn query(db: &dyn HirDefDB, id: BranchId) -> Arc<BranchData> {
         let loc = id.lookup(db);
         let branch = &loc.item_tree(db)[loc.id];
 
@@ -178,7 +178,7 @@ pub struct VarData {
 }
 
 impl VarData {
-    pub fn var_data_query(db: &dyn HirDefDB, id: VarId) -> Arc<VarData> {
+    pub fn query(db: &dyn HirDefDB, id: VarId) -> Arc<VarData> {
         let loc = id.lookup(db);
         let var = &loc.item_tree(db)[loc.id];
 
@@ -193,7 +193,7 @@ pub struct ParamData {
 }
 
 impl ParamData {
-    pub fn param_data_query(db: &dyn HirDefDB, id: ParamId) -> Arc<ParamData> {
+    pub fn query(db: &dyn HirDefDB, id: ParamId) -> Arc<ParamData> {
         let loc = id.lookup(db);
         let param = &loc.item_tree(db)[loc.id];
 
@@ -208,7 +208,7 @@ pub struct AliasParamData {
 }
 
 impl AliasParamData {
-    pub fn alias_data_query(db: &dyn HirDefDB, id: AliasParamId) -> Arc<AliasParamData> {
+    pub fn query(db: &dyn HirDefDB, id: AliasParamId) -> Arc<AliasParamData> {
         let loc = id.lookup(db);
         let param = &loc.item_tree(db)[loc.id];
 
@@ -243,7 +243,7 @@ pub struct FunctionData {
 }
 
 impl FunctionData {
-    pub fn function_data_query(db: &dyn HirDefDB, id: FunctionId) -> Arc<FunctionData> {
+    pub fn query(db: &dyn HirDefDB, id: FunctionId) -> Arc<FunctionData> {
         let loc = id.lookup(db);
         let itree = loc.item_tree(db);
         let fun = &itree[loc.id];

@@ -1,0 +1,186 @@
+SOURCE_FILE@0..680
+  COMMENT@0..8 "// 5.6.1"
+  WHITESPACE@8..9 "\n"
+  COMMENT@9..309 "/*\n The example below ..."
+  WHITESPACE@309..311 "\n\n"
+  MODULE_DECL@311..680
+    MODULE_KW@311..317 "module"
+    WHITESPACE@317..318 " "
+    NAME@318..326
+      IDENT@318..326 "measure2"
+    L_PAREN@326..327 "("
+    MODULE_PORTS@327..329
+      MODULE_PORT@327..328
+        NAME@327..328
+          IDENT@327..328 "p"
+      R_PAREN@328..329 ")"
+    SEMICOLON@329..330 ";"
+    WHITESPACE@330..335 "\n    "
+    BODY_PORT_DECL@335..344
+      PORT_DECL@335..343
+        DIRECTION@335..341
+          OUTPUT_KW@335..341 "output"
+        WHITESPACE@341..342 " "
+        NAME@342..343
+          IDENT@342..343 "p"
+      SEMICOLON@343..344 ";"
+    WHITESPACE@344..349 "\n    "
+    NET_DECL@349..362
+      NAME_REF@349..359
+        IDENT@349..359 "electrical"
+      WHITESPACE@359..360 " "
+      NAME@360..361
+        IDENT@360..361 "p"
+      SEMICOLON@361..362 ";"
+    WHITESPACE@362..367 "\n    "
+    PARAM_DECL@367..390
+      PARAMETER_KW@367..376 "parameter"
+      WHITESPACE@376..377 " "
+      TYPE@377..381
+        REAL_KW@377..381 "real"
+      WHITESPACE@381..382 " "
+      PARAM@382..389
+        NAME@382..383
+          IDENT@382..383 "V"
+        WHITESPACE@383..384 " "
+        EQ@384..385 "="
+        WHITESPACE@385..386 " "
+        LITERAL@386..389
+          STD_REAL_NUMBER@386..389 "1.1"
+      SEMICOLON@389..390 ";"
+    WHITESPACE@390..395 "\n    "
+    PARAM_DECL@395..417
+      PARAMETER_KW@395..404 "parameter"
+      WHITESPACE@404..405 " "
+      TYPE@405..409
+        REAL_KW@405..409 "real"
+      WHITESPACE@409..410 " "
+      PARAM@410..416
+        NAME@410..411
+          IDENT@410..411 "I"
+        WHITESPACE@411..412 " "
+        EQ@412..413 "="
+        WHITESPACE@413..414 " "
+        LITERAL@414..416
+          SI_REAL_NUMBER@414..416 "1u"
+      SEMICOLON@416..417 ";"
+    WHITESPACE@417..422 "\n    "
+    PARAM_DECL@422..445
+      PARAMETER_KW@422..431 "parameter"
+      WHITESPACE@431..432 " "
+      TYPE@432..436
+        REAL_KW@432..436 "real"
+      WHITESPACE@436..437 " "
+      PARAM@437..444
+        NAME@437..438
+          IDENT@437..438 "R"
+        WHITESPACE@438..439 " "
+        EQ@439..440 "="
+        WHITESPACE@440..441 " "
+        LITERAL@441..444
+          SI_REAL_NUMBER@441..444 "10k"
+      SEMICOLON@444..445 ";"
+    WHITESPACE@445..450 "\n    "
+    ANALOG_BEHAVIOUR@450..670
+      ANALOG_KW@450..456 "analog"
+      WHITESPACE@456..457 " "
+      BLOCK_STMT@457..670
+        BEGIN_KW@457..462 "begin"
+        WHITESPACE@462..471 "\n        "
+        ASSIGN_STMT@471..499
+          ASSIGN@471..498
+            CALL@471..483
+              PATH@471..480
+                IDENT@471..480 "potential"
+              ARG_LIST@480..483
+                L_PAREN@480..481 "("
+                PATH_EXPR@481..482
+                  PATH@481..482
+                    IDENT@481..482 "p"
+                R_PAREN@482..483 ")"
+            WHITESPACE@483..484 " "
+            CONTR@484..486 "<+"
+            WHITESPACE@486..487 " "
+            BIN_EXPR@487..498
+              CALL@487..494
+                PATH@487..491
+                  IDENT@487..491 "flow"
+                ARG_LIST@491..494
+                  L_PAREN@491..492 "("
+                  PATH_EXPR@492..493
+                    PATH@492..493
+                      IDENT@492..493 "p"
+                  R_PAREN@493..494 ")"
+              WHITESPACE@494..495 " "
+              STAR@495..496 "*"
+              WHITESPACE@496..497 " "
+              PATH_EXPR@497..498
+                PATH@497..498
+                  IDENT@497..498 "R"
+          SEMICOLON@498..499 ";"
+        WHITESPACE@499..500 " "
+        COMMENT@500..520 "// create a resistor"
+        WHITESPACE@520..529 "\n        "
+        EXPR_STMT@529..590
+          CALL@529..589
+            SYS_FUN@529..536
+              SYSFUN@529..536 "$strobe"
+            ARG_LIST@536..589
+              L_PAREN@536..537 "("
+              LITERAL@537..570
+                STR_LIT@537..570 "\"voltage ratio at por ..."
+              COMMA@570..571 ","
+              WHITESPACE@571..572 " "
+              BIN_EXPR@572..588
+                CALL@572..584
+                  PATH@572..581
+                    IDENT@572..581 "potential"
+                  ARG_LIST@581..584
+                    L_PAREN@581..582 "("
+                    PATH_EXPR@582..583
+                      PATH@582..583
+                        IDENT@582..583 "p"
+                    R_PAREN@583..584 ")"
+                WHITESPACE@584..585 " "
+                SLASH@585..586 "/"
+                WHITESPACE@586..587 " "
+                PATH_EXPR@587..588
+                  PATH@587..588
+                    IDENT@587..588 "V"
+              R_PAREN@588..589 ")"
+          SEMICOLON@589..590 ";"
+        WHITESPACE@590..599 "\n        "
+        EXPR_STMT@599..662
+          CALL@599..661
+            SYS_FUN@599..606
+              SYSFUN@599..606 "$strobe"
+            ARG_LIST@606..661
+              L_PAREN@606..607 "("
+              LITERAL@607..645
+                STR_LIT@607..645 "\"current ratio throug ..."
+              COMMA@645..646 ","
+              WHITESPACE@646..647 " "
+              BIN_EXPR@647..660
+                CALL@647..656
+                  PATH@647..651
+                    IDENT@647..651 "flow"
+                  ARG_LIST@651..656
+                    L_PAREN@651..652 "("
+                    PORT_FLOW@652..655
+                      L_ANGLE@652..653 "<"
+                      PATH@653..654
+                        IDENT@653..654 "p"
+                      R_ANGLE@654..655 ">"
+                    R_PAREN@655..656 ")"
+                WHITESPACE@656..657 " "
+                SLASH@657..658 "/"
+                WHITESPACE@658..659 " "
+                PATH_EXPR@659..660
+                  PATH@659..660
+                    IDENT@659..660 "I"
+              R_PAREN@660..661 ")"
+          SEMICOLON@661..662 ";"
+        WHITESPACE@662..667 "\n    "
+        END_KW@667..670 "end"
+    WHITESPACE@670..671 "\n"
+    ENDMODULE_KW@671..680 "endmodule"

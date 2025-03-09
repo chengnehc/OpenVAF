@@ -120,16 +120,15 @@ pub fn lookup_nature(
     nature_ref: &NatureRef,
     db: &dyn HirTyDB,
 ) -> Result<NatureId, PathResolveError> {
+    let root_scope = def_map.root_scope();
     let (nature, attr) = match nature_ref.kind {
-        NatureRefKind::Nature => {
-            return def_map.resolve_item_in(def_map.root_scope(), &nature_ref.name)
-        }
+        NatureRefKind::Nature => return def_map.resolve_item_in(root_scope, &nature_ref.name),
         NatureRefKind::DisciplinePotential => {
-            let discipline = def_map.resolve_item_in(def_map.root_scope(), &nature_ref.name)?;
+            let discipline = def_map.resolve_item_in(root_scope, &nature_ref.name)?;
             (db.discipline_info(discipline).potential, kw::potential)
         }
         NatureRefKind::DisciplineFlow => {
-            let discipline = def_map.resolve_item_in(def_map.root_scope(), &nature_ref.name)?;
+            let discipline = def_map.resolve_item_in(root_scope, &nature_ref.name)?;
             (db.discipline_info(discipline).flow, kw::flow)
         }
     };

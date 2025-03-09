@@ -16,7 +16,7 @@ impl rowan::Language for VerilogALanguage {
     type Kind = crate::SyntaxKind;
 
     fn kind_from_raw(raw: rowan::SyntaxKind) -> Self::Kind {
-        Self::Kind::from(raw.0)
+        crate::SyntaxKind::from(raw.0)
     }
 
     fn kind_to_raw(kind: Self::Kind) -> rowan::SyntaxKind {

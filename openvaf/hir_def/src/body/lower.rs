@@ -18,7 +18,7 @@ pub(super) struct Context<'a> {
     pub(super) body: &'a mut Body,
     pub(super) src_map: &'a mut BodySourceMap,
 
-    // for collecting block stmt, as a named block opens up a new scope
+    // for collecting block body statements, as a named block opens up a new scope
     pub(super) curr_scope: (Scope, ErasedAstId),
     pub(super) ast_id_map: &'a AstIdMap,
 
@@ -141,7 +141,7 @@ impl Context<'_> {
         let (curr, _) = self.curr_scope;
         let id = BlockLoc { ast_id, parent: curr }.intern(self.db);
         let next = if let Some(def_map) = self.db.block_def_map(id) {
-            Scope::new(curr.root_file, DefMapSource::Block(id), def_map.entry_scope())
+            Scope::from(curr.root_file, DefMapSource::Block(id), def_map.entry_scope())
         } else {
             curr
         };

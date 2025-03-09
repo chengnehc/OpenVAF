@@ -97,7 +97,7 @@ impl AsName for ast::NameRef {
 }
 impl AsName for ast::PathSegment {
     fn as_name(&self) -> Name {
-        Name::resolve(self.syntax.text())
+        Name::resolve(self.token.text())
     }
 }
 impl AsName for ast::SysFun {

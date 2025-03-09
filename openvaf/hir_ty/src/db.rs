@@ -86,7 +86,7 @@ pub enum Alias {
 // TODO allow $mfactor etc
 fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Option<Alias> {
     let loc = id.lookup(db.upcast());
-    let data = db.alias_data(id);
+    let data = db.aliasparam_data(id);
     match loc.scope.resolve_path(db.upcast(), data.src.as_ref()?).ok()? {
         ResolvedPath::ScopeItemDef(ScopeItemDef::ParamId(param)) => Some(Alias::Param(param)),
         ResolvedPath::ScopeItemDef(ScopeItemDef::ParamSysFun(param)) => {

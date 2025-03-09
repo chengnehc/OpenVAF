@@ -717,7 +717,7 @@ impl TypeValidator<'_> {
     fn verify_alias(&mut self, alias: AliasParamId) {
         if self.db.resolve_alias(alias).is_none() {
             let loc = alias.lookup(self.db.upcast());
-            let data = self.db.alias_data(alias);
+            let data = self.db.aliasparam_data(alias);
             if let Some(path) = data.src.as_ref() {
                 match loc.scope.resolve_path(self.db.upcast(), path) {
                     // TODO: better errors for cycels
@@ -853,7 +853,9 @@ impl TypeValidator<'_> {
                     self.report(TypeDiagnostic::PathError {
                         err,
                         src: SyntaxNodePtr::new(
-                            decl.discipline_src(self.db.upcast(), self.root_file).unwrap().syntax(),
+                            decl.discipline_source(self.db.upcast(), self.root_file)
+                                .unwrap()
+                                .syntax(),
                         ),
                     })
                 }

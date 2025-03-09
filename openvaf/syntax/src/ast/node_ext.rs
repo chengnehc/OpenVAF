@@ -43,16 +43,25 @@ impl ast::Path {
         successors(self.qualifier(), |p| p.qualifier())
     }
 
-    /// the top level path, i.e. the ultimate parent node
-    #[must_use]
-    pub fn top_path(&self) -> ast::Path {
-        successors(Some(self.clone()), ast::Path::parent).last().unwrap()
-    }
+    // pub fn first_segment(&self) -> Option<PathSegment> {
+    //    self.first_qualifier().segment()
+    // }
 
     pub fn parent(&self) -> Option<ast::Path> {
         self.syntax().parent().and_then(ast::Path::cast)
     }
 
+    /// The ultimate parent node that stores the token of the last segment.
+    #[must_use]
+    pub fn top_path(&self) -> ast::Path {
+        successors(Some(self.clone()), ast::Path::parent).last().unwrap()
+    }
+
+    // pub fn last_segment(&self) -> Option<ast::PathSegment> {
+    //     self.top_path().segment()
+    // }
+
+    /// Return the segment that this `Path` node stores.
     pub fn segment(&self) -> Option<PathSegment> {
         self.syntax().children_with_tokens().find_map(|e| {
             let kind = match e.kind() {
@@ -60,7 +69,7 @@ impl ast::Path {
                 ROOT_KW => PathSegmentKind::Root,
                 _ => return None,
             };
-            Some(PathSegment { kind, syntax: e.into_token().unwrap() })
+            Some(PathSegment { kind, token: e.into_token().unwrap() })
         })
     }
 
@@ -79,14 +88,6 @@ impl ast::Path {
         })
     }
 
-    // pub fn first_segment(&self) -> Option<PathSegment> {
-    //    self.first_qualifier().segment()
-    // }
-
-    // pub fn last_segment(&self) -> Option<ast::PathSegment> {
-    //     self.top_path().segment()
-    // }
-
     // pub fn segments(&self) -> impl Iterator<Item = PathSegment> + Clone {
     //    successors(self.first_segment(), |p| {
     //        p.parent().and_then(|path| path.parent()).and_then(|p| p.segment())
@@ -97,13 +98,16 @@ impl ast::Path {
         let segment = self.segment()?;
         let is_valid =
             self.qualifier().is_none() && matches!(segment.kind, ast::PathSegmentKind::Name);
-        is_valid.then_some(segment.syntax)
+        is_valid.then_some(segment.token)
     }
 }
 
+#[test]
+fn path() {}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct PathSegment {
-    pub syntax: SyntaxToken,
+    pub token: SyntaxToken,
     pub kind: PathSegmentKind,
 }
 

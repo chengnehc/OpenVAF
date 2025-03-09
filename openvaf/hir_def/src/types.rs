@@ -12,10 +12,10 @@ pub enum Type {
     Real,
     Integer,
     Bool,
-    String,
-    Array { ty: Box<Type>, len: u32 },
-    EmptyArray,
     Void,
+    String,
+    EmptyArray,
+    Array { ty: Box<Type>, len: u32 },
 }
 
 use Type::*;

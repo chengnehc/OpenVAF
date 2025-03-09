@@ -45,31 +45,122 @@ impl Context {
 
     fn lower_root_item(&mut self, item: ast::Item) -> Option<RootItem> {
         let item = match item {
-            ast::Item::DisciplineDecl(discipline) => self.lower_discipline(discipline)?.into(),
             ast::Item::NatureDecl(nature) => self.lower_nature(nature)?.into(),
+            ast::Item::DisciplineDecl(discipline) => self.lower_discipline(discipline)?.into(),
             ast::Item::ModuleDecl(module) => self.lower_module(module)?.into(),
         };
         Some(item)
+    }
+
+    fn lower_nature(&mut self, decl: ast::NatureDecl) -> Option<ItemTreeId<Nature>> {
+        let name = decl.name()?.as_name();
+        let parent = decl.parent().and_then(|it| Self::lower_nature_path(&it));
+        let attr_start = self.tree.data.nature_attrs.next_key();
+
+        let mut access = None;
+        let mut ddt_nature = None;
+        let mut idt_nature = None;
+        let mut units = None;
+        let mut abstol = None;
+
+        for (id, attr) in decl.nature_attrs().enumerate() {
+            use kw::raw as kw;
+            let Some(name) = attr.name().map(|name| name.as_name()) else { continue };
+            // Handle predefined nature attributes
+            match &*name {
+                kw::access if access.is_none() => {
+                    if let Some(name) = attr.val().and_then(|expr| expr.as_ident()) {
+                        access = Some((name, id.into()));
+                    }
+                }
+                kw::ddt_nature if ddt_nature.is_none() => {
+                    if let Some(name) = attr.val().and_then(Self::lower_nature_expr) {
+                        ddt_nature = Some((name, id.into()));
+                    }
+                }
+                kw::idt_nature if idt_nature.is_none() => {
+                    if let Some(name) = attr.val().and_then(Self::lower_nature_expr) {
+                        idt_nature = Some((name, id.into()));
+                    }
+                }
+                kw::units if units.is_none() => {
+                    if let Some(ast::LiteralKind::StrLit(lit)) =
+                        attr.val().and_then(|e| e.as_literal())
+                    {
+                        units = Some((lit.unescaped_value(), id.into()));
+                    }
+                }
+                kw::abstol if abstol.is_none() => {
+                    abstol = Some(id.into());
+                }
+                _ => (),
+            };
+            let ast_id = self.ast_id_map.id_of(&attr);
+            self.tree.data.nature_attrs.push(NatureAttr { name, ast_id });
+        }
+        let attr_end = self.tree.data.nature_attrs.next_key();
+        let ast_id = self.ast_id_map.id_of(&decl);
+
+        let res = Nature {
+            name,
+            parent,
+            access,
+            ddt_nature,
+            idt_nature,
+            units,
+            abstol,
+            attrs: IdxRange::new(attr_start..attr_end),
+            ast_id,
+        };
+        Some(self.tree.data.natures.push_and_get_key(res))
+    }
+
+    fn lower_nature_expr(expr: ast::Expr) -> Option<NatureRef> {
+        let path = expr.as_path()?;
+        Self::lower_nature_path(&path)
+    }
+
+    fn lower_nature_path(decl: &ast::Path) -> Option<NatureRef> {
+        let mut name = decl.segment_token()?.as_name();
+
+        let kind = match &*name {
+            kw::raw::potential => NatureRefKind::DisciplinePotential,
+            kw::raw::flow => NatureRefKind::DisciplineFlow,
+            _ if decl.qualifier().is_none() && decl.segment_kind()? == PathSegmentKind::Name => {
+                NatureRefKind::Nature
+            }
+            _ => return None,
+        };
+
+        if matches!(kind, NatureRefKind::DisciplineFlow | NatureRefKind::DisciplinePotential) {
+            let qual = decl.qualifier()?;
+            let segment = qual.segment()?;
+            if segment.kind == PathSegmentKind::Root || qual.qualifier().is_some() {
+                return None;
+            }
+            name = segment.as_name();
+        }
+
+        Some(NatureRef { name, kind })
     }
 
     fn lower_discipline(&mut self, decl: ast::DisciplineDecl) -> Option<ItemTreeId<Discipline>> {
         use kw::raw as kw;
         let name = decl.name()?.as_name();
         let ast_id = self.ast_id_map.id_of(&decl);
+        let attr_start = self.tree.data.discipline_attrs.next_key();
 
         let mut potential = None;
         let mut flow = None;
         let mut domain = None;
-        let attr_start = self.tree.data.discipline_attrs.next_key();
 
-        // lower discipline attributes
         for (id, attr) in decl.discipline_attrs().enumerate() {
             let Some(name) = attr.name() else { continue };
             let kind = if let Some(qual) = name.qualifier() {
                 let qual = qual.segment_token();
                 match qual.as_ref().map(|t| t.text()) {
-                    Some(kw::potential) => DisciplineAttrKind::PotentialOverwrite,
-                    Some(kw::flow) => DisciplineAttrKind::FlowOverwrite,
+                    Some(kw::potential) => DisciplineAttrKind::PotentialOverride,
+                    Some(kw::flow) => DisciplineAttrKind::FlowOverride,
                     _ => continue,
                 }
             } else {
@@ -124,100 +215,6 @@ impl Context {
         Some(self.tree.data.disciplines.push_and_get_key(res))
     }
 
-    fn lower_nature_expr(expr: ast::Expr) -> Option<NatureRef> {
-        let path = expr.as_path()?;
-        Self::lower_nature_path(&path)
-    }
-
-    fn lower_nature_path(decl: &ast::Path) -> Option<NatureRef> {
-        let mut name = decl.segment_token()?.as_name();
-
-        let kind = match &*name {
-            kw::raw::potential => NatureRefKind::DisciplinePotential,
-            kw::raw::flow => NatureRefKind::DisciplineFlow,
-            _ if decl.qualifier().is_none() && decl.segment_kind()? == PathSegmentKind::Name => {
-                NatureRefKind::Nature
-            }
-            _ => return None,
-        };
-
-        if matches!(kind, NatureRefKind::DisciplineFlow | NatureRefKind::DisciplinePotential) {
-            let qual = decl.qualifier()?;
-            let segment = qual.segment()?;
-            if segment.kind == PathSegmentKind::Root || qual.qualifier().is_some() {
-                return None;
-            }
-            name = segment.syntax.as_name();
-        }
-
-        Some(NatureRef { name, kind })
-    }
-
-    fn lower_nature(&mut self, decl: ast::NatureDecl) -> Option<ItemTreeId<Nature>> {
-        let name = decl.name()?.as_name();
-
-        let parent = decl.parent().and_then(|it| Self::lower_nature_path(&it));
-        let attr_start = self.tree.data.nature_attrs.next_key();
-
-        let mut access = None;
-        let mut ddt_nature = None;
-        let mut idt_nature = None;
-        let mut units = None;
-        let mut abstol = None;
-
-        for (id, attr) in decl.nature_attrs().enumerate() {
-            use kw::raw as kw;
-            let Some(name) = attr.name().map(|name| name.as_name()) else { continue };
-            let ast_id = self.ast_id_map.id_of(&attr);
-
-            match &*name {
-                kw::access if access.is_none() => {
-                    if let Some(name) = attr.val().and_then(|expr| expr.as_ident()) {
-                        access = Some((name, id.into()));
-                    }
-                }
-                kw::ddt_nature if ddt_nature.is_none() => {
-                    if let Some(name) = attr.val().and_then(Self::lower_nature_expr) {
-                        ddt_nature = Some((name, id.into()));
-                    }
-                }
-                kw::idt_nature if idt_nature.is_none() => {
-                    if let Some(name) = attr.val().and_then(Self::lower_nature_expr) {
-                        idt_nature = Some((name, id.into()));
-                    }
-                }
-                kw::units if units.is_none() => {
-                    if let Some(ast::LiteralKind::StrLit(lit)) =
-                        attr.val().and_then(|e| e.as_literal())
-                    {
-                        units = Some((lit.unescaped_value(), id.into()));
-                    }
-                }
-                kw::abstol if abstol.is_none() => {
-                    abstol = Some(id.into());
-                }
-                _ => (),
-            };
-            self.tree.data.nature_attrs.push(NatureAttr { name, ast_id });
-        }
-
-        let attr_end = self.tree.data.nature_attrs.next_key();
-        let ast_id = self.ast_id_map.id_of(&decl);
-
-        let res = Nature {
-            name,
-            parent,
-            access,
-            ddt_nature,
-            idt_nature,
-            units,
-            abstol,
-            attrs: IdxRange::new(attr_start..attr_end),
-            ast_id,
-        };
-        Some(self.tree.data.natures.push_and_get_key(res))
-    }
-
     fn lower_module(&mut self, decl: ast::ModuleDecl) -> Option<ItemTreeId<Module>> {
         let name = decl.name()?.as_name();
         let ast_id = self.ast_id_map.id_of(&decl);
@@ -228,7 +225,7 @@ impl Context {
             self.lower_module_ports(ports, &mut nodes, &mut items);
         }
         let num_ports = nodes.len() as u32;
-        self.lower_module_items(decl.module_items(), &mut nodes, &mut items);
+        self.lower_module_items(decl, &mut nodes, &mut items);
 
         let res = Module { name, num_ports, nodes, items, ast_id };
         Some(self.tree.data.modules.push_and_get_key(res))
@@ -264,11 +261,11 @@ impl Context {
 
     fn lower_module_items(
         &mut self,
-        items: ast::AstChildren<ast::ModuleItem>,
+        decl: ast::ModuleDecl,
         nodes: &mut TiVec<LocalNodeId, Node>,
         dst: &mut Vec<ModuleItem>,
     ) {
-        for item in items {
+        for item in decl.module_items() {
             match item {
                 ast::ModuleItem::BodyPortDecl(decl) => {
                     if let Some(port) = decl.port_decl() {
@@ -334,8 +331,8 @@ impl Context {
         dst: &mut Vec<ModuleItem>,
     ) {
         let discipline = decl.discipline().map(|it| it.as_name());
-        let ast_id = self.ast_id_map.id_of(&decl);
         let is_gnd = decl.net_type_token().is_some_and(|it| it.text() == kw::raw::ground);
+        let ast_id = self.ast_id_map.id_of(&decl);
 
         for (name_idx, name) in decl.names().enumerate() {
             let name = name.as_name();
@@ -491,7 +488,7 @@ impl Context {
 
     // TODO: fn lower_func_arg
 
-    fn lower_stmt<T>(&mut self, stmt: ast::Stmt, parent_scope: &mut Vec<T>)
+    fn lower_stmt<T>(&mut self, stmt: ast::Stmt, dst: &mut Vec<T>)
     where
         T: From<ItemTreeId<Param>> + From<ItemTreeId<Var>> + From<AstId<ast::BlockStmt>>,
     {
@@ -511,10 +508,10 @@ impl Context {
                             if block.block_scope().is_some() {
                                 match block_scope_stack.last() {
                                     Some(block) => {
-                                        let block = blocks.get_mut(block).unwrap();
-                                        block.block_items.push(ast_id.into());
+                                        let block_info = blocks.get_mut(block).unwrap();
+                                        block_info.block_items.push(ast_id.into());
                                     }
-                                    None => parent_scope.push(ast_id.into()),
+                                    None => dst.push(ast_id.into()),
                                 };
                                 block_scope_stack.push(ast_id);
                             }
@@ -527,7 +524,7 @@ impl Context {
                                     let block = blocks.get_mut(block).unwrap();
                                     self.lower_var(var, &mut block.block_items)
                                 }
-                                None => self.lower_var(var, parent_scope),
+                                None => self.lower_var(var, dst),
                             }
                         },
                         ast::ParamDecl(param) => {
@@ -536,7 +533,7 @@ impl Context {
                                     let block = blocks.get_mut(block).unwrap();
                                     self.lower_param(param, &mut block.block_items)
                                 }
-                                None => self.lower_param(param, parent_scope),
+                                None => self.lower_param(param, dst),
                             }
                         },
                         _ => ()

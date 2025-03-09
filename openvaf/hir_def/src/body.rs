@@ -54,7 +54,7 @@ impl BodySourceMap {
 }
 
 impl Body {
-    pub fn body_with_sourcemap_query(
+    pub fn body_with_srcmap_query(
         db: &dyn HirDefDB,
         def: DefWithBodyId,
     ) -> (Arc<Body>, Arc<BodySourceMap>) {
@@ -66,7 +66,7 @@ impl Body {
 
         match def {
             DefWithBodyId::ParamId(param) => {
-                let (body, sm, _) = db.param_body_with_sourcemap(param);
+                let (body, sm, _) = db.param_body_with_srcmap(param);
                 return (body, sm);
             }
             DefWithBodyId::ModuleId { initial, id } => {
@@ -93,7 +93,7 @@ impl Body {
             }
             DefWithBodyId::FunctionId(id) => {
                 let scope =
-                    Scope::new(root_file, DefMapSource::Function(id), LocalScopeId::from(0u32));
+                    Scope::from(root_file, DefMapSource::Function(id), LocalScopeId::from(0u32));
                 debug_assert_eq!(scope.local_id, db.function_def_map(id).entry_scope());
 
                 let fun = id.lookup(db);
@@ -189,7 +189,7 @@ impl Body {
         (Arc::new(body), Arc::new(src_map))
     }
 
-    pub fn param_body_with_sourcemap_query(
+    pub fn param_body_with_srcmap_query(
         db: &dyn HirDefDB,
         id: ParamId,
     ) -> (Arc<Body>, Arc<BodySourceMap>, ParamExprs) {

@@ -477,7 +477,7 @@ impl_debug! {
 }
 impl AliasParameter {
     pub fn name(self, db: &CompilationDB) -> String {
-        db.alias_data(self.id).name.to_string()
+        db.aliasparam_data(self.id).name.to_string()
     }
 
     pub fn resolve(self, db: &CompilationDB) -> Option<ResolvedAliasParam> {

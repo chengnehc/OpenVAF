@@ -64,7 +64,7 @@ impl TestDataBase {
 
         for (_, declaration) in &def_map[scope].declarations {
             if let Ok(id) = (*declaration).try_into() {
-                let diagnostics = &self.body_source_map(id).diagnostics;
+                let diagnostics = &self.body_srcmap(id).diagnostics;
                 sink.add_diagnostics(diagnostics, root_file, self);
             }
             if let ScopeItemDef::FunctionId(fun) = *declaration {

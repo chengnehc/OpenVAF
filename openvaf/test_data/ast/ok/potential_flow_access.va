@@ -1,0 +1,14 @@
+// 5.5.1
+//
+// The example below demonstrates the potential access functions being used. 
+// Note V cannot be used as an access function because there is a parameter
+// called V declared in the module.
+
+module measure1(p);
+    output p;
+    electrical p;
+    parameter real V = 1.1;
+    analog begin
+        $strobe("%M: voltage ratio is %g", potential(p) / V);
+    end
+endmodule
