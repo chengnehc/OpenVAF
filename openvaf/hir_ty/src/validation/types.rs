@@ -1,5 +1,3 @@
-//use stdx::impl_display;
-
 use basedb::{AstId, ErasedAstId, FileId};
 use hir_def::nameres::PathResolveError;
 use hir_def::{BranchId, DisciplineId, LocalDisciplineAttrId, LocalNatureAttrId, NatureId, NodeId};

@@ -91,7 +91,7 @@ impl CallBackKind {
                 has_side_effects: false,
             },
             CallBackKind::LimDiscontinuity => FunctionSignature {
-                name: "$discontinuty[-1]".to_owned(),
+                name: "$discontinuity[-1]".to_owned(),
                 params: 0,
                 returns: 0,
                 has_side_effects: true,
@@ -115,7 +115,7 @@ impl CallBackKind {
                 has_side_effects: false,
             },
             CallBackKind::FlickerNoise { name, .. } => FunctionSignature {
-                name: format!("flickr_noise({name:?})"),
+                name: format!("flicker_noise({name:?})"),
                 params: 2,
                 returns: 1,
                 has_side_effects: false,
@@ -133,6 +133,7 @@ impl CallBackKind {
             },
         }
     }
+
     pub fn is_noise(&self) -> bool {
         matches!(
             self,
@@ -142,7 +143,7 @@ impl CallBackKind {
         )
     }
 
-    pub fn op_dependent(&self) -> bool {
+    pub fn is_op_dependent(&self) -> bool {
         matches!(
             self,
             CallBackKind::SimParam

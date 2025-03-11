@@ -12,20 +12,16 @@ use crate::{
     PlaceKind,
 };
 
-pub struct LoweringCtx<'a, 'c> {
+pub struct MainLowerContext<'a, 'c> {
     pub db: &'a CompilationDB,
-
     pub func: FunctionBuilder<'c>,
-
     pub intern: &'a mut HirInterner,
+
     /// mutable memory locations for values
     pub places: TiSet<Place, PlaceKind>,
-
     tagged_vars: AHashSet<Variable>,
 
-    // do not lower equations
-    pub no_equations: bool,
-    // ?
+    pub no_equations: bool, // do not lower equations
     pub inside_lim: bool,
     /// We create a dedicated callback for each noise source
     /// by giving each callback a unique index. Kind of ineffcient
@@ -34,7 +30,7 @@ pub struct LoweringCtx<'a, 'c> {
     pub num_noise_sources: u32,
 }
 
-impl<'a, 'c> LoweringCtx<'a, 'c> {
+impl<'a, 'c> MainLowerContext<'a, 'c> {
     pub fn new(
         db: &'a CompilationDB,
         func: FunctionBuilder<'c>,
@@ -44,11 +40,11 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         Self {
             db,
             func,
-            no_equations,
+            intern,
             places: TiSet::default(),
             tagged_vars: AHashSet::default(),
+            no_equations,
             inside_lim: false,
-            intern,
             num_noise_sources: 0,
         }
     }
@@ -59,7 +55,7 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
     }
 
     /// This function should be used for reading variables to correctly handle tagging.
-    pub fn read_variable(&mut self, var: Variable) -> Value {
+    pub fn read_var(&mut self, var: Variable) -> Value {
         let place = self.dec_place(PlaceKind::Var(var));
         let mut val = self.func.use_var(place);
         if self.tagged_vars.contains(&var) {
@@ -73,28 +69,28 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
     /// (phi stmts where necessary) automatically.
     ///
     /// If the requested place already exists, then simply return it.
-    /// Otherwise, a new memory slot is created, and the place is initialized
-    /// in the entry block of MIR function (if necessary).
+    /// Otherwise, a new memory slot is created and initialized (if necessary) in
+    /// the entry block of MIR function.
     pub fn dec_place(&mut self, kind: PlaceKind) -> Place {
         let (place, inserted) = self.places.ensure(kind);
         if inserted {
-            // initialize the place
-            let init = match kind {
-                // place kind that is always initialized
-                PlaceKind::FunctionReturn { .. }
-                | PlaceKind::FunctionArg { .. }
-                | PlaceKind::Param(_)
+            // set initial value for the place
+            let init_val = match kind {
+                // such kinds of places are always initialized
+                PlaceKind::Param(_)
                 | PlaceKind::ParamMin(_)
-                | PlaceKind::ParamMax(_) => return place,
+                | PlaceKind::ParamMax(_)
+                | PlaceKind::FunctionReturn { .. }
+                | PlaceKind::FunctionArg { .. } => return place,
 
                 PlaceKind::Var(var) => self.use_param(ParamKind::HiddenState(var)),
-                PlaceKind::ImplicitResidual { .. } | PlaceKind::Contribute { .. } => F_ZERO,
+                PlaceKind::Contribute { .. } | PlaceKind::ImplicitResidual { .. } => F_ZERO,
                 PlaceKind::CollapseImplicitEquation(_) => TRUE,
                 PlaceKind::IsPotential(_) => FALSE,
                 PlaceKind::BoundStep => INFINITY,
             };
-            let entry = self.func.func.layout.entry_block().unwrap();
-            self.func.def_var_at(place, init, entry);
+            let block = self.func.func.layout.entry_block().unwrap();
+            self.func.def_var_at(place, init_val, block);
         }
         place
     }
@@ -131,11 +127,7 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         self.intern.outputs.insert(kind, val.into());
     }
 
-    pub fn unwrap_pot_node(&mut self, val: Value) -> Node {
-        let param = self.dfg().value_def(val).unwrap_param();
-        self.intern.params.get_index(param).unwrap().0.unwrap_pot_node()
-    }
-
+    /// Return the first result of a callback instruction
     pub fn call1(&mut self, kind: CallBackKind, args: &[Value]) -> Value {
         let inst = self.call(kind, args);
         self.dfg().first_result(inst)
@@ -197,6 +189,11 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         }
     }
 
+    pub fn unwrap_pot_node(&mut self, val: Value) -> Node {
+        let param = self.dfg().value_def(val).unwrap_param();
+        self.intern.params.get_index(param).unwrap().0.unwrap_pot_node()
+    }
+
     /// Start lowering a `$limit` function by allocating a state slot
     /// for the limit call. `probe` is the first argument (voltage or current probe)
     /// to `$limit`.
@@ -245,7 +242,7 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         self.func.def_var(place, residual_val);
     }
 
-    pub fn insert_cast(&mut self, val: Value, src: &Type, dst: &Type) -> Value {
+    pub fn make_type_cast(&mut self, val: Value, src: &Type, dst: &Type) -> Value {
         let op = match (dst, src) {
             (Type::Real, Type::Integer) => Opcode::IFcast,
             (Type::Integer, Type::Real) => Opcode::FIcast,
@@ -253,13 +250,14 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
             (Type::Real, Type::Bool) => Opcode::BFcast,
             (Type::Integer, Type::Bool) => Opcode::BIcast,
             (Type::Bool, Type::Integer) => Opcode::IBcast,
+
             (Type::Array { .. }, Type::EmptyArray) | (Type::EmptyArray, Type::Array { .. }) => {
                 return val
             }
-            _ => unreachable!("unknown cast found  {:?} -> {:?}", src, dst),
+            _ => unreachable!("unknown cast found {:?} -> {:?}", src, dst),
         };
-        let inst = self.func.ins().unary(op, val).0;
-        self.func.func.dfg.first_result(inst)
+
+        self.func.ins().unary1(op, val)
     }
 
     pub fn make_select(
@@ -267,12 +265,12 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         cond: Value,
         lower_branch: impl FnMut(&mut Self, bool) -> Value,
     ) -> Value {
-        let (then_src, else_src) = self.make_cond(cond, lower_branch);
+        let (then_src, else_src) = self.make_if(cond, lower_branch);
 
         self.func.ins().phi(&[then_src, else_src])
     }
 
-    pub fn make_cond<T>(
+    pub fn make_if<T>(
         &mut self,
         cond: Value,
         mut lower_branch: impl FnMut(&mut Self, bool) -> T,
@@ -303,6 +301,8 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
 
         ((then_tail, then_val), (else_tail, else_val))
     }
+
+    /* API wrappers of `FunctionBuilder` */
 
     pub(crate) fn dfg(&self) -> &DataFlowGraph {
         &self.func.func.dfg
@@ -336,6 +336,10 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
         self.func.sconst(val)
     }
 
+    pub(crate) fn current_block(&self) -> Block {
+        self.func.current_block()
+    }
+
     pub(crate) fn create_block(&mut self) -> Block {
         self.func.create_block()
     }
@@ -350,9 +354,5 @@ impl<'a, 'c> LoweringCtx<'a, 'c> {
 
     pub(crate) fn ensured_sealed(&mut self) {
         self.func.ensured_sealed()
-    }
-
-    pub(crate) fn current_block(&self) -> Block {
-        self.func.current_block()
     }
 }

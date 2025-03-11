@@ -55,24 +55,23 @@ impl Ty {
         let Ty::Node(id) = *self else { unreachable!("expected node, found {:?}", self) };
         id
     }
-
     pub fn unwrap_branch(&self) -> BranchId {
         let Ty::Branch(id) = *self else { unreachable!("expected branch, found {:?}", self) };
         id
     }
-
     pub fn unwrap_port_flow(&self) -> NodeId {
         let Ty::PortFlow(id) = *self else { unreachable!("expected port, found {:?}", self) };
         id
     }
-
     pub fn unwrap_param(&self) -> ParamId {
         let Ty::Param(_, id) = *self else { unreachable!("expected parameter, found {:?}", self) };
         id
     }
     pub fn unwrap_func(&self) -> FunctionId {
-        let Ty::UserFunction(func) = *self else { unreachable!("called unwrap_func on {self:?}") };
-        func
+        let Ty::UserFunction(id) = *self else {
+            unreachable!("expected user-defined analog function, found {self:?}")
+        };
+        id
     }
 
     pub fn to_value(&self) -> Option<Type> {

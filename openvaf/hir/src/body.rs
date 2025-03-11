@@ -46,32 +46,11 @@ impl<'a> BodyRef<'a> {
 
     /// Returns whether the result of an expression
     /// needs to be cast to a different type before use.
-    pub fn needs_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
+    pub fn need_type_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
         let dst = self.infere.casts.get(&expr)?;
         let src = self.expr_type(expr);
         debug_assert_ne!(&src, dst, "cast types must be different");
         Some((src, dst))
-    }
-
-    fn resolve_path(&self, expr: ExprId) -> Ref {
-        match self.infere.expr_types[expr] {
-            Ty::Var(_, id) => Ref::Variable(Variable { id }),
-            Ty::Param(_, id) => Ref::Parameter(Parameter { id }),
-            Ty::FunctionVar { fun, arg: Some(arg), .. } => {
-                Ref::FunctionArg(FunctionArg { fun_id: fun, arg_id: arg })
-            }
-            Ty::FunctionVar { fun, .. } => Ref::FunctionReturn(Function { id: fun }),
-            Ty::NatureAttr(_, id) => Ref::NatureAttr(NatureAttr { id }),
-
-            ref it => {
-                if let Some(&inference::ResolvedFun::Param(param)) =
-                    self.infere.resolved_calls.get(&expr)
-                {
-                    return Ref::ParamSysFun(param);
-                }
-                panic!("invalid HIR: path {:?} was not resolved {:?}", self.body.exprs[expr], it)
-            }
-        }
     }
 
     pub fn get_call_signature(&self, expr: ExprId) -> Signature {
@@ -111,6 +90,11 @@ impl<'a> BodyRef<'a> {
         Node { id }
     }
 
+    pub fn into_branch(&self, expr: ExprId) -> Branch {
+        let id = self.infere.expr_types[expr].unwrap_branch();
+        Branch { id }
+    }
+
     pub fn into_port_flow(&self, expr: ExprId) -> Node {
         let id = self.infere.expr_types[expr].unwrap_port_flow();
         Node { id }
@@ -121,16 +105,11 @@ impl<'a> BodyRef<'a> {
         Parameter { id }
     }
 
-    pub fn into_branch(&self, expr: ExprId) -> Branch {
-        let id = self.infere.expr_types[expr].unwrap_branch();
-        Branch { id }
-    }
-
     pub fn get_expr(&self, expr: ExprId) -> Expr<'a> {
         match self.body.exprs[expr] {
             hir_def::Expr::Path { .. } => Expr::Read(self.resolve_path(expr)),
-            hir_def::Expr::BinaryOp { lhs, rhs, op: Some(op) } => Expr::BinaryOp { lhs, rhs, op },
             hir_def::Expr::UnaryOp { expr, op } => Expr::UnaryOp { expr, op },
+            hir_def::Expr::BinaryOp { lhs, rhs, op: Some(op) } => Expr::BinaryOp { lhs, rhs, op },
             hir_def::Expr::Select { cond, then_val, else_val } => {
                 Expr::Select { cond, then_val, else_val }
             }
@@ -152,15 +131,23 @@ impl<'a> BodyRef<'a> {
                 };
                 Expr::Call { fun, args }
             }
-            hir_def::Expr::Array(ref args) => Expr::Array(args),
             hir_def::Expr::Literal(ref literal) => Expr::Literal(literal),
+            hir_def::Expr::Array(ref args) => Expr::Array(args),
             _ => panic!("invalid HIR: {:?}", self.body.exprs[expr]),
         }
     }
 
+    pub fn get_entry_stmt(&self, i: usize) -> Option<Stmt<'a>> {
+        self.get_stmt(self.entry_stmts()[i])
+    }
+
+    pub fn get_entry_expr(&self, i: usize) -> ExprId {
+        self.get_entry_stmt(i).unwrap().unwrap_expr()
+    }
+
     pub fn get_stmt(&self, stmnt: StmtId) -> Option<Stmt<'a>> {
         match self.body.stmts[stmnt] {
-            hir_def::Stmt::Empty | hir_def::Stmt::Missing => None,
+            hir_def::Stmt::Missing | hir_def::Stmt::Empty => None,
             hir_def::Stmt::Expr(e) => Some(Stmt::Expr(e)),
             hir_def::Stmt::Block { ref body } => Some(Stmt::Block { body }),
             hir_def::Stmt::Assignment { val, .. } => {
@@ -189,13 +176,13 @@ impl<'a> BodyRef<'a> {
                 };
                 Some(stmt)
             }
-            hir_def::Stmt::If { cond, then_branch, else_branch } => {
-                Some(Stmt::If { cond, then_branch, else_branch })
-            }
             hir_def::Stmt::ForLoop { init, cond, incr, body } => {
                 Some(Stmt::ForLoop { init, cond, incr, body })
             }
             hir_def::Stmt::WhileLoop { cond, body } => Some(Stmt::WhileLoop { cond, body }),
+            hir_def::Stmt::If { cond, then_branch, else_branch } => {
+                Some(Stmt::If { cond, then_branch, else_branch })
+            }
             hir_def::Stmt::Case { discr, ref case_arms } => Some(Stmt::Case { discr, case_arms }),
             hir_def::Stmt::EventControl { ref event, body } => {
                 Some(Stmt::EventControl { event, body })
@@ -203,26 +190,29 @@ impl<'a> BodyRef<'a> {
         }
     }
 
-    pub fn get_entry_stmt(&self, i: usize) -> Option<Stmt<'a>> {
-        self.get_stmt(self.entry_stmts()[i])
+    fn resolve_path(&self, expr: ExprId) -> Ref {
+        match self.infere.expr_types[expr] {
+            Ty::NatureAttr(_, id) => Ref::NatureAttr(NatureAttr { id }),
+            Ty::Var(_, id) => Ref::Variable(Variable { id }),
+            Ty::Param(_, id) => Ref::Parameter(Parameter { id }),
+            Ty::FunctionVar { fun, arg: Some(arg), .. } => {
+                Ref::FunctionArg(FunctionArg { fun_id: fun, arg_id: arg })
+            }
+            Ty::FunctionVar { fun, .. } => Ref::FunctionReturn(Function { id: fun }),
+
+            ref it => {
+                let Some(&inference::ResolvedFun::Param(param)) =
+                    self.infere.resolved_calls.get(&expr)
+                else {
+                    panic!(
+                        "invalid HIR: path {:?} was not resolved {:?}",
+                        self.body.exprs[expr], it
+                    )
+                };
+                Ref::ParamSysFun(param)
+            }
+        }
     }
-
-    pub fn get_entry_expr(&self, i: usize) -> ExprId {
-        self.get_entry_stmt(i).unwrap().unwrap_expr()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub enum AssignmentLhs {
-    Variable(Variable),
-    FunctionReturn(Function),
-    FunctionArg(FunctionArg),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum ContributeKind {
-    Flow,
-    Potential,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -245,14 +235,27 @@ impl Stmt<'_> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum AssignmentLhs {
+    Variable(Variable),
+    FunctionReturn(Function),
+    FunctionArg(FunctionArg),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ContributeKind {
+    Flow,
+    Potential,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr<'a> {
     Read(Ref),
-    Literal(&'a Literal),
     UnaryOp { expr: ExprId, op: UnaryOp },
     BinaryOp { lhs: ExprId, rhs: ExprId, op: BinaryOp },
     Select { cond: ExprId, then_val: ExprId, else_val: ExprId },
     Call { fun: ResolvedFun, args: &'a [ExprId] },
+    Literal(&'a Literal),
     Array(&'a [ExprId]),
 }
 impl Expr<'_> {

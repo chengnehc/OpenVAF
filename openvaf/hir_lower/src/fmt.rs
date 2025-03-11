@@ -1,25 +1,26 @@
 use hir::{ExprId, Literal, Type};
 use mir::GRAVESTONE;
 
-use crate::body::BodyLoweringCtx;
+use crate::body::BodyLowerContext;
 use crate::callbacks::CallBackKind;
 
+/// [LRM 9.4] Display system tasks
+/// [LRM 9.7] Simulation control system tasks
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Copy)]
 pub enum DisplayKind {
     Debug,
     Display,
+    Monitor,
     Info,
     Warn,
     Error,
     Fatal,
-    Monitor,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub enum FmtArgKind {
-    Binary,
-    EngineerReal,
-    Other,
+pub struct FmtArg {
+    pub ty: Type,
+    pub kind: FmtArgKind,
 }
 
 impl From<Type> for FmtArg {
@@ -29,15 +30,16 @@ impl From<Type> for FmtArg {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct FmtArg {
-    pub ty: Type,
-    pub kind: FmtArgKind,
+pub enum FmtArgKind {
+    Binary,
+    EngineerReal,
+    Other,
 }
 
-impl BodyLoweringCtx<'_, '_, '_> {
+impl BodyLowerContext<'_, '_, '_> {
     pub fn resolved_ty(&self, expr: ExprId) -> Type {
         self.body
-            .needs_cast(expr)
+            .need_type_cast(expr)
             .map(|(_, dst)| dst.to_owned())
             .unwrap_or_else(|| self.body.expr_type(expr))
     }
@@ -138,8 +140,8 @@ impl BodyLoweringCtx<'_, '_, '_> {
                     fmt_lit.push(' ')
                 }
                 match ty {
-                    Type::Real => fmt_lit.push_str("%g"),
                     Type::Integer => fmt_lit.push_str("%d"),
+                    Type::Real => fmt_lit.push_str("%g"),
                     Type::String => fmt_lit.push_str("%s"),
                     Type::Void => {
                         fmt_lit.push(' ');
@@ -156,8 +158,8 @@ impl BodyLoweringCtx<'_, '_, '_> {
             fmt_lit.push('\n');
         }
 
-        call_args[0] = self.ctx.sconst(&fmt_lit);
-        self.ctx
+        call_args[0] = self.ctxt.sconst(&fmt_lit);
+        self.ctxt
             .call(CallBackKind::Print { kind, arg_tys: arg_tys.into_boxed_slice() }, &call_args);
     }
 }

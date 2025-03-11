@@ -1,6 +1,5 @@
-//! `hir_lower` actually lowers the HIR to build MIR.
-//!
-//! This is the only bridge between various MIR crates and the HIR.
+//! Lowers the HIR to build MIR. This serves as the only bridge between
+//! various MIR crates and the HIR.
 
 use std::iter::FilterMap;
 use stdx::packed_option::PackedOption;
@@ -29,8 +28,8 @@ mod stmt;
 
 pub mod fmt;
 
-use body::BodyLoweringCtx;
-use ctx::LoweringCtx;
+use body::BodyLowerContext;
+use ctx::MainLowerContext;
 
 pub use callbacks::{CallBackKind, NoiseTable};
 pub use parameters::ParamInfoKind;
@@ -51,7 +50,7 @@ pub struct MirBuilder<'a> {
     // for simulator backend
     lower_equations: bool,
 
-    ctx: Option<&'a mut FunctionBuilderContext>,
+    func_ctxt: Option<&'a mut FunctionBuilderContext>,
 }
 
 impl<'a> MirBuilder<'a> {
@@ -69,76 +68,63 @@ impl<'a> MirBuilder<'a> {
             tagged_reads: AHashSet::new(),
             tag_writes: false,
             lower_equations: false,
-            ctx: None,
+            func_ctxt: None,
         }
     }
 
-    pub fn tag_reads(&mut self, var: Variable) -> bool {
+    pub fn add_tag_read(&mut self, var: Variable) -> bool {
         self.tagged_reads.insert(var)
     }
     pub fn with_tagged_reads(mut self, tagged_vars: AHashSet<Variable>) -> Self {
         self.tagged_reads = tagged_vars;
         self
     }
-
-    pub fn tag_writes(&mut self) {
-        self.tag_writes = true;
-    }
     pub fn with_tagged_writes(mut self) -> Self {
         self.tag_writes = true;
         self
-    }
-
-    pub fn lower_equations(&mut self) {
-        self.lower_equations = true;
     }
     pub fn with_equations(mut self) -> Self {
         self.lower_equations = true;
         self
     }
-
-    pub fn with_builder_ctxt(mut self, ctx: &'a mut FunctionBuilderContext) -> Self {
-        self.ctx = Some(ctx);
+    pub fn with_func_ctxt(mut self, func_ctxt: &'a mut FunctionBuilderContext) -> Self {
+        self.func_ctxt = Some(func_ctxt);
         self
     }
 
-    /// Build MIR function and consume the builder
     pub fn build(self, literals: &mut Rodeo) -> (Function, HirInterner) {
-        // let MirBuilder { db, module, is_output, required_vars, .. } = self;
-        let mut func = Function::default();
+        let mut function = Function::default();
         let mut interner = HirInterner::default();
-        let ctx = match self.ctx {
-            Some(ctx) => ctx,
+        let func_ctxt = match self.func_ctxt {
+            Some(func_ctxt) => func_ctxt,
             None => &mut FunctionBuilderContext::new(),
         };
-        let builder = FunctionBuilder::new(&mut func, literals, ctx, self.tag_writes);
-        let mut ctx = LoweringCtx::new(self.db, builder, !self.lower_equations, &mut interner)
-            .with_tagged_vars(self.tagged_reads);
+        let func_builder =
+            FunctionBuilder::new(&mut function, literals, func_ctxt, self.tag_writes);
+        let mut ctxt =
+            MainLowerContext::new(self.db, func_builder, !self.lower_equations, &mut interner)
+                .with_tagged_vars(self.tagged_reads);
 
         let path = self.module.name(self.db);
-        let analog_initial_body = self.module.analog_initial_body(self.db);
-        let analog_body = self.module.analog_body(self.db);
-        let mut body_ctx =
-            BodyLoweringCtx { ctx: &mut ctx, body: analog_initial_body.borrow(), path: &path };
+        let body = self.module.analog_initial_body(self.db);
+        let mut body_ctxt = BodyLowerContext { ctxt: &mut ctxt, body: body.borrow(), path: &path };
+        body_ctxt.lower_entry_stmts();
 
-        // lower analog initial blocks first
-        body_ctx.lower_entry_stmts();
-        // and then normal analog blocks
-        body_ctx.body = analog_body.borrow();
-        body_ctx.lower_entry_stmts();
+        let body = self.module.analog_body(self.db);
+        body_ctxt.with_body(body.borrow()).lower_entry_stmts();
 
         // output variables
         for var in self.required_vars {
-            ctx.dec_place(PlaceKind::Var(var));
+            ctxt.dec_place(PlaceKind::Var(var));
         }
         let is_output = self.is_output;
-        ctx.intern.outputs = ctx
+        ctxt.intern.outputs = ctxt
             .places
             .iter_enumerated()
             .map(|(place, kind)| {
                 if is_output(*kind) {
-                    let mut val = ctx.func.use_var(place);
-                    val = ctx.func.ins().ensure_optbarrier(val);
+                    let mut val = ctxt.func.use_var(place);
+                    val = ctxt.func.ins().ensure_optbarrier(val);
                     (*kind, val.into())
                 } else {
                     (*kind, None.into())
@@ -146,10 +132,10 @@ impl<'a> MirBuilder<'a> {
             })
             .collect();
 
-        ctx.func.ins().ret();
-        ctx.func.finalize();
+        ctxt.func.ins().ret();
+        ctxt.func.finalize();
 
-        (func, interner)
+        (function, interner)
     }
 }
 
@@ -174,31 +160,10 @@ pub type LiveParams<'a> = FilterMap<
 */
 
 impl HirInterner {
-    fn contains_ddx(
-        ddx_calls: &mut AHashMap<FuncRef, (HybridBitSet<Unknown>, HybridBitSet<Unknown>)>,
-        func: &Function,
-        callbacks: &TiSet<FuncRef, CallBackKind>,
-        ddx: &CallBackKind,
-        val: Unknown,
-        neg: bool,
-    ) -> bool {
-        if let Some(ddx) = callbacks.index(ddx) {
-            let (pos_dst, neg_dst) = ddx_calls.entry(ddx).or_default();
-            if neg {
-                neg_dst.insert(val, func.dfg.num_values());
-            } else {
-                pos_dst.insert(val, func.dfg.num_values());
-            }
-            true
-        } else {
-            false
-        }
-    }
-
     pub fn unknowns(&self, func: impl AsRef<Function>, sim_derivatives: bool) -> KnownDerivatives {
         let func = func.as_ref();
         let mut unknowns = TiSet::default();
-        let mut ddx_calls = AHashMap::new();
+        let mut ddx_calls = AHashMap::default();
         // let mut nodes: AHashMap<NodeId, HybridBitSet<Value>> = AHashMap::new();
         // let mut required_nodes: IndexSet<NodeId, RandomState> = IndexSet::default();
         for (param, (kind, &val)) in self.params.iter_enumerated() {
@@ -281,31 +246,40 @@ impl HirInterner {
         KnownDerivatives { unknowns, ddx_calls }
     }
 
-    pub fn is_param_live(&self, func: impl AsRef<Function>, kind: &ParamKind) -> bool {
-        let func = func.as_ref();
-        if let Some(val) = self.params.raw.get(kind) {
-            !func.dfg.value_dead(*val)
-        } else {
-            false
+    // TODO(JW): this func should not have side effect
+    fn contains_ddx(
+        ddx_calls: &mut AHashMap<FuncRef, (HybridBitSet<Unknown>, HybridBitSet<Unknown>)>,
+        func: &Function,
+        callbacks: &TiSet<FuncRef, CallBackKind>,
+        ddx: &CallBackKind,
+        val: Unknown,
+        neg: bool,
+    ) -> bool {
+        match callbacks.index(ddx) {
+            Some(ddx) => {
+                // side effect
+                let (pos_dst, neg_dst) = ddx_calls.entry(ddx).or_default();
+                if neg {
+                    neg_dst.insert(val, func.dfg.num_values());
+                } else {
+                    pos_dst.insert(val, func.dfg.num_values());
+                }
+                true
+            }
+            None => false,
         }
     }
 
-    pub fn is_param_live_(
-        params: &TiMap<Param, ParamKind, Value>,
-        func: &Function,
-        kind: &ParamKind,
-    ) -> bool {
-        if let Some(val) = params.raw.get(kind) {
-            !func.dfg.value_dead(*val)
-        } else {
-            false
-        }
+    pub fn is_param_live(&self, func: impl AsRef<Function>, kind: &ParamKind) -> bool {
+        let func = func.as_ref();
+        self.params.raw.get(kind).is_some_and(|val| !func.dfg.value_dead(*val))
     }
 
     pub fn ensure_param(&mut self, func: impl AsMut<Function>, kind: ParamKind) -> Value {
         Self::ensure_param_(&mut self.params, func, kind)
     }
 
+    // FIXME(JW) this is a work-around borrow checker
     pub fn ensure_param_(
         params: &mut TiMap<Param, ParamKind, Value>,
         mut func: impl AsMut<Function>,
@@ -316,6 +290,7 @@ impl HirInterner {
         *entry.or_insert_with(|| func.as_mut().dfg.make_param(len.into()))
     }
 
+    // FIXME(JW) return type is too complicated
     pub fn live_params<'a>(
         &'a self,
         dfg: &'a DataFlowGraph,
@@ -324,12 +299,98 @@ impl HirInterner {
         impl FnMut((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)> + Clone,
     > {
         self.params.iter_enumerated().filter_map(|(param, (kind, val))| {
-            if dfg.value_dead(*val) {
-                None
-            } else {
-                Some((param, kind, *val))
-            }
+            (!dfg.value_dead(*val)).then_some((param, kind, *val))
         })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ParamKind {
+    Voltage { hi: Node, lo: Option<Node> },
+    Current(CurrentKind),
+    ImplicitUnknown(ImplicitEquation),
+    Abstime,
+    EnableIntegration,
+    HiddenState(Variable),
+    EnableLim,
+    PrevState(LimitState),
+    NewState(LimitState),
+    Param(Parameter),
+    ParamSysFun(ParamSysFun),
+    Temperature,
+    PortConnected { port: Node },
+    ParamGiven { param: Parameter },
+}
+
+impl ParamKind {
+    fn unwrap_pot_node(&self) -> Node {
+        match self {
+            ParamKind::Voltage { hi, lo: None } => *hi,
+            _ => unreachable!("called unwrap_pot_node on {:?}", self),
+        }
+    }
+
+    pub fn is_op_dependent(&self) -> bool {
+        matches!(
+            self,
+            ParamKind::Voltage { .. }
+                | ParamKind::Current(_)
+                | ParamKind::ImplicitUnknown(_)
+                | ParamKind::Abstime
+                | ParamKind::EnableIntegration
+                | ParamKind::HiddenState(_)
+                | ParamKind::EnableLim
+                | ParamKind::PrevState(_)
+                | ParamKind::NewState(_)
+        )
+    }
+}
+
+/// A parameter during initialization is mutable (write default in case it's not given)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PlaceKind {
+    Contribute { dst: BranchWrite, reactive: bool, potential: bool },
+    ImplicitResidual { equation: ImplicitEquation, reactive: bool },
+    CollapseImplicitEquation(ImplicitEquation),
+    IsPotential(BranchWrite),
+    Var(Variable),
+    Param(Parameter),
+    ParamMin(Parameter),
+    ParamMax(Parameter),
+    FunctionReturn(hir::Function),
+    FunctionArg(hir::FunctionArg),
+    BoundStep,
+}
+
+impl PlaceKind {
+    pub fn ty(&self, db: &CompilationDB) -> Type {
+        match *self {
+            PlaceKind::Var(var) => var.ty(db),
+            PlaceKind::FunctionReturn(fun) => fun.return_ty(db),
+            PlaceKind::FunctionArg(arg) => arg.ty(db),
+            PlaceKind::ParamMin(param) | PlaceKind::ParamMax(param) | PlaceKind::Param(param) => {
+                param.ty(db)
+            }
+            PlaceKind::IsPotential(_) | PlaceKind::CollapseImplicitEquation(_) => Type::Bool,
+            PlaceKind::ImplicitResidual { .. }
+            | PlaceKind::Contribute { .. }
+            | PlaceKind::BoundStep => Type::Real,
+        }
+    }
+
+    /// ???
+    pub fn is_init_only(&self) -> bool {
+        matches!(self, Self::CollapseImplicitEquation(_))
+    }
+}
+
+impl From<hir::AssignmentLhs> for PlaceKind {
+    fn from(hir: hir::AssignmentLhs) -> Self {
+        match hir {
+            hir::AssignmentLhs::Variable(var) => PlaceKind::Var(var),
+            hir::AssignmentLhs::FunctionReturn(fun) => PlaceKind::FunctionReturn(fun),
+            hir::AssignmentLhs::FunctionArg(arg) => PlaceKind::FunctionArg(arg),
+        }
     }
 }
 
@@ -348,7 +409,7 @@ impl From<BranchWrite> for CurrentKind {
     }
 }
 impl TryFrom<CurrentKind> for BranchWrite {
-    type Error = ();
+    type Error = (); // FIXME(JW) should not use () as Error type
     fn try_from(kind: CurrentKind) -> Result<BranchWrite, ()> {
         match kind {
             CurrentKind::Branch(branch) => Ok(BranchWrite::Named(branch)),
@@ -410,100 +471,5 @@ impl IdtKind {
 
     pub const fn has_offset(self) -> bool {
         matches!(self, IdtKind::ModulusOffset)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ParamKind {
-    Param(Parameter),
-    Abstime,
-    EnableIntegration,
-    EnableLim,
-    PrevState(LimitState),
-    NewState(LimitState),
-    Voltage { hi: Node, lo: Option<Node> },
-    Current(CurrentKind),
-    Temperature,
-    ParamGiven { param: Parameter },
-    PortConnected { port: Node },
-    ParamSysFun(ParamSysFun),
-    HiddenState(Variable),
-    ImplicitUnknown(ImplicitEquation),
-}
-impl ParamKind {
-    /// Unwrap potential node `n` from access functions like `V(n)`.
-    fn unwrap_pot_node(&self) -> Node {
-        match self {
-            ParamKind::Voltage { hi, lo: None } => *hi,
-            _ => unreachable!("called unwrap_pot_node on {:?}", self),
-        }
-    }
-
-    pub fn op_dependent(&self) -> bool {
-        matches!(
-            self,
-            ParamKind::Voltage { .. }
-                | ParamKind::Current(_)
-                | ParamKind::ImplicitUnknown(_)
-                | ParamKind::Abstime
-                | ParamKind::EnableIntegration
-                | ParamKind::HiddenState(_)
-                | ParamKind::PrevState(_)
-                | ParamKind::NewState(_)
-                | ParamKind::EnableLim
-        )
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum PlaceKind {
-    Var(Variable),
-    FunctionReturn(hir::Function),
-    FunctionArg(hir::FunctionArg),
-    Contribute {
-        dst: BranchWrite,
-        reactive: bool,
-        potential: bool,
-    },
-    ImplicitResidual {
-        equation: ImplicitEquation,
-        reactive: bool,
-    },
-    CollapseImplicitEquation(ImplicitEquation),
-    IsPotential(BranchWrite),
-    /// A parameter during initializtion is mutable (write default in case it's not given)
-    Param(Parameter),
-    ParamMin(Parameter),
-    ParamMax(Parameter),
-    BoundStep,
-}
-impl PlaceKind {
-    pub fn ty(&self, db: &CompilationDB) -> Type {
-        match *self {
-            PlaceKind::Var(var) => var.ty(db),
-            PlaceKind::FunctionReturn(fun) => fun.return_ty(db),
-            PlaceKind::FunctionArg(arg) => arg.ty(db),
-            PlaceKind::ParamMin(param) | PlaceKind::ParamMax(param) | PlaceKind::Param(param) => {
-                param.ty(db)
-            }
-            PlaceKind::IsPotential(_) | PlaceKind::CollapseImplicitEquation(_) => Type::Bool,
-            PlaceKind::ImplicitResidual { .. }
-            | PlaceKind::Contribute { .. }
-            | PlaceKind::BoundStep => Type::Real,
-        }
-    }
-
-    /// ???
-    pub fn is_init_only(&self) -> bool {
-        matches!(self, Self::CollapseImplicitEquation(_))
-    }
-}
-impl From<hir::AssignmentLhs> for PlaceKind {
-    fn from(hir: hir::AssignmentLhs) -> Self {
-        match hir {
-            hir::AssignmentLhs::Variable(var) => PlaceKind::Var(var),
-            hir::AssignmentLhs::FunctionReturn(fun) => PlaceKind::FunctionReturn(fun),
-            hir::AssignmentLhs::FunctionArg(arg) => PlaceKind::FunctionArg(arg),
-        }
     }
 }

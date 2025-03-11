@@ -18,7 +18,7 @@ use crate::{CompilationDB, HirDB};
 pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl DiagnosticSink) {
     // BaseDB
     sink.add_diagnostics(db.preprocess(root_file).errors(), root_file, db);
-    sink.add_diagnostics(db.parse(root_file).errors().as_slice(), root_file, db);
+    sink.add_diagnostics(&db.parse(root_file).errors(), root_file, db);
 
     // HirDB
     let item_tree = db.item_tree(root_file);

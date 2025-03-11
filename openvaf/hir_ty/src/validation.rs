@@ -805,6 +805,8 @@ impl TypeValidator<'_> {
                 }))
             }
         }
+
+        // TODO(JW): multiple grounds
     }
 
     fn verify_branch(&mut self, branch_: BranchId) {
