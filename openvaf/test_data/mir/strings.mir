@@ -1,0 +1,90 @@
+function %(v16, v17, v25) {
+    inst0 = fn %Display)(3) -> 0
+    // v2 = bconst true
+    v3 = fconst 0.0
+    v18 = sconst "<DUMMY>"
+    v19 = sconst "<DUMMY>"
+    v26 = iconst 2
+    v40 = iconst 3
+    v55 = iconst 4
+
+                                block0:
+@0003                               call inst0(v18, v16, v17)
+@0006                               v20 = seq v16, v19
+@000a                               br v20, block2, block3
+
+                                block2:
+@000a                               jmp block4
+
+                                block3:
+@0009                               v21 = seq v17, v19
+@000a                               jmp block4
+
+                                block4:
+@000a                               v22 = phi [v2, block2], [v21, block3]
+@000e                               br v22, block5, block6
+
+                                block5:
+@000e                               jmp block7
+
+                                block6:
+@000d                               v23 = seq v16, v17
+@000e                               jmp block7
+
+                                block7:
+@000e                               v24 = phi [v2, block5], [v23, block6]
+                                    br v24, block8, block9
+
+                                block8:
+@0012                               v27 = ifcast v26
+                                    jmp block10
+
+                                block9:
+                                    jmp block10
+
+                                block10:
+                                    v47 = phi [v27, block8], [v3, block9]
+@0015                               v35 = seq v16, v19
+@0019                               br v35, block11, block12
+
+                                block11:
+@0019                               jmp block13
+
+                                block12:
+@0018                               v36 = seq v17, v19
+@0019                               jmp block13
+
+                                block13:
+@0019                               v37 = phi [v2, block11], [v36, block12]
+@001d                               br v37, block14, block15
+
+                                block14:
+@001d                               jmp block16
+
+                                block15:
+@001c                               v38 = seq v16, v17
+@001d                               jmp block16
+
+                                block16:
+@001d                               v39 = phi [v2, block14], [v38, block15]
+                                    br v39, block17, block18
+
+                                block17:
+@0021                               v41 = ifcast v40
+                                    v51 = fadd v47, v41
+@0025                               jmp block19
+
+                                block18:
+                                    v52 = ifcast v40
+                                    v54 = fadd v47, v52
+@0029                               jmp block19
+
+                                block19:
+                                    v57 = phi [v51, block17], [v54, block18]
+                                    v56 = ifcast v55
+                                    v58 = fadd v57, v56
+                                    v59 = optbarrier v58
+                                    jmp block1
+
+                                block1:
+}

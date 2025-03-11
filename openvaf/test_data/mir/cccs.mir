@@ -1,0 +1,15 @@
+function %(v16, v17, v18, v19, v20, v21, v22, v24, v27) {
+                                block0:
+@000e                               v23 = fmul v16, v22
+@0011                               v25 = fdiv v18, v24
+@0012                               v26 = fadd v23, v25
+@0017                               v28 = fdiv v20, v27
+                                    v29 = optbarrier v16
+                                    v30 = optbarrier v18
+                                    v31 = optbarrier v20
+                                    v32 = optbarrier v26
+                                    v33 = optbarrier v28
+                                    jmp block1
+
+                                block1:
+}
