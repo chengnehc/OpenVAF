@@ -393,14 +393,14 @@ impl_intern!(BlockId, BlockLoc, intern_block, lookup_intern_block);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DefWithBodyId {
-    ModuleId { initial: bool, id: ModuleId },
-    DisciplineAttrId(DisciplineAttrId),
     NatureAttrId(NatureAttrId),
+    DisciplineAttrId(DisciplineAttrId),
+    ModuleId { initial: bool, id: ModuleId },
     VarId(VarId),
     ParamId(ParamId),
     FunctionId(FunctionId),
 }
-impl_from!(ParamId, FunctionId, VarId, NatureAttrId, DisciplineAttrId for DefWithBodyId);
+impl_from!(NatureAttrId, DisciplineAttrId, VarId, ParamId, FunctionId for DefWithBodyId);
 
 impl TryFrom<ScopeItemDef> for DefWithBodyId {
     type Error = (); // TODO(JW): should not use () as error type
@@ -419,9 +419,9 @@ impl TryFrom<ScopeItemDef> for DefWithBodyId {
 impl DefWithBodyId {
     pub fn file(self, db: &dyn HirDefDB) -> FileId {
         match self {
-            DefWithBodyId::ModuleId { id, .. } => id.lookup(db).scope.root_file,
-            DefWithBodyId::DisciplineAttrId(id) => id.lookup(db).discipline.lookup(db).root_file,
             DefWithBodyId::NatureAttrId(id) => id.lookup(db).nature.lookup(db).root_file,
+            DefWithBodyId::DisciplineAttrId(id) => id.lookup(db).discipline.lookup(db).root_file,
+            DefWithBodyId::ModuleId { id, .. } => id.lookup(db).scope.root_file,
             DefWithBodyId::VarId(id) => id.lookup(db).scope.root_file,
             DefWithBodyId::ParamId(id) => id.lookup(db).scope.root_file,
             DefWithBodyId::FunctionId(id) => id.lookup(db).scope.root_file,

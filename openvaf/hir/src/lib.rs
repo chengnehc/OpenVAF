@@ -350,83 +350,6 @@ impl Block {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Scope {
-    Module(Module),
-    Block(Block),
-    Function(Function),
-}
-impl Scope {
-    fn def_map_and_scope(self, db: &CompilationDB) -> (LocalScopeId, Arc<DefMap>) {
-        match self {
-            Scope::Module(module) => {
-                let loc = module.lookup(db);
-                (loc.scope.local_id, loc.def_map(db))
-            }
-            Scope::Block(block) => {
-                let def_map = db.block_def_map(block.id).expect("block should be named");
-                (def_map.entry_scope(), def_map)
-            }
-            Scope::Function(func) => {
-                let def_map = db.function_def_map(func.id);
-                (def_map.entry_scope(), def_map)
-            }
-        }
-    }
-
-    /*
-        /// Iterates over all child modules.
-        pub fn children(self, db: &CompilationDB) -> Vec<Scope> {
-            let (scope, def_map) = self.def_map_and_scope(db);
-            def_map[scope]
-                .children
-                .values()
-                .map(|&scope| match def_map[scope].origin {
-                    hir_def::nameres::ScopeOrigin::Root => {
-                        unreachable!("Root scope can not be a child scope")
-                    }
-                    hir_def::nameres::ScopeOrigin::Module(id) => Scope::Module(Module { id }),
-                    hir_def::nameres::ScopeOrigin::Block(id) => Scope::Block(Block { id }),
-                    hir_def::nameres::ScopeOrigin::Function(id) => Scope::Function(Function { id }),
-                })
-                .collect()
-        }
-
-        // Iterates over all child declarations.
-        pub fn declarations(self, db: &CompilationDB) -> Vec<(Name, ScopeDef)> {
-            let (scope, def_map) = self.def_map_and_scope(db);
-            def_map[scope]
-                .declarations
-                .iter()
-                .filter_map(|(name, &def)| {
-                    let res = match def {
-                        ScopeDefItem::ModuleId(id) => ScopeDef::ModuleInstance(Module { id }),
-                        ScopeDefItem::BlockId(id) => ScopeDef::Block(Block { id }),
-                        ScopeDefItem::NodeId(id) => ScopeDef::Node(Node { id }),
-                        ScopeDefItem::VarId(id) => ScopeDef::Variable(Variable { id }),
-                        ScopeDefItem::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
-                        ScopeDefItem::AliasParamId(id) => {
-                            ScopeDef::AliasParameter(AliasParameter { id })
-                        }
-                        ScopeDefItem::BranchId(id) => ScopeDef::Branch(Branch { id }),
-                        ScopeDefItem::FunctionId(id) => ScopeDef::Function(Function { id }),
-                        // implementation details
-                        ScopeDefItem::BuiltIn(_)
-                        | ScopeDefItem::NatureId(_)
-                        | ScopeDefItem::NatureAccess(_)
-                        | ScopeDefItem::DisciplineId(_)
-                        | ScopeDefItem::ParamSysFun(_)
-                        | ScopeDefItem::FunctionReturn(_)
-                        | ScopeDefItem::FunctionArgId(_)
-                        | ScopeDefItem::NatureAttrId(_) => return None,
-                    };
-                    Some((name.to_owned(), res))
-                })
-                .collect()
-        }
-    */
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Variable {
     id: VarId,
@@ -555,6 +478,83 @@ impl FunctionArg {
     pub fn is_output(self, db: &CompilationDB) -> bool {
         db.function_data(self.fun_id).args[self.arg_id].is_output
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Scope {
+    Module(Module),
+    Block(Block),
+    Function(Function),
+}
+impl Scope {
+    fn def_map_and_scope(self, db: &CompilationDB) -> (LocalScopeId, Arc<DefMap>) {
+        match self {
+            Scope::Module(module) => {
+                let loc = module.lookup(db);
+                (loc.scope.local_id, loc.def_map(db))
+            }
+            Scope::Block(block) => {
+                let def_map = db.block_def_map(block.id).expect("block should be named");
+                (def_map.entry_scope(), def_map)
+            }
+            Scope::Function(func) => {
+                let def_map = db.function_def_map(func.id);
+                (def_map.entry_scope(), def_map)
+            }
+        }
+    }
+
+    /*
+        /// Iterates over all child modules.
+        pub fn children(self, db: &CompilationDB) -> Vec<Scope> {
+            let (scope, def_map) = self.def_map_and_scope(db);
+            def_map[scope]
+                .children
+                .values()
+                .map(|&scope| match def_map[scope].origin {
+                    hir_def::nameres::ScopeOrigin::Root => {
+                        unreachable!("Root scope can not be a child scope")
+                    }
+                    hir_def::nameres::ScopeOrigin::Module(id) => Scope::Module(Module { id }),
+                    hir_def::nameres::ScopeOrigin::Block(id) => Scope::Block(Block { id }),
+                    hir_def::nameres::ScopeOrigin::Function(id) => Scope::Function(Function { id }),
+                })
+                .collect()
+        }
+
+        // Iterates over all child declarations.
+        pub fn declarations(self, db: &CompilationDB) -> Vec<(Name, ScopeDef)> {
+            let (scope, def_map) = self.def_map_and_scope(db);
+            def_map[scope]
+                .declarations
+                .iter()
+                .filter_map(|(name, &def)| {
+                    let res = match def {
+                        ScopeDefItem::ModuleId(id) => ScopeDef::ModuleInstance(Module { id }),
+                        ScopeDefItem::BlockId(id) => ScopeDef::Block(Block { id }),
+                        ScopeDefItem::NodeId(id) => ScopeDef::Node(Node { id }),
+                        ScopeDefItem::VarId(id) => ScopeDef::Variable(Variable { id }),
+                        ScopeDefItem::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
+                        ScopeDefItem::AliasParamId(id) => {
+                            ScopeDef::AliasParameter(AliasParameter { id })
+                        }
+                        ScopeDefItem::BranchId(id) => ScopeDef::Branch(Branch { id }),
+                        ScopeDefItem::FunctionId(id) => ScopeDef::Function(Function { id }),
+                        // implementation details
+                        ScopeDefItem::BuiltIn(_)
+                        | ScopeDefItem::NatureId(_)
+                        | ScopeDefItem::NatureAccess(_)
+                        | ScopeDefItem::DisciplineId(_)
+                        | ScopeDefItem::ParamSysFun(_)
+                        | ScopeDefItem::FunctionReturn(_)
+                        | ScopeDefItem::FunctionArgId(_)
+                        | ScopeDefItem::NatureAttrId(_) => return None,
+                    };
+                    Some((name.to_owned(), res))
+                })
+                .collect()
+        }
+    */
 }
 
 #[non_exhaustive]

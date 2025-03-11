@@ -65,77 +65,6 @@ impl Body {
         let ast_id_map = &db.ast_id_map(root_file);
 
         match def {
-            DefWithBodyId::ParamId(param) => {
-                let (body, sm, _) = db.param_body_with_srcmap(param);
-                return (body, sm);
-            }
-            DefWithBodyId::ModuleId { initial, id } => {
-                let module = id.lookup(db);
-                let ast_id = module.ast_id(db);
-                let ast_node = module.source(db);
-                let curr_scope = (module.scope, ast_id.into());
-                let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
-                    body: &mut body,
-                    curr_scope,
-                    ast_id_map,
-                    db,
-                };
-
-                body.entry_stmts = if initial {
-                    ast_node
-                        .analog_initial_behaviour()
-                        .map(|stmt| ctxt.collect_stmt(stmt))
-                        .collect()
-                } else {
-                    ast_node.analog_behaviour().map(|stmt| ctxt.collect_stmt(stmt)).collect()
-                };
-            }
-            DefWithBodyId::FunctionId(id) => {
-                let scope =
-                    Scope::from(root_file, DefMapSource::Function(id), LocalScopeId::from(0u32));
-                debug_assert_eq!(scope.local_id, db.function_def_map(id).entry_scope());
-
-                let fun = id.lookup(db);
-                let ast_id = fun.ast_id(db);
-                let ast_node = fun.source(db);
-                let curr_scope = (scope, ast_id.into());
-                let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
-                    body: &mut body,
-                    curr_scope,
-                    ast_id_map,
-                    db,
-                };
-
-                body.entry_stmts = ast_node.body().map(|stmt| ctxt.collect_stmt(stmt)).collect();
-            }
-            DefWithBodyId::VarId(id) => {
-                let var = id.lookup(db);
-                let ast_id = var.ast_id(db);
-                let ast_node = var.source(db);
-                let curr_scope = (var.scope, ast_id.into());
-                let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
-                    body: &mut body,
-                    curr_scope,
-                    ast_id_map,
-                    db,
-                };
-                let expr = if let Some(expr) = ast_node.default() {
-                    ctxt.collect_expr(expr)
-                } else {
-                    let default_val = match db.var_data(id).ty {
-                        Type::Real => Literal::Float(Ieee64::with_float(0.0)),
-                        Type::Integer => Literal::Int(0),
-                        _ => unreachable!("invalid var type (TODO arrays)"),
-                    };
-                    ctxt.alloc_expr_desugared(Expr::Literal(default_val))
-                };
-                let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
-
-                body.entry_stmts = Box::from([stmt])
-            }
             DefWithBodyId::NatureAttrId(attr) => {
                 let root = db.parse(root_file).syntax_node();
                 let item_tree = db.item_tree(root_file);
@@ -183,6 +112,77 @@ impl Body {
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
 
                 body.entry_stmts = Box::from([stmt])
+            }
+            DefWithBodyId::ModuleId { initial, id } => {
+                let module = id.lookup(db);
+                let ast_id = module.ast_id(db);
+                let ast_node = module.source(db);
+                let curr_scope = (module.scope, ast_id.into());
+                let mut ctxt = lower::Context {
+                    src_map: &mut src_map,
+                    body: &mut body,
+                    curr_scope,
+                    ast_id_map,
+                    db,
+                };
+
+                body.entry_stmts = if initial {
+                    ast_node
+                        .analog_initial_behaviour()
+                        .map(|stmt| ctxt.collect_stmt(stmt))
+                        .collect()
+                } else {
+                    ast_node.analog_behaviour().map(|stmt| ctxt.collect_stmt(stmt)).collect()
+                };
+            }
+            DefWithBodyId::VarId(id) => {
+                let var = id.lookup(db);
+                let ast_id = var.ast_id(db);
+                let ast_node = var.source(db);
+                let curr_scope = (var.scope, ast_id.into());
+                let mut ctxt = lower::Context {
+                    src_map: &mut src_map,
+                    body: &mut body,
+                    curr_scope,
+                    ast_id_map,
+                    db,
+                };
+                let expr = if let Some(expr) = ast_node.default() {
+                    ctxt.collect_expr(expr)
+                } else {
+                    let default_val = match db.var_data(id).ty {
+                        Type::Real => Literal::Float(Ieee64::with_float(0.0)),
+                        Type::Integer => Literal::Int(0),
+                        _ => unreachable!("invalid var type (TODO arrays)"),
+                    };
+                    ctxt.alloc_expr_desugared(Expr::Literal(default_val))
+                };
+                let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
+
+                body.entry_stmts = Box::from([stmt])
+            }
+            DefWithBodyId::ParamId(param) => {
+                let (body, sm, _) = db.param_body_with_srcmap(param);
+                return (body, sm);
+            }
+            DefWithBodyId::FunctionId(id) => {
+                let scope =
+                    Scope::from(root_file, DefMapSource::Function(id), LocalScopeId::from(0u32));
+                debug_assert_eq!(scope.local_id, db.function_def_map(id).entry_scope());
+
+                let fun = id.lookup(db);
+                let ast_id = fun.ast_id(db);
+                let ast_node = fun.source(db);
+                let curr_scope = (scope, ast_id.into());
+                let mut ctxt = lower::Context {
+                    src_map: &mut src_map,
+                    body: &mut body,
+                    curr_scope,
+                    ast_id_map,
+                    db,
+                };
+
+                body.entry_stmts = ast_node.body().map(|stmt| ctxt.collect_stmt(stmt)).collect();
             }
         }
 

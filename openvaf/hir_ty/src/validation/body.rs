@@ -7,9 +7,10 @@ use hir_def::{
 };
 use syntax::name::Name;
 
-use super::{BodyContext, BodyValidator};
 use crate::db::HirTyDB;
 use crate::inference::BranchWrite;
+
+use super::{BodyContext, BodyValidator};
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum BodyDiagnostic {
@@ -91,7 +92,7 @@ impl BodyDiagnostic {
     pub fn validate_and_collect(db: &dyn HirTyDB, def: DefWithBodyId) -> Vec<BodyDiagnostic> {
         let body = &db.body(def);
         let infer = &db.inference_result(def);
-        let ctxt = match def {
+        let body_ctxt = match def {
             DefWithBodyId::ModuleId { initial: false, .. } => BodyContext::AnalogBlock,
             DefWithBodyId::ModuleId { initial: true, .. } => BodyContext::AnalogInitialBlock,
             DefWithBodyId::FunctionId(_) => BodyContext::Function,
@@ -102,7 +103,7 @@ impl BodyDiagnostic {
             owner: def,
             body,
             infer,
-            ctxt,
+            ctxt: body_ctxt,
             non_const_dominator: Box::default(),
             non_trivial_branches: HashSet::default(),
             trivial_probes: HashMap::default(),
