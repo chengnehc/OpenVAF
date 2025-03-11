@@ -97,30 +97,30 @@ pub enum BuiltIn {
     port_connected = 84u8,
     analog_node_alias = 85u8,
     analog_port_alias = 86u8,
-    analysis = 87u8,
-    ac_stim = 88u8,
-    noise_table = 89u8,
-    noise_table_log = 90u8,
-    white_noise = 91u8,
-    flicker_noise = 92u8,
-    limit = 93u8,
-    ddt = 94u8,
-    ddx = 95u8,
-    idt = 96u8,
-    idtmod = 97u8,
-    absdelay = 98u8,
-    transition = 99u8,
-    slew = 100u8,
-    last_crossing = 101u8,
-    limexp = 102u8,
-    laplace_nd = 103u8,
-    laplace_np = 104u8,
-    laplace_zd = 105u8,
-    laplace_zp = 106u8,
-    zi_zp = 107u8,
-    zi_zd = 108u8,
-    zi_np = 109u8,
-    zi_nd = 110u8,
+    ddt = 87u8,
+    ddx = 88u8,
+    idt = 89u8,
+    idtmod = 90u8,
+    absdelay = 91u8,
+    transition = 92u8,
+    slew = 93u8,
+    last_crossing = 94u8,
+    limexp = 95u8,
+    laplace_nd = 96u8,
+    laplace_np = 97u8,
+    laplace_zd = 98u8,
+    laplace_zp = 99u8,
+    zi_zp = 100u8,
+    zi_zd = 101u8,
+    zi_np = 102u8,
+    zi_nd = 103u8,
+    limit = 104u8,
+    analysis = 105u8,
+    ac_stim = 106u8,
+    noise_table = 107u8,
+    noise_table_log = 108u8,
+    white_noise = 109u8,
+    flicker_noise = 110u8,
 }
 impl BuiltIn {
     #[allow(clippy::match_like_matches_macro)]
@@ -150,6 +150,18 @@ impl BuiltIn {
     pub fn is_analog_operator_sysfun(self) -> bool {
         match self {
             BuiltIn::limit => true,
+            _ => false,
+        }
+    }
+    #[allow(clippy::match_like_matches_macro)]
+    pub fn is_analysis_fun(self) -> bool {
+        match self {
+            BuiltIn::analysis
+            | BuiltIn::ac_stim
+            | BuiltIn::noise_table
+            | BuiltIn::noise_table_log
+            | BuiltIn::white_noise
+            | BuiltIn::flicker_noise => true,
             _ => false,
         }
     }
@@ -206,18 +218,6 @@ impl BuiltIn {
             | BuiltIn::rdist_erlang
             | BuiltIn::rdist_normal
             | BuiltIn::rdist_t => true,
-            _ => false,
-        }
-    }
-    #[allow(clippy::match_like_matches_macro)]
-    pub fn is_analysis_var(self) -> bool {
-        match self {
-            BuiltIn::analysis
-            | BuiltIn::ac_stim
-            | BuiltIn::noise_table
-            | BuiltIn::noise_table_log
-            | BuiltIn::white_noise
-            | BuiltIn::flicker_noise => true,
             _ => false,
         }
     }
@@ -352,13 +352,6 @@ pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
     dst.insert(sysfun::port_connected, BuiltIn::port_connected.into());
     dst.insert(sysfun::analog_node_alias, BuiltIn::analog_node_alias.into());
     dst.insert(sysfun::analog_port_alias, BuiltIn::analog_port_alias.into());
-    dst.insert(kw::analysis, BuiltIn::analysis.into());
-    dst.insert(kw::ac_stim, BuiltIn::ac_stim.into());
-    dst.insert(kw::noise_table, BuiltIn::noise_table.into());
-    dst.insert(kw::noise_table_log, BuiltIn::noise_table_log.into());
-    dst.insert(kw::white_noise, BuiltIn::white_noise.into());
-    dst.insert(kw::flicker_noise, BuiltIn::flicker_noise.into());
-    dst.insert(sysfun::limit, BuiltIn::limit.into());
     dst.insert(kw::ddt, BuiltIn::ddt.into());
     dst.insert(kw::ddx, BuiltIn::ddx.into());
     dst.insert(kw::idt, BuiltIn::idt.into());
@@ -376,6 +369,13 @@ pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
     dst.insert(kw::zi_zd, BuiltIn::zi_zd.into());
     dst.insert(kw::zi_np, BuiltIn::zi_np.into());
     dst.insert(kw::zi_nd, BuiltIn::zi_nd.into());
+    dst.insert(sysfun::limit, BuiltIn::limit.into());
+    dst.insert(kw::analysis, BuiltIn::analysis.into());
+    dst.insert(kw::ac_stim, BuiltIn::ac_stim.into());
+    dst.insert(kw::noise_table, BuiltIn::noise_table.into());
+    dst.insert(kw::noise_table_log, BuiltIn::noise_table_log.into());
+    dst.insert(kw::white_noise, BuiltIn::white_noise.into());
+    dst.insert(kw::flicker_noise, BuiltIn::flicker_noise.into());
 }
 pub fn insert_param_sysfun(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
     dst.insert(sysfun::mfactor, ParamSysFun::mfactor.into());

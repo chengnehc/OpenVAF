@@ -1,3 +1,10 @@
+//! [LRM 9.4]: Display system tasks
+//!
+//! For displaying real numbers, the foramt specifications have the full formatting capabilities
+//! available in the C language (in terms of width and precision).
+//!
+//! See also: https://cplusplus.com/reference/cstdio/printf/
+
 use std::str::CharIndices;
 
 use hir_def::ExprId;
@@ -8,8 +15,8 @@ use crate::inference::InferDiagnostic;
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
 enum ParserState {
     Flags,
-    FixedFmtLit,
-    DynamicFmtLit,
+    FixedWidth,
+    DynamicWidth,
     AnyPrecision,
     FixedPrecision,
     DynamicPrecsion,
@@ -21,20 +28,21 @@ impl ParserState {
     }
 
     fn eat_number(self) -> bool {
-        matches!(self, Self::FixedPrecision | Self::FixedFmtLit)
+        matches!(self, Self::FixedPrecision | Self::FixedWidth)
     }
+
     fn candidates(self) -> &'static [char] {
         match self {
             ParserState::Flags => &[
                 '-', '+', ' ', '#', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '.',
-                'e', 'E', 'f', 'F', 'g', 'G', 'r', 'R', '%', 'm', 'M', 'l', 'L', 'd', 'D', 'h',
-                'H', 'o', 'O', 'b', 'B', 'c', 'C', 's', 'S',
+                'e', 'E', 'f', 'F', 'g', 'G', 'r', 'R', '%', 'd', 'D', 'h', 'H', 'o', 'O', 'b',
+                'B', 'c', 'C', 'm', 'M', 'l', 'L', 's', 'S',
             ],
-            ParserState::FixedFmtLit => &[
+            ParserState::FixedWidth => &[
                 '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'e', 'E', 'f', 'F', 'g',
                 'G', 'r', 'R',
             ],
-            ParserState::DynamicFmtLit => &['.', 'e', 'E', 'f', 'F', 'g', 'G', 'r', 'R'],
+            ParserState::DynamicWidth => &['.', 'e', 'E', 'f', 'F', 'g', 'G', 'r', 'R'],
             ParserState::AnyPrecision => &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*'],
             ParserState::FixedPrecision => &[
                 '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'e', 'E', 'f', 'F', 'g', 'G',
@@ -68,22 +76,21 @@ pub fn parse_real_fmt_spec(
                 // flags
                 '-' | '+' | ' ' | '#' if state == ParserState::Flags => {}
                 '0'..='9' if state == ParserState::Flags => {
-                    state = ParserState::FixedFmtLit;
+                    state = ParserState::FixedWidth;
                 }
                 '*' if state == ParserState::Flags => {
                     dynamic_args.push(off.try_into().unwrap());
-                    state = ParserState::DynamicFmtLit;
+                    state = ParserState::DynamicWidth;
                 }
                 '.' if state.start_precision() => {
                     state = ParserState::AnyPrecision;
                 }
-
+                '0'..='9' if state == ParserState::AnyPrecision => {
+                    state = ParserState::FixedPrecision
+                }
                 '*' if state == ParserState::AnyPrecision => {
                     dynamic_args.push(off.try_into().unwrap());
                     state = ParserState::DynamicPrecsion
-                }
-                '0'..='9' if state == ParserState::AnyPrecision => {
-                    state = ParserState::FixedPrecision
                 }
                 '0'..='9' if state.eat_number() => (),
                 'e'..='g' | 'E'..='G' | 'r' | 'R' if state != ParserState::AnyPrecision => {
@@ -99,7 +106,6 @@ pub fn parse_real_fmt_spec(
                     break;
                 }
             }
-
             pos = chars.next();
         } else {
             err = Some(InferDiagnostic::InvalidFmtSpecifierEnd {

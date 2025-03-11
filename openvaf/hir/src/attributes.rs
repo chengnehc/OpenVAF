@@ -15,7 +15,6 @@ impl AstCache {
         AstCache { ast: db.parse(root_file).tree(), id_map: db.ast_id_map(root_file) }
     }
 
-    // TODO(JW) refactor attribute resolution?
     /// Tries to resolve an attribute as a string if it exists.
     ///
     /// Emits an error to `sink` if the attribute exists but is not a string literal.

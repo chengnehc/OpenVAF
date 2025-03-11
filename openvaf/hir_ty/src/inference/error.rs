@@ -11,23 +11,34 @@ use crate::types::{Signature, SignatureData, Ty, TyRequirement};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferDiagnostic {
-    InvalidAssignDst {
-        e: ExprId,
-        maybe_different_operand: Option<ast::AssignOp>,
-        assignment_kind: ast::AssignOp,
-    },
     PathResolveError {
         err: PathResolveError,
         expr: ExprId,
+    },
+
+    /* Mismatch */
+    TypeMismatch(TypeMismatch),
+    SignatureMismatch(SignatureMismatch),
+    InvalidUnknown {
+        e: ExprId,
+    },
+    NonStandardUnknown {
+        e: ExprId,
+        stmt: StmtId,
+    },
+    ExpectedProbe {
+        e: ExprId,
+    },
+    InvalidAssignDst {
+        e: ExprId,
+        op_kind: ast::AssignOp,
+        maybe_different_op: Option<ast::AssignOp>,
     },
     ArgCntMismatch {
         expected: usize,
         found: usize,
         expr: ExprId,
         exact: bool,
-    },
-    ExpectedProbe {
-        e: ExprId,
     },
     InvalidLimitFunction {
         expr: ExprId,
@@ -37,6 +48,14 @@ pub enum InferDiagnostic {
         invalid_ret: bool,
         output_args: Vec<LocalFunctionArgId>,
     },
+    ArrayTypeMismatch {
+        expected: Type,
+        found_ty: Type,
+        found_expr: ExprId,
+        expected_expr: ExprId,
+    },
+
+    /* Format display */
     DisplayTypeMismatch {
         err: TypeMismatch,
         fmt_lit: ExprId,
@@ -56,21 +75,6 @@ pub enum InferDiagnostic {
     InvalidFmtSpecifierEnd {
         fmt_lit: ExprId,
         lit_range: TextRange,
-    },
-    TypeMismatch(TypeMismatch),
-    SignatureMismatch(SignatureMismatch),
-    ArrayTypeMismatch {
-        expected: Type,
-        found_ty: Type,
-        found_expr: ExprId,
-        expected_expr: ExprId,
-    },
-    InvalidUnknown {
-        e: ExprId,
-    },
-    NonStandardUnknown {
-        e: ExprId,
-        stmt: StmtId,
     },
 }
 

@@ -14,9 +14,9 @@ doctest = false
 [dependencies]
 
 stdx = {version = "0.0.0", path = "../../lib/stdx" }
+
 syntax = {version = "0.0.0", path = "../syntax"}
 basedb = {version = "0.0.0", path = "../basedb" }
-
 hir_def = {version = "0.0.0", path = "../hir_def" }
 hir_ty = {version = "0.0.0", path = "../hir_ty" }
 

@@ -1,4 +1,5 @@
 //! Transform AST expressions and statements into HIR representation.
+//! and collect them into `Body`.
 
 use std::mem;
 

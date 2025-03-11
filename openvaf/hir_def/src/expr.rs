@@ -26,7 +26,6 @@ pub type ExprId = Idx<Expr>;
 pub enum Expr {
     /// This is produced if the syntax tree does not have a required expression piece.
     Missing,
-    Literal(Literal),
     Path {
         path: Path,
         port: bool,
@@ -49,6 +48,7 @@ pub enum Expr {
         fun: Option<Path>,
         args: Vec<ExprId>,
     },
+    Literal(Literal),
     Array(Vec<ExprId>),
 }
 
@@ -142,6 +142,7 @@ pub enum Stmt {
 }
 
 impl Stmt {
+    // FIXME(JW): this is not used anywhere
     #[inline]
     pub fn walk_child_exprs(&self, mut f: impl FnMut(ExprId)) {
         match *self {

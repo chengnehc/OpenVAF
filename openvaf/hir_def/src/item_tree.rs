@@ -357,6 +357,8 @@ pub struct AliasParam {
     pub ast_id: AstId<ast::AliasParam>,
 }
 
+/// [LRM 4.7] A user-defined function can be used to return a value
+/// (for an expression). All functions are defined within modules.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Function {
     pub name: Name,

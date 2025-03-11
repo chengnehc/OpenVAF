@@ -27,20 +27,20 @@ pub struct NatureData {
 impl NatureData {
     pub fn query(db: &dyn HirDefDB, id: NatureId) -> Arc<NatureData> {
         let loc = id.lookup(db);
-        let itree = db.item_tree(loc.root_file);
-        let nature = &itree[loc.id];
+        let tree = db.item_tree(loc.root_file);
+        let nature = &tree[loc.id];
         let attrs: Arena<_> = nature
             .attrs
             .clone()
-            .map(|attr| NatureAttrData { name: itree[attr].name.clone() })
+            .map(|attr| NatureAttrData { name: tree[attr].name.clone() })
             .collect();
 
         Arc::new(NatureData {
             name: nature.name.clone(),
             parent: nature.parent.clone(),
-            units: nature.units.clone().map(|(it, _)| it),
             idt_nature: nature.idt_nature.clone().map(|(it, _)| it),
             ddt_nature: nature.ddt_nature.clone().map(|(it, _)| it),
+            units: nature.units.clone().map(|(it, _)| it),
             abstol: nature.abstol,
             attrs,
         })
@@ -90,6 +90,7 @@ impl DisciplineData {
         })
     }
 
+    // TODO(JW) lift this out to `DisciplineTy`
     pub fn compatible(&self, other: &DisciplineData) -> bool {
         if self.domain.is_none() || other.domain.is_none() {
             return true;
@@ -113,14 +114,14 @@ pub struct ModuleData {
 impl ModuleData {
     pub fn query(db: &dyn HirDefDB, module: ModuleId) -> Arc<ModuleData> {
         let loc = module.lookup(db);
-        let itree = loc.item_tree(db);
-        let num_ports = itree[loc.id].num_ports;
-        let num_nodes = itree[loc.id].nodes.len() as u32;
+        let tree = loc.item_tree(db);
+        let num_ports = tree[loc.id].num_ports;
+        let num_nodes = tree[loc.id].nodes.len() as u32;
         let ports = (0..num_ports).map(|id| NodeLoc { module, id: id.into() }.intern(db)).collect();
         let internal_nodes =
             (num_ports..num_nodes).map(|id| NodeLoc { module, id: id.into() }.intern(db)).collect();
 
-        Arc::new(ModuleData { name: itree[loc.id].name.clone(), ports, internal_nodes })
+        Arc::new(ModuleData { name: tree[loc.id].name.clone(), ports, internal_nodes })
     }
 }
 
@@ -137,16 +138,16 @@ impl NodeData {
     pub fn query(db: &dyn HirDefDB, id: NodeId) -> Arc<NodeData> {
         let loc = id.lookup(db);
         let module = loc.module.lookup(db);
-        let itree = module.item_tree(db);
-        let node = &itree[module.id].nodes[loc.id];
-        let (is_input, is_output) = node.direction(&itree);
+        let tree = module.item_tree(db);
+        let node = &tree[module.id].nodes[loc.id];
+        let (is_input, is_output) = node.direction(&tree);
 
         Arc::new(NodeData {
             name: node.name.clone(),
-            discipline: node.discipline(&itree),
+            discipline: node.discipline(&tree),
             is_input,
             is_output,
-            is_gnd: node.is_gnd(&itree),
+            is_gnd: node.is_gnd(&tree),
         })
     }
 

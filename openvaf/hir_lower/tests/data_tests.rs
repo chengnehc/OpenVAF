@@ -16,7 +16,7 @@ fn lower_to_mir(db: &CompilationDB, is_output: &impl Fn(PlaceKind) -> bool) -> V
     // ensure that the HIR contains no errors first
     assert_eq!(unit.test_diagnostics(db), "");
     // a builder context that remains undropped across different lowering pass
-    let mut ctx = FunctionBuilderContext::default();
+    let mut ctxt = FunctionBuilderContext::default();
 
     unit.modules(db)
         .iter()
@@ -24,7 +24,7 @@ fn lower_to_mir(db: &CompilationDB, is_output: &impl Fn(PlaceKind) -> bool) -> V
             let mut required_vars = [].into_iter();
             let mut literals = Rodeo::new();
             let (mir, _) = MirBuilder::new(db, module, is_output, &mut required_vars)
-                .with_builder_ctx(&mut ctx)
+                .with_builder_ctxt(&mut ctxt)
                 .build(&mut literals);
             mir
         })

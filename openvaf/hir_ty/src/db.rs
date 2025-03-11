@@ -4,20 +4,12 @@ use stdx::Upcast;
 use hir_def::{
     db::HirDefDB,
     nameres::{ResolvedPath, ScopeItemDef},
-    {
-        AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup, NatureAttrId, NatureId,
-        NodeId, ParamId, ParamSysFun, Type,
-    },
+    AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup, NatureAttrId, NatureId, NodeId,
+    ParamId, ParamSysFun, Type,
 };
 
-use crate::inference::InferenceResult;
+use crate::inference::Inference;
 use crate::lower::{BranchTy, DisciplineTy, NatureTy};
-
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub struct LimitSignature {
-    pub name: String,
-    pub num_args: u32,
-}
 
 #[salsa::query_group(HirTyDatabase)]
 pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
@@ -31,8 +23,8 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     #[salsa::invoke(BranchTy::branch_info_query)]
     fn branch_info(&self, branch: BranchId) -> Option<Arc<BranchTy>>;
 
-    #[salsa::invoke(InferenceResult::infere_body_query)]
-    fn inference_result(&self, id: DefWithBodyId) -> Arc<InferenceResult>;
+    #[salsa::invoke(Inference::infere_body_query)]
+    fn inference_result(&self, id: DefWithBodyId) -> Arc<Inference>;
 
     #[salsa::cycle(nature_attr_ty_recover)]
     fn nature_attr_ty(&self, id: NatureAttrId) -> Option<Type>;
@@ -48,6 +40,12 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
 
     #[salsa::input]
     fn known_limit_functions(&self) -> Option<Arc<[LimitSignature]>>;
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct LimitSignature {
+    pub name: String,
+    pub num_args: u32,
 }
 
 fn nature_attr_ty(db: &dyn HirTyDB, id: NatureAttrId) -> Option<Type> {
@@ -66,15 +64,6 @@ fn nature_attr_ty_recover(
     None
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn resolve_alias_recover(
-    _db: &dyn HirTyDB,
-    _cycel: &salsa::Cycle,
-    _id: &AliasParamId,
-) -> Option<Alias> {
-    Some(Alias::Cycle)
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Alias {
     Cycle,
@@ -87,21 +76,29 @@ pub enum Alias {
 fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Option<Alias> {
     let loc = id.lookup(db.upcast());
     let data = db.aliasparam_data(id);
+    use ScopeItemDef::*;
     match loc.scope.resolve_path(db.upcast(), data.src.as_ref()?).ok()? {
-        ResolvedPath::ScopeItemDef(ScopeItemDef::ParamId(param)) => Some(Alias::Param(param)),
-        ResolvedPath::ScopeItemDef(ScopeItemDef::ParamSysFun(param)) => {
-            Some(Alias::ParamSysFun(param))
-        }
-        ResolvedPath::ScopeItemDef(ScopeItemDef::AliasParamId(alias)) => db.resolve_alias(alias),
+        ResolvedPath::ScopeItemDef(ParamId(param)) => Some(Alias::Param(param)),
+        ResolvedPath::ScopeItemDef(ParamSysFun(param)) => Some(Alias::ParamSysFun(param)),
+        ResolvedPath::ScopeItemDef(AliasParamId(alias)) => db.resolve_alias(alias),
         _ => None,
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn resolve_alias_recover(
+    _db: &dyn HirTyDB,
+    _cycel: &salsa::Cycle,
+    _id: &AliasParamId,
+) -> Option<Alias> {
+    Some(Alias::Cycle)
 }
 
 fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
     let def_map = id.lookup(db.upcast()).module.lookup(db.upcast()).scope.def_map(db.upcast());
     let node = db.node_data(id);
     let discipline = node.discipline.as_ref()?;
-    def_map.resolve_item_in(def_map.root_scope(), discipline).ok()
+    def_map.resolve_item_name(def_map.root_scope(), discipline).ok()
 }
 
 fn param_ty(db: &dyn HirTyDB, param: ParamId) -> Type {

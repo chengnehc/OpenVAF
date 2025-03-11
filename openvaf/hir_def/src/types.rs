@@ -9,10 +9,10 @@ use syntax::ast;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Err,
-    Real,
-    Integer,
-    Bool,
     Void,
+    Bool,
+    Integer,
+    Real,
     String,
     EmptyArray,
     Array { ty: Box<Type>, len: u32 },
@@ -22,10 +22,10 @@ use Type::*;
 impl_display! {
     match Type{
         Err => "[missing]";
-        Real => "real";
-        Integer => "integer";
-        Bool => "integer";
         Void => "void";
+        Bool => "integer";
+        Integer => "integer";
+        Real => "real";
         String => "string";
         EmptyArray => "_[0:0]";
         Array{ty,len} => "{}[0:{}]",ty,len;
@@ -55,7 +55,7 @@ impl Type {
         }
     }
 
-    pub fn is_semantically_equivalent(&self, other: &Type) -> bool {
+    pub fn is_semantically_eq_to(&self, other: &Type) -> bool {
         match (self, other) {
             (Type::Integer, Type::Bool)
             | (Type::Bool, Type::Integer)
@@ -64,7 +64,7 @@ impl Type {
 
             (Type::Array { .. }, Type::Array { .. }) => {
                 self.dim() == other.dim()
-                    && self.base_type().is_semantically_equivalent(other.base_type())
+                    && self.base_type().is_semantically_eq_to(other.base_type())
             }
 
             _ => other == self,

@@ -1,6 +1,6 @@
 //! Recursive declarations (?)
 
-use std::iter::once;
+use std::iter;
 use std::mem::transmute;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -10,8 +10,7 @@ use smol_str::SmolStr;
 use syntax::name::Name;
 
 use crate::{
-    AliasParameter, Block, Branch, CompilationDB, HirDefDB, Module, Node, Parameter, ScopeDef,
-    Variable,
+    AliasParam, Block, Branch, CompilationDB, HirDefDB, Module, Node, Parameter, ScopeDef, Variable,
 };
 
 struct Scope {
@@ -47,7 +46,7 @@ impl<'a> RecDeclarations<'a> {
             // fast path
             return name.into();
         }
-        self.path.iter().flat_map(|path| [path, "."]).chain(once(name.deref())).collect()
+        self.path.iter().flat_map(|path| [path, "."]).chain(iter::once(name.deref())).collect()
     }
 
     pub fn current_path(&self) -> &[Name] {
@@ -74,14 +73,12 @@ impl Iterator for RecDeclarations<'_> {
                         }
                         continue;
                     }
-                    ScopeItemDef::ModuleId(id) => ScopeDef::ModuleInstance(Module { id }),
+                    ScopeItemDef::ModuleId(id) => ScopeDef::Module(Module { id }),
                     ScopeItemDef::NodeId(id) => ScopeDef::Node(Node { id }),
+                    ScopeItemDef::BranchId(id) => ScopeDef::Branch(Branch { id }),
                     ScopeItemDef::VarId(id) => ScopeDef::Variable(Variable { id }),
                     ScopeItemDef::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
-                    ScopeItemDef::AliasParamId(id) => {
-                        ScopeDef::AliasParameter(AliasParameter { id })
-                    }
-                    ScopeItemDef::BranchId(id) => ScopeDef::Branch(Branch { id }),
+                    ScopeItemDef::AliasParamId(id) => ScopeDef::AliasParam(AliasParam { id }),
                     _ => continue,
                 };
                 return Some((name.clone(), def));

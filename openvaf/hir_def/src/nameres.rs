@@ -109,7 +109,7 @@ pub struct ScopeData {
 pub enum ScopeOrigin {
     Root,
     Module(ModuleId),
-    Block(BlockId), // A named block, specifically
+    Block(BlockId), // named block
     Function(FunctionId),
 }
 impl_from_typed! {
@@ -149,28 +149,26 @@ pub enum ScopeItemDef {
     VarId(VarId),
     ParamId(ParamId),
     AliasParamId(AliasParamId),
+    // Hierarchical system parameters
+    ParamSysFun(ParamSysFun),
+    // Buitlin math functions and sysfuns
+    BuiltIn(BuiltIn),
     FunctionId(FunctionId),
     FunctionReturn(FunctionId),
     FunctionArgId(FunctionArgId),
-    // Buitlin math functions and sysfuns
-    BuiltIn(BuiltIn),
-    // Hierarchical system parameters
-    ParamSysFun(ParamSysFun),
 }
 
 impl_from! {
     NatureId, NatureAttrId, NatureAccess,
     DisciplineId,
     ModuleId,
-        BlockId,
-        NodeId,
-        BranchId,
-        VarId,
-        ParamId, AliasParamId,
-        FunctionId, FunctionArgId, // FunctionReturn
-        BuiltIn, ParamSysFun
-
-    for ScopeItemDef
+    BlockId,
+    NodeId,
+    BranchId,
+    VarId,
+    ParamId, AliasParamId,
+    FunctionId, FunctionArgId, // FunctionReturn
+    BuiltIn, ParamSysFun    for ScopeItemDef
 }
 
 impl ScopeItemDef {
@@ -273,12 +271,12 @@ impl_display! {
 
 /// Name resolution algorithms
 impl DefMap {
-    pub fn resolve_item_in<T: ScopeItemKind>(
+    pub fn resolve_item_name<T: ScopeItemKind>(
         &self,
         scope: LocalScopeId,
         name: &Name,
     ) -> Result<T, PathResolveError> {
-        let item = self.resolve_name_in(scope, name)?;
+        let item = self.resolve_name(scope, name)?;
         item.try_into().map_err(|_| PathResolveError::ExpectedItemKind {
             name: name.clone(),
             expected: T::NAME,
@@ -286,30 +284,30 @@ impl DefMap {
         })
     }
 
-    fn resolve_name_in(
+    fn resolve_name(
         &self,
         scope: LocalScopeId,
         name: &Name,
     ) -> Result<ScopeItemDef, PathResolveError> {
-        let mut scope = scope;
+        let mut cur_scope = scope;
         loop {
-            if let Some(decl) = self[scope].declarations.get(name) {
+            if let Some(decl) = self[cur_scope].declarations.get(name) {
                 return Ok(*decl);
             }
-            let Some(parent) = self[scope].parent else {
+            let Some(parent) = self[cur_scope].parent else {
                 return Err(PathResolveError::NotFound { name: name.clone() });
             };
-            scope = parent;
+            cur_scope = parent;
         }
     }
 
-    pub fn resolve_normal_item_path_in<T: ScopeItemKind>(
+    pub fn resolve_normal_item_path<T: ScopeItemKind>(
         &self,
         scope: LocalScopeId,
         segments: &[Name],
         db: &dyn HirDefDB,
     ) -> Result<T, PathResolveError> {
-        let resolved_path = self.resolve_normal_path_in(scope, segments, db)?;
+        let resolved_path = self.resolve_normal_path(scope, segments, db)?;
         let res: Result<ScopeItemDef, _> = resolved_path.clone().try_into();
         if let Ok(item) = res {
             if let Ok(res) = item.try_into() {
@@ -323,34 +321,66 @@ impl DefMap {
         })
     }
 
-    pub fn resolve_normal_path_in(
+    // # Scoping Rules
+    //
+    // ## RootItem: [LRM 6.8]
+    // An identifier shall be used to declare only one item within a scope. It is illegal to declare
+    // two or more variables which have the same name, or to name a task the same as a variable within
+    // the same module, or to give an instance the same name as the name of the net connected to its output.
+    //
+    // If an identifier is referenced directly (without a hierarchical path) within a named block, it
+    // shall be declared within the named block locally or within a module, or within a named block that
+    // is higher in the same branch of the name tree containing the named block. If it is declared locally,
+    // the local item shall be used; if not, the search shall continue upward until an item by that name is
+    // found or until a module boundary is encountered. If the item is a variable, it shall stop at a module
+    // boundary; if the item is a named block, it continues to search higher level modules until found.
+    //
+    // ## FunctionItem: [LRM 4.7.1]
+    // * shall only reference locally-defined variables, variables passed as arguments
+    // locally-defined parameters and module-level parameters; and
+    // * if a locally-defined parameter with the specified name does not exist, then
+    // the module-level parameter of the specified name will be used.
+    //
+    // ## BlockItem: [LRM 5.3.2]
+    // The naming of a block allows *local* variables to be declared for that block.
+    // * All named block variables are static -- that is, an unique location exists for
+    // all variables and leaving or entering the block do not affect the values stored
+    // in them.
+    // * All identifiers declared within a named sequential block can be accessed
+    // outside the scope in which they are declared.
+    //      * Named block variables cannot be assigned outside the scope of the block
+    //        in which they are declared.
+    //      * Parameters declared within a named block have local scope and cannot be
+    //        assigned outside the scope.
+    pub fn resolve_normal_path(
         &self,
         scope: LocalScopeId,
         segments: &[Name],
         db: &dyn HirDefDB,
     ) -> Result<ResolvedPath, PathResolveError> {
-        let mut scope = scope;
+        let mut cur_scope = scope;
         let mut def_map = self;
         let mut arc;
+
         let name = segments.first().unwrap();
         let decl = loop {
             // try resolving in current scope
-            if let Some(decl) = def_map[scope].declarations.get(name) {
+            if let Some(decl) = def_map[cur_scope].declarations.get(name) {
                 break *decl;
             }
             // try resolving in parent scopes
-            match def_map[scope].parent {
-                Some(parent) => scope = parent,
+            match def_map[cur_scope].parent {
+                Some(parent) => cur_scope = parent,
                 None => match def_map.src {
                     DefMapSource::Block(block) => {
                         // switch to block def map
                         let parent = block.lookup(db).parent;
-                        scope = parent.local_id;
+                        cur_scope = parent.local_id;
                         arc = parent.def_map(db);
                         def_map = &arc;
                     }
                     DefMapSource::Root | DefMapSource::Function(_) => {
-                        // TODO when dealing with function def map, give hint if a builtin decl.
+                        // TODO when dealing with function def map, give hint if a builtin decl
                         // is found in root def map. So far, these two are identical.
                         let Some(builtin) = BUILTIN_ITEM_DEF.get(name) else {
                             return Err(PathResolveError::NotFound { name: name.clone() });
@@ -365,25 +395,22 @@ impl DefMap {
             return Ok(decl.into());
         }
 
-        scope = match decl {
+        cur_scope = match decl {
             ScopeItemDef::ModuleId(module) => module.lookup(db).scope.local_id,
-            ScopeItemDef::BlockId(block) => match db.block_def_map(block) {
-                Some(block_map) => {
-                    arc = block_map;
-                    def_map = &arc;
-                    def_map.entry_scope()
-                }
-                None => {
-                    return Err(PathResolveError::NotFoundIn {
-                        name: segments[1].clone(),
-                        scope: segments[0].clone(),
-                    })
-                }
-            },
+            ScopeItemDef::BlockId(block) => {
+                let Some(block_map) = db.block_def_map(block) else {
+                    let name = segments[1].clone();
+                    let scope = segments[0].clone();
+                    return Err(PathResolveError::NotFoundIn { name, scope });
+                };
+                arc = block_map;
+                def_map = &arc;
+                def_map.entry_scope()
+            }
             _ => return Err(PathResolveError::ExpectedScope { name: name.clone(), found: decl }),
         };
 
-        def_map.resolve_path_in(scope, name, &segments[1..], db)
+        def_map.resolve_path(cur_scope, name, &segments[1..], db)
     }
 
     pub fn resolve_root_item_path<T: ScopeItemKind>(
@@ -393,9 +420,9 @@ impl DefMap {
     ) -> Result<T, PathResolveError> {
         let resolved_path = self.resolve_root_path(segments, db)?;
         let res: Result<ScopeItemDef, _> = resolved_path.clone().try_into();
-        if let Ok(item) = res {
-            if let Ok(res) = item.try_into() {
-                return Ok(res);
+        if let Ok(def) = res {
+            if let Ok(item) = def.try_into() {
+                return Ok(item);
             }
         }
         Err(PathResolveError::ExpectedItemKind {
@@ -405,9 +432,7 @@ impl DefMap {
         })
     }
 
-    /// Resolve a path with `$root` prefix.
-    ///
-    /// See: LRM chapter 6.2.1
+    /// Resolve a path with `$root` prefix. [LRM 6.2.1]
     pub fn resolve_root_path(
         &self,
         segments: &[Name],
@@ -417,10 +442,10 @@ impl DefMap {
         // paths in analog function should be resolved in the function's own def map
         // even if $root is given
         debug_assert!(matches!(self.src, DefMapSource::Root | DefMapSource::Function(_)));
-        self.resolve_path_in(self.root_scope(), &kw::root, segments, db)
+        self.resolve_path(self.root_scope(), &kw::root, segments, db)
     }
 
-    fn resolve_path_in<'a>(
+    fn resolve_path<'a>(
         &self,
         scope_id: LocalScopeId,
         scope_name: &'a Name,

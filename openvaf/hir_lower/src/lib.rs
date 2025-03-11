@@ -97,7 +97,7 @@ impl<'a> MirBuilder<'a> {
         self
     }
 
-    pub fn with_builder_ctx(mut self, ctx: &'a mut FunctionBuilderContext) -> Self {
+    pub fn with_builder_ctxt(mut self, ctx: &'a mut FunctionBuilderContext) -> Self {
         self.ctx = Some(ctx);
         self
     }

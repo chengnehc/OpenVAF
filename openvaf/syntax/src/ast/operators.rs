@@ -41,28 +41,28 @@ pub enum BinaryOp {
     GreaterTest,
     /// The `+` operator for addition
     Addition,
-    /// The `*` operator for multiplication
-    Multiplication,
     /// The `-` operator for subtraction
     Subtraction,
+    /// The `*` operator for multiplication
+    Multiplication,
     /// The `/` operator for division
     Division,
     /// The `%` operator for remainder after division
     Remainder,
+    /// The `**` operator for exponents
+    Power,
     /// The `<<` operator for left shift
     LeftShift,
     /// The `>>` operator for right shift
     RightShift,
-    /// The `^` operator for bitwise XOR (exclusive OR)
-    BitwiseXor,
-    /// The `~^`/`^~` operator for bitwise XNOR (exclusive NOR), also named bitwise equivalence
-    BitwiseXnor,
     /// The `|` operator for bitwise OR
     BitwiseOr,
     /// The `&` operator for bitwise AND
     BitwiseAnd,
-    /// The `**` operator for exponents
-    Power,
+    /// The `^` operator for bitwise XOR (exclusive OR)
+    BitwiseXor,
+    /// The `~^`/`^~` operator for bitwise XNOR (exclusive NOR), also named bitwise equivalence
+    BitwiseXnor,
 }
 
 impl_display! {
@@ -76,17 +76,17 @@ impl_display! {
         BinaryOp::LesserTest => "<";
         BinaryOp::GreaterTest => ">";
         BinaryOp::Addition => "+";
-        BinaryOp::Multiplication => "*";
         BinaryOp::Subtraction => "-";
+        BinaryOp::Multiplication => "*";
         BinaryOp::Division => "/";
         BinaryOp::Remainder => "%";
+        BinaryOp::Power => "**";
         BinaryOp::LeftShift => "<<";
         BinaryOp::RightShift => ">>";
-        BinaryOp::BitwiseXor => "^";
-        BinaryOp::BitwiseXnor => "~^";
         BinaryOp::BitwiseOr => "|";
         BinaryOp::BitwiseAnd => "&";
-        BinaryOp::Power => "**";
+        BinaryOp::BitwiseXor => "^";
+        BinaryOp::BitwiseXnor => "~^";
     }
 }
 

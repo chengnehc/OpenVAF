@@ -7,16 +7,16 @@ use hir_ty::inference;
 use hir_ty::types::{Signature, Ty};
 
 pub use hir_def::expr::Event;
-pub use hir_def::{/*expr::CaseCond,*/ BuiltIn, Case, ExprId, Literal, ParamSysFun, StmtId, Type,};
+pub use hir_def::{BuiltIn, Case, ExprId, Literal, ParamSysFun, StmtId, Type};
 pub use syntax::ast::{BinaryOp, UnaryOp};
 
 use crate::{Branch, CompilationDB, Node};
-use crate::{BranchWrite, Function, FunctionArg, NatureAttribute, Parameter, Variable};
+use crate::{BranchWrite, Function, FunctionArg, NatureAttr, Parameter, Variable};
 
 #[derive(Debug, Clone)]
 pub struct Body {
     body: Arc<hir_def::body::Body>,
-    infere: Arc<inference::InferenceResult>,
+    infere: Arc<inference::Inference>,
 }
 impl Body {
     pub(crate) fn new(id: DefWithBodyId, db: &CompilationDB) -> Body {
@@ -31,7 +31,7 @@ impl Body {
 #[derive(Debug, Clone, Copy)]
 pub struct BodyRef<'a> {
     body: &'a hir_def::body::Body,
-    infere: &'a inference::InferenceResult,
+    infere: &'a inference::Inference,
 }
 
 impl<'a> BodyRef<'a> {
@@ -61,7 +61,7 @@ impl<'a> BodyRef<'a> {
                 Ref::FunctionArg(FunctionArg { fun_id: fun, arg_id: arg })
             }
             Ty::FunctionVar { fun, .. } => Ref::FunctionReturn(Function { id: fun }),
-            Ty::NatureAttr(_, id) => Ref::NatureAttr(NatureAttribute { id }),
+            Ty::NatureAttr(_, id) => Ref::NatureAttr(NatureAttr { id }),
 
             ref it => {
                 if let Some(&inference::ResolvedFun::Param(param)) =
@@ -281,7 +281,7 @@ pub enum Ref {
     ParamSysFun(ParamSysFun),
     FunctionArg(FunctionArg),
     FunctionReturn(Function),
-    NatureAttr(NatureAttribute),
+    NatureAttr(NatureAttr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]

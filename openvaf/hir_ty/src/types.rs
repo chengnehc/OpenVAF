@@ -8,141 +8,83 @@ use hir_def::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TyRequirement {
-    Val(Type),
-    Condition,
-    /// Any type of `Val`, when type is not what we care about
-    AnyVal,
-    ArrayAnyLength {
-        ty: Type,
-    },
-    Node,
-    PortFlow,
-    Nature,
-    Var(Type),
-    Param(Type),
-    /// Any type of `Param`, when type is not what we care about
-    AnyParam,
-    Branch,
-    Literal(Type),
-    Function,
-}
-
-impl TyRequirement {
-    pub fn cast(&self, src: &Type) -> Option<Type> {
-        match self {
-            TyRequirement::Val(ty) if src != ty => Some(ty.to_owned()),
-            TyRequirement::Condition if src != &Type::Bool => Some(Type::Bool),
-            _ => None,
-        }
-    }
-}
-
-impl_display! {
-    match TyRequirement{
-        TyRequirement::Val(ty) => "{} value",ty;
-        TyRequirement::Condition => "{} value", Type::Bool;
-        TyRequirement::AnyVal => "value";
-        TyRequirement::ArrayAnyLength{ty} => "array ({})", ty;
-        TyRequirement::Node => "net reference";
-        TyRequirement::Nature => "nature reference";
-        TyRequirement::Var(ty) => "{} variable reference", ty;
-        TyRequirement::Param(ty) => "{} parameter ref", ty;
-        TyRequirement::AnyParam => "parameter reference";
-        TyRequirement::Literal(ty) => "{} literal", ty;
-        TyRequirement::PortFlow => "port-flow reference";
-        TyRequirement::Branch => "branch reference";
-        TyRequirement::Function => "function";
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-enum TyEquivalence {
-    Conversion,
-    Semantic,
-    Exact,
-}
-
-impl TyEquivalence {
-    fn compare_ty(self, ty1: &Type, ty2: &Type) -> bool {
-        match self {
-            TyEquivalence::Conversion => ty1.is_convertible_to(ty2),
-            TyEquivalence::Semantic => ty1.is_semantically_equivalent(ty2),
-            TyEquivalence::Exact => ty1 == ty2,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
-    Val(Type),
-    Node(NodeId),
-    PortFlow(NodeId),
     Nature(NatureId),
-    Discipline(DisciplineId),
-    Var(Type, VarId),
-    NatureAttr(Type, NatureAttrId),
-    FunctionVar { ty: Type, fun: FunctionId, arg: Option<LocalFunctionArgId> },
-    Param(Type, ParamId),
-    Literal(Type),
-    InfLiteral,
+    Node(NodeId),
     Branch(BranchId),
+    PortFlow(NodeId),
+    UserFunction(FunctionId),
+
+    InfLiteral,
+    Literal(Type),
+    Val(Type),
+    NatureAttr(Type, NatureAttrId),
+    Var(Type, VarId),
+    Param(Type, ParamId),
+    FunctionVar { ty: Type, fun: FunctionId, arg: Option<LocalFunctionArgId> },
+
+    Discipline(DisciplineId),
     Scope,
     BuiltInFunction,
-    UserFunction(FunctionId),
 }
 
 // TODO coerce tys for nicer errors? Would that even be an improvement?
 
 impl_display! {
     match Ty{
+        Ty::Nature(_) => "nature reference";
+        Ty::NatureAttr(ty,_) => "{} nature attribute reference", ty;
+        Ty::Discipline(_) => "discipline reference";
+        Ty::Literal(ty) => "{} literal", ty;
+        Ty::InfLiteral => "numeric literal";
         Ty::Val(ty) => "{} value",ty;
         Ty::Node(_) => "net reference";
-        Ty::PortFlow(_) => "port-flow reference";
-        Ty::Nature(_) => "nature reference";
-        Ty::Discipline(_) => "discipline reference";
-        Ty::Var(ty,_) => "{} variable reference", ty;
-        Ty::NatureAttr(ty,_) => "{} nature attriubte reference", ty;
-        Ty::FunctionVar{ty,..} => "{} variable reference", ty;
-        Ty::Param(ty,_) => "{} parameter ref", ty;
-        Ty::Literal(ty) => "{} literal", ty;
         Ty::Branch(_) => "branch reference";
-        Ty::BuiltInFunction => "(builtin) function";
+        Ty::PortFlow(_) => "port-flow reference";
+        Ty::Var(ty,_) => "{} variable reference", ty;
+        Ty::Param(ty,_) => "{} parameter reference", ty;
         Ty::UserFunction(_) => "(user-defined) function";
+        Ty::FunctionVar{ty,..} => "{} variable reference", ty;
+        Ty::BuiltInFunction => "(builtin) function";
         Ty::Scope => "scope";
-        Ty::InfLiteral => "numeric literal";
     }
 }
 
 impl Ty {
+    pub fn unwrap_node(&self) -> NodeId {
+        let Ty::Node(id) = *self else { unreachable!("expected node, found {:?}", self) };
+        id
+    }
+
     pub fn unwrap_branch(&self) -> BranchId {
-        if let Ty::Branch(id) = *self {
-            id
-        } else {
-            unreachable!("expected branch, found {:?}", self)
-        }
+        let Ty::Branch(id) = *self else { unreachable!("expected branch, found {:?}", self) };
+        id
     }
 
     pub fn unwrap_port_flow(&self) -> NodeId {
-        if let Ty::PortFlow(id) = *self {
-            id
-        } else {
-            unreachable!("expected port, found {:?}", self)
-        }
-    }
-    pub fn unwrap_node(&self) -> NodeId {
-        if let Ty::Node(id) = *self {
-            id
-        } else {
-            unreachable!("expected node, found {:?}", self)
-        }
+        let Ty::PortFlow(id) = *self else { unreachable!("expected port, found {:?}", self) };
+        id
     }
 
     pub fn unwrap_param(&self) -> ParamId {
-        if let Ty::Param(_, id) = *self {
-            id
-        } else {
-            unreachable!("expected parameter, found {:?}", self)
+        let Ty::Param(_, id) = *self else { unreachable!("expected parameter, found {:?}", self) };
+        id
+    }
+    pub fn unwrap_func(&self) -> FunctionId {
+        let Ty::UserFunction(func) = *self else { unreachable!("called unwrap_func on {self:?}") };
+        func
+    }
+
+    pub fn to_value(&self) -> Option<Type> {
+        match self {
+            Ty::Val(ty)
+            | Ty::Var(ty, _)
+            | Ty::NatureAttr(ty, _)
+            | Ty::Param(ty, _)
+            | Ty::Literal(ty)
+            | Ty::FunctionVar { ty, .. } => Some(ty.clone()),
+            Ty::InfLiteral => Some(Type::Real),
+            _ => None,
         }
     }
 
@@ -160,7 +102,20 @@ impl Ty {
 
     fn satisfies(&self, requirement: &TyRequirement, equiv: TyEquivalence) -> bool {
         match (self, requirement) {
-            (
+            (Ty::Nature(_), TyRequirement::Nature)
+            | (Ty::Node(_), TyRequirement::Node)
+            | (Ty::Branch(_), TyRequirement::Branch)
+            | (Ty::PortFlow(_), TyRequirement::PortFlow)
+            | (Ty::UserFunction(_), TyRequirement::Function)
+            | (Ty::InfLiteral, TyRequirement::Val(Type::Real)) // special case of `inf`
+            | (
+                Ty::Val(Type::EmptyArray | Type::Array { len: 0, .. }),
+                TyRequirement::ArrayAnyLength { .. }
+                | TyRequirement::Val(Type::Array { len: 0, .. }),
+            ) // special case of empty array
+            // predicates
+            | (Ty::Param(_, _), TyRequirement::AnyParam)
+            | (
                 Ty::Val(_)
                 | Ty::Var(_, _)
                 | Ty::NatureAttr(_, _)
@@ -169,19 +124,7 @@ impl Ty {
                 | Ty::Literal(_)
                 | Ty::FunctionVar { .. },
                 TyRequirement::AnyVal,
-            )
-            | (Ty::InfLiteral, TyRequirement::Val(Type::Real))
-            | (
-                Ty::Val(Type::EmptyArray | Type::Array { len: 0, .. }),
-                TyRequirement::ArrayAnyLength { .. }
-                | TyRequirement::Val(Type::Array { len: 0, .. }),
-            )
-            | (Ty::Node(_), TyRequirement::Node)
-            | (Ty::PortFlow(_), TyRequirement::PortFlow)
-            | (Ty::Nature(_), TyRequirement::Nature)
-            | (Ty::Param(_, _), TyRequirement::AnyParam)
-            | (Ty::UserFunction(_), TyRequirement::Function)
-            | (Ty::Branch(_), TyRequirement::Branch) => true,
+            ) => true,
 
             (
                 Ty::Val(ty1)
@@ -220,35 +163,90 @@ impl Ty {
             _ => false,
         }
     }
+}
 
-    pub fn unwrap_func(&self) -> FunctionId {
-        if let Ty::UserFunction(func) = *self {
-            func
-        } else {
-            unreachable!("called unwrap_func on {self:?}")
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TyRequirement {
+    // explicit requirement
+    Nature,
+    Node,
+    Branch,
+    PortFlow,
+    Function,
+    // implicit requirement
+    Literal(Type),
+    Val(Type),
+    Var(Type),
+    Param(Type),
+    ArrayAnyLength { ty: Type },
+    // predicates
+    AnyVal,    // any type of `Val`
+    AnyParam,  // any type of `Param`
+    Condition, // must be bool type
+}
 
-    pub fn to_value(&self) -> Option<Type> {
+impl TyRequirement {
+    pub fn cast(&self, src: &Type) -> Option<Type> {
         match self {
-            Ty::Val(ty)
-            | Ty::Var(ty, _)
-            | Ty::NatureAttr(ty, _)
-            | Ty::Param(ty, _)
-            | Ty::Literal(ty)
-            | Ty::FunctionVar { ty, .. } => Some(ty.clone()),
-            Ty::InfLiteral => Some(Type::Real),
+            TyRequirement::Val(ty) if src != ty => Some(ty.to_owned()),
+            TyRequirement::Condition if src != &Type::Bool => Some(Type::Bool),
             _ => None,
         }
     }
 }
+
+impl_display! {
+    match TyRequirement{
+        TyRequirement::Nature => "nature reference";
+        TyRequirement::Node => "net reference";
+        TyRequirement::Branch => "branch reference";
+        TyRequirement::PortFlow => "port-flow reference";
+        TyRequirement::Function => "function";
+        TyRequirement::Literal(ty) => "{} literal", ty;
+        TyRequirement::Val(ty) => "{} value", ty;
+        TyRequirement::Var(ty) => "{} variable reference", ty;
+        TyRequirement::Param(ty) => "{} parameter reference", ty;
+        TyRequirement::ArrayAnyLength{ty} => "array ({})", ty;
+        TyRequirement::AnyVal => "value";
+        TyRequirement::AnyParam => "parameter reference";
+        TyRequirement::Condition => "{} value", Type::Bool;
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+enum TyEquivalence {
+    Conversion,
+    Semantic,
+    Exact,
+}
+
+impl TyEquivalence {
+    fn compare_ty(self, ty1: &Type, ty2: &Type) -> bool {
+        match self {
+            TyEquivalence::Conversion => ty1.is_convertible_to(ty2),
+            TyEquivalence::Semantic => ty1.is_semantically_eq_to(ty2),
+            TyEquivalence::Exact => ty1 == ty2,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Signature(pub u32);
+impl_idx_from!(Signature(u32));
+
+pub const BOOL_EQ: Signature = Signature(0);
+pub const INT_EQ: Signature = Signature(1);
+pub const REAL_EQ: Signature = Signature(2);
+pub const STR_EQ: Signature = Signature(3);
+
+pub const INT_OP: Signature = Signature(0);
+pub const REAL_OP: Signature = Signature(1);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SignatureData {
     pub args: Cow<'static, [TyRequirement]>,
     pub return_ty: Type,
 }
-
 impl_display! {
     match SignatureData{
         SignatureData{ args, return_ty } => "({}) -> {}", pretty::List::new(args.deref()).with_final_separator(", "), return_ty;
@@ -277,6 +275,8 @@ impl SignatureData {
     };
     pub const NUMERIC_BIN_OP: &'static [SignatureData] =
         &[SignatureData::INT_BIN_OP, SignatureData::REAL_BIN_OP];
+    pub const SELECT_OP: &'static [SignatureData] =
+        &[SignatureData::BOOL_BIN_OP, SignatureData::REAL_BIN_OP, SignatureData::INT_BIN_OP];
 
     pub const REAL_COMPARISON: SignatureData = SignatureData {
         args: Cow::Borrowed(&[TyRequirement::Val(Type::Real), TyRequirement::Val(Type::Real)]),
@@ -305,32 +305,4 @@ impl SignatureData {
         SignatureData::REAL_COMPARISON,
         SignatureData::STR_COMPARISON,
     ];
-
-    pub const SELECT: &'static [SignatureData] =
-        &[SignatureData::BOOL_BIN_OP, SignatureData::REAL_BIN_OP, SignatureData::INT_BIN_OP];
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Signature(pub u32);
-impl_idx_from!(Signature(u32));
-
-pub const BOOL_EQ: Signature = Signature(0);
-pub const INT_EQ: Signature = Signature(1);
-pub const REAL_EQ: Signature = Signature(2);
-pub const STR_EQ: Signature = Signature(3);
-
-pub const INT_OP: Signature = Signature(0);
-pub const REAL_OP: Signature = Signature(1);
-
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub(crate) struct BuiltinInfo {
-    pub signatures: &'static [SignatureData],
-    pub min_args: usize,
-    pub max_args: Option<usize>,
-    pub has_side_effects: bool,
-}
-
-pub fn default_return_ty(signatures: &[SignatureData]) -> Option<Ty> {
-    let ty = &signatures.first()?.return_ty;
-    signatures.iter().all(|sig| &sig.return_ty == ty).then(|| Ty::Val(ty.clone()))
 }

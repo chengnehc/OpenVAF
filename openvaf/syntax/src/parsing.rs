@@ -33,7 +33,5 @@ pub(crate) fn parse_text(
             parser::Step::Error { err } => builder.error(err.clone()),
         }
     }
-    let (tree, errors, ctx_map) = builder.finish();
-
-    (tree, errors, ctx_map)
+    builder.finish()
 }

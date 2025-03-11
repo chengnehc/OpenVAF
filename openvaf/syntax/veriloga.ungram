@@ -348,11 +348,6 @@ Function =
 // * at least one argument
 // * data type declaration of all arguments (integer, real, string)
 // * argument direction specification (input, output, inout)
-//
-// Scoping rules for FunctionItem:
-// * should only reference locally-defined variables, parameters and arguments
-// * and module-level parameters if a locally-defined parameter with specified
-//   name does not exist
 FunctionItem =
   FunctionArg
 | ParamDecl 

@@ -5,17 +5,6 @@
 //! — modules
 //! — named blocks
 //! — analog functions
-//!
-//! An identifier shall be used to declare only one item within a scope. It is illegal to declare
-//! two or more variables which have the same name, or to name a task the same as a variable within
-//! the same module, or to give an instance the same name as the name of the net connected to its output.
-//!
-//! If an identifier is referenced directly (without a hierarchical path) within a named block, it
-//! shall be declared within the named block locally or within a module, or within a named block that
-//! is higher in the same branch of the name tree containing the named block. If it is declared locally,
-//! the local item shall be used; if not, the search shall continue upward until an item by that name is
-//! found or until a module boundary is encountered. If the item is a variable, it shall stop at a module
-//! boundary; if the item is a named block, it continues to search higher level modules until found.
 
 use std::sync::Arc;
 

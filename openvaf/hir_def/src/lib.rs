@@ -75,7 +75,7 @@ impl Scope {
             DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
                 self.def_map(db).resolve_root_path(&path.segments, db)
             }
-            _ => self.def_map(db).resolve_normal_path_in(self.local_id, &path.segments, db),
+            _ => self.def_map(db).resolve_normal_path(self.local_id, &path.segments, db),
         }
     }
 
@@ -91,7 +91,7 @@ impl Scope {
             DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
                 self.def_map(db).resolve_root_item_path(&path.segments, db)
             }
-            _ => self.def_map(db).resolve_normal_item_path_in(self.local_id, &path.segments, db),
+            _ => self.def_map(db).resolve_normal_item_path(self.local_id, &path.segments, db),
         }
     }
 }
@@ -200,7 +200,7 @@ macro_rules! impl_intern_lookup {
 
 // - `...Id` are new-typed wrappers around salsa::InternId.
 // - `...Loc` contains information about the item's scope and item tree id,
-//   it can both be a instantiation of ItemLoc<T> or manually defined.
+//   it can either be an instantiation of ItemLoc<T> or be manually defined.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NatureId(salsa::InternId);
@@ -259,8 +259,6 @@ impl DisciplineLoc {
         db.item_tree(self.root_file)
     }
     pub fn ast_id(self, db: &dyn HirDefDB) -> AstId<ast::DisciplineDecl> {
-        // self.item_tree(db)[self.id].ast_id
-        // JW: this should be more idiomatic
         Discipline::lookup(&self.item_tree(db), self.id).ast_id()
     }
     pub fn source(self, db: &dyn HirDefDB) -> ast::DisciplineDecl {
@@ -290,7 +288,7 @@ pub struct ModuleId(salsa::InternId);
 pub type ModuleLoc = ItemLoc<Module>;
 impl_intern!(ModuleId, ModuleLoc, intern_module, lookup_intern_module);
 
-// We only intern nodes, not ports or nets (too detailed).
+// We only intern nodes, rather than ports or nets.
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub struct NodeId(salsa::InternId);
 pub type LocalNodeId = Idx<item_tree::Node>;
@@ -405,7 +403,7 @@ pub enum DefWithBodyId {
 impl_from!(ParamId, FunctionId, VarId, NatureAttrId, DisciplineAttrId for DefWithBodyId);
 
 impl TryFrom<ScopeItemDef> for DefWithBodyId {
-    type Error = ();
+    type Error = (); // TODO(JW): should not use () as error type
     fn try_from(src: ScopeItemDef) -> Result<DefWithBodyId, ()> {
         let res = match src {
             ScopeItemDef::NatureAttrId(attr) => attr.into(),

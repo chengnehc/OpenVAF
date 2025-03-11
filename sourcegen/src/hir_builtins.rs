@@ -79,9 +79,6 @@ const ANALOG_OPERATORS_SYSFUN: [&str; 1] = ["$limit"];
 const ANALYSIS_FUNS: [&str; 6] =
     ["analysis", "ac_stim", "noise_table", "noise_table_log", "white_noise", "flicker_noise"];
 
-/// Table 9-15 Hierarchical parameter system functions
-const PARAM_SYSFUNS: [&str; 6] = ["mfactor", "xposition", "yposition", "angle", "hflip", "vflip"];
-
 /// LRM 9 System tasks and functions
 const SYSFUNS: [&str; 81] = [
     // Table 9-1
@@ -199,6 +196,9 @@ const SYSFUNS: [&str; 81] = [
     */
 ];
 
+/// Table 9-15 Hierarchical parameter system functions
+const PARAM_SYSFUNS: [&str; 6] = ["mfactor", "xposition", "yposition", "angle", "hflip", "vflip"];
+
 const UNSUPPORTED: [&str; 50] = [
     "simprobe",
     "analog_node_alias",
@@ -260,9 +260,9 @@ fn generate_builtins() {
     let iter = BUILTINS
         .into_iter()
         .chain(SYSFUNS)
-        .chain(ANALYSIS_FUNS)
-        .chain(ANALOG_OPERATORS_SYSFUN)
         .chain(ANALOG_OPERATORS)
+        .chain(ANALOG_OPERATORS_SYSFUN)
+        .chain(ANALYSIS_FUNS)
         .map(|builtin| {
             let is_sysfun = builtin.starts_with('$');
             let variant =
@@ -272,22 +272,22 @@ fn generate_builtins() {
             (prefix, ident, variant)
         });
 
-    let (kw_types, kws, variants): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(iter);
+    let (types, idents, variants): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(iter);
 
     let unique_variants: IndexSet<_, ahash::RandomState> = variants.iter().cloned().collect();
     let constants =
         unique_variants.iter().map(|variant| format_ident!("{}", to_upper_snake_case(variant)));
     let unique_variants = unique_variants.iter().map(|variant| format_ident!("{}", variant));
     let indices = (0..unique_variants.len()).map(|i| i as u8);
-    let analysis_funs = ANALYSIS_FUNS.into_iter().map(|op| format_ident!("{}", op));
     let analog_operators = ANALOG_OPERATORS.into_iter().map(|op| format_ident!("{}", op));
-    let unsupported = UNSUPPORTED.into_iter().map(|op| format_ident!("{}", op));
     let analog_operators_sysfun =
         ANALOG_OPERATORS_SYSFUN.into_iter().map(|op| format_ident!("{}", &op[1..]));
-    let variants = variants.iter().map(|var| format_ident!("{}", var));
-    let params = PARAM_SYSFUNS.map(|var| format_ident!("{}", var));
+    let analysis_funs = ANALYSIS_FUNS.into_iter().map(|op| format_ident!("{}", op));
+    let unsupported = UNSUPPORTED.into_iter().map(|op| format_ident!("{}", op));
 
-    // for crate `hir_def`
+    let params = PARAM_SYSFUNS.map(|var| format_ident!("{}", var));
+    let variants = variants.iter().map(|var| format_ident!("{}", var));
+
     let hir_def = quote! {
         #[derive(Eq, PartialEq, Copy, Clone, Hash, Debug)]
         #[allow(nonstandard_style,unreachable_pub)]
@@ -314,23 +314,23 @@ fn generate_builtins() {
             }
 
             #[allow(clippy::match_like_matches_macro)]
+            pub fn is_analysis_fun(self)->bool{
+                match self{
+                    #(BuiltIn::#analysis_funs)|* =>true,
+                    _ => false
+                }
+            }
+
+            #[allow(clippy::match_like_matches_macro)]
             pub fn is_unsupported(self)->bool{
                 match self{
                     #(BuiltIn::#unsupported)|* =>true,
                     _ => false
                 }
             }
-
-            #[allow(clippy::match_like_matches_macro)]
-            pub fn is_analysis_var(self)->bool{
-                match self{
-                    #(BuiltIn::#analysis_funs)|* =>true,
-                    _ => false
-                }
-            }
         }
 
-        #[derive(Eq,PartialEq,Copy,Clone, Hash,Debug)]
+        #[derive(Eq, PartialEq, Copy, Clone, Hash, Debug)]
         #[allow(nonstandard_style,unreachable_pub)]
         pub enum ParamSysFun{
             #(#params),*
@@ -350,7 +350,7 @@ fn generate_builtins() {
         }
 
         pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){
-            #(dst.insert(#kw_types::#kws, BuiltIn::#variants.into());)*
+            #(dst.insert(#types::#idents, BuiltIn::#variants.into());)*
         }
 
         pub fn insert_param_sysfun(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>){

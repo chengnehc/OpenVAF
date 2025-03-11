@@ -20,34 +20,24 @@ pub struct DuplicateItem<Item, Def> {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TypeDiagnostic {
     PathError { err: PathResolveError, src: SyntaxNodePtr },
-    DuplicateDisciplineAttr(DuplicateItem<LocalDisciplineAttrId, DisciplineId>),
     DuplicateNatureAttr(DuplicateItem<LocalNatureAttrId, NatureId>),
+    DuplicateDisciplineAttr(DuplicateItem<LocalDisciplineAttrId, DisciplineId>),
+    PortWithoutDirection { decl: ErasedAstId, name: Name },
+    NodeWithoutDiscipline { decl: ErasedAstId, name: Name },
     MultipleDirections(DuplicateItem<AstId<ast::PortDecl>, NodeId>),
     MultipleDisciplines(DuplicateItem<ErasedAstId, NodeId>),
     MultipleGnds(DuplicateItem<ErasedAstId, NodeId>),
-    PortWithoutDirection { decl: ErasedAstId, name: Name },
-    NodeWithoutDiscipline { decl: ErasedAstId, name: Name },
     ExpectedPort { node: NodeId, src: ErasedAstId },
     IncompatibleBranch { branch: BranchId, node1: NodeId, node2: NodeId },
 }
 
-/*
-use TypeDiagnostic::*;
-impl_display! {
-    match TypeDiagnostic {
-        PathError{..} => "";
-        _ => "";
-    }
-}
-*/
-
 impl TypeDiagnostic {
-    pub fn collect(db: &dyn HirTyDB, root_file: FileId) -> Vec<TypeDiagnostic> {
-        let mut res = Vec::new();
-        let def_map = db.root_def_map(root_file);
-        let tree = db.item_tree(root_file);
-        TypeValidator { db, dst: &mut res, def_map: &def_map, tree: &tree, root_file }.validate();
+    pub fn validate_and_collect(db: &dyn HirTyDB, root_file: FileId) -> Vec<TypeDiagnostic> {
+        let mut diagnostics = Vec::new();
+        let def_map = &db.root_def_map(root_file);
+        let tree = &db.item_tree(root_file);
+        TypeValidator { db, def_map, tree, root_file, diagnostics: &mut diagnostics }.validate();
 
-        res
+        diagnostics
     }
 }

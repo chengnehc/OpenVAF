@@ -1,3 +1,9 @@
+//! A syntax tree builder wraps rowan's `GreenNodeBuilder`, while it extracts
+//! richer information for diagnostics:
+//!
+//! 1. More detailed error messages for error nodes.
+//! 2. Context span and text ranges mapping of each node.
+
 use std::mem;
 use std::sync::Arc;
 
@@ -11,7 +17,6 @@ use crate::{SyntaxError, SyntaxKind, TextRange, TextSize, T};
 
 type Text = Arc<str>;
 
-// TODO(JW) refactor the tree builder
 pub(crate) struct SyntaxTreeBuilder<'a> {
     db: &'a dyn SourceProvider,
     inner: GreenNodeBuilder<'static>,
@@ -48,23 +53,23 @@ impl<'a> SyntaxTreeBuilder<'a> {
     ) -> Self {
         let current_text = db.file_text(root_file).unwrap_or_else(|_| Arc::from(""));
         Self {
+            db,
+            inner: Default::default(),
+            state: State::PendingStart,
             tokens,
             text_pos: 0.into(),
             token_pos: 0,
-            state: State::PendingStart,
-            inner: Default::default(),
-            db,
-            sm,
-            current_text,
-            ranges: Vec::with_capacity(128),
-            current_span: CtxSpan {
-                ctx: SourceContextId::ROOT,
-                range: TextRange::empty(TextSize::from(0)),
-            },
             panic: false,
             err_depth: u32::MAX,
             errors: Vec::new(),
             last_error: None,
+            sm,
+            current_text,
+            current_span: CtxSpan {
+                ctx: SourceContextId::ROOT,
+                range: TextRange::empty(TextSize::from(0)),
+            },
+            ranges: Vec::with_capacity(128),
         }
     }
 
@@ -92,11 +97,11 @@ impl<'a> SyntaxTreeBuilder<'a> {
             State::Normal => (),
         }
         self.eat_trivia();
-        let span = self.tokens[self.token_pos].span;
         self.panic &= !matches!(
             kind,
             T![;] | T![end] | T![endnature] | T![endmodule] | T![enddiscipline] | T![endfunction]
         ) || self.err_depth != u32::MAX;
+        let span = self.tokens[self.token_pos].span;
         self.do_token(kind, span);
     }
 
@@ -104,8 +109,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
         match mem::replace(&mut self.state, State::Normal) {
             State::PendingStart => {
                 self.inner.start_node(VerilogALanguage::kind_to_raw(kind));
-                // No need to attach trivia to previous node: there is no previous node.
-                return;
+                return; // No need to attach trivia to previous node: there is no previous node.
             }
             State::PendingFinish => self.inner.finish_node(),
             State::Normal => (),
@@ -142,7 +146,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
         }
     }
 
-    /// Transform a parser error (UnexpectedToken) into a `SyntaxError`
+    /// Turn a parser error into a `SyntaxError` with richer diagnostics information
     pub(super) fn error(&mut self, error: parser::Error) {
         let parser::Error::UnexpectedToken { expected, found } = error;
         let missing_delimiter = found == T![end];
@@ -202,8 +206,8 @@ impl<'a> SyntaxTreeBuilder<'a> {
     }
 
     fn do_token(&mut self, kind: SyntaxKind, span: CtxSpan) {
-        let is_same_ctx = span.ctx == self.current_span.ctx;
-        let is_continuous = is_same_ctx && span.range.start() == self.current_span.range.end();
+        let is_same_ctxt = span.ctx == self.current_span.ctx;
+        let is_continuous = is_same_ctxt && span.range.start() == self.current_span.range.end();
 
         if is_continuous {
             self.current_span.range = self.current_span.range.cover(span.range);
@@ -214,7 +218,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
             self.current_span = span;
         }
 
-        if !is_same_ctx {
+        if !is_same_ctxt {
             // The source text comes from somewhere else, so context switch is needed.
             // Unwrap is okay here because the file was already read successfully by the
             // preprocessor, otherwise the SourceContext wouldn't exist.

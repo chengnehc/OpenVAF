@@ -23,7 +23,7 @@ use crate::builtin::{
     TRANSITION_DELAY_RISET_FALLT_TOL,
 };
 use crate::db::HirTyDB;
-use crate::inference::{BranchWrite, InferenceResult, ResolvedFun};
+use crate::inference::{BranchWrite, Inference, ResolvedFun};
 use crate::lower::BranchKind;
 use crate::types::{Signature, Ty};
 
@@ -31,7 +31,7 @@ mod body;
 mod diagnostics;
 mod types;
 
-use body::IllegalCtxAccessKind;
+use body::IllegalCtxtAccessKind;
 use types::DuplicateItem;
 
 pub use body::BodyDiagnostic;
@@ -42,57 +42,53 @@ struct BodyValidator<'a> {
     db: &'a dyn HirTyDB,
     owner: DefWithBodyId,
     body: &'a Body,
-    infer: &'a InferenceResult,
-    diagnostics: Vec<BodyDiagnostic>,
-    ctx: BodyCtx,
+    ctxt: BodyContext,
+    infer: &'a Inference,
     non_const_dominator: Box<[ExprId]>,
     non_trivial_branches: HashSet<BranchWrite>,
     trivial_probes: HashMap<BranchWrite, Vec<(StmtId, ExprId)>>,
+    diagnostics: Vec<BodyDiagnostic>,
 }
 
 impl BodyValidator<'_> {
     fn validate_stmt(&mut self, stmt: StmtId) {
-        let cond = match self.body.stmts[stmt] {
+        match self.body.stmts[stmt] {
+            Stmt::Missing | Stmt::Empty => (),
+            Stmt::Expr(e) => self.validate_expr(e, stmt),
+            Stmt::Block { ref body } => body.iter().for_each(|stmt| self.validate_stmt(*stmt)),
             Stmt::Assignment { dst, val, op_kind } => {
                 self.validate_expr(val, stmt);
-
-                if op_kind == AssignOp::Contribute && !self.ctx.allow_contribute() {
-                    self.diagnostics.push(BodyDiagnostic::IllegalContribute { stmt, ctx: self.ctx })
+                if op_kind == AssignOp::Contribute && !self.ctxt.allow_contribute() {
+                    self.diagnostics
+                        .push(BodyDiagnostic::IllegalContribute { stmt, ctxt: self.ctxt })
                 }
                 // avoid duplicate errors
                 else if self.infer.assignment_destination.contains_key(&stmt) {
                     self.validate_assignment_dst(dst, stmt);
                 }
-
-                return;
             }
             Stmt::EventControl { body, .. } => {
-                let old = mem::replace(&mut self.ctx, BodyCtx::EventControl);
+                let old = mem::replace(&mut self.ctxt, BodyContext::EventControl);
                 self.validate_stmt(body);
-                self.ctx = old;
-                return;
+                self.ctxt = old;
             }
-            Stmt::Block { ref body } => {
-                body.iter().for_each(|stmt| self.validate_stmt(*stmt));
-                return;
-            }
-
-            Stmt::Missing | Stmt::Empty => return,
-
-            Stmt::Expr(e) => {
-                self.validate_expr(e, stmt);
-                return;
-            }
-
             Stmt::If { cond, .. }
             | Stmt::ForLoop { cond, .. }
             | Stmt::WhileLoop { cond, .. }
-            | Stmt::Case { discr: cond, .. } => cond,
-        };
+            | Stmt::Case { discr: cond, .. } => {
+                self.validate_condition(cond, stmt, |s| {
+                    s.body.stmts[stmt].walk_child_stmts(|stmt| s.validate_stmt(stmt))
+                });
+            }
+        }
+    }
 
-        self.validate_condition(cond, stmt, |s| {
-            s.body.stmts[stmt].walk_child_stmts(|stmt| s.validate_stmt(stmt))
-        });
+    fn validate_expr(&mut self, expr: ExprId, stmt: StmtId) {
+        ExprValidator { parent: self, write: false, stmt, sink: None }.validate_expr(expr)
+    }
+
+    fn validate_assignment_dst(&mut self, expr: ExprId, stmt: StmtId) {
+        ExprValidator { parent: self, write: true, stmt, sink: None }.validate_expr(expr)
     }
 
     fn validate_condition(
@@ -101,121 +97,97 @@ impl BodyValidator<'_> {
         stmt: StmtId,
         f: impl FnOnce(&mut Self),
     ) -> Option<Box<[ExprId]>> {
-        if self.ctx == BodyCtx::AnalogBlock || self.ctx == BodyCtx::Conditional {
+        if self.ctxt == BodyContext::AnalogBlock || self.ctxt == BodyContext::Conditional {
             let mut non_const_access = Vec::new();
-            ExprValidator {
-                parent: self,
-                cond_diagnostic_sink: Some(&mut non_const_access),
-                write: false,
-                stmt,
-            }
-            .validate_expr(cond);
-
+            ExprValidator { parent: self, write: false, stmt, sink: Some(&mut non_const_access) }
+                .validate_expr(cond);
             if !non_const_access.is_empty() {
                 let non_const_dominator = mem::replace(
                     &mut self.non_const_dominator,
                     non_const_access.into_boxed_slice(),
                 );
-                let ctx = mem::replace(&mut self.ctx, BodyCtx::Conditional);
+                let ctxt = mem::replace(&mut self.ctxt, BodyContext::Conditional);
                 f(self);
-                self.ctx = ctx;
+                self.ctxt = ctxt;
+
                 return Some(mem::replace(&mut self.non_const_dominator, non_const_dominator));
             }
         } else {
             self.validate_expr(cond, stmt);
         }
-
         f(self);
+
         None
-    }
-
-    fn validate_expr(&mut self, expr: ExprId, stmt: StmtId) {
-        ExprValidator { parent: self, cond_diagnostic_sink: None, write: false, stmt }
-            .validate_expr(expr)
-    }
-
-    fn validate_assignment_dst(&mut self, expr: ExprId, stmt: StmtId) {
-        ExprValidator { parent: self, cond_diagnostic_sink: None, write: true, stmt }
-            .validate_expr(expr)
     }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum BodyCtx {
+pub enum BodyContext {
     AnalogBlock,
     AnalogInitialBlock,
     Conditional,
     EventControl,
     Function,
-    ConstOrAnalysis,
     Const,
+    ConstOrAnalysis,
 }
 
-impl BodyCtx {
+impl BodyContext {
     fn allow_nature_access(self) -> bool {
         matches!(self, Self::AnalogBlock | Self::Conditional | Self::EventControl)
     }
-
     fn allow_contribute(self) -> bool {
         matches!(self, Self::AnalogBlock | Self::Conditional)
     }
-
     fn allow_analog_operator(self) -> bool {
         matches!(self, Self::AnalogBlock)
     }
-
-    // FIXME: likely wrong
+    // FIXME(JW) likely wrong
     fn allow_analysis_fun(self) -> bool {
         !matches!(self, Self::Const)
     }
-
     fn allow_var_ref(self) -> bool {
         !matches!(self, Self::Const | Self::ConstOrAnalysis)
     }
 }
 
 impl_display! {
-    match BodyCtx{
-       BodyCtx::AnalogBlock => "analog block";
-       BodyCtx::AnalogInitialBlock => "analog initial block";
-       BodyCtx::Conditional => "conditions";
-       BodyCtx::EventControl => "events";
-       BodyCtx::Function => "analog functions";
-       BodyCtx::ConstOrAnalysis => "constant or analysis";
-       BodyCtx::Const => "constants";
+    match BodyContext{
+       BodyContext::AnalogBlock => "analog block";
+       BodyContext::AnalogInitialBlock => "analog initial block";
+       BodyContext::Conditional => "conditions";
+       BodyContext::EventControl => "events";
+       BodyContext::Function => "analog functions";
+       BodyContext::Const => "constants";
+       BodyContext::ConstOrAnalysis => "constant or analysis";
     }
 }
 
 struct ExprValidator<'a, 'b> {
     parent: &'a mut BodyValidator<'b>,
-    cond_diagnostic_sink: Option<&'a mut Vec<ExprId>>,
     write: bool,
     stmt: StmtId,
+    sink: Option<&'a mut Vec<ExprId>>,
 }
 
 impl ExprValidator<'_, '_> {
-    fn report_illegal_access(&mut self, kind: IllegalCtxAccessKind, expr: ExprId) {
-        let err = BodyDiagnostic::IllegalCtxAccess { kind, ctx: self.parent.ctx, expr };
+    fn report_illegal_access(&mut self, kind: IllegalCtxtAccessKind, expr: ExprId) {
+        let err = BodyDiagnostic::IllegalCtxtAccess { kind, ctxt: self.parent.ctxt, expr };
         self.report(err);
     }
 
     fn check_access(
         &mut self,
-        kind: impl FnOnce(&Self) -> IllegalCtxAccessKind,
+        kind: impl FnOnce(&Self) -> IllegalCtxtAccessKind,
         expr: ExprId,
         allowed: bool,
     ) {
-        if let Some(sink) = &mut self.cond_diagnostic_sink {
+        if let Some(sink) = &mut self.sink {
             sink.push(expr)
         }
-
         if !allowed {
             self.report_illegal_access(kind(self), expr)
         }
-    }
-
-    fn report(&mut self, diagnostic: BodyDiagnostic) {
-        self.parent.diagnostics.push(diagnostic)
     }
 
     fn report_illegal_nature_access(
@@ -303,7 +275,6 @@ impl ExprValidator<'_, '_> {
                     )
                 }
             }
-
             Some(NATURE_ACCESS_NODE_GND) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_node();
                 if let Some(discipline) = self.parent.db.node_discipline(node) {
@@ -316,7 +287,6 @@ impl ExprValidator<'_, '_> {
                     )
                 }
             }
-
             Some(NATURE_ACCESS_NODES) => {
                 let node1 = self.parent.infer.expr_types[args[0]].unwrap_node();
                 let node2 = self.parent.infer.expr_types[args[0]].unwrap_node();
@@ -342,7 +312,6 @@ impl ExprValidator<'_, '_> {
                     }
                 }
             }
-
             Some(NATURE_ACCESS_PORT_FLOW) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_port_flow();
                 if let Some(discipline) = self.parent.db.node_discipline(node) {
@@ -376,13 +345,12 @@ impl ExprValidator<'_, '_> {
                     _ => (),
                 }
             }
-
             Expr::Select { cond, then_val, else_val } => {
                 if let Some(non_const_dominators) =
                     self.parent.validate_condition(cond, self.stmt, |s| {
                         let mut validator = ExprValidator {
                             parent: s,
-                            cond_diagnostic_sink: self.cond_diagnostic_sink.as_deref_mut(),
+                            sink: self.sink.as_deref_mut(),
                             write: false,
                             stmt: self.stmt,
                         };
@@ -390,12 +358,11 @@ impl ExprValidator<'_, '_> {
                         validator.validate_expr(else_val);
                     })
                 {
-                    if let Some(sink) = &mut self.cond_diagnostic_sink {
+                    if let Some(sink) = &mut self.sink {
                         sink.extend(non_const_dominators.to_vec())
                     }
                 }
             }
-
             Expr::Path { port: false, .. } => {
                 match self.parent.infer.expr_types[expr] {
                     Ty::FunctionVar { arg: Some(arg), fun, .. } => {
@@ -407,12 +374,11 @@ impl ExprValidator<'_, '_> {
                             })
                         }
                     }
-
                     Ty::Var(_, var) => {
                         self.check_access(
-                            |__| IllegalCtxAccessKind::Var(var),
+                            |__| IllegalCtxtAccessKind::Var(var),
                             expr,
-                            self.parent.ctx.allow_var_ref(),
+                            self.parent.ctxt.allow_var_ref(),
                         );
                     }
                     Ty::Param(_, param) => {
@@ -448,10 +414,11 @@ impl ExprValidator<'_, '_> {
                 .parent
                 .diagnostics
                 .push(BodyDiagnostic::UnsupportedFunction { expr, func: call }),
+
             BuiltIn::potential | BuiltIn::flow => self.check_access(
-                |_| IllegalCtxAccessKind::NatureAccess,
+                |_| IllegalCtxtAccessKind::NatureAccess,
                 expr,
-                self.parent.ctx.allow_nature_access(),
+                self.parent.ctxt.allow_nature_access(),
             ),
 
             _ if call.is_analog_operator() && call != BuiltIn::ddx
@@ -464,23 +431,24 @@ impl ExprValidator<'_, '_> {
                 // };
 
                 self.check_access(
-                    |sel| IllegalCtxAccessKind::AnalogOperator {
+                    |sel| IllegalCtxtAccessKind::AnalogOperator {
                         name: name.as_ref().and_then(|p| p.as_ident()).unwrap(),
                         is_standard: call.is_analog_operator(),
                         non_const_dominator: sel.parent.non_const_dominator.clone(),
                     },
                     expr,
-                    self.parent.ctx.allow_analog_operator(),
+                    self.parent.ctxt.allow_analog_operator(),
                 )
             }
 
-            _ if call.is_analysis_var() && !self.parent.ctx.allow_analysis_fun() => self
+            _ if call.is_analysis_fun() && !self.parent.ctxt.allow_analysis_fun() => self
                 .report_illegal_access(
-                    IllegalCtxAccessKind::AnalysisFun {
+                    IllegalCtxtAccessKind::AnalysisFun {
                         name: name.as_ref().and_then(|p| p.as_ident()).unwrap(),
                     },
                     expr,
                 ),
+
             _ => (),
         }
 
@@ -579,8 +547,9 @@ impl ExprValidator<'_, '_> {
                 BuiltIn::noise_table | BuiltIn::noise_table_log,
                 Some(NOISE_TABLE_INLINE | NOISE_TABLE_INLINE_NAME),
             ) => self.validate_const_expr(args[0]),
+
             (func @ (BuiltIn::simparam | BuiltIn::simparam_str), _) => {
-                if self.parent.ctx == BodyCtx::Const {
+                if self.parent.ctxt == BodyContext::Const {
                     let known = if let Expr::Literal(Literal::String(name)) =
                         &self.parent.body.exprs[args[0]]
                     {
@@ -646,20 +615,24 @@ impl ExprValidator<'_, '_> {
     }
 
     fn validate_const_expr(&mut self, expr: ExprId) {
-        let old = mem::replace(&mut self.parent.ctx, BodyCtx::Const);
-        let sink = self.cond_diagnostic_sink.take();
+        let old = mem::replace(&mut self.parent.ctxt, BodyContext::Const);
+        let sink = self.sink.take();
         self.validate_expr(expr);
-        self.cond_diagnostic_sink = sink;
-        self.parent.ctx = old;
+        self.sink = sink;
+        self.parent.ctxt = old;
+    }
+
+    fn report(&mut self, diagnostic: BodyDiagnostic) {
+        self.parent.diagnostics.push(diagnostic)
     }
 }
 
 struct TypeValidator<'a> {
     db: &'a dyn HirTyDB,
-    dst: &'a mut Vec<TypeDiagnostic>,
-    def_map: &'a DefMap,
     tree: &'a ItemTree,
+    def_map: &'a DefMap,
     root_file: FileId,
+    diagnostics: &'a mut Vec<TypeDiagnostic>,
 }
 
 impl TypeValidator<'_> {
@@ -675,6 +648,50 @@ impl TypeValidator<'_> {
         }
     }
 
+    fn verify_nature(&mut self, nature: NatureId) {
+        // let info = self.db.nature_info(nature);
+        let data = self.db.nature_data(nature);
+        self.verify_unique_attr(&data.attrs, nature, TypeDiagnostic::DuplicateNatureAttr);
+    }
+
+    // TODO check natures/discipline (~dspom/OpenVAF#1)
+    fn verify_discipline(&mut self, discipline: DisciplineId) {
+        // let info = self.db.discipline_info(discipline);
+        let data = self.db.discipline_data(discipline);
+        self.verify_unique_attr(&data.attrs, discipline, TypeDiagnostic::DuplicateDisciplineAttr);
+    }
+
+    fn verify_unique_attr<Attr: From<usize> + PartialEq, Def: Copy>(
+        &mut self,
+        attrs: &TiSlice<Attr, impl PartialEq>,
+        def: Def,
+        wrap_err: impl Fn(DuplicateItem<Attr, Def>) -> TypeDiagnostic,
+    ) {
+        // This is quadratic (actually its n(n+1)/2). But disciplines and nature usually only have very few (below 5)
+        // attributes so this is probably faster than allocating a HashMap. If this ever becomes a
+        // problem just use a HashMap instead
+        for (id, attr) in attrs.iter_enumerated() {
+            let mut duplicates =
+                attrs.iter_enumerated().filter_map(
+                    |it| {
+                        if it.1 == attr {
+                            Some(it.0)
+                        } else {
+                            None
+                        }
+                    },
+                );
+            if duplicates.next().unwrap() != id {
+                continue;
+            }
+            let duplicates: Vec<_> = duplicates.collect();
+            if !duplicates.is_empty() {
+                let err = DuplicateItem { src: def, first: id, subsequent: duplicates };
+                self.report(wrap_err(err))
+            }
+        }
+    }
+
     fn verify_module(&mut self, module: ModuleId) {
         let loc = module.lookup(self.db.upcast());
         let scope = loc.scope.local_id;
@@ -686,120 +703,6 @@ impl TypeValidator<'_> {
                 _ => (),
             }
         }
-    }
-
-    fn resolve_node(
-        &mut self,
-        node: &Path,
-        scope: Scope,
-        branch: &ItemLoc<Branch>,
-    ) -> Option<NodeId> {
-        let node = scope.resolve_item_path::<NodeId>(self.db.upcast(), node);
-        match node {
-            Ok(node) => Some(node),
-            Err(err) => {
-                let src = SyntaxNodePtr::new(
-                    branch
-                        .source(self.db.upcast())
-                        .arg_list()
-                        .unwrap()
-                        .args()
-                        .next()
-                        .unwrap()
-                        .syntax(),
-                );
-                self.report(TypeDiagnostic::PathError { err, src });
-                None
-            }
-        }
-    }
-
-    fn verify_alias(&mut self, alias: AliasParamId) {
-        if self.db.resolve_alias(alias).is_none() {
-            let loc = alias.lookup(self.db.upcast());
-            let data = self.db.aliasparam_data(alias);
-            if let Some(path) = data.src.as_ref() {
-                match loc.scope.resolve_path(self.db.upcast(), path) {
-                    // TODO: better errors for cycels
-                    Ok(found) => {
-                        let src = SyntaxNodePtr::new(
-                            loc.source(self.db.upcast()).src().unwrap().syntax(),
-                        );
-                        self.report(TypeDiagnostic::PathError {
-                            err: PathResolveError::ExpectedItemKind {
-                                name: path.segments.last().unwrap().clone(),
-                                expected: "parameter",
-                                found,
-                            },
-                            src,
-                        })
-                    }
-                    Err(err) => {
-                        let src = SyntaxNodePtr::new(
-                            loc.source(self.db.upcast()).src().unwrap().syntax(),
-                        );
-                        self.report(TypeDiagnostic::PathError { err, src })
-                    }
-                }
-            }
-        }
-    }
-
-    fn report(&mut self, diag: impl Into<TypeDiagnostic>) {
-        self.dst.push(diag.into())
-    }
-
-    fn verify_branch(&mut self, branch_: BranchId) {
-        let branch_data = self.db.branch_data(branch_);
-        let kind = &branch_data.kind;
-        let branch = branch_.lookup(self.db.upcast());
-        let scope = branch.scope;
-        match kind {
-            hir_def::BranchKind::PortFlow(port) => {
-                if let Some(node) = self.resolve_node(port, scope, &branch) {
-                    let node_ = self.db.node_data(node);
-                    if !node_.is_input && !node_.is_output {
-                        let src = branch.ast_id(self.db.upcast()).into();
-                        self.report(TypeDiagnostic::ExpectedPort { node, src });
-                    }
-                }
-            }
-            hir_def::BranchKind::NodeGnd(node) => {
-                self.resolve_node(node, scope, &branch);
-            }
-            hir_def::BranchKind::Nodes(node1, node2) => {
-                let node1 = self.resolve_node(node1, scope, &branch);
-                let node2 = self.resolve_node(node2, scope, &branch);
-                let (node1, node2) = if let (Some(node1), Some(node2)) = (node1, node2) {
-                    (node1, node2)
-                } else {
-                    return;
-                };
-
-                let discipline1 = self.db.node_discipline(node1);
-                let discipline2 = self.db.node_discipline(node2);
-                // fast path
-                if discipline1 == discipline2 {
-                    return;
-                }
-
-                let (discipline1, discipline2) =
-                    if let (Some(d1), Some(d2)) = (discipline1, discipline2) {
-                        (d1, d2)
-                    } else {
-                        return;
-                    };
-
-                if !self.db.discipline_info(discipline1).compatible(discipline2, self.db) {
-                    self.report(TypeDiagnostic::IncompatibleBranch {
-                        branch: branch_,
-                        node1,
-                        node2,
-                    })
-                }
-            }
-            hir_def::BranchKind::Missing => (),
-        };
     }
 
     fn verify_node(&mut self, node: NodeId, module: ModuleLoc) {
@@ -848,7 +751,7 @@ impl TypeValidator<'_> {
             for (decl, discipline) in iter::once((decl, discipline)).chain(disciplines.clone()) {
                 if let Err(err) = self
                     .def_map
-                    .resolve_item_in::<DisciplineId>(self.def_map.root_scope(), discipline)
+                    .resolve_item_name::<DisciplineId>(self.def_map.root_scope(), discipline)
                 {
                     self.report(TypeDiagnostic::PathError {
                         err,
@@ -890,55 +793,106 @@ impl TypeValidator<'_> {
         }
     }
 
-    // TODO check natures/discipline (~dspom/OpenVAF#1)
-    fn verify_discipline(&mut self, discipline: DisciplineId) {
-        // let info = self.db.discipline_info(discipline);
-        let data = self.db.discipline_data(discipline);
-        self.verify_unique_attributes(
-            &data.attrs,
-            discipline,
-            TypeDiagnostic::DuplicateDisciplineAttr,
-        );
-    }
-
-    fn verify_nature(&mut self, nature: NatureId) {
-        // let info = self.db.nature_info(nature);
-        let data = self.db.nature_data(nature);
-
-        self.verify_unique_attributes(&data.attrs, nature, TypeDiagnostic::DuplicateNatureAttr);
-    }
-
-    fn verify_unique_attributes<Attr: From<usize> + PartialEq, Def: Copy>(
-        &mut self,
-        attrs: &TiSlice<Attr, impl PartialEq>,
-        def: Def,
-        wrap_err: impl Fn(DuplicateItem<Attr, Def>) -> TypeDiagnostic,
-    ) {
-        // This is quadratic (actually its n(n+1)/2). But disciplines and nature usually only have very few (below 5)
-        // attributes so this is probably faster than allocating a HashMap. If this ever becomes a
-        // problem just use a HashMap instead
-        for (id, attr) in attrs.iter_enumerated() {
-            let mut duplicates =
-                attrs.iter_enumerated().filter_map(
-                    |it| {
-                        if it.1 == attr {
-                            Some(it.0)
-                        } else {
-                            None
-                        }
-                    },
-                );
-
-            if duplicates.next().unwrap() != id {
-                continue;
+    fn verify_branch(&mut self, branch_: BranchId) {
+        let branch_data = self.db.branch_data(branch_);
+        let kind = &branch_data.kind;
+        let branch = branch_.lookup(self.db.upcast());
+        let scope = branch.scope;
+        match kind {
+            hir_def::BranchKind::Missing => (),
+            hir_def::BranchKind::PortFlow(port) => {
+                if let Some(node) = self.resolve_node(port, scope, &branch) {
+                    let node_ = self.db.node_data(node);
+                    if !node_.is_input && !node_.is_output {
+                        let src = branch.ast_id(self.db.upcast()).into();
+                        self.report(TypeDiagnostic::ExpectedPort { node, src });
+                    }
+                }
             }
+            hir_def::BranchKind::NodeGnd(node) => {
+                self.resolve_node(node, scope, &branch);
+            }
+            hir_def::BranchKind::Nodes(node1, node2) => {
+                let node1 = self.resolve_node(node1, scope, &branch);
+                let node2 = self.resolve_node(node2, scope, &branch);
+                let (Some(node1), Some(node2)) = (node1, node2) else { return };
 
-            let duplicates: Vec<_> = duplicates.collect();
+                let discipline1 = self.db.node_discipline(node1);
+                let discipline2 = self.db.node_discipline(node2);
+                // fast path
+                if discipline1 == discipline2 {
+                    return;
+                }
+                let (Some(d1), Some(d2)) = (discipline1, discipline2) else { return };
+                if !self.db.discipline_info(d1).compatible(d2, self.db) {
+                    self.report(TypeDiagnostic::IncompatibleBranch {
+                        branch: branch_,
+                        node1,
+                        node2,
+                    })
+                }
+            }
+        };
+    }
 
-            if !duplicates.is_empty() {
-                let err = DuplicateItem { src: def, first: id, subsequent: duplicates };
-                self.report(wrap_err(err))
+    fn resolve_node(
+        &mut self,
+        node: &Path,
+        scope: Scope,
+        branch: &ItemLoc<Branch>,
+    ) -> Option<NodeId> {
+        let node = scope.resolve_item_path::<NodeId>(self.db.upcast(), node);
+        match node {
+            Ok(node) => Some(node),
+            Err(err) => {
+                let src = SyntaxNodePtr::new(
+                    branch
+                        .source(self.db.upcast())
+                        .arg_list()
+                        .unwrap()
+                        .args()
+                        .next()
+                        .unwrap()
+                        .syntax(),
+                );
+                self.report(TypeDiagnostic::PathError { err, src });
+                None
             }
         }
+    }
+
+    fn verify_alias(&mut self, alias: AliasParamId) {
+        if self.db.resolve_alias(alias).is_none() {
+            let loc = alias.lookup(self.db.upcast());
+            let data = self.db.aliasparam_data(alias);
+            if let Some(path) = data.src.as_ref() {
+                match loc.scope.resolve_path(self.db.upcast(), path) {
+                    // TODO: better errors for cycles
+                    Ok(found) => {
+                        let src = SyntaxNodePtr::new(
+                            loc.source(self.db.upcast()).src().unwrap().syntax(),
+                        );
+                        self.report(TypeDiagnostic::PathError {
+                            err: PathResolveError::ExpectedItemKind {
+                                name: path.segments.last().unwrap().clone(),
+                                expected: "parameter",
+                                found,
+                            },
+                            src,
+                        })
+                    }
+                    Err(err) => {
+                        let src = SyntaxNodePtr::new(
+                            loc.source(self.db.upcast()).src().unwrap().syntax(),
+                        );
+                        self.report(TypeDiagnostic::PathError { err, src })
+                    }
+                }
+            }
+        }
+    }
+
+    fn report(&mut self, diag: impl Into<TypeDiagnostic>) {
+        self.diagnostics.push(diag.into())
     }
 }

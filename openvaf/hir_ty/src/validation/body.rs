@@ -7,51 +7,69 @@ use hir_def::{
 };
 use syntax::name::Name;
 
-use super::{BodyCtx, BodyValidator};
+use super::{BodyContext, BodyValidator};
 use crate::db::HirTyDB;
 use crate::inference::BranchWrite;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum BodyDiagnostic {
+    /* Port*/
     ExpectedPort {
         expr: ExprId,
         node: NodeId,
+    },
+
+    /* Branch access */
+    PotentialOfPortFlow {
+        expr: ExprId,
+        branch: Option<BranchId>,
     },
     TrivialBranchAccess {
         branch: BranchWrite,
         expr: ExprId,
         stmt: StmtId,
     },
-    PotentialOfPortFlow {
-        expr: ExprId,
-        branch: Option<BranchId>,
+    IncompatibleImplicitBranch {
+        access_expr: ExprId,
+        node1: NodeId,
+        node2: NodeId,
     },
+
+    /* Scope rule violation */
     IllegalContribute {
         stmt: StmtId,
-        ctx: BodyCtx,
-    },
-    WriteToInputArg {
-        expr: ExprId,
-        arg: FunctionArgLoc,
+        ctxt: BodyContext,
     },
     IllegalParamAccess {
         def: ParamId,
         expr: ExprId,
         param: ParamId,
     },
-    IllegalCtxAccess {
-        kind: IllegalCtxAccessKind,
-        ctx: BodyCtx,
+    IllegalCtxtAccess {
+        kind: IllegalCtxtAccessKind,
+        ctxt: BodyContext,
         expr: ExprId,
+    },
+
+    /* Function */
+    WriteToInputArg {
+        expr: ExprId,
+        arg: FunctionArgLoc,
+    },
+    UnsupportedFunction {
+        expr: ExprId,
+        func: BuiltIn,
     },
     ConstSimparam {
         known: bool,
         expr: ExprId,
         stmt: StmtId,
     },
-    UnsupportedFunction {
-        expr: ExprId,
-        func: BuiltIn,
+
+    /* Nature access */
+    IllegalNatureAccess {
+        is_pot: bool,
+        access_expr: ExprId,
     },
     IncompatibleNatureAccess {
         candidates: [Option<(Name, Name)>; 2],
@@ -59,68 +77,44 @@ pub enum BodyDiagnostic {
         access_expr: ExprId,
         branch: String,
     },
-    IllegalNatureAccess {
-        is_pot: bool,
-        access_expr: ExprId,
-    },
-    IncompatibleImplicitBranch {
-        access_expr: ExprId,
-        node1: NodeId,
-        node2: NodeId,
-    },
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum IllegalCtxAccessKind {
+pub enum IllegalCtxtAccessKind {
     NatureAccess,
     AnalogOperator { name: Name, is_standard: bool, non_const_dominator: Box<[ExprId]> },
     AnalysisFun { name: Name },
     Var(VarId),
 }
 
-/*
-use BodyDiagnostic::*;
-impl_display! {
-    match BodyDiagnostic {
-        ExpectedPort{..} => "";
-        _ => "";
-    }
-}
-*/
-
 impl BodyDiagnostic {
     pub fn validate_and_collect(db: &dyn HirTyDB, def: DefWithBodyId) -> Vec<BodyDiagnostic> {
         let body = &db.body(def);
         let infer = &db.inference_result(def);
-        let ctx = match def {
-            DefWithBodyId::ModuleId { initial: false, .. } => BodyCtx::AnalogBlock,
-            DefWithBodyId::ModuleId { initial: true, .. } => BodyCtx::AnalogInitialBlock,
-            DefWithBodyId::FunctionId(_) => BodyCtx::Function,
-            _ => BodyCtx::Const,
+        let ctxt = match def {
+            DefWithBodyId::ModuleId { initial: false, .. } => BodyContext::AnalogBlock,
+            DefWithBodyId::ModuleId { initial: true, .. } => BodyContext::AnalogInitialBlock,
+            DefWithBodyId::FunctionId(_) => BodyContext::Function,
+            _ => BodyContext::Const,
         };
         let mut validator = BodyValidator {
             db,
             owner: def,
             body,
             infer,
-            ctx,
-            diagnostics: Vec::new(),
+            ctxt,
             non_const_dominator: Box::default(),
             non_trivial_branches: HashSet::default(),
             trivial_probes: HashMap::default(),
+            diagnostics: Vec::new(),
         };
-
         for stmt in &body.entry_stmts {
             validator.validate_stmt(*stmt)
         }
-
         for (branch, exprs) in validator.trivial_probes {
             for (stmt, expr) in exprs {
-                validator.diagnostics.push(BodyDiagnostic::TrivialBranchAccess {
-                    branch,
-                    expr,
-                    stmt,
-                })
+                let diag = BodyDiagnostic::TrivialBranchAccess { branch, expr, stmt };
+                validator.diagnostics.push(diag);
             }
         }
 

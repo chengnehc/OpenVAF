@@ -2,11 +2,19 @@ use std::borrow::Cow;
 
 use hir_def::{BuiltIn, Type};
 
-use crate::types::{BuiltinInfo, Signature, SignatureData, TyRequirement};
+use crate::types::{Signature, SignatureData, TyRequirement};
 
 #[rustfmt::skip]
 mod generated;
 use generated::builtin_info;
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub(crate) struct BuiltinInfo {
+    pub signatures: &'static [SignatureData],
+    pub min_args: usize,
+    pub max_args: Option<usize>,
+    pub has_side_effects: bool,
+}
 
 impl From<BuiltIn> for BuiltinInfo {
     fn from(builtin: BuiltIn) -> Self {
@@ -18,6 +26,8 @@ impl BuiltinInfo {
     const fn new(signatures: &'static [SignatureData], has_side_effects: bool) -> BuiltinInfo {
         let mut min_args = None;
         let mut max_args = None;
+        // for loop relies on iterator, which is not yet supported in const fn,
+        // therefore the while loop is used.
         let mut i = 0;
         while i < signatures.len() {
             let arg_cnt = match &signatures[i].args {
@@ -40,6 +50,7 @@ impl BuiltinInfo {
             Some(val) => val,
             None => 0,
         };
+
         BuiltinInfo { signatures, min_args, max_args, has_side_effects }
     }
 
@@ -55,6 +66,7 @@ impl BuiltinInfo {
         BuiltinInfo { signatures: &[], min_args, max_args, has_side_effects: false }
     }
 
+    /// A function with unlimited number of arguments
     const fn varargs(signatures: &'static [SignatureData], has_side_effects: bool) -> BuiltinInfo {
         let mut min_args = None;
         let mut i = 0;
@@ -71,21 +83,20 @@ impl BuiltinInfo {
 
             i += 1;
         }
-
         let min_args = match min_args {
             Some(min_args) => min_args,
             None => 0,
         };
-        BuiltinInfo { signatures, has_side_effects, max_args: None, min_args }
+
+        BuiltinInfo { signatures, min_args, max_args: None, has_side_effects }
     }
 }
 
 use TyRequirement::*;
 use Type::*;
 
-/// generate func `Signature`s and `BuiltinInfo`
-macro_rules! bultin_info {
-    {
+macro_rules! builtin_info {
+    { // `BuiltinInfo`
         $name: ident = $($const: ident)? {
             $(fn $signature: ident($($args: expr),*) -> $ty: ident;)*
         }
@@ -96,14 +107,13 @@ macro_rules! bultin_info {
                 args: Cow::Borrowed(&[$($args),*]),
                 return_ty: Type::$ty,
             }),*],
-            bultin_info!(@is_pure $($const)?)
+            builtin_info!(@is_pure $($const)?)
         );
-        bultin_info!(@SIGNATURES [$(stringify!($signature)),*].len(); $($signature),*);
-        bultin_info!($($rem)*);
+        builtin_info!(@SIGNATURES [$(stringify!($signature)),*].len(); $($signature),*);
+        builtin_info!($($rem)*);
     };
 
-    // func with possible side effects
-    {
+    { // impure func with possible side effects
         fn $name: ident ($($args: expr),*) -> $ty: ident;
         $($rem: tt)*
     } => {
@@ -113,11 +123,10 @@ macro_rules! bultin_info {
                 return_ty: Type::$ty,
             }],
         );
-        bultin_info!($($rem)*);
+        builtin_info!($($rem)*);
     };
 
-    // const func without side effects
-    {
+    { // pure func without side effects
         const fn $name: ident ($($args: expr),*) -> $ty: ident;
         $($rem: tt)*
     } => {
@@ -127,19 +136,16 @@ macro_rules! bultin_info {
                 return_ty: Type::$ty,
             }],
         );
-        bultin_info!($($rem)*);
+        builtin_info!($($rem)*);
     };
 
-    { @is_pure const} => {
-        true
-    };
-    { @is_pure} => {
-        false
-    };
+    // FIXME(JW) likely wrong here, but `has_side_effects` is not used
+    { @is_pure const } => { true };
+    { @is_pure } => { false };
 
-    { @SIGNATURES $cnt:expr; $name: ident $(,$rem:ident)+} => {
+    { @SIGNATURES $cnt:expr; $name: ident $(,$rem:ident)+ } => {
         pub const $name: Signature = Signature(($cnt - [$(stringify!($rem)),*].len() - 1) as u32);
-        bultin_info!(@SIGNATURES $cnt; $($rem),*);
+        builtin_info!(@SIGNATURES $cnt; $($rem),*);
     };
     { @SIGNATURES $cnt:expr; $name: ident } => {
         pub const $name: Signature = Signature($cnt as u32 - 1);
@@ -151,7 +157,7 @@ macro_rules! bultin_info {
 // WARNING: THE ORDER OF THE SIGNATURES IS IMPORTANT AND RELIED UPON TO BE STABLE
 // ALWAYS ADD NEW SIGNATURES AT THE END!
 
-bultin_info! {
+builtin_info! {
     FLOW = const {
         fn NATURE_ACCESS_BRANCH(Branch) -> Real;
         fn NATURE_ACCESS_NODES(Node,Node) -> Real;
@@ -169,8 +175,7 @@ bultin_info! {
         fn ABS_REAL(Val(Real)) -> Real;
     }
 
-    // JW: according to LRM, `$analysis` should be able to a list of strings
-    // and return Bool type
+    // TODO(JW): `$analysis` should be able to a list of strings and return Bool type
     ANALYSIS = const {
         fn ANALYSIS_SIG(Val(String)) -> Integer;
     }
@@ -192,12 +197,12 @@ bultin_info! {
         fn VT_ARG(Val(Real)) -> Real;
     }
 
-    FLICKER_NOISE = const{
+    FLICKER_NOISE = const {
         fn FLICKER_NOISE_NO_NAME(Val(Real),Val(Real)) -> Real;
         fn FLICKER_NOISE_NAME(Val(Real),Val(Real),Literal(String)) -> Real;
     }
 
-    WHITE_NOISE = const{
+    WHITE_NOISE = const {
         fn WHITE_NOISE_NO_NAME(Val(Real)) -> Real;
         fn WHITE_NOISE_NAME(Val(Real),Literal(String)) -> Real;
     }
@@ -265,7 +270,7 @@ bultin_info! {
         fn TRANSITION_DELAY_RISET_FALLT_TOL(Val(Integer),Val(Real),Val(Real), Val(Real)) -> Real;
     }
 
-    LAST_CROSSING = const{
+    LAST_CROSSING = const {
         fn LAST_CROSSING_NO_DIRECTION(Val(Real)) -> Real;
         fn LAST_CROSSING_DIRECTION(Val(Real),Val(Integer)) -> Real;
     }
@@ -408,7 +413,7 @@ const FATAL: BuiltinInfo = BuiltinInfo::varargs(
 );
 
 macro_rules! copy_builtin_info {
-    {$($name: ident = $val: ident)*}=> {
+    {$($name: ident = $val: ident)*} => {
         $(const $name: BuiltinInfo = $val;)*
     };
 }

@@ -181,11 +181,11 @@ impl ModuleInfo {
                     );
                 }
 
-                ScopeDef::AliasParameter(alias) => match alias.resolve(db).unwrap() {
+                ScopeDef::AliasParam(alias) => match alias.resolve(db).unwrap() {
                     ResolvedAliasParam::Parameter(param) => {
                         params.entry(param).or_default().alias.push(declarations.to_path(name))
                     }
-                    ResolvedAliasParam::SystemParameter(sys_fun) => {
+                    ResolvedAliasParam::Sysfun(sys_fun) => {
                         sys_fun_alias.entry(sys_fun).or_default().push(declarations.to_path(name))
                     }
                 },
@@ -205,7 +205,7 @@ pub struct ParamInfo {
     pub unit: String,
     pub description: String,
     pub group: String,
-    // TODO: add standard attribute 'multiplicity'. See also: LRM 2.9.2
+    // TODO(JW) add standard attribute 'multiplicity'. [LRM 2.9.2]
     // pub multiplicity
     pub is_instance: bool,
 }

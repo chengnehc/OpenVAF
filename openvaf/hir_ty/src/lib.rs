@@ -1,6 +1,3 @@
-//! Type inference, i.e. the process of walking through the code and determining
-//! the type of each expression and pattern.
-//!
 //! See Also:
 //!
 //! https://docs.rs/ra_ap_hir_ty/latest/ra_ap_hir_ty/

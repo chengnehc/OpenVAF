@@ -18,10 +18,8 @@ use crate::inference::InferDiagnostic;
 
 pub struct InferDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
-    pub diag: &'a InferDiagnostic,
     pub body_sm: &'a BodySourceMap,
-    // pub parse: &'a Parse<SourceFile>,
-    // pub sm: &'a SourceMap,
+    pub diag: &'a InferDiagnostic,
 }
 
 impl Diagnostic for InferDiagnosticWrapped<'_> {
@@ -38,42 +36,6 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
         let parse = db.parse(root_file);
 
         match *self.diag {
-            InferDiagnostic::InvalidAssignDst { e, maybe_different_operand, assignment_kind } => {
-                let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
-                    &sm,
-                );
-
-                let res = Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: src.file,
-                    range: src.range.into(),
-                    message: "invalid destination".to_owned(),
-                }]);
-
-                let res = match assignment_kind {
-                    AssignOp::Contribute => res
-                        .with_message("invalid destination for branch contribution")
-                        .with_notes(vec![
-                            "help: expected nature access such as V(foo) or I(foo)".to_owned()
-                        ]),
-                    AssignOp::Assign => res
-                        .with_message("invalid destination for assignment")
-                        .with_notes(vec!["help: expected a variable".to_owned()]),
-                };
-
-                match maybe_different_operand {
-                    Some(ast::AssignOp::Contribute) => res.with_notes(vec![
-                        "help: found a branch access\nperhaps you mean to contribute (<+)"
-                            .to_owned(),
-                    ]),
-                    Some(ast::AssignOp::Assign) => res.with_notes(vec![
-                        "help: found a variable\nperhaps you meant to assign (=) a value"
-                            .to_owned(),
-                    ]),
-                    None => res,
-                }
-            }
             InferDiagnostic::PathResolveError { ref err, expr } => {
                 let src = parse.to_file_span(
                     self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
@@ -89,6 +51,43 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     }])
                     .with_message(err.to_string())
             }
+
+            InferDiagnostic::InvalidAssignDst { e, op_kind, maybe_different_op } => {
+                let src = parse.to_file_span(
+                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    &sm,
+                );
+                let res = Report::error().with_labels(vec![Label {
+                    style: LabelStyle::Primary,
+                    file_id: src.file,
+                    range: src.range.into(),
+                    message: "invalid destination".to_owned(),
+                }]);
+
+                let res = match op_kind {
+                    AssignOp::Contribute => res
+                        .with_message("invalid destination for branch contribution")
+                        .with_notes(vec![
+                            "help: expected nature access such as V(foo) or I(foo)".to_owned()
+                        ]),
+                    AssignOp::Assign => res
+                        .with_message("invalid destination for assignment")
+                        .with_notes(vec!["help: expected a variable".to_owned()]),
+                };
+
+                match maybe_different_op {
+                    Some(ast::AssignOp::Contribute) => res.with_notes(vec![
+                        "help: found a branch access\nperhaps you mean to contribute (<+)"
+                            .to_owned(),
+                    ]),
+                    Some(ast::AssignOp::Assign) => res.with_notes(vec![
+                        "help: found a variable\nperhaps you meant to assign (=) a value"
+                            .to_owned(),
+                    ]),
+                    None => res,
+                }
+            }
+
             InferDiagnostic::ArgCntMismatch { expected, found, expr, exact } => {
                 let src = parse.to_file_span(
                     self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
@@ -113,6 +112,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         message,
                     }])
             }
+
             InferDiagnostic::TypeMismatch(ref err) => {
                 let src = parse.to_file_span(
                     self.body_sm.expr_map_back[err.expr].as_ref().unwrap().text_range(),
@@ -128,6 +128,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     }])
                     .with_message(format!("type mismatch: {} but found {}", &err, err.found_ty))
             }
+
             InferDiagnostic::SignatureMismatch(ref err) => {
                 let mut res = if let [ref ty_err] = *err.type_mismatches {
                     let FileSpan { file, range } = parse.to_file_span(
@@ -197,6 +198,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
                 res
             }
+
             InferDiagnostic::ArrayTypeMismatch {
                 ref expected,
                 ref found_ty,
@@ -232,6 +234,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     .with_message(format!("type mismatch: {} but found {}", expected, found_ty))
                     .with_notes(vec!["help: all array elements must have the same type".to_owned()])
             }
+
             InferDiagnostic::InvalidUnknown { e } => {
                 let src = parse.to_file_span(
                     self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
@@ -250,6 +253,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         "help: expected one of the following\nbranch current access: I(branch), I(a,b)\nnode voltage: V(x)\nexplicit voltage: V(x,y)\ntemperature: $temperature".to_owned(),
                     ])
             }
+
             InferDiagnostic::NonStandardUnknown { e, .. } => {
                 let src = parse.to_file_span(
                     self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
@@ -269,6 +273,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         "help: expected one of the following\nbranch current access: I(branch), I(a,b)\nnode voltage: V(x)".to_owned(),
                     ])
             }
+
             InferDiagnostic::ExpectedProbe { e } => {
                 let src = parse.to_file_span(
                     self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
@@ -287,6 +292,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         "help: expected nature access such as V(foo) or I(foo)".to_owned()
                     ])
             }
+
             InferDiagnostic::InvalidLimitFunction {
                 expr,
                 func,
@@ -370,6 +376,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     .with_message(format!("{name} is not a valid function for use with $limit"))
                     .with_notes(notes)
             }
+
             InferDiagnostic::DisplayTypeMismatch { ref err, fmt_lit, lit_range, .. } => {
                 let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
                 let lit_src =
@@ -397,6 +404,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     ])
                     .with_message(format!("type mismatch: {} but found {}", &err, err.found_ty))
             }
+
             InferDiagnostic::MissingFmtArg { fmt_lit, lit_range } => {
                 let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
                 let lit_src =
@@ -411,6 +419,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     }])
                     .with_message("$display system task is missing an argument")
             }
+
             InferDiagnostic::InvalidFmtSpecifierChar {
                 fmt_lit,
                 lit_range,
@@ -439,6 +448,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                             .with_break_after(18)
                     )])
             }
+
             InferDiagnostic::InvalidFmtSpecifierEnd { fmt_lit, lit_range } => {
                 let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
                 let lit_src =

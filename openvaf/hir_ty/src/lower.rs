@@ -11,10 +11,10 @@ use crate::db::HirTyDB;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct NatureTy {
+    pub parent_nature: Option<NatureId>,
+    pub base_nature: NatureId,
     pub ddt_nature: NatureId,
     pub idt_nature: NatureId,
-    pub parent: Option<NatureId>,
-    pub base_nature: NatureId,
     pub units: Option<String>,
 }
 
@@ -37,51 +37,60 @@ impl NatureTy {
         let loc = nature.lookup(db.upcast());
         let def_map = db.root_def_map(loc.root_file);
 
-        let parent =
+        let parent_nature =
             data.parent.as_ref().and_then(|parent| lookup_nature(&def_map, parent, db).ok());
-
-        let parent_info = parent.and_then(|parent| resolve_parent.then(|| db.nature_info(parent)));
-        let base_nature = parent_info.as_ref().map(|parent| parent.base_nature);
+        let parent_nature_info =
+            parent_nature.and_then(|parent| resolve_parent.then(|| db.nature_info(parent)));
+        let base_nature_info = parent_nature_info.as_ref().map(|parent| parent.base_nature);
 
         let ddt_nature = data
             .ddt_nature
             .as_ref()
             .and_then(|ddt_nature| lookup_nature(&def_map, ddt_nature, db).ok())
-            .or_else(|| parent_info.as_ref().map(|parent| parent.ddt_nature))
+            .or_else(|| parent_nature_info.as_ref().map(|parent| parent.ddt_nature))
             .unwrap_or(nature);
 
         let idt_nature = data
             .idt_nature
             .as_ref()
             .and_then(|idt_nature| lookup_nature(&def_map, idt_nature, db).ok())
-            .or_else(|| parent_info.as_ref().map(|parent| parent.idt_nature))
+            .or_else(|| parent_nature_info.as_ref().map(|parent| parent.idt_nature))
             .unwrap_or(nature);
 
-        let units = base_nature
+        let units = base_nature_info
             .and_then(|nature| db.nature_info(nature).units.clone())
             .or_else(|| data.units.clone());
 
         Arc::new(NatureTy {
+            parent_nature,
+            base_nature: base_nature_info.unwrap_or(nature),
             ddt_nature,
             idt_nature,
-            parent,
-            base_nature: base_nature.unwrap_or(nature),
             units,
         })
     }
 
+    /// [LRM 3.11.1]
+    ///
+    /// - Self Rule: A nature is compatible with itself.
+    /// - Non-Existent Binding Rule: A nature is compatible with a non-existent discipline binding.
+    /// - Base Nature Rule: A derived nature is compatible with its base nature.
+    /// - Derived Nature Rule: Two natures are compatible if they are derived from the same base nature.
+    /// - Units Value Rule: Two natures are compatible if they have the same value for the units attribute
     fn compatible(db: &dyn HirTyDB, nature1: NatureId, nature2: NatureId) -> bool {
         let nature1_info = db.nature_info(nature1);
         let nature2_info = db.nature_info(nature2);
         nature1_info.units == nature2_info.units
     }
-    /*
+
+    /* JW: not used.
         fn related(db: &dyn HirTyDB, nature1: NatureId, nature2: NatureId) -> bool {
             let nature1_info = db.nature_info(nature1);
             let nature2_info = db.nature_info(nature2);
             nature1_info.base_nature == nature2_info.base_nature
         }
     */
+
     fn lookup_attr(
         db: &dyn HirTyDB,
         nature: NatureId,
@@ -105,7 +114,7 @@ impl NatureTy {
                 if info.base_nature == nature {
                     return None;
                 }
-                nature = info.parent?;
+                nature = info.parent_nature?;
             }
         }
         lookup_attr_inner(db, nature, name).ok_or_else(|| PathResolveError::NotFoundIn {
@@ -122,13 +131,13 @@ pub fn lookup_nature(
 ) -> Result<NatureId, PathResolveError> {
     let root_scope = def_map.root_scope();
     let (nature, attr) = match nature_ref.kind {
-        NatureRefKind::Nature => return def_map.resolve_item_in(root_scope, &nature_ref.name),
+        NatureRefKind::Nature => return def_map.resolve_item_name(root_scope, &nature_ref.name),
         NatureRefKind::DisciplinePotential => {
-            let discipline = def_map.resolve_item_in(root_scope, &nature_ref.name)?;
+            let discipline = def_map.resolve_item_name(root_scope, &nature_ref.name)?;
             (db.discipline_info(discipline).potential, kw::potential)
         }
         NatureRefKind::DisciplineFlow => {
-            let discipline = def_map.resolve_item_in(root_scope, &nature_ref.name)?;
+            let discipline = def_map.resolve_item_name(root_scope, &nature_ref.name)?;
             (db.discipline_info(discipline).flow, kw::flow)
         }
     };
@@ -175,6 +184,14 @@ impl DisciplineTy {
         }
     }
 
+    /// [LRM 3.11.1]
+    ///
+    /// - Self Rule: A discipline is compatible with itself.
+    /// - Natureless Discipline Rule: A natureless discipline is compatible with all other disciplines of the
+    ///   same domain.
+    /// - Domain Incompatibility Rule: Disciplines with different domain attributes are incompatible.
+    /// - Potential Incompatibility Rule: Disciplines with incompatible potential natures are incompatible.
+    /// - Flow Incompatibility Rule: Disciplines with incompatible flow natures are incompatible.
     pub fn compatible(&self, other: DisciplineId, db: &dyn HirTyDB) -> bool {
         let other = db.discipline_info(other);
         match (self.flow, other.flow) {
@@ -186,7 +203,6 @@ impl DisciplineTy {
             (None, None) => (),
             _ => return false,
         }
-
         match (self.potential, other.potential) {
             (Some(pot1), Some(pot2)) => {
                 if !NatureTy::compatible(db, pot1, pot2) {
@@ -211,23 +227,21 @@ pub enum BranchKind {
 impl BranchKind {
     pub fn discipline(&self, db: &dyn HirTyDB) -> Option<DisciplineId> {
         match *self {
-            // standard dictates that the disciplines of the two nodes need to be compatible
-            // compatible disciplines behave identical during type checking
-            // so we just use the discipline of the first node here
             BranchKind::PortFlow(node) | BranchKind::NodeGnd(node) => db.node_discipline(node),
             BranchKind::Nodes(node1, node2) => {
+                // Standard dictates that the disciplines of the two nodes need to be compatible.
+                // Compatible disciplines behave identical during type checking, so we just use
+                // the discipline of the first node here.
                 let discipline1 = db.node_discipline(node1);
                 let discipline2 = db.node_discipline(node2);
                 // fast path
                 if discipline1 == discipline2 {
                     return discipline1;
                 }
-
                 let (discipline1, discipline2) = match (discipline1, discipline2) {
                     (None, res) | (res, None) => return res,
                     (Some(d1), Some(d2)) => (d1, d2),
                 };
-
                 if db.discipline_info(discipline1).compatible(discipline2, db) {
                     Some(discipline1)
                 } else {
@@ -243,6 +257,7 @@ pub struct BranchTy {
     pub discipline: DisciplineId,
     pub kind: BranchKind,
 }
+
 impl BranchTy {
     pub fn branch_info_query(db: &dyn HirTyDB, branch: BranchId) -> Option<Arc<BranchTy>> {
         let kind = &db.branch_data(branch).kind;
