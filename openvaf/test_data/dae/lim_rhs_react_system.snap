@@ -47,6 +47,6 @@ DaeSystem {
             react: v62,
         },
     },
-    small_signal_parameters: {},
+    small_signal_params: {},
     noise_sources: [],
 }

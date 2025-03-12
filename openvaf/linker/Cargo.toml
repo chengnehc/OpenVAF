@@ -5,7 +5,6 @@ authors = ["DSPOM"]
 edition = "2021"
 license = "GPL-3.0"
 readme = "../README.md"
-rust-version = "1.56"
 
 [lib]
 doctest = false

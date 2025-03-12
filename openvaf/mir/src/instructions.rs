@@ -51,19 +51,13 @@ impl InstructionData {
     }
 
     pub fn unwrap_phi(&self) -> &PhiNode {
-        if let InstructionData::PhiNode(node) = self {
-            node
-        } else {
-            unreachable!()
-        }
+        let InstructionData::PhiNode(node) = self else { unreachable!() };
+        node
     }
 
     pub fn unwrap_phi_mut(&mut self) -> &mut PhiNode {
-        if let InstructionData::PhiNode(node) = self {
-            node
-        } else {
-            unreachable!()
-        }
+        let InstructionData::PhiNode(node) = self else { unreachable!() };
+        node
     }
 
     /// Get references to the value arguments to this instruction.
@@ -76,7 +70,6 @@ impl InstructionData {
             InstructionData::Call { args, .. } | InstructionData::PhiNode(PhiNode { args, .. }) => {
                 args.as_slice(pool)
             }
-
             InstructionData::Jump { .. } => &[],
         }
     }
@@ -95,7 +88,6 @@ impl InstructionData {
             InstructionData::Call { args, .. } | InstructionData::PhiNode(PhiNode { args, .. }) => {
                 args.as_mut_slice(pool)
             }
-
             InstructionData::Jump { .. } => &mut [],
         }
     }

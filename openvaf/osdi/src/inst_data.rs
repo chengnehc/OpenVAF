@@ -227,7 +227,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         });
         let alias_inst_params = module
             .info
-            .sys_fun_alias
+            .param_sysfuns
             .keys()
             .map(|param| (OsdiInstanceParam::Builtin(*param), ty_f64));
         let user_inst_params = module

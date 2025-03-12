@@ -4,8 +4,8 @@
 //! determined by the `Layout` data structure defined in this module.
 
 use std::iter::{IntoIterator, Iterator};
-
 use stdx::packed_option::PackedOption;
+
 use typed_index_collections::TiVec;
 
 use crate::{Block, Inst};

@@ -8,7 +8,7 @@ use lasso::Rodeo;
 use crate::{context, CompilationDB};
 
 fn compile(src: &str) -> (AHashSet<Node>, CompilationDB) {
-    let db = CompilationDB::new_virtual(src).unwrap();
+    let db = CompilationDB::new_from_vfs(src).unwrap();
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut context = context::Context::new(&db, &mut literals, &module);

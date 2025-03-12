@@ -12,7 +12,7 @@ use mir::{
     strip_optbarrier, Block, ControlFlowGraph, DominatorTree, FuncRef, Function, Inst,
     InstructionData, Opcode, Value, FALSE,
 };
-use mir_opt::{aggressive_dead_code_elimination, simplify_cfg, ClassId, GVN};
+use mir_opt::{ClassId, GVN};
 use typed_indexmap::TiMap;
 
 use crate::context::Context;
@@ -37,8 +37,8 @@ pub struct Initialization {
 }
 
 impl Initialization {
-    pub(super) fn new(cx: &mut Context<'_>, gvn: GVN) -> Initialization {
-        let mut builder = Builder::new(cx);
+    pub(super) fn new(cxt: &mut Context<'_>, gvn: GVN) -> Initialization {
+        let mut builder = Builder::new(cxt);
         for _ in 0..builder.func.layout.num_blocks() {
             builder.init.func.layout.make_block();
         }
@@ -49,6 +49,7 @@ impl Initialization {
         let collapse_implicit = builder.build_init_itern();
         builder.build_init_cache(&gvn, &collapse_implicit);
         builder.optimize(collapse_implicit);
+
         builder.init
     }
 }
@@ -57,13 +58,13 @@ struct Builder<'a> {
     init: Initialization,
     init_cache: IndexMap<Value, Inst, RandomState>,
     // inputs
+    db: &'a CompilationDB,
     func: &'a mut Function,
+    intern: &'a mut HirInterner,
     cfg: &'a mut ControlFlowGraph,
     dom_tree: &'a mut DominatorTree,
-    intern: &'a mut HirInterner,
-    op_dependent_insts: &'a BitSet<Inst>,
     output_values: &'a BitSet<Value>,
-    db: &'a CompilationDB,
+    op_dependent_insts: &'a BitSet<Inst>,
     // temporary state
     val_map: AHashMap<Value, Value>,
     control_dep: SparseBitMatrix<Block, Block>,
@@ -74,18 +75,18 @@ impl<'a> Builder<'a> {
         Builder {
             init: Initialization {
                 func: Function::with_name(format!("{}_init", &ctx.func.name)),
-                cached_vals: IndexMap::with_capacity_and_hasher(128, RandomState::new()),
-                cache_slots: TiMap::default(),
                 intern: HirInterner::default(),
+                cache_slots: TiMap::default(),
+                cached_vals: IndexMap::with_capacity_and_hasher(128, RandomState::new()),
             },
             init_cache: IndexMap::with_capacity_and_hasher(256, RandomState::default()),
+            db: ctx.db,
             func: &mut ctx.func,
+            intern: &mut ctx.intern,
             cfg: &mut ctx.cfg,
             dom_tree: &mut ctx.dom_tree,
-            intern: &mut ctx.intern,
-            op_dependent_insts: &ctx.op_dependent_insts,
             output_values: &ctx.output_values,
-            db: ctx.db,
+            op_dependent_insts: &ctx.op_dependent_insts,
             val_map: AHashMap::with_capacity(1024),
             control_dep: SparseBitMatrix::new_square(0),
         }
@@ -93,10 +94,9 @@ impl<'a> Builder<'a> {
 
     fn split_block(&mut self, bb: Block) {
         self.init.func.layout.append_block(bb);
-        let mut bb_cursor = self.func.layout.block_inst_cursor(bb);
-        while let Some(inst) = bb_cursor.next(&self.func.layout) {
-            // don't copy operating point dependent instructions to the new
-            // function
+        let mut insts = self.func.layout.block_inst_cursor(bb);
+        while let Some(inst) = insts.next(&self.func.layout) {
+            // don't copy operating point dependent instructions to the new function
             if self.op_dependent_insts.contains(inst) {
                 match self.func.dfg.insts[inst] {
                     // We need to copy terminators to ensure the control structure remains intact
@@ -120,6 +120,115 @@ impl<'a> Builder<'a> {
                 self.copy_instruction(inst, bb)
             }
         }
+    }
+
+    fn build_init_itern(&mut self) -> AHashSet<Value> {
+        for (&kind, val) in self.intern.params.iter() {
+            if let Some(&val) = self.val_map.get(val) {
+                let (param, _) = self.init.intern.params.insert_full(kind, val);
+                self.init.func.dfg.values.make_param_at(param, val);
+            }
+        }
+        let mut collapse_implicit = AHashSet::new();
+        for (&kind, val) in &mut self.intern.outputs {
+            let PlaceKind::CollapseImplicitEquation(eq) = kind else { continue };
+            let Some(mut val) = val.take() else { continue };
+            val = strip_optbarrier_if_const(&self.func, val);
+
+            let eq_val = *self.intern.params.get(&ParamKind::ImplicitUnknown(eq)).unwrap();
+            if self.func.dfg.value_dead(eq_val) || val == FALSE {
+                continue;
+            }
+            if let Some(&val) = self.val_map.get(&val) {
+                collapse_implicit.insert(val);
+                self.init.intern.outputs.insert(kind, val.into());
+            }
+        }
+        collapse_implicit
+    }
+
+    fn build_init_cache(&mut self, gvn: &GVN, collapse_implicit: &AHashSet<Value>) {
+        // first run deadcode elimination on the main function to figure out which cached
+        // initialization values are actually used
+        self.dom_tree.compute_postdom_frontiers(self.cfg, &mut self.control_dep);
+        mir_opt::aggressive_dead_code_elimination(
+            self.func,
+            self.cfg,
+            &|val, _| self.output_values.contains(val),
+            &self.control_dep,
+        );
+
+        // now create a cache slot for every equivalence class of values
+        // that was cached
+        let mut extra_class = 0;
+        let mut ensure_cache_slot = |inst: Option<Inst>, res, ty| {
+            let class = inst.and_then(|inst| gvn.inst_class(inst).expand());
+            let equiv_class = class.unwrap_or_else(|| {
+                let class = gvn.num_class() + extra_class;
+                extra_class += 1;
+                class.into()
+            });
+            self.init.cache_slots.insert_full((equiv_class.into(), res as u32), ty).0
+        };
+        self.init.cached_vals = self
+            .init_cache
+            .iter()
+            .filter_map(|(&val, &old_inst)| {
+                if self.func.dfg.value_dead(val)
+                    && (!self.output_values.contains(val) || collapse_implicit.contains(&val))
+                {
+                    // make some other value here so there isn't an undefined parameter
+                    self.func.dfg.values.fconst_at(0.0.into(), val);
+                    return None;
+                }
+
+                let ty = if let Some(tag) = self.func.dfg.tag(val) {
+                    let idx = usize::from(tag);
+                    let place = self.intern.outputs.get_index(idx).unwrap().0;
+                    place.ty(self.db)
+                } else if collapse_implicit.contains(&val) {
+                    Type::Bool
+                } else {
+                    Type::Real
+                };
+
+                let idx = self
+                    .func
+                    .dfg
+                    .inst_results(old_inst)
+                    .iter()
+                    .position(|&res| res == val)
+                    .unwrap();
+                let cache_slot = ensure_cache_slot(Some(old_inst), idx, ty);
+
+                let new_val = self.val_map[&val];
+                let (new_inst, _) = self.init.func.dfg.value_def(new_val).unwrap_result();
+
+                self.func
+                    .dfg
+                    .values
+                    .make_param_at((cache_slot.0 as usize + self.intern.params.len()).into(), val);
+                let val = FuncCursor::new(&mut self.init.func)
+                    .after_inst_no_phi(new_inst)
+                    .ins()
+                    .ensure_optbarrier(new_val);
+
+                Some((val, cache_slot))
+            })
+            .collect();
+    }
+
+    fn optimize(&mut self, collapse_implicit: AHashSet<Value>) {
+        // perform final optimization/DCE
+        mir_opt::simplify_cfg(self.func, self.cfg);
+        self.cfg.compute(&self.init.func);
+        mir_opt::aggressive_dead_code_elimination(
+            &mut self.init.func,
+            self.cfg,
+            &|val, _| self.init.cached_vals.contains_key(&val) || collapse_implicit.contains(&val),
+            &self.control_dep,
+        );
+        mir_opt::simplify_cfg(&mut self.init.func, self.cfg);
     }
 
     fn copy_callback(&mut self, cb: FuncRef) -> FuncRef {
@@ -213,116 +322,5 @@ impl<'a> Builder<'a> {
             self.func.dfg.zap_inst(inst);
             self.func.layout.remove_inst(inst);
         }
-    }
-
-    fn build_init_cache(&mut self, gvn: &GVN, collapse_implicit: &AHashSet<Value>) {
-        // first run deadcode elimination on the main function to figure out which cached
-        // initialization values are actually used
-        self.dom_tree.compute_postdom_frontiers(self.cfg, &mut self.control_dep);
-        aggressive_dead_code_elimination(
-            self.func,
-            self.cfg,
-            &|val, _| self.output_values.contains(val),
-            &self.control_dep,
-        );
-
-        // now create a cache slot for every equivalence class of values
-        // that was cached
-        let mut extra_class = 0;
-        let mut ensure_cache_slot = |inst: Option<Inst>, res, ty| {
-            let class = inst.and_then(|inst| gvn.inst_class(inst).expand());
-            let equiv_class = class.unwrap_or_else(|| {
-                let class = gvn.num_class() + extra_class;
-                extra_class += 1;
-                class.into()
-            });
-            self.init.cache_slots.insert_full((equiv_class.into(), res as u32), ty).0
-        };
-        self.init.cached_vals = self
-            .init_cache
-            .iter()
-            .filter_map(|(&val, &old_inst)| {
-                if self.func.dfg.value_dead(val)
-                    && (!self.output_values.contains(val) || collapse_implicit.contains(&val))
-                {
-                    // make some other value here so there isn't an undefined parameter
-                    self.func.dfg.values.fconst_at(0.0.into(), val);
-                    return None;
-                }
-
-                let ty = if let Some(tag) = self.func.dfg.tag(val) {
-                    let idx = usize::from(tag);
-                    let place = self.intern.outputs.get_index(idx).unwrap().0;
-                    place.ty(self.db)
-                } else if collapse_implicit.contains(&val) {
-                    Type::Bool
-                } else {
-                    Type::Real
-                };
-
-                let idx = self
-                    .func
-                    .dfg
-                    .inst_results(old_inst)
-                    .iter()
-                    .position(|&res| res == val)
-                    .unwrap();
-                let cache_slot = ensure_cache_slot(Some(old_inst), idx, ty);
-
-                let new_val = self.val_map[&val];
-                let (new_inst, _) = self.init.func.dfg.value_def(new_val).unwrap_result();
-
-                self.func
-                    .dfg
-                    .values
-                    .make_param_at((cache_slot.0 as usize + self.intern.params.len()).into(), val);
-                let val = FuncCursor::new(&mut self.init.func)
-                    .after_inst_no_phi(new_inst)
-                    .ins()
-                    .ensure_optbarrier(new_val);
-
-                Some((val, cache_slot))
-            })
-            .collect();
-    }
-
-    fn optimize(&mut self, collapse_implicit: AHashSet<Value>) {
-        // perform final optimization/DCE
-        simplify_cfg(self.func, self.cfg);
-        self.cfg.compute(&self.init.func);
-        aggressive_dead_code_elimination(
-            &mut self.init.func,
-            self.cfg,
-            &|val, _| self.init.cached_vals.contains_key(&val) || collapse_implicit.contains(&val),
-            &self.control_dep,
-        );
-        simplify_cfg(&mut self.init.func, self.cfg);
-    }
-
-    fn build_init_itern(&mut self) -> AHashSet<Value> {
-        for (&kind, val) in self.intern.params.iter() {
-            if let Some(&val) = self.val_map.get(val) {
-                let (param, _) = self.init.intern.params.insert_full(kind, val);
-                self.init.func.dfg.values.make_param_at(param, val);
-            }
-        }
-        let mut collapse_implicit = AHashSet::new();
-        for (&kind, val) in &mut self.intern.outputs {
-            if let PlaceKind::CollapseImplicitEquation(eq) = kind {
-                if let Some(mut val) = val.take() {
-                    val = strip_optbarrier_if_const(&self.func, val);
-
-                    let eq_val = *self.intern.params.get(&ParamKind::ImplicitUnknown(eq)).unwrap();
-                    if self.func.dfg.value_dead(eq_val) || val == FALSE {
-                        continue;
-                    }
-                    if let Some(&val) = self.val_map.get(&val) {
-                        collapse_implicit.insert(val);
-                        self.init.intern.outputs.insert(kind, val.into());
-                    }
-                }
-            }
-        }
-        collapse_implicit
     }
 }

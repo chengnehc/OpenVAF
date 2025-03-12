@@ -40,7 +40,6 @@ impl<'a> RecDeclarations<'a> {
         RecDeclarations { path: Vec::new(), stack: vec![Scope::new(def_map, scope_id, None)], db }
     }
 
-    /// Creates a path in the current scope with the final segment given by `name`
     pub fn to_path(&self, name: Name) -> SmolStr {
         if self.path.is_empty() {
             // fast path

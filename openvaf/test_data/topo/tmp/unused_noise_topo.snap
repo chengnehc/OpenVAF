@@ -19,24 +19,27 @@ Topology {
                 },
                 current_src: Contribution {
                     unknown: None,
-                    resist: v30,
-                    react: v33,
+                    resist: v32,
+                    react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [
-                        Noise {
-                            name: Spur(1),
-                            kind: WhiteNoise {
-                                pwr: v35,
-                            },
-                            factor: v34,
-                        },
-                    ],
+                    noise: [],
                 },
             },
         ),
     },
     implicit_equations: {},
     small_signal_vals: {},
-    contributes: {},
+    contributes: {
+        v3: Branch {
+            id: branch0,
+            is_voltage_src: true,
+            is_reactive: false,
+        },
+        v32: Branch {
+            id: branch0,
+            is_voltage_src: false,
+            is_reactive: false,
+        },
+    },
 }

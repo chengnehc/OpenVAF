@@ -1,10 +1,11 @@
 use std::fs;
 
-use expect_test::expect_file;
 use hir::diagnostics::ConsoleSink;
 use hir::CompilationDB;
-use indoc::indoc;
 use lasso::Rodeo;
+
+use expect_test::expect_file;
+use indoc::indoc;
 use stdx::{integration_test_dir, openvaf_test_data};
 
 use crate::context::{Context, OptimizationStage};
@@ -20,15 +21,17 @@ fn run_test(src: &str) {
     context.compute_cfg();
     context.optimize(OptimizationStage::Initial);
     let topology = topology::Topology::new(&mut context);
-    let mut dae_system = DaeSystem::new(&mut context, topology);
+    let mut dae = DaeSystem::new(&mut context, topology);
     context.compute_cfg();
     context.optimize(OptimizationStage::Final);
-    dae_system.sparsify(&mut context);
-    let name = module.module.name(&db);
+    dae.sparsify(&mut context);
+
     let test_dir = openvaf_test_data("dae");
-    let topology = format!("{dae_system:#?}");
-    assert!(context.func.validate());
+    let name = module.module.name(&db);
+    let topology = format!("{dae:#?}");
     expect_file![test_dir.join(format!("{name}_system.snap"))].assert_eq(&topology);
+
+    assert!(context.func.validate());
     let func = format!("{:#?}", context.func);
     expect_file![test_dir.join(format!("{name}_mir.snap"))].assert_eq(&func)
 }

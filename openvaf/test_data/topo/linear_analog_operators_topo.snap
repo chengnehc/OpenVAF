@@ -8,7 +8,7 @@ Topology {
                 ),
             },
             BranchInfo {
-                is_voltage_src: v1,
+                is_potential: v1,
                 voltage_src: Contribution {
                     unknown: None,
                     resist: v3,
@@ -19,15 +19,15 @@ Topology {
                 },
                 current_src: Contribution {
                     unknown: None,
-                    resist: v32,
-                    react: v3,
+                    resist: v30,
+                    react: v33,
                     resist_small_signal: v3,
                     react_small_signal: v3,
                     noise: [
                         Noise {
                             name: Spur(1),
                             kind: WhiteNoise {
-                                pwr: v37,
+                                pwr: v35,
                             },
                             factor: v34,
                         },

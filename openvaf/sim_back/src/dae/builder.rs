@@ -1,4 +1,4 @@
-use std::mem::replace;
+use std::mem;
 
 use ahash::AHashMap;
 use bitset::BitSet;
@@ -15,11 +15,12 @@ use mir_autodiff::auto_diff;
 use typed_index_collections::TiVec;
 
 use crate::context::Context;
-use crate::dae::{DaeSystem, MatrixEntry, Residual, SimUnknown};
 use crate::noise::NoiseSource;
 use crate::topology::{BranchInfo, Contribution};
 use crate::util::{add, is_op_dependent, update_optbarrier};
 use crate::SimUnknownKind;
+
+use super::{DaeSystem, MatrixEntry, Residual, SimUnknown};
 
 impl Residual {
     fn add(&mut self, cursor: &mut FuncCursor, negate: bool, mut val: Value) {
@@ -74,17 +75,23 @@ impl<'a> Builder<'a> {
             op_dependent_insts: &ctx.op_dependent_insts,
             output_values: &mut ctx.output_values,
         };
-
         // ensure ports are the first unknowns and always have an unknown
         for port in ctx.module.module.ports(builder.db) {
             builder.build_node(port)
         }
-
         for node in ctx.module.module.internal_nodes(builder.db) {
             builder.build_node(node)
         }
 
         builder
+    }
+
+    pub(super) fn with_small_signal_network(
+        mut self,
+        small_signal_vals: IndexSet<Value, ahash::RandomState>,
+    ) -> Self {
+        self.system.small_signal_params = small_signal_vals;
+        self
     }
 
     /// Consume the builder and generate the DAE system
@@ -104,19 +111,12 @@ impl<'a> Builder<'a> {
         self.build_jacobian(&sim_unknown_reads, &derivative_info, &derivatives);
         self.build_lim_rhs(&derivative_info, derivatives);
         self.ensure_optbarriers();
+
         self.system
     }
 
     pub(super) fn build_node(&mut self, node: Node) {
         self.ensure_unknown(SimUnknownKind::KirchhoffLaw(node));
-    }
-
-    pub(super) fn with_small_signal_network(
-        mut self,
-        small_signal_parameters: IndexSet<Value, ahash::RandomState>,
-    ) -> Self {
-        self.system.small_signal_parameters = small_signal_parameters;
-        self
     }
 
     /// Return a list of all parameters that read from one of the simulation
@@ -130,17 +130,11 @@ impl<'a> Builder<'a> {
     fn sim_unknown_reads(&self) -> Vec<(ParamKind, Value)> {
         self.intern
             .live_params(&self.cursor.func.dfg)
-            .filter_map(move |(_, &kind, param)| {
-                if matches!(
-                    kind,
-                    ParamKind::Voltage { .. }
-                        | ParamKind::Current(_)
-                        | ParamKind::ImplicitUnknown(_)
-                ) {
-                    Some((kind, param))
-                } else {
-                    None
-                }
+            .filter_map(move |(_, &kind, param)| match kind {
+                ParamKind::Voltage { .. }
+                | ParamKind::Current(_)
+                | ParamKind::ImplicitUnknown(_) => Some((kind, param)),
+                _ => None,
             })
             .collect()
     }
@@ -153,11 +147,7 @@ impl<'a> Builder<'a> {
         for residual in &mut self.system.residual {
             for (state, (unchanged, lim_vals)) in self.intern.lim_state.iter_enumerated() {
                 for &(val, neg) in lim_vals {
-                    let unknown = if let Some(unknown) = derivative_info.unknowns.index(&val) {
-                        unknown
-                    } else {
-                        continue;
-                    };
+                    let Some(unknown) = derivative_info.unknowns.index(&val) else { continue };
                     let changed = HirInterner::ensure_param_(
                         &mut self.intern.params,
                         &mut self.cursor,
@@ -217,17 +207,11 @@ impl<'a> Builder<'a> {
         for (row, residual) in self.system.residual.iter_enumerated() {
             // construct the dense row
             let mut add_residual = |sim_unknown: SimUnknownKind, unknown, negate| {
-                let sim_unknown = if let Some(unknown) = self.system.unknowns.index(&sim_unknown) {
-                    unknown
-                } else {
-                    return;
-                };
+                let Some(sim_unknown) = self.system.unknowns.index(&sim_unknown) else { return };
                 let (resist, react) = &mut dense_row[sim_unknown];
                 if let Some(lim_vals) = self.intern.lim_state.raw.get(&unknown) {
                     for (val, negate_lim) in lim_vals {
-                        let lim_unknown = if let Some(it) = derivative_info.unknowns.index(val) {
-                            it
-                        } else {
+                        let Some(lim_unknown) = derivative_info.unknowns.index(val) else {
                             continue;
                         };
                         add(resist, residual.resist, lim_unknown, negate != *negate_lim);
@@ -272,8 +256,8 @@ impl<'a> Builder<'a> {
                 self.system.jacobian.push(MatrixEntry {
                     row,
                     col,
-                    resist: replace(resist, F_ZERO),
-                    react: replace(react, F_ZERO),
+                    resist: mem::replace(resist, F_ZERO),
+                    react: mem::replace(react, F_ZERO),
                 });
             }
         }
@@ -298,7 +282,7 @@ impl<'a> Builder<'a> {
 
         let small_signal_params = self
             .system
-            .small_signal_parameters
+            .small_signal_params
             .iter()
             .filter_map(|&param| derivatives.unknowns.index(&param));
 
@@ -331,8 +315,8 @@ impl<'a> Builder<'a> {
 
     pub(super) fn build_branch(&mut self, branch: BranchWrite, contributions: &BranchInfo) {
         let current = branch.into();
-        // contributions.is_voltage_src is a Value that is used for choosing the branch type (voltage, current)
-        match contributions.is_voltage_src {
+        // contributions.is_potential is a `Value` used for choosing the branch type (voltage, current)
+        match contributions.is_potential {
             // current branch
             FALSE => {
                 // if the current of the branch is probed we need to create an extra
@@ -348,7 +332,7 @@ impl<'a> Builder<'a> {
                         branch,
                     );
                 } else {
-                    self.add_kirchoff_law(&contrib, branch);
+                    self.add_kirchhoff_law(&contrib, branch);
                     // self.add_kirchoff_law(&contributions.current_src, branch);
                 }
             }
@@ -378,7 +362,7 @@ impl<'a> Builder<'a> {
                     .value_dead(contributions.current_src.unknown.unwrap());
                 let op_dependent = is_op_dependent(
                     &self.cursor,
-                    contributions.is_voltage_src,
+                    contributions.is_potential,
                     self.op_dependent_insts,
                     self.intern,
                 );
@@ -404,12 +388,11 @@ impl<'a> Builder<'a> {
 
                     // Get expression (condition) that determines if branch acts as a voltage source
                     // Skip trailing optbarriers
-                    let is_voltage_src =
-                        strip_optbarrier(&self.cursor, contributions.is_voltage_src);
+                    let is_potential = strip_optbarrier(&self.cursor, contributions.is_potential);
                     // Insert branch command (after?) condition
                     // If condition is true, jump to voltage_src_bb block
                     // If false go to next_block
-                    self.cursor.ins().br(is_voltage_src, voltage_src_bb, next_block);
+                    self.cursor.ins().br(is_potential, voltage_src_bb, next_block);
                     // Go to the end of voltage_src_bb block
                     self.cursor.goto_bottom(voltage_src_bb);
                     // Insert jump command to next_block
@@ -425,7 +408,7 @@ impl<'a> Builder<'a> {
                 } else {
                     // Not a real switch branch
                     let contrib = self.current_branch(contributions);
-                    self.add_kirchoff_law(&contrib, branch);
+                    self.add_kirchhoff_law(&contrib, branch);
                 }
             }
         };
@@ -437,42 +420,6 @@ impl<'a> Builder<'a> {
             &mut self.cursor,
             false,
         );
-    }
-
-    fn mfactor_multiply(&mut self, mfactor: Value, srcfactor: Value) -> Value {
-        match (mfactor, srcfactor) {
-            // Leave srcfactor unchanged if mfactor is 1
-            (F_ONE, fac) => fac,
-            // mfactor is not 1
-            // Note that srcfactor is the signal scaling factor.
-            // Because power scales with mfactor the signal scales with
-            // sqrt(mfactor).
-            (mfactor, srcfactor) => {
-                let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
-                if srcfactor == F_ONE {
-                    // Old factor is 1, replace it with sqrt(mfactor)
-                    sqrt_mfactor
-                } else {
-                    // Multiply old factor with sqrt(mfactor)
-                    self.cursor.ins().fmul(srcfactor, sqrt_mfactor)
-                }
-            }
-        }
-    }
-
-    fn mfactor_divide(&mut self, mfactor: Value, srcfactor: Value) -> Value {
-        match (mfactor, srcfactor) {
-            // Leave srcfactor unchanged if mfactor is 1
-            (F_ONE, fac) => fac,
-            // mfactor is not 1
-            // Note that srcfactor is the signal scaling factor.
-            // Because power scales with mfactor the signal scales with
-            // sqrt(mfactor).
-            (mfactor, srcfactor) => {
-                let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
-                self.cursor.ins().fdiv(srcfactor, sqrt_mfactor)
-            }
-        }
     }
 
     fn current_branch(&mut self, BranchInfo { current_src, .. }: &BranchInfo) -> Contribution {
@@ -590,6 +537,42 @@ impl<'a> Builder<'a> {
         }
     }
 
+    fn mfactor_multiply(&mut self, mfactor: Value, srcfactor: Value) -> Value {
+        match (mfactor, srcfactor) {
+            // Leave srcfactor unchanged if mfactor is 1
+            (F_ONE, fac) => fac,
+            // mfactor is not 1
+            // Note that srcfactor is the signal scaling factor.
+            // Because power scales with mfactor the signal scales with
+            // sqrt(mfactor).
+            (mfactor, srcfactor) => {
+                let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
+                if srcfactor == F_ONE {
+                    // Old factor is 1, replace it with sqrt(mfactor)
+                    sqrt_mfactor
+                } else {
+                    // Multiply old factor with sqrt(mfactor)
+                    self.cursor.ins().fmul(srcfactor, sqrt_mfactor)
+                }
+            }
+        }
+    }
+
+    fn mfactor_divide(&mut self, mfactor: Value, srcfactor: Value) -> Value {
+        match (mfactor, srcfactor) {
+            // Leave srcfactor unchanged if mfactor is 1
+            (F_ONE, fac) => fac,
+            // mfactor is not 1
+            // Note that srcfactor is the signal scaling factor.
+            // Because power scales with mfactor the signal scales with
+            // sqrt(mfactor).
+            (mfactor, srcfactor) => {
+                let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
+                self.cursor.ins().fdiv(srcfactor, sqrt_mfactor)
+            }
+        }
+    }
+
     fn ensure_unknown(&mut self, unknown: SimUnknownKind) -> SimUnknown {
         let (unknown, new) = self.system.unknowns.ensure(unknown);
         if new {
@@ -598,21 +581,7 @@ impl<'a> Builder<'a> {
         unknown
     }
 
-    fn add_noise(
-        &mut self,
-        contrib: &Contribution,
-        hi: SimUnknownKind,
-        lo: Option<SimUnknownKind>,
-    ) {
-        let hi = self.ensure_unknown(hi);
-        let lo = lo.map(|lo| self.ensure_unknown(lo));
-        self.system.noise_sources.extend(contrib.noise.iter().map(|src| {
-            let factor = src.factor;
-            NoiseSource { name: src.name, kind: src.kind.clone(), hi, lo, factor }
-        }))
-    }
-
-    fn add_kirchoff_law(&mut self, contrib: &Contribution, dst: BranchWrite) {
+    fn add_kirchhoff_law(&mut self, contrib: &Contribution, dst: BranchWrite) {
         let (hi, lo) = dst.nodes(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
@@ -638,6 +607,20 @@ impl<'a> Builder<'a> {
         if let Some(lo) = lo {
             get_residual!(self, lo).add(&mut self.cursor, true, eq_val);
         }
+    }
+
+    fn add_noise(
+        &mut self,
+        contrib: &Contribution,
+        hi: SimUnknownKind,
+        lo: Option<SimUnknownKind>,
+    ) {
+        let hi = self.ensure_unknown(hi);
+        let lo = lo.map(|lo| self.ensure_unknown(lo));
+        self.system.noise_sources.extend(contrib.noise.iter().map(|src| {
+            let factor = src.factor;
+            NoiseSource { name: src.name, kind: src.kind.clone(), hi, lo, factor }
+        }))
     }
 
     /// multiply each residual and matrix entry with mfactor and ensure it has

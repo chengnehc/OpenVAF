@@ -6,8 +6,9 @@ use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
 use crate::context::Context;
-pub use crate::noise::{NoiseSource, NoiseSourceKind};
 use crate::{topology, SimUnknownKind};
+
+pub use crate::noise::{NoiseSource, NoiseSourceKind};
 
 mod builder;
 #[cfg(test)]
@@ -41,7 +42,7 @@ pub struct DaeSystem {
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,
     /// list of parameters which are known to be small signal values (always zero during
     /// large signal simulation).
-    pub small_signal_parameters: IndexSet<Value, ahash::RandomState>,
+    pub small_signal_params: IndexSet<Value, ahash::RandomState>,
     /// noise
     pub noise_sources: Vec<NoiseSource>,
 }
@@ -54,9 +55,10 @@ impl DaeSystem {
         for (branch, contributions) in contributions.branches.raw {
             builder.build_branch(branch, &contributions)
         }
-        for (eq, contributions) in contributions.implicit_equations.iter_enumerated() {
-            builder.build_implicit_equation(eq, contributions)
+        for (eq, contribution) in contributions.implicit_equations.iter_enumerated() {
+            builder.build_implicit_equation(eq, contribution)
         }
+
         builder.finish()
     }
 
@@ -136,7 +138,6 @@ pub struct Residual {
     /// J(lim_x) x'  = J(lim_x) x - I(lim_x) - ddt(Q) + J(lim_x) (lim_x - x)
     /// J(lim_x) x'  = J(lim_x) lim_x - I(lim_x) - ddt(Q)
     ///
-    ///
     /// This corrective factor needs to be computed both for the resistive and
     /// reactive residual (the jacobian is madeup of both). The reactive component
     /// is stored in this variable.
@@ -164,7 +165,6 @@ pub struct Residual {
     /// J(lim_x) (x - x')  =   I(lim_x)  ddt(Q) - J(lim_x) (lim_x - x)
     /// J(lim_x) x'  = J(lim_x) x - I(lim_x) - ddt(Q) + J(lim_x) (lim_x - x)
     /// J(lim_x) x'  = J(lim_x) lim_x - I(lim_x) - ddt(Q)
-    ///
     ///
     /// This corrective factor needs to be computed both for the resistive and
     /// reactive residual (the jacobian is madeup of both). The reactive component
@@ -196,6 +196,7 @@ impl Residual {
         self.resist == F_ZERO && self.react == F_ZERO
     }
 
+    // TODO(JW): make this consume the original residual instead could be more idiomatic?
     pub fn map_vals(&mut self, mut f: impl FnMut(Value) -> Value) {
         self.resist = f(self.resist);
         self.react = f(self.react);

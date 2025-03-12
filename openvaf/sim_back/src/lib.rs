@@ -43,40 +43,40 @@ impl_debug_display! {
 
 pub struct CompiledModule<'a> {
     pub info: &'a ModuleInfo,
-    pub dae_system: DaeSystem,
+    pub dae: DaeSystem,
+    pub init: Initialization,
+    pub node_collapse: NodeCollapse,
     pub eval: Function,
     pub intern: HirInterner,
-    pub init: Initialization,
     pub model_param_setup: Function,
     pub model_param_intern: HirInterner,
-    pub node_collapse: NodeCollapse,
 }
 
 impl<'a> CompiledModule<'a> {
     pub fn new(
         db: &CompilationDB,
-        module: &'a ModuleInfo,
+        info: &'a ModuleInfo,
         literals: &mut Rodeo,
     ) -> CompiledModule<'a> {
-        let mut cx = Context::new(db, literals, module);
-        cx.compute_outputs(true);
-        cx.compute_cfg();
-        cx.optimize(OptimizationStage::Initial);
-        debug_assert!(cx.func.validate());
+        let mut cxt = Context::new(db, literals, info);
+        cxt.compute_outputs(true);
+        cxt.compute_cfg();
+        cxt.optimize(OptimizationStage::Initial);
+        debug_assert!(cxt.func.validate());
 
-        let topology = Topology::new(&mut cx);
-        debug_assert!(cx.func.validate());
-        let mut dae_system = DaeSystem::new(&mut cx, topology);
-        debug_assert!(cx.func.validate());
-        cx.compute_cfg();
-        let gvn = cx.optimize(OptimizationStage::PostDerivative);
-        dae_system.sparsify(&mut cx);
+        let topology = Topology::new(&mut cxt);
+        debug_assert!(cxt.func.validate());
+        let mut dae = DaeSystem::new(&mut cxt, topology);
+        debug_assert!(cxt.func.validate());
+        cxt.compute_cfg();
+        let gvn = cxt.optimize(OptimizationStage::PostDerivative);
+        dae.sparsify(&mut cxt);
 
         // For debugging purposes - print parameters
         let debugging = false; //  && cfg!(debug_assertions);
         if debugging {
             println!("Parameters:");
-            cx.intern.params.iter().for_each(|(p, val)| {
+            cxt.intern.params.iter().for_each(|(p, val)| {
                 print!("  {:?}", p);
                 match p {
                     ParamKind::Param(param) | ParamKind::ParamGiven { param } => {
@@ -121,7 +121,7 @@ impl<'a> CompiledModule<'a> {
             println!();
 
             println!("Outputs:");
-            cx.intern.outputs.iter().for_each(|(p, val)| {
+            cxt.intern.outputs.iter().for_each(|(p, val)| {
                 if val.is_some() {
                     println!("  {:?} -> {:?}", p, val.unwrap());
                 } else {
@@ -131,13 +131,13 @@ impl<'a> CompiledModule<'a> {
             println!();
 
             println!("Tagged reads:");
-            cx.intern.tagged_reads.iter().for_each(|(val, var)| {
+            cxt.intern.tagged_reads.iter().for_each(|(val, var)| {
                 println!("  {:?} -> {:?}", val, var);
             });
             println!();
 
             println!("Implicit equations:");
-            for (i, &iek) in cx.intern.implicit_equations.iter().enumerate() {
+            for (i, &iek) in cxt.intern.implicit_equations.iter().enumerate() {
                 println!("  {:?} : {:?}", i, iek);
             }
             println!();
@@ -145,27 +145,27 @@ impl<'a> CompiledModule<'a> {
             let cu = db.compilation_unit();
             println!("Compilation unit: {}", cu.name(db));
 
-            let m = module.module;
+            let m = info.module;
             println!("Module: {:?}", m.name(db));
             println!("Ports: {:?}", m.ports(db));
             println!("Internal nodes: {:?}", m.internal_nodes(db));
 
             println!("DAE system");
-            let str = format!("{dae_system:#?}");
+            let str = format!("{dae:#?}");
             println!("{}", str);
             println!();
 
             println!("CX function");
-            println!("{:?}", cx.func);
+            println!("{:?}", cxt.func);
             println!();
         }
 
-        debug_assert!(cx.func.validate());
+        debug_assert!(cxt.func.validate());
 
-        cx.refresh_op_dependent_insts();
-        let mut init = Initialization::new(&mut cx, gvn);
-        let node_collapse = NodeCollapse::new(&init, &dae_system, &cx);
-        debug_assert!(cx.func.validate());
+        cxt.refresh_op_dependent_insts();
+        let mut init = Initialization::new(&mut cxt, gvn);
+        let node_collapse = NodeCollapse::new(&init, &dae, &cxt);
+        debug_assert!(cxt.func.validate());
 
         // For debugging purposes - print MIR
         if debugging {
@@ -177,7 +177,7 @@ impl<'a> CompiledModule<'a> {
         debug_assert!(init.func.validate());
 
         // TODO: refactor param intilization to use tables
-        let inst_params: Vec<_> = module
+        let inst_params: Vec<_> = info
             .params
             .iter()
             .filter_map(|(param, info)| info.is_instance.then_some(*param))
@@ -185,7 +185,7 @@ impl<'a> CompiledModule<'a> {
         init.intern.insert_param_init(db, &mut init.func, literals, false, true, &inst_params);
 
         let mut model_param_setup = Function::default();
-        let model_params: Vec<_> = module.params.keys().copied().collect();
+        let model_params: Vec<_> = info.params.keys().copied().collect();
         let mut model_param_intern = HirInterner::default();
         model_param_intern.insert_param_init(
             db,
@@ -195,20 +195,20 @@ impl<'a> CompiledModule<'a> {
             true,
             &model_params,
         );
-        cx.cfg.compute(&model_param_setup);
-        simplify_cfg(&mut model_param_setup, &mut cx.cfg);
-        sparse_conditional_constant_propagation(&mut model_param_setup, &cx.cfg);
-        simplify_cfg(&mut model_param_setup, &mut cx.cfg);
+        cxt.cfg.compute(&model_param_setup);
+        simplify_cfg(&mut model_param_setup, &mut cxt.cfg);
+        sparse_conditional_constant_propagation(&mut model_param_setup, &cxt.cfg);
+        simplify_cfg(&mut model_param_setup, &mut cxt.cfg);
 
         CompiledModule {
-            eval: cx.func,
-            intern: cx.intern,
-            info: module,
-            dae_system,
+            info,
+            dae,
             init,
+            node_collapse,
+            eval: cxt.func,
+            intern: cxt.intern,
             model_param_intern,
             model_param_setup,
-            node_collapse,
         }
     }
 }

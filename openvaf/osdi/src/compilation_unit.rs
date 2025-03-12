@@ -125,7 +125,7 @@ impl<'a> OsdiModule<'a> {
         let sym = base_n::encode(module.info.module.uuid(db) as u128, base_n::CASE_INSENSITIVE);
         let CompiledModule {
             info,
-            dae_system,
+            dae,
             eval,
             intern,
             init,
@@ -137,7 +137,7 @@ impl<'a> OsdiModule<'a> {
             sym,
             lim_table,
             info,
-            dae_system,
+            dae_system: dae,
             eval,
             intern,
             init,

@@ -1,4 +1,4 @@
-use std::fs::{create_dir_all, remove_file};
+use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
@@ -168,15 +168,13 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
             if cfg!(not(debug_assertions)) && lib_file.exists() {
                 return Ok(CompilationTermination::Compiled { lib_file });
             }
-            create_dir_all(cache_dir).context("failed to create cache directory")?;
+            fs::create_dir_all(cache_dir).context("failed to create cache directory")?;
             lib_file
         }
         CompilationDestination::Path { lib_file } => lib_file.clone(),
     };
 
-    let modules = if let Some(modules) = collect_modules(&db, false, &mut ConsoleSink::new(&db)) {
-        modules
-    } else {
+    let Some(modules) = collect_modules(&db, false, &mut ConsoleSink::new(&db)) else {
         return Ok(CompilationTermination::FatalDiagnostic);
     };
 
@@ -185,6 +183,7 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
         return Ok(CompilationTermination::Compiled { lib_file });
     }
     let paths = osdi::compile(&db, &modules, &lib_file, &opts.target, &back, true, opts.opt_lvl);
+
     // TODO configure linker
     link(None, &opts.target, lib_file.as_ref(), |linker| {
         for path in &paths {
@@ -193,7 +192,7 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
     })?;
 
     for obj_file in paths {
-        remove_file(obj_file).context("failed to delete intermediate compile artifact")?;
+        fs::remove_file(obj_file).context("failed to delete intermediate compile artifact")?;
     }
 
     let seconds = Instant::elapsed(&start).as_secs_f64();

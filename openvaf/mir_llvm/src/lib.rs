@@ -128,6 +128,7 @@ impl<'t> LLVMBackend<'t> {
     ) -> CodegenCx<'a, 'll> {
         CodegenCx::new(literals, module, self.target)
     }
+
     pub fn target(&self) -> &'t Target {
         self.target
     }

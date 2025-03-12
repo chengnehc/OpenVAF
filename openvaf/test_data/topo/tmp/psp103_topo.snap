@@ -183,5 +183,41 @@ Topology {
         v47,
         v20,
     },
-    contributes: {},
+    contributes: {
+        v63: Branch {
+            id: branch5,
+            is_voltage_src: false,
+            is_reactive: false,
+        },
+        v3: Branch {
+            id: branch5,
+            is_voltage_src: true,
+            is_reactive: false,
+        },
+        v61: Branch {
+            id: branch3,
+            is_voltage_src: false,
+            is_reactive: false,
+        },
+        v60: Branch {
+            id: branch2,
+            is_voltage_src: false,
+            is_reactive: false,
+        },
+        v62: Branch {
+            id: branch4,
+            is_voltage_src: false,
+            is_reactive: false,
+        },
+        v58: Branch {
+            id: branch0,
+            is_voltage_src: false,
+            is_reactive: false,
+        },
+        v59: Branch {
+            id: branch1,
+            is_voltage_src: false,
+            is_reactive: false,
+        },
+    },
 }

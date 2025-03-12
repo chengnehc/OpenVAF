@@ -1,9 +1,10 @@
-use expect_test::expect_file;
 use hir::diagnostics::ConsoleSink;
 use hir::CompilationDB;
-use indoc::indoc;
 use lasso::Rodeo;
 use mir::Function;
+
+use expect_test::expect_file;
+use indoc::indoc;
 use stdx::openvaf_test_data;
 
 use crate::context::{Context, OptimizationStage};
@@ -19,17 +20,19 @@ fn compile(src: &str) -> (Function, Topology, String) {
     context.optimize(OptimizationStage::Initial);
     let topology = Topology::new(&mut context);
     assert!(context.func.validate());
+
     (context.func, topology, module.module.name(&db))
 }
 
 fn assert(src: &str) {
     let (func, topology, name) = compile(src);
     println!("{func:?}");
-    let test_dir = openvaf_test_data("contributions");
-    let topology = format!("{topology:#?}");
-    expect_file![test_dir.join(format!("{name}_topology.snap"))].assert_eq(&topology);
+    let test_dir = openvaf_test_data("topo");
     let func = format!("{func:#?}");
-    expect_file![test_dir.join(format!("{name}_mir.snap"))].assert_eq(&func)
+    expect_file![test_dir.join(format!("{name}_mir.snap"))].assert_eq(&func);
+    let topology = format!("{topology:#?}");
+    //let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
+    expect_file![test_dir.join(format!("{name}_topo.snap"))].assert_eq(&topology);
 }
 
 #[test]

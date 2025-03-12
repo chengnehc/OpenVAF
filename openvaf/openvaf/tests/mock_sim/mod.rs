@@ -217,6 +217,7 @@ impl OsdiInstance {
         self.descriptor.load_jacobian_resist(self.data, model.data);
         self.descriptor.load_jacobian_react(self.data, model.data, 1.0);
     }
+
     pub fn eval(
         &self,
         model: &OsdiModel,

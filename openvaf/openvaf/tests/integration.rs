@@ -2,19 +2,20 @@ use std::f64::consts;
 use std::path::Path;
 
 use camino::Utf8Path;
-use expect_test::expect_file;
-use float_cmp::assert_approx_eq;
 use llvm::OptLevel;
-use mini_harness::{harness, Result};
 use openvaf::{CompilationDestination, CompilationTermination};
-use stdx::{ignore_dev_tests, openvaf_test_data, project_root};
 use target::spec::Target;
 
-use crate::load::{load_osdi_lib, EvalFlags, OsdiDescriptor};
-use crate::mock_sim::{MockSimulation, ALPHA};
+use expect_test::expect_file;
+use float_cmp::assert_approx_eq;
+use mini_harness::{harness, Result};
+use stdx::{ignore_dev_tests, openvaf_test_data, project_root};
 
 mod load;
 mod mock_sim;
+
+use self::load::{load_osdi_lib, EvalFlags, OsdiDescriptor};
+use self::mock_sim::{MockSimulation, ALPHA};
 
 fn compile_and_load(root_file: &Utf8Path) -> &'static OsdiDescriptor {
     let openvaf_opts = openvaf::Opts {
@@ -55,6 +56,7 @@ fn integration_test(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
     let main_file = dir.join(format!("{name}.va"));
     test_descriptor(&main_file)?;
+
     Ok(())
 }
 
@@ -69,6 +71,7 @@ fn test_descriptor(main_file: &Path) -> Result<&'static OsdiDescriptor> {
     default_model.process_params()?;
     let mut instance = default_model.new_instance();
     instance.process_params(&default_model, desc.num_terminals, 300.0)?;
+
     Ok(desc)
 }
 
@@ -163,6 +166,7 @@ fn test_limit() -> Result<()> {
     sim.clear();
     instance.load_spice(&model, &mut sim);
     check_spice_equations(&sim, 1.5 * vcrit, 2.0 * vcrit);
+
     Ok(())
 }
 
@@ -212,11 +216,12 @@ fn test_noise() -> Result<()> {
         assert_approx_eq!(sim.read_noise(2), flickr_noise1);
         assert_approx_eq!(sim.read_noise(3), flickr_noise2);
     }
+
     Ok(())
 }
 
 harness! {
     // TODO: run this in CI, somehow this test is flakey tough regarding the linker invocation (and really slow)
     Test::from_dir("integration", &integration_test, &ignore_dev_tests, &project_root().join("integration_tests")),
-    [Test::new("$limit", &test_limit),Test::new("noise", &test_noise)]
+    [Test::new("$limit", &test_limit), Test::new("noise", &test_noise)]
 }

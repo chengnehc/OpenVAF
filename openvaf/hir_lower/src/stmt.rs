@@ -61,7 +61,7 @@ impl BodyLowerContext<'_, '_, '_> {
         }
 
         self.ctxt.def_place(
-            PlaceKind::Contribute { dst, reactive: false, potential: !is_potential },
+            PlaceKind::Contribute { dst, is_reactive: false, is_potential: !is_potential },
             F_ZERO,
         );
         let rhs = self.lower_expr(rhs);
@@ -69,7 +69,7 @@ impl BodyLowerContext<'_, '_, '_> {
             return;
         }
 
-        let place = PlaceKind::Contribute { dst, reactive: false, potential: is_potential };
+        let place = PlaceKind::Contribute { dst, is_reactive: false, is_potential };
         let old = self.ctxt.use_place(place);
         let new = if negate {
             self.ctxt.ins().fsub(old, rhs)
@@ -99,8 +99,8 @@ impl BodyLowerContext<'_, '_, '_> {
             (Some(hi), Some(lo)) => {
                 let kind = PlaceKind::Contribute {
                     dst: BranchWrite::Unnamed { hi: lo, lo: Some(hi) },
-                    reactive: false,
-                    potential,
+                    is_reactive: false,
+                    is_potential: potential,
                 };
                 let negate_known = self.ctxt.get_place(kind).is_some();
                 if negate_known {

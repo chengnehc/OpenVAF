@@ -1,15 +1,12 @@
 use std::path::Path;
+use stdx::SKIP_HOST_TESTS;
 
 use camino::Utf8Path;
 use llvm::OptLevel;
 use mir_llvm::LLVMBackend;
 use paths::AbsPathBuf;
 use sim_back::CompilationDB;
-use stdx::SKIP_HOST_TESTS;
 use target::spec::Target;
-
-mod integration;
-mod sourcegen;
 
 fn test_compile(root_file: &Path) {
     let root_file = AbsPathBuf::assert(root_file.canonicalize().unwrap());

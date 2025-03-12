@@ -1,4 +1,6 @@
 use std::ops::Range;
+use stdx::iter::zip;
+use stdx::packed_option::{PackedOption, ReservedValue};
 
 use ahash::AHashMap;
 use arena::{Arena, IdxRange};
@@ -8,8 +10,6 @@ use mir::{
     Block, Function, Inst, InstructionData, Opcode, SourceLoc, Unknown, Value, F_LOG10_E, F_ONE,
     F_TWO, F_ZERO,
 };
-use stdx::iter::zip;
-use stdx::packed_option::{PackedOption, ReservedValue};
 
 use crate::intern::{Derivative, DerivativeIntern};
 use crate::live_derivatives::LiveDerivatives;

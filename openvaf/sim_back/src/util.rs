@@ -24,7 +24,7 @@ pub fn is_op_dependent(
 ) -> bool {
     match func.as_ref().dfg.value_def(val) {
         ValueDef::Result(inst, _) => op_dependent_insts.contains(inst),
-        ValueDef::Param(param) => intern.params.get_index(param).unwrap().0.op_dependent(),
+        ValueDef::Param(param) => intern.params.get_index(param).unwrap().0.is_op_dependent(),
         ValueDef::Const(_) | ValueDef::Invalid => false,
     }
 }

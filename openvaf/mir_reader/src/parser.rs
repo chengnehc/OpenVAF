@@ -3,16 +3,16 @@
 use std::fmt::{self, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
-use crate::error::{Location, ParseResult};
-use crate::lexer::{LexError, Lexer, LocatedError, LocatedToken, Token};
-use crate::ParseError;
-
 use bforest::Map;
 use lasso::{Rodeo, Spur};
 use mir::{
     Block, FuncRef, Function, FunctionSignature, Ieee64, InstructionData, InstructionFormat,
     Opcode, Param, PhiNode, SourceLoc, Value, ValueList, ValueListPool,
 };
+
+use crate::error::{Location, ParseResult};
+use crate::lexer::{LexError, Lexer, LocatedError, LocatedToken, Token};
+use crate::ParseError;
 
 #[cfg(test)]
 mod tests;
@@ -271,7 +271,6 @@ impl<'a> Parser<'a> {
             while ctx.function.dfg.num_values() <= usize::from(v) {
                 ctx.function.dfg.make_invalid_value();
             }
-
             self.consume();
             Ok(v)
         } else {

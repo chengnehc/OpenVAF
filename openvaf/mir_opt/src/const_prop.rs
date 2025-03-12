@@ -101,11 +101,7 @@ pub struct ConstSolver<'a> {
 
 impl ConstSolver<'_> {
     pub fn solve(&mut self) {
-        let entry = if let Some(entry) = self.func.layout.entry_block() {
-            entry
-        } else {
-            return;
-        };
+        let Some(entry) = self.func.layout.entry_block() else { return };
 
         self.executable_blocks.insert(entry);
         self.block_work_list.push(entry);

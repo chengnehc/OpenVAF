@@ -8,7 +8,7 @@ Topology {
                 ),
             },
             BranchInfo {
-                is_voltage_src: v1,
+                is_potential: v1,
                 voltage_src: Contribution {
                     unknown: None,
                     resist: v3,

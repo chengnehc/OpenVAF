@@ -14,12 +14,12 @@ use mir_opt::{
 use crate::ModuleInfo;
 
 pub(crate) struct Context<'a> {
-    pub(crate) func: Function,
-    pub(crate) cfg: ControlFlowGraph,
-    pub(crate) dom_tree: DominatorTree,
-    pub(crate) intern: HirInterner,
     pub(crate) db: &'a CompilationDB,
     pub(crate) module: &'a ModuleInfo,
+    pub(crate) func: Function,
+    pub(crate) intern: HirInterner,
+    pub(crate) cfg: ControlFlowGraph,
+    pub(crate) dom_tree: DominatorTree,
     pub(crate) output_values: BitSet<Value>,
     pub(crate) op_dependent_insts: BitSet<Inst>,
     pub(crate) op_dependent_vals: Vec<Value>,
@@ -50,18 +50,20 @@ impl<'a> Context<'a> {
         .with_equations()
         .with_tagged_writes()
         .build(literals);
+
         // TODO hidden state
         intern.insert_var_init(db, &mut func, literals);
 
+        let output_values = BitSet::new_empty(func.dfg.num_values());
         Context {
-            output_values: BitSet::new_empty(func.dfg.num_values()),
-            func,
-            cfg: ControlFlowGraph::new(),
-            dom_tree: DominatorTree::default(),
-            intern,
             db,
             module,
-            op_dependent_insts: BitSet::new_empty(0),
+            func,
+            intern,
+            cfg: ControlFlowGraph::default(),
+            dom_tree: DominatorTree::default(),
+            output_values,
+            op_dependent_insts: BitSet::default(),
             op_dependent_vals: Vec::new(),
         }
     }
@@ -144,7 +146,7 @@ impl<'a> Context<'a> {
             }
         }
         for (param, &val) in self.intern.params.iter() {
-            if !dfg.value_dead(val) && param.op_dependent() {
+            if !dfg.value_dead(val) && param.is_op_dependent() {
                 self.op_dependent_vals.push(val)
             }
         }
@@ -162,7 +164,7 @@ impl<'a> Context<'a> {
         self.op_dependent_insts.clear();
         self.op_dependent_insts.ensure(dfg.num_insts());
         for (cb, uses) in self.intern.callback_uses.iter_mut_enumerated() {
-            if self.intern.callbacks[cb].op_dependent() {
+            if self.intern.callbacks[cb].is_op_dependent() {
                 uses.retain(|&inst| {
                     if self.func.layout.inst_block(inst).is_none() {
                         return false;
@@ -176,7 +178,7 @@ impl<'a> Context<'a> {
             }
         }
         for (param, &val) in self.intern.params.iter() {
-            if !dfg.value_dead(val) && param.op_dependent() {
+            if !dfg.value_dead(val) && param.is_op_dependent() {
                 self.op_dependent_vals.push(val)
             }
         }

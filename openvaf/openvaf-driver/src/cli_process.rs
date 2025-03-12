@@ -30,7 +30,6 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
     if let Some(allow) = matches.get_many::<String>(ALLOW) {
         lints.extend(allow.map(|lint| (lint.to_owned(), LintLevel::Allow)));
     }
-
     if let Some(warn) = matches.get_many::<String>(WARN) {
         lints.extend(warn.map(|lint| (lint.to_owned(), LintLevel::Warn)));
     }
@@ -48,13 +47,12 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
                 )?
                 .cache_dir()
                 .to_owned();
-            if let Ok(res) = Utf8PathBuf::from_path_buf(path) {
-                res
-            } else {
+            let Ok(res) = Utf8PathBuf::from_path_buf(path) else {
                 bail!(
                     "failed to find cache directory\nhelp: use --cache-dir to specify it manually",
                 )
-            }
+            };
+            res
         };
         CompilationDestination::Cache { cache_dir }
     } else {
@@ -94,11 +92,9 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
     let target = matches.get_one::<String>(TARGET).cloned().unwrap_or_else(|| host.to_owned());
     let default_cpu = if host != target { "generic" } else { "native" };
 
-    let target = if let Some(target) = openvaf::Target::search(&target) {
-        target
-    } else {
+    let Some(target) = openvaf::Target::search(&target) else {
         // should never happened but helpful to provide support just in case
-        bail!("The target {target} is not supported by  this binary")
+        bail!("The target {target} is not supported by this binary")
     };
 
     let target_cpu: String =

@@ -1,4 +1,3 @@
-// use std::hash::{Hash, Hasher};
 use std::iter::repeat;
 
 use bitset::BitSet;

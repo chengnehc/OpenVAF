@@ -51,11 +51,10 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
             }
         }
 
-        if let Some(inst) = func.dfg.value_def(val).inst() {
-            reachable_derivatives.contains(inst, derivative)
-        } else {
-            false
-        }
+        func.dfg
+            .value_def(val)
+            .inst()
+            .is_some_and(|inst| reachable_derivatives.contains(inst, derivative))
     }
 
     /// This function deterimes which unknowns are reachable where in the DFG.

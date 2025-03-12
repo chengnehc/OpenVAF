@@ -349,7 +349,7 @@ impl ParamKind {
 /// A parameter during initialization is mutable (write default in case it's not given)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PlaceKind {
-    Contribute { dst: BranchWrite, reactive: bool, potential: bool },
+    Contribute { dst: BranchWrite, is_reactive: bool, is_potential: bool },
     ImplicitResidual { equation: ImplicitEquation, reactive: bool },
     CollapseImplicitEquation(ImplicitEquation),
     IsPotential(BranchWrite),

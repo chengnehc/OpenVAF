@@ -88,11 +88,11 @@ fn parameters() {
                 "foo",
                 ParamInfo {
                     name: "foo",
-                    alias: [
+                    aliases: [
                         "alias",
                     ],
-                    unit: "m",
-                    description: "hmm",
+                    units: "m",
+                    desc: "hmm",
                     group: "foo",
                     is_instance: true,
                 },
@@ -101,9 +101,9 @@ fn parameters() {
                 "bar",
                 ParamInfo {
                     name: "bar",
-                    alias: [],
-                    unit: "m",
-                    description: "hmm",
+                    aliases: [],
+                    units: "m",
+                    desc: "hmm",
                     group: "foo",
                     is_instance: true,
                 },
@@ -112,9 +112,9 @@ fn parameters() {
                 "module_param",
                 ParamInfo {
                     name: "module_param",
-                    alias: [],
-                    unit: "",
-                    description: "",
+                    aliases: [],
+                    units: "",
+                    desc: "",
                     group: "",
                     is_instance: false,
                 },
@@ -142,29 +142,29 @@ fn opvars() {
             (
                 "both1",
                 OpVar {
-                    unit: "m",
-                    description: "hmm",
+                    units: "m",
+                    desc: "hmm",
                 },
             ),
             (
                 "both2",
                 OpVar {
-                    unit: "m",
-                    description: "hmm",
+                    units: "m",
+                    desc: "hmm",
                 },
             ),
             (
                 "units_",
                 OpVar {
-                    unit: "m",
-                    description: "",
+                    units: "m",
+                    desc: "",
                 },
             ),
             (
                 "desc_",
                 OpVar {
-                    unit: "",
-                    description: "hmm",
+                    units: "",
+                    desc: "hmm",
                 },
             ),
         ]

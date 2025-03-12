@@ -187,11 +187,9 @@ impl ControlFlowGraph {
     pub fn compute(&mut self, func: &Function) {
         self.clear();
         self.data.resize(func.layout.num_blocks(), CFGNode::default());
-
         for block in &func.layout {
             self.compute_block(func, block);
         }
-
         self.valid = true;
     }
 

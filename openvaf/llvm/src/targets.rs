@@ -3,8 +3,7 @@
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 
-use ::libc::c_char;
-use libc::{c_uint, c_ulonglong};
+use libc::{c_char, c_uint, c_ulonglong};
 
 use crate::support::LLVMString;
 use crate::{

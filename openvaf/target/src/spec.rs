@@ -1,8 +1,8 @@
+use std::collections::BTreeMap;
+
 mod apple_base;
 mod linux_base;
 mod windows_msvc_base;
-
-use std::collections::BTreeMap;
 
 use crate::host_triple;
 

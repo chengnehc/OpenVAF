@@ -13,16 +13,17 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::{mem, slice};
 
-#[cfg(test)]
-mod tests;
+pub mod matrix;
 
 mod hybrid;
-pub mod matrix;
 mod sparse;
+#[cfg(test)]
+mod tests;
 
 pub use hybrid::{HybridBitSet, HybridIter};
 pub use matrix::{BitMatrix, SparseBitMatrix /* , GrowableSparseBitMatrix */};
 pub use sparse::SparseBitSet;
+
 use sparse::SPARSE_MAX;
 
 pub type Word = u64;

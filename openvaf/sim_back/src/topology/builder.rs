@@ -5,7 +5,7 @@ use mir::builder::InstBuilder;
 use mir::cursor::{Cursor, FuncCursor};
 use mir::{Block, ControlFlowGraph, Function, Inst, InstructionData, Opcode, Value, F_ZERO};
 
-use crate::topology::Topology;
+use super::Topology;
 
 pub(super) struct Builder<'a> {
     pub(super) topology: &'a mut Topology,
@@ -54,11 +54,8 @@ impl Builder<'_> {
                     }
                 }
                 InstructionData::Unary { opcode: Opcode::Fneg, arg } => {
-                    if let Some(&arg) = self.val_map.get(&arg) {
-                        ins!().fneg(arg)
-                    } else {
-                        continue;
-                    }
+                    let Some(&arg) = self.val_map.get(&arg) else { continue };
+                    ins!().fneg(arg)
                 }
                 InstructionData::Binary { opcode: Opcode::Fmul, args: [lhs, rhs] } => {
                     match (&self.val_map.get(&lhs), &self.val_map.get(&rhs)) {
@@ -68,11 +65,8 @@ impl Builder<'_> {
                     }
                 }
                 InstructionData::Binary { opcode: Opcode::Fdiv, args: [num, denom] } => {
-                    if let Some(&num) = self.val_map.get(&num) {
-                        ins!().fdiv(num, denom)
-                    } else {
-                        continue;
-                    }
+                    let Some(&num) = self.val_map.get(&num) else { continue };
+                    ins!().fdiv(num, denom)
                 }
                 InstructionData::PhiNode(_) => {
                     self.phis.push(inst);
@@ -80,11 +74,8 @@ impl Builder<'_> {
                     self.func.dfg.make_invalid_value()
                 }
                 InstructionData::Unary { opcode: Opcode::OptBarrier, arg } => {
-                    if let Some(&arg) = self.val_map.get(&arg) {
-                        arg
-                    } else {
-                        continue;
-                    }
+                    let Some(&arg) = self.val_map.get(&arg) else { continue };
+                    arg
                 }
                 _ => {
                     continue;

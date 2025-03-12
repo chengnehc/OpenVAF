@@ -5,9 +5,9 @@ use std::slice;
 use mir::{Block, FuncRef, Function, Inst, Opcode, Param, Value, ValueDef};
 use typed_index_collections::{TiSlice, TiVec};
 
-pub use crate::data::Data;
-
 mod data;
+
+pub use crate::data::Data;
 
 pub struct InterpreterState {
     vals: TiVec<Value, Data>,

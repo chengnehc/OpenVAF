@@ -56,12 +56,10 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
     fn as_subgraph_entry(&mut self, inst: Inst) -> Option<(SparseBitSet<Derivative>, Value)> {
         self.curr_subgraph_dominator = self.func.layout.inst_block(inst).unwrap();
 
-        let derivatives =
-            if let Some(HybridBitSet::Sparse(derivatives)) = self.derivatives.mat.row(inst) {
-                derivatives.clone()
-            } else {
-                return None;
-            };
+        let Some(HybridBitSet::Sparse(derivatives)) = self.derivatives.mat.row(inst) else {
+            return None;
+        };
+        let derivatives = derivatives.clone();
 
         let args = self.func.dfg.instr_args(inst);
         let results = self.func.dfg.inst_results(inst);
@@ -96,11 +94,7 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
     }
 
     fn explore_subgraph(&mut self, inst: Inst) {
-        let entry = if let Some(entry) = self.as_subgraph_entry(inst) {
-            entry
-        } else {
-            return;
-        };
+        let Some(entry) = self.as_subgraph_entry(inst) else { return };
 
         self.workqueue
             .extend(self.func.dfg.inst_uses(inst).map(|use_| self.func.dfg.use_to_operand(use_).0));
@@ -114,15 +108,12 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
                 continue;
             }
 
-            if let Some(row) = self.derivatives.mat.row(inst) {
-                if self
-                    .curr_subgraph_unknowns
-                    .iter()
-                    .all(|unknown| !row.contains(self.intern.to_derivative(unknown)))
-                {
-                    continue;
-                }
-            } else {
+            let Some(row) = self.derivatives.mat.row(inst) else { continue };
+            if self
+                .curr_subgraph_unknowns
+                .iter()
+                .all(|unknown| !row.contains(self.intern.to_derivative(unknown)))
+            {
                 continue;
             }
 

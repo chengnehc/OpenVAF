@@ -2,7 +2,7 @@
 //! to be created for an anlog opertor (like ddt) or to turn the analog operator
 //! into a separate dimension instead.
 
-use std::mem::take;
+use std::mem;
 
 use bitset::SparseBitMatrix;
 use hir_lower::{CallBackKind, HirInterner, ImplicitEquationKind, ParamKind, PlaceKind};
@@ -153,7 +153,7 @@ impl super::Builder<'_> {
         for (cb, uses) in intern.callback_uses.iter_mut_enumerated() {
             match intern.callbacks[cb] {
                 CallBackKind::TimeDerivative => {
-                    for inst in take(uses) {
+                    for inst in mem::take(uses) {
                         if self.func.layout.inst_block(inst).is_none() {
                             continue;
                         }
@@ -180,7 +180,7 @@ impl super::Builder<'_> {
                 CallBackKind::WhiteNoise { .. }
                 | CallBackKind::FlickerNoise { .. }
                 | CallBackKind::NoiseTable(_) => {
-                    for inst in take(uses) {
+                    for inst in mem::take(uses) {
                         analog_operators.push((
                             inst,
                             self.determine_evaluation(
@@ -210,7 +210,7 @@ impl super::Builder<'_> {
         postorder.clear();
         scratch_buf.clear();
         let mut transversal =
-            func.dfg.inst_uses_postorder_with(inst, (take(scratch_buf), Vec::new()), |_| true);
+            func.dfg.inst_uses_postorder_with(inst, (mem::take(scratch_buf), Vec::new()), |_| true);
         postorder.extend(&mut transversal);
         *scratch_buf = transversal.visited;
         let visisted = scratch_buf;

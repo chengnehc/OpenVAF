@@ -1,3 +1,5 @@
+//! Metadata of compiled module
+
 use ahash::AHashSet;
 use hir::diagnostics::{BaseDB, ConsoleSink, Diagnostic, FileId, Label, LabelStyle, Report};
 use hir::{
@@ -15,7 +17,7 @@ mod tests;
 
 pub fn collect_modules(
     db: &CompilationDB,
-    all_vars_opvars: bool,
+    all_vars_op: bool,
     sink: &mut ConsoleSink,
 ) -> Option<Vec<ModuleInfo>> {
     let cu = db.compilation_unit();
@@ -29,7 +31,7 @@ pub fn collect_modules(
     let res = cu
         .modules(db)
         .into_iter()
-        .map(|module| ModuleInfo::collect(db, cu, module, sink, all_vars_opvars))
+        .map(|module| ModuleInfo::collect(db, cu, module, all_vars_op, sink))
         .collect();
     if sink.summary(&name) {
         return None;
@@ -41,7 +43,7 @@ pub fn collect_modules(
 pub struct ModuleInfo {
     pub module: Module,
     pub params: IndexMap<Parameter, ParamInfo, ahash::RandomState>,
-    pub sys_fun_alias: IndexMap<ParamSysFun, Vec<SmolStr>, ahash::RandomState>,
+    pub param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, ahash::RandomState>,
     pub op_vars: IndexMap<Variable, OpVar, ahash::RandomState>,
 }
 
@@ -50,24 +52,24 @@ impl ModuleInfo {
         db: &CompilationDB,
         cu: CompilationUnit,
         module: Module,
+        all_vars_op: bool,
         sink: &mut ConsoleSink,
-        all_vars_opvars: bool,
     ) -> ModuleInfo {
         let mut params: IndexMap<Parameter, ParamInfo, ahash::RandomState> = IndexMap::default();
-        let mut sys_fun_alias: IndexMap<ParamSysFun, Vec<SmolStr>, ahash::RandomState> =
+        let mut param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, ahash::RandomState> =
             IndexMap::default();
         let mut op_vars = IndexMap::default();
 
-        let ast = cu.ast_cache(db);
-
+        let mut decls = module.rec_declarations(db);
         let mut resolved_attrs = AHashSet::new();
-        let mut declarations = module.rec_declarations(db);
         let mut add_diagnostic = |attr: ast::Attr, diag: &dyn Diagnostic| {
             if resolved_attrs.insert(attr.syntax().text_range()) {
                 sink.add_diagnostic(diag, cu.root_file(), db)
             }
         };
-        while let Some((name, dec)) = declarations.next() {
+        let ast = cu.ast_cache(db);
+
+        while let Some((name, dec)) = decls.next() {
             match dec {
                 ScopeDef::Variable(var) => {
                     // 3.2.1 Output variables
@@ -79,12 +81,12 @@ impl ModuleInfo {
                     // check for units or description
                     let units = var.get_attr(db, &ast, "units");
                     let desc = var.get_attr(db, &ast, "desc");
-                    if units.is_none() && desc.is_none() && !all_vars_opvars {
+                    if units.is_none() && desc.is_none() && !all_vars_op {
                         continue;
                     }
                     // check that we are not in a block
                     let name_len = name.len();
-                    let path = declarations.to_path(name);
+                    let path = decls.to_path(name);
                     if path.len() != name_len {
                         continue;
                     }
@@ -107,7 +109,7 @@ impl ModuleInfo {
                         })
                         .unwrap_or_default();
 
-                    op_vars.insert(var, OpVar { unit: units, description: desc });
+                    op_vars.insert(var, OpVar { units, desc });
                 }
 
                 ScopeDef::Parameter(param) => {
@@ -171,10 +173,10 @@ impl ModuleInfo {
                     params.insert(
                         param,
                         ParamInfo {
-                            name: declarations.to_path(name),
-                            alias: Vec::new(),
-                            unit: units,
-                            description: desc,
+                            name: decls.to_path(name),
+                            aliases: Vec::new(),
+                            units,
+                            desc,
                             group,
                             is_instance,
                         },
@@ -183,10 +185,10 @@ impl ModuleInfo {
 
                 ScopeDef::AliasParam(alias) => match alias.resolve(db).unwrap() {
                     ResolvedAliasParam::Parameter(param) => {
-                        params.entry(param).or_default().alias.push(declarations.to_path(name))
+                        params.entry(param).or_default().aliases.push(decls.to_path(name))
                     }
-                    ResolvedAliasParam::Sysfun(sys_fun) => {
-                        sys_fun_alias.entry(sys_fun).or_default().push(declarations.to_path(name))
+                    ResolvedAliasParam::Sysfun(sysfun) => {
+                        param_sysfuns.entry(sysfun).or_default().push(decls.to_path(name))
                     }
                 },
 
@@ -194,26 +196,26 @@ impl ModuleInfo {
             }
         }
 
-        ModuleInfo { module, params, op_vars, sys_fun_alias }
+        ModuleInfo { module, params, param_sysfuns, op_vars }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParamInfo {
     pub name: SmolStr,
-    pub alias: Vec<SmolStr>,
-    pub unit: String,
-    pub description: String,
+    pub aliases: Vec<SmolStr>,
+    pub units: String,
+    pub desc: String,
     pub group: String,
-    // TODO(JW) add standard attribute 'multiplicity'. [LRM 2.9.2]
-    // pub multiplicity
     pub is_instance: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpVar {
-    pub unit: String,
-    pub description: String,
+    pub units: String,
+    pub desc: String,
+    // TODO(JW) add standard attribute 'multiplicity'. [LRM 2.9.2]
+    // pub multiplicity
 }
 
 struct IllegalAttr {

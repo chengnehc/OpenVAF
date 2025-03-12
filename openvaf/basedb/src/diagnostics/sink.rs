@@ -99,6 +99,7 @@ impl<'a> ConsoleSink<'a> {
         ConsoleSink::new_with(db, Box::new(buffer))
     }
 
+    // TODO(JW): use more detailed return type to signify error
     pub fn summary(&mut self, target_name: &impl Display) -> bool {
         if self.error_cnt != 0 {
             let warn = if self.warning_cnt != 0 {

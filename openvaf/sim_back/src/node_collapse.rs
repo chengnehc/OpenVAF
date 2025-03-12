@@ -1,7 +1,8 @@
+use stdx::{impl_debug_display, impl_idx_from};
+
 use bitset::HybridBitSet;
 use hir::BranchWrite;
 use hir_lower::{CallBackKind, PlaceKind};
-use stdx::{impl_debug_display, impl_idx_from};
 use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
@@ -22,37 +23,28 @@ pub struct NodeCollapse {
 }
 
 impl NodeCollapse {
-    pub(super) fn new(
-        init: &Initialization,
-        dae_system: &DaeSystem,
-        ctx: &Context,
-    ) -> NodeCollapse {
+    pub(super) fn new(init: &Initialization, dae: &DaeSystem, ctx: &Context) -> NodeCollapse {
         let mut pairs = TiSet::with_capacity(32);
-        for (&kind, _) in &init.intern.outputs {
-            if let PlaceKind::CollapseImplicitEquation(eq) = kind {
-                let eq = dae_system.unknowns.unwrap_index(&SimUnknownKind::Implicit(eq));
+        for (kind, _) in &init.intern.outputs {
+            if let PlaceKind::CollapseImplicitEquation(eq) = *kind {
+                let eq = dae.unknowns.unwrap_index(&SimUnknownKind::Implicit(eq));
                 pairs.insert((eq, None));
             }
         }
         for kind in init.intern.callbacks.iter() {
             if let CallBackKind::CollapseHint(hi, lo) = *kind {
-                let hi = dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
-                let lo = lo
-                    .map(|lo| dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
+                let hi = dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
+                let lo = lo.map(|lo| dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
                 pairs.insert((hi, lo));
             }
         }
         let mut extra_pairs = TiVec::from(vec![HybridBitSet::default(); pairs.len()]);
-        for (unknown, &kind) in dae_system.unknowns.iter_enumerated() {
+        for (unknown, &kind) in dae.unknowns.iter_enumerated() {
             if let SimUnknownKind::Current(kind) = kind {
-                let (hi, lo) = if let Ok(branch) = BranchWrite::try_from(kind) {
-                    branch.nodes(ctx.db)
-                } else {
-                    continue;
-                };
-                let lo = lo
-                    .map(|lo| dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
-                let hi = dae_system.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
+                let Ok(branch) = BranchWrite::try_from(kind) else { continue };
+                let (hi, lo) = branch.nodes(ctx.db);
+                let hi = dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
+                let lo = lo.map(|lo| dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
                 let source_pair: Option<CollapsePair> = pairs.index(&(hi, lo)).or_else(|| {
                     let lo = lo?;
                     pairs.index(&(lo, Some(hi)))

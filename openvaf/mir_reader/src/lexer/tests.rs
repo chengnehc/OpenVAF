@@ -1,5 +1,6 @@
-use super::*;
 use crate::error::Location;
+
+use super::*;
 
 #[test]
 fn digits() {

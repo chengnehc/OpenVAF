@@ -1,10 +1,11 @@
 use std::fs;
 
-use expect_test::expect_file;
 use hir::diagnostics::ConsoleSink;
 use hir::CompilationDB;
-use indoc::indoc;
 use lasso::Rodeo;
+
+use expect_test::expect_file;
+use indoc::indoc;
 use stdx::{integration_test_dir, openvaf_test_data};
 
 use crate::context::{Context, OptimizationStage};
@@ -16,29 +17,29 @@ fn run_test(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
-    let mut cx = Context::new(&db, &mut literals, &module);
-    cx.compute_outputs(true);
-    cx.compute_cfg();
-    cx.optimize(OptimizationStage::Initial);
+    let mut cxt = Context::new(&db, &mut literals, &module);
+    cxt.compute_outputs(true);
+    cxt.compute_cfg();
+    cxt.optimize(OptimizationStage::Initial);
 
-    let topology = Topology::new(&mut cx);
-    let mut dae_system = DaeSystem::new(&mut cx, topology);
+    let topology = Topology::new(&mut cxt);
+    let mut dae_system = DaeSystem::new(&mut cxt, topology);
 
-    cx.compute_cfg();
-    let gvn = cx.optimize(OptimizationStage::PostDerivative);
-    dae_system.sparsify(&mut cx);
+    cxt.compute_cfg();
+    let gvn = cxt.optimize(OptimizationStage::PostDerivative);
+    dae_system.sparsify(&mut cxt);
 
-    cx.refresh_op_dependent_insts();
-    let init = Initialization::new(&mut cx, gvn);
+    cxt.refresh_op_dependent_insts();
+    let init = Initialization::new(&mut cxt, gvn);
     let name = module.module.name(&db);
     let test_dir = openvaf_test_data("init");
     let topology = format!("{:#?}\n{:#?}", init.cached_vals, init.cache_slots);
-    assert!(cx.func.validate());
+    assert!(cxt.func.validate());
     assert!(init.func.validate());
     expect_file![test_dir.join(format!("{name}_system.snap"))].assert_eq(&topology);
     let func = format!("{:#?}", init.func);
     expect_file![test_dir.join(format!("{name}_init_mir.snap"))].assert_eq(&func);
-    let func = format!("{:#?}", &cx.func);
+    let func = format!("{:#?}", &cxt.func);
     expect_file![test_dir.join(format!("{name}_eval_mir.snap"))].assert_eq(&func);
 }
 

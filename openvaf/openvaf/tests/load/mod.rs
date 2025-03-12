@@ -367,15 +367,14 @@ unsafe extern "C" fn osdi_pnjlim(
     vt: f64,
     vcrit: f64,
 ) -> f64 {
-    if let Ok((res, check_)) = panic::catch_unwind(|| osdi_pnjlim_impl(init, vnew, vold, vt, vcrit))
-    {
-        if check_ {
-            *check = true;
-        }
-        res
-    } else {
+    let Ok((res, check_)) = panic::catch_unwind(|| osdi_pnjlim_impl(init, vnew, vold, vt, vcrit))
+    else {
         process::exit(-1)
+    };
+    if check_ {
+        *check = true;
     }
+    res
 }
 
 // an incorrect implementation of pnjlim that makes testing easy
@@ -490,6 +489,7 @@ impl fmt::Debug for OsdiDescriptor {
             wn!("has bound_step {}", self.bound_step_offset != u32::MAX);
             wn!("instance size {}", self.instance_size);
             wn!("model size {}", self.model_size);
+
             Ok(())
         }
     }

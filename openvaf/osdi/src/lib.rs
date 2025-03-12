@@ -5,15 +5,16 @@ use stdx::{impl_debug_display, impl_idx_from};
 
 use base_n::CASE_INSENSITIVE;
 use camino::{Utf8Path, Utf8PathBuf};
+use lasso::Rodeo;
+use salsa::ParallelDatabase;
+use typed_indexmap::TiSet;
+
 use hir::{CompilationDB, ParamSysFun, Type};
 use hir_lower::{CallBackKind, HirInterner, ParamKind};
-use lasso::Rodeo;
 use llvm::{LLVMDisposeTargetData, OptLevel};
 use mir_llvm::{CodegenCx, LLVMBackend};
-use salsa::ParallelDatabase;
 use sim_back::{CompiledModule, ModuleInfo};
 use target::spec::Target;
-use typed_indexmap::TiSet;
 
 mod access;
 mod bitfield;
@@ -245,22 +246,22 @@ impl OsdiModule<'_> {
         literals.get_or_intern_static("");
 
         for param in self.info.params.values() {
-            for alias in &param.alias {
+            for alias in &param.aliases {
                 literals.get_or_intern(&**alias);
             }
             literals.get_or_intern(&param.name);
-            literals.get_or_intern(&param.unit);
-            literals.get_or_intern(&param.description);
+            literals.get_or_intern(&param.units);
+            literals.get_or_intern(&param.desc);
             literals.get_or_intern(&param.group);
         }
 
         for (var, opvar_info) in self.info.op_vars.iter() {
             literals.get_or_intern(var.name(db));
-            literals.get_or_intern(&opvar_info.unit);
-            literals.get_or_intern(&opvar_info.description);
+            literals.get_or_intern(&opvar_info.units);
+            literals.get_or_intern(&opvar_info.desc);
         }
 
-        for alias_list in self.info.sys_fun_alias.values() {
+        for alias_list in self.info.param_sysfuns.values() {
             for alias in alias_list {
                 literals.get_or_intern(&**alias);
             }

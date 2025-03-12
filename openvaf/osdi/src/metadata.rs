@@ -58,7 +58,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let inst_params = inst_data.params.keys().map(|param| match param {
             OsdiInstanceParam::Builtin(builtin) => {
                 let mut name = vec![format!("${builtin:?}")];
-                if let Some(alias) = self.module.info.sys_fun_alias.get(builtin) {
+                if let Some(alias) = self.module.info.param_sysfuns.get(builtin) {
                     name.extend(alias.iter().map(SmolStr::to_string))
                 }
                 OsdiParamOpvar {
@@ -84,12 +84,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 let flags = para_ty_flags(&ty) | PARA_KIND_INST;
                 OsdiParamOpvar {
                     name: once(&param_info.name)
-                        .chain(&*param_info.alias)
+                        .chain(&*param_info.aliases)
                         .map(SmolStr::to_string)
                         .collect(),
-                    num_alias: param_info.alias.len() as u32,
-                    description: param_info.description.clone(),
-                    units: param_info.unit.clone(),
+                    num_alias: param_info.aliases.len() as u32,
+                    description: param_info.desc.clone(),
+                    units: param_info.units.clone(),
                     flags,
                     len: ty_len(&ty).unwrap_or(0),
                 }
@@ -105,12 +105,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let flags = para_ty_flags(&ty) | PARA_KIND_MODEL;
             let param_opvar = OsdiParamOpvar {
                 name: once(&param_info.name)
-                    .chain(&*param_info.alias)
+                    .chain(&*param_info.aliases)
                     .map(SmolStr::to_string)
                     .collect(),
-                num_alias: param_info.alias.len() as u32,
-                description: param_info.description.clone(),
-                units: param_info.unit.clone(),
+                num_alias: param_info.aliases.len() as u32,
+                description: param_info.desc.clone(),
+                units: param_info.units.clone(),
                 flags,
                 len: ty_len(&ty).unwrap_or(0),
             };
@@ -125,8 +125,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             OsdiParamOpvar {
                 name: vec![opvar.name(self.db).to_string()],
                 num_alias: 0,
-                description: opvar_info.description.clone(),
-                units: opvar_info.unit.clone(),
+                description: opvar_info.desc.clone(),
+                units: opvar_info.units.clone(),
                 flags,
                 len: ty_len(&ty).unwrap_or(0),
             }

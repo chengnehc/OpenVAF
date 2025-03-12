@@ -1,10 +1,11 @@
 use bitset::HybridBitSet;
-use expect_test::{expect, Expect};
-use float_cmp::{ApproxEq, F64Margin};
 use mir::{ControlFlowGraph, DominatorTree, KnownDerivatives};
 use mir_interpret::{Data, Interpreter};
 use mir_reader::parse_function;
 use typed_index_collections::TiSlice;
+
+use expect_test::{expect, Expect};
+use float_cmp::{ApproxEq, F64Margin};
 
 use crate::auto_diff;
 

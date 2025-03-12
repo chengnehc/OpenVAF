@@ -125,7 +125,7 @@ DaeSystem {
             react: v636,
         },
     },
-    small_signal_parameters: {},
+    small_signal_params: {},
     noise_sources: [
         NoiseSource {
             name: Spur(2),

@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use std::fs::{read_dir, read_to_string, DirEntry};
+use std::fs::{self, DirEntry};
 use std::mem::swap;
 
 use ahash::RandomState;
@@ -13,7 +13,7 @@ use crate::{add_preamble, ensure_file_contents, project_root, reformat, to_lower
 #[test]
 fn gen_osdi_structs() {
     let header_dir = project_root().join("openvaf").join("osdi").join("header");
-    let headers: Vec<_> = read_dir(header_dir)
+    let headers: Vec<_> = fs::read_dir(header_dir)
         .unwrap()
         .filter_map(|entry| {
             let entry = entry.ok()?;
@@ -42,9 +42,7 @@ fn gen_osdi_structs() {
         let stdlib_idents = &stdlib_idents_;
         let targets = targets.clone();
         let stdlib = quote! {
-            #(
-                const #stdlib_idents: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), #stdlibs));
-            )*
+            #(const #stdlib_idents: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), #stdlibs));)*
             pub fn stdlib_bitcode(target: &target::spec::Target) -> &'static [u8]{
                 match &*target.llvm_target {
                     #(#targets => #stdlib_idents,)*
@@ -93,7 +91,7 @@ impl Header {
         let version_minor = version_minor.parse().unwrap();
 
         let path = entry.path();
-        let src = read_to_string(path).unwrap();
+        let src = fs::read_to_string(path).unwrap();
         Some(Header { version_minor, version_major, src })
     }
 }
@@ -730,7 +728,6 @@ fn gen_llvm_tys<'a>(tys: &IndexMap<&'a str, OsdiStruct<'a>, RandomState>) -> Str
             }
 
         }
-
 
         struct OsdiTyBuilder<'a, 'b, 'll>{
             ctx: &'a CodegenCx<'b, 'll>,
