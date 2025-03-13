@@ -1,9 +1,13 @@
+//! Instruction Builders
+//!
+//! An instruction builder represents a point within a basic block and is the
+//! exclusive means of building instructions using the C interface.
+
 use ::libc::{c_char, c_uint};
 
 use crate::{BasicBlock, Bool, Builder, Context, IntPredicate, RealPredicate, Type, Value};
 pub use LLVMBuildInBoundsGEP2 as LLVMBuildGEP2;
 
-// Instruction Builders
 extern "C" {
     pub fn LLVMCreateBuilderInContext(ctx: &Context) -> &mut Builder<'_>;
     pub fn LLVMPositionBuilder<'a>(
@@ -11,8 +15,9 @@ extern "C" {
         block: &'a BasicBlock,
         inst: Option<&'a Value>,
     );
+    /// Set builder position to the end of a basic block
     pub fn LLVMPositionBuilderAtEnd<'a>(builder: &Builder<'a>, block: &'a BasicBlock);
-    pub fn LLVMGetInsertBlock<'a>(builder: &Builder<'a>) -> &'a BasicBlock;
+    // pub fn LLVMGetInsertBlock<'a>(builder: &Builder<'a>) -> &'a BasicBlock;
     pub fn LLVMDisposeBuilder<'a>(builder: &'a mut Builder<'a>);
 
     // Terminators
@@ -185,29 +190,29 @@ extern "C" {
     pub fn LLVMBuildAlloca<'a>(
         builder: &Builder<'a>,
         ty: &'a Type,
-        Name: *const c_char,
+        name: *const c_char,
     ) -> &'a Value;
     pub fn LLVMBuildArrayAlloca<'a>(
         builder: &Builder<'a>,
         ty: &'a Type,
-        Val: &'a Value,
-        Name: *const c_char,
+        val: &'a Value,
+        name: *const c_char,
     ) -> &'a Value;
     pub fn LLVMBuildFree<'a>(builder: &Builder<'a>, PointerVal: &'a Value) -> &'a Value;
     pub fn LLVMBuildLoad2<'a>(
         builder: &Builder<'a>,
         ty: &'a Type,
-        PointerVal: &'a Value,
-        Name: *const c_char,
+        ptr: &'a Value,
+        name: *const c_char,
     ) -> &'a Value;
     pub fn LLVMBuildStore<'a>(builder: &Builder<'a>, Val: &'a Value, Ptr: &'a Value) -> &'a Value;
     pub fn LLVMBuildInBoundsGEP2<'a>(
-        B: &Builder<'a>,
-        Ty: &'a Type,
-        Pointer: &'a Value,
-        Indices: *const &'a Value,
-        NumIndices: c_uint,
-        Name: *const c_char,
+        builder: &Builder<'a>,
+        ty: &'a Type,
+        ptr: &'a Value,
+        indices: *const &'a Value,
+        num_indices: c_uint,
+        name: *const c_char,
     ) -> &'a Value;
     pub fn LLVMBuildStructGEP2<'a>(
         builder: &Builder<'a>,
@@ -391,7 +396,6 @@ extern "C" {
         Val: &'a Value,
         Name: *const c_char,
     ) -> &'a Value;
-
     pub fn LLVMBuildPtrDiff2<'a>(
         builder: &Builder<'a>,
         elem_ty: &'a Type,

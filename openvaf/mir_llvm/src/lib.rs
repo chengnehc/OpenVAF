@@ -68,7 +68,6 @@ impl<'t> LLVMBackend<'t> {
                         "could not allocate host CPU features, LLVM returned a `null` string"
                     );
                 };
-
                 LLVMDisposeMessage(ptr as *mut c_char);
 
                 features_string
@@ -89,7 +88,6 @@ impl<'t> LLVMBackend<'t> {
                         "could not allocate host CPU features, LLVM returned a `null` string"
                     );
                 };
-
                 LLVMDisposeMessage(ptr as *mut c_char);
 
                 cpu
@@ -102,6 +100,7 @@ impl<'t> LLVMBackend<'t> {
 
         // TODO add target options here if we ever have any
         llvm::init(cg_opts, &[]);
+
         LLVMBackend { target, target_cpu, features: features.join(",") }
     }
 
@@ -151,8 +150,7 @@ extern "C" fn diagnostic_handler(info: &llvm::DiagnosticInfo, _: *mut c_void) {
 
 pub struct ModuleLlvm {
     llcx: &'static mut llvm::Context,
-    // FIXME:
-    // must be a raw pointer because the reference must not outlive self/the context
+    // TODO(JW) why? must be a raw pointer because the reference must not outlive self/the context
     llmod_raw: *const llvm::Module,
     tm: &'static mut llvm::TargetMachine,
     opt_lvl: OptLevel,
@@ -172,11 +170,11 @@ impl ModuleLlvm {
         let name = CString::new(name).unwrap();
         let llmod = llvm::LLVMModuleCreateWithNameInContext(name.as_ptr(), llcx);
 
-        let data_layout = CString::new(&*target.data_layout.clone()).unwrap();
+        let data_layout = CString::new(&*target.data_layout).unwrap();
         llvm::LLVMSetDataLayout(llmod, data_layout.as_ptr());
         llvm::set_normalized_target(llmod, &target.llvm_target);
 
-        let tm = llvm::create_target(
+        let tm = llvm::create_target_machine(
             &target.llvm_target,
             target_cpu,
             features,
@@ -189,12 +187,13 @@ impl ModuleLlvm {
         Ok(ModuleLlvm { llcx, llmod_raw, tm, opt_lvl })
     }
 
-    pub fn to_str(&self) -> LLVMString {
-        unsafe { LLVMString::new(llvm::LLVMPrintModuleToString(self.llmod())) }
-    }
-
+    /// Turn the raw pointer to `llvm::Module` into a reference
     pub fn llmod(&self) -> &llvm::Module {
         unsafe { &*self.llmod_raw }
+    }
+
+    pub fn to_str(&self) -> LLVMString {
+        unsafe { LLVMString::new(llvm::LLVMPrintModuleToString(self.llmod())) }
     }
 
     pub fn optimize(&self) {
@@ -219,7 +218,7 @@ impl ModuleLlvm {
         }
     }
 
-    /// Verifies this module and prints out any errors to `stderr`
+    /// Verifies this LLVM module and prints out any errors to `stderr`.
     ///
     /// # Returns
     /// Whether this module is valid (true if valid)
@@ -230,10 +229,10 @@ impl ModuleLlvm {
         }
     }
 
-    /// Verifies this module and retrieve error messages.
+    /// Verifies this LLVM module and retrieve error messages.
     ///
     /// # Returns
-    /// An error messages in case the module invalid
+    /// An error message in case the module is invalid.
     pub fn verify(&self) -> Option<LLVMString> {
         unsafe {
             let mut res = MaybeUninit::uninit();
@@ -253,24 +252,19 @@ impl ModuleLlvm {
     /// Emits an object file for the given module to `dst` file path.
     pub fn emit_object(&self, dst: &Path) -> Result<(), LLVMString> {
         let path = CString::new(dst.to_str().unwrap()).unwrap();
-
-        let mut err_string = MaybeUninit::uninit();
+        let mut err_msg = MaybeUninit::uninit();
         let return_code = unsafe {
             // REVIEW: Why does LLVM need a mutable ptr to path...?
-
             llvm::LLVMTargetMachineEmitToFile(
                 self.tm,
                 self.llmod(),
                 path.as_ptr(),
                 llvm::CodeGenFileType::ObjectFile,
-                err_string.as_mut_ptr(),
+                err_msg.as_mut_ptr(),
             )
         };
-
         if return_code == 1 {
-            unsafe {
-                return Err(LLVMString::new(err_string.assume_init()));
-            }
+            unsafe { return Err(LLVMString::new(err_msg.assume_init())) }
         }
 
         Ok(())

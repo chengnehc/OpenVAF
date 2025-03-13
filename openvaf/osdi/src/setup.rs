@@ -53,7 +53,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
         let fun_ty =
             cx.ty_func(&[cx.ty_ptr(), cx.ty_ptr(), cx.ty_ptr(), cx.ty_ptr()], cx.ty_void());
-        cx.declare_ext_fn(name, fun_ty)
+        cx.declare_external_fn(name, fun_ty)
     }
 
     pub fn setup_model(&self) -> &'ll llvm::Value {
@@ -206,7 +206,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             cx.ty_void(),
         );
 
-        cx.declare_ext_fn(name, fun_ty)
+        cx.declare_external_fn(name, fun_ty)
     }
 
     pub fn setup_instance(&mut self) -> &'ll llvm::Value {
@@ -309,7 +309,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         unsafe { inst_data.store_temperature(&builder, instance, temperature) };
         unsafe { inst_data.store_connected_ports(&builder, instance, connected_terminals) };
 
-        let trivial_cb = cx.trivial_callbacks(&[]);
+        let trivial_cb = cx.trivial_callback(&[]);
 
         let err_cap = unsafe { builder.alloca(cx.ty_int()) };
 

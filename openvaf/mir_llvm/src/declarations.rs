@@ -1,6 +1,5 @@
 use std::ffi::CString;
 
-use libc::c_char;
 use llvm::{False, LLVMTypeOf, Type, Value};
 
 use crate::CodegenCx;
@@ -18,7 +17,7 @@ pub fn declare_raw_fn<'ll>(
 ) -> &'ll Value {
     let name = CString::new(name).unwrap();
     unsafe {
-        let llfn = llvm::LLVMAddFunction(cx.llmod, name.as_ptr() as *const c_char, func_ty);
+        let llfn = llvm::LLVMAddFunction(cx.llmod, name.as_ptr(), func_ty);
         llvm::LLVMSetFunctionCallConv(llfn, callconv);
         llvm::LLVMSetUnnamedAddress(llfn, unnamed);
 
@@ -27,10 +26,6 @@ pub fn declare_raw_fn<'ll>(
 }
 
 impl<'ll> CodegenCx<'_, 'll> {
-    // pub fn target_cpu_attr(&self) -> &'ll Attribute {
-    //     create_attr_string_value(self.llcx, "target-cpu", self.target_cpu)
-    // }
-
     /// Declare a C ABI function.
     ///
     /// Only use this for foreign function ABIs and glue. For Rust functions use
@@ -38,7 +33,7 @@ impl<'ll> CodegenCx<'_, 'll> {
     ///
     /// If there’s a value with the same name already declared, the function will
     /// update the declaration and return existing Value instead.
-    pub fn declare_ext_fn(
+    pub fn declare_external_fn(
         &self,
         name: &str,
         // unnamed: llvm::UnnamedAddr,
@@ -48,7 +43,7 @@ impl<'ll> CodegenCx<'_, 'll> {
     }
 
     /// Declare a internal function.
-    pub fn declare_int_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
+    pub fn declare_internal_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
         // Function addresses are never significant, allowing functions to be merged.
         let fun = declare_raw_fn(
             self,
@@ -61,7 +56,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         fun
     }
 
-    /// Declare a internal function.
+    /// Declare a internal function with ccc (C call convention).
     pub fn declare_int_c_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
         // Function addresses are never significant, allowing functions to be merged.
         let fun = declare_raw_fn(
@@ -129,13 +124,12 @@ impl<'ll> CodegenCx<'_, 'll> {
         unsafe {
             let res = self
                 .define_global(name, ty)
-                .unwrap_or_else(|| unreachable!("symbol '{}' already defined", name));
+                .unwrap_or_else(|| unreachable!("symbol '{name}' already defined"));
 
             llvm::LLVMSetInitializer(res, val);
             llvm::LLVMSetLinkage(res, llvm::Linkage::ExternalLinkage);
             llvm::LLVMSetUnnamedAddress(res, llvm::UnnamedAddr::No);
             llvm::LLVMSetDLLStorageClass(res, llvm::DLLStorageClass::Export);
-
             if is_const {
                 llvm::LLVMSetGlobalConstant(res, llvm::True);
             }
@@ -150,6 +144,7 @@ impl<'ll> CodegenCx<'_, 'll> {
             llvm::LLVMSetInitializer(res, val);
             llvm::LLVMSetUnnamedAddress(res, llvm::UnnamedAddr::No);
             llvm::LLVMSetGlobalConstant(res, llvm::True);
+
             res
         }
     }
@@ -212,7 +207,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         let ty = self.ty_array(elem_ty, len as u32);
         let arr = self
             .define_global(name, ty)
-            .unwrap_or_else(|| unreachable!("symbol '{}' already defined", name));
+            .unwrap_or_else(|| unreachable!("symbol '{name}' already defined"));
 
         unsafe {
             let init = llvm::LLVMConstNull(ty);
@@ -221,10 +216,10 @@ impl<'ll> CodegenCx<'_, 'll> {
         }
 
         if add_cnt {
-            let name = format!("{}.cnt", name);
+            let name = format!("{name}.cnt");
             let arr_len = self
                 .define_global(&name, self.ty_size())
-                .unwrap_or_else(|| unreachable!("symbol '{}' already defined", name));
+                .unwrap_or_else(|| unreachable!("symbol '{name}' already defined"));
 
             unsafe {
                 let init = self.const_usize(len);

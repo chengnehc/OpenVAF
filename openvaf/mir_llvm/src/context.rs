@@ -18,7 +18,7 @@ pub struct CodegenCx<'a, 'll> {
     pub llcx: &'ll llvm::Context,
 
     pub target: &'a Target,
-    // pub target_cpu: &'a str,
+    // pub target_cpu: &'a str,  // This is handled by LLVMBackend.
     pub literals: &'a Rodeo,
     str_lit_cache: RefCell<AHashMap<Spur, &'ll Value>>,
 
@@ -30,22 +30,20 @@ pub struct CodegenCx<'a, 'll> {
 impl<'a, 'll> CodegenCx<'a, 'll> {
     pub(crate) fn new(
         literals: &'a Rodeo,
-        llvm_module: &'ll crate::ModuleLlvm,
+        module_llvm: &'ll crate::ModuleLlvm,
         target: &'a Target,
-        // target_cpu: &'a str,  // This is handled by LLVMBackend.
     ) -> CodegenCx<'a, 'll> {
         // let ty_isize =
         //     unsafe { llvm::LLVMIntTypeInContext(llvm_module.llcx, target.pointer_width) };
         CodegenCx {
-            llmod: llvm_module.llmod(),
-            llcx: llvm_module.llcx,
+            llmod: module_llvm.llmod(),
+            llcx: module_llvm.llcx,
             target,
-            // target_cpu,
             literals,
             str_lit_cache: RefCell::new(AHashMap::with_capacity(literals.len())),
             intrinsics: RefCell::new(AHashMap::new()),
             local_gen_sym_counter: Cell::new(0),
-            tys: Types::new(llvm_module.llcx, target.pointer_width),
+            tys: Types::new(module_llvm.llcx, target.pointer_width),
         }
     }
 
@@ -86,7 +84,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
     }
 
     pub fn const_str(&self, lit: Spur) -> &'ll Value {
-        // check if literal is in cache
+        // check if string literal is cached
         if let Some(val) = self.str_lit_cache.borrow().get(&lit) {
             return val;
         }
@@ -100,17 +98,17 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
                 false as llvm::Bool,
             )
         };
-        let sym = self.generate_local_symbol_name("str");
+        let name = self.generate_local_symbol_name("str");
         let ty = self.ty_of(val);
         let global = self
-            .define_global(&sym, ty)
-            .unwrap_or_else(|| unreachable!("symbol {} already defined", sym));
-
+            .define_global(&name, ty)
+            .unwrap_or_else(|| unreachable!("symbol {name} already defined"));
         unsafe {
             llvm::LLVMSetInitializer(global, val);
             llvm::LLVMSetGlobalConstant(global, llvm::True);
             llvm::LLVMSetLinkage(global, llvm::Linkage::Internal);
         }
+        // cache the string literal
         self.str_lit_cache.borrow_mut().insert(lit, global);
 
         global
@@ -123,11 +121,10 @@ impl CodegenCx<'_, '_> {
     pub fn generate_local_symbol_name(&self, prefix: &str) -> String {
         let idx = self.local_gen_sym_counter.get();
         self.local_gen_sym_counter.set(idx + 1);
-        // Include a '.' character, so there can be no accidental conflicts with
-        // user defined names
+
         let mut name = String::with_capacity(prefix.len() + 6);
         name.push_str(prefix);
-        name.push('.');
+        name.push('.'); // append a '.' to avoid accidental conflict with user defined names
         base_n::push_str(idx as u128, base_n::ALPHANUMERIC_ONLY, &mut name);
 
         name

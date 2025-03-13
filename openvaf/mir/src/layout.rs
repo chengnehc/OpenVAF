@@ -57,7 +57,7 @@ impl Layout {
         self.last_block = None;
     }
 
-    /// Returns the number of `Block`s.
+    /// Returns the number of basic blocks in the MIR function layout.
     pub fn num_blocks(&self) -> usize {
         self.blocks.len()
     }

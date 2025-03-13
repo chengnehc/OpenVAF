@@ -315,7 +315,7 @@ impl CodegenCtx<'_, '_> {
             ],
             cx.ty_void(),
         );
-        let llfun = cx.declare_ext_fn(&spec.prefix, fun_ty);
+        let llfun = cx.declare_external_fn(&spec.prefix, fun_ty);
 
         // setup builder
         let mut builder = Builder::new(&cx, func, llfun);
@@ -531,7 +531,7 @@ impl CodegenCtx<'_, '_> {
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let name = cx.local_callback_name();
         let fun_ty = cx.ty_func(&[cx.ty_ptr(), cx.ty_c_bool()], cx.ty_void());
-        let fun = cx.declare_int_fn(&name, fun_ty);
+        let fun = cx.declare_internal_fn(&name, fun_ty);
         unsafe {
             let bb = llvm::LLVMAppendBasicBlockInContext(cx.llcx, fun, UNNAMED);
             let builder = llvm::LLVMCreateBuilderInContext(cx.llcx);
@@ -652,7 +652,7 @@ impl CodegenCtx<'_, '_> {
             cx.ty_void(),
         );
 
-        let llfun = cx.declare_ext_fn("init_modelcard", fun_ty);
+        let llfun = cx.declare_external_fn("init_modelcard", fun_ty);
 
         let mut builder = Builder::new(&cx, &param_init_func, llfun);
 

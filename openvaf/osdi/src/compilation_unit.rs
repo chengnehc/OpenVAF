@@ -241,7 +241,7 @@ fn print_callback<'ll>(
     args.extend(arg_tys.iter().map(|arg| lltype(&arg.ty, cx)));
     let fun_ty = cx.ty_func(&args, cx.ty_void());
     let name = cx.local_callback_name();
-    let fun = cx.declare_int_fn(&name, fun_ty);
+    let fun = cx.declare_internal_fn(&name, fun_ty);
     unsafe {
         let entry_bb = LLVMAppendBasicBlockInContext(cx.llcx, fun, UNNAMED);
         let alloc_bb = LLVMAppendBasicBlockInContext(cx.llcx, fun, UNNAMED);

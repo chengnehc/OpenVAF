@@ -1,6 +1,6 @@
 //! Object file reading and writing
 
-use super::prelude::*;
+// use super::prelude::*;
 
 #[derive(Debug)]
 pub enum LLVMOpaqueSectionIterator {}
@@ -71,6 +71,7 @@ extern "C" {
         Context: LLVMContextRef,
         ErrorMessage: *mut *mut ::libc::c_char,
     ) -> LLVMBinaryRef;
+    
     pub fn LLVMDisposeBinary(BR: LLVMBinaryRef);
 
     // pub fn LLVMBinaryCopyMemoryBuffer(BR: LLVMBinaryRef) -> LLVMMemoryBufferRef;

@@ -1,18 +1,26 @@
 //! Pass Managers
 
 use libc::c_uint;
+use std::fmt;
 
 use crate::module::function_iter;
 use crate::util::InvariantOpaque;
-use crate::{Bool, Module, OptLevel, PassManager, PassManagerBuilder, Value};
+use crate::{Bool, Module, OptLevel, PassManager, Value};
+
+pub enum PassManagerBuilder {}
+impl fmt::Debug for PassManagerBuilder {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
+    }
+}
 
 #[repr(C)]
 pub struct FunctionPassManager<'a>(InvariantOpaque<'a>);
 
 extern "C" {
-    // TODO(JW) LLVMPassManagerBuilderRef and functions interacting with it has been
-    // removed since LLVM 17, as the legacy pass manager will no longer be supported.
-    // Move to 'Core->New Pass Manager' instead.
+    // TODO(JW) LLVMPassManagerBuilderRef (&PassManagerBuilder) and functions that
+    // interacts with it have been removed since LLVM 17, as the legacy pass manager
+    // will no longer be supported. Move to `Core::New Pass Manager` instead.
 
     // Transforms::Pass Manager Builder
     pub fn LLVMPassManagerBuilderCreate() -> &'static mut PassManagerBuilder;
@@ -54,7 +62,7 @@ pub unsafe fn pass_manager_builder_set_opt_lvl(pmb: &PassManagerBuilder, opt_lvl
     }
 }
 
-// Pass Managers
+/* Pass Managers */
 extern "C" {
     /// Creates a pass manager.
     pub fn LLVMCreatePassManager() -> &'static mut PassManager<'static>;
@@ -74,8 +82,8 @@ extern "C" {
 
 /// # Safety
 /// This function calls the LLVM C Api.
-/// If the module or its contents have been incorrectly constructed this can cause UB
-/// If the pass manager is not a function pass manager but a global pass manager this will cause UB
+/// If the module or its contents have been incorrectly constructed this can cause UB.
+/// If the pass manager is not a function pass manager but a global pass manager this will cause UB.
 pub unsafe fn run_function_pass_manager<'a>(fpm: &PassManager<'a>, module: &'a Module) {
     LLVMInitializeFunctionPassManager(fpm);
     for fun in function_iter(module) {

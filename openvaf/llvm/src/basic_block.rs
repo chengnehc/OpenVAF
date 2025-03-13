@@ -18,18 +18,19 @@ extern "C" {
     // pub fn LLVMGetNextBasicBlock(BB: & BasicBlock) -> & BasicBlock;
     // pub fn LLVMGetPreviousBasicBlock(BB: & BasicBlock) -> & BasicBlock;
     // pub fn LLVMGetEntryBasicBlock(Fn: &'a Value) -> & BasicBlock;
-    /// Insert the given basic block after the insertion point of the given builder.
+    // /// Insert the given basic block after the insertion point of the given builder.
     // pub fn LLVMInsertExistingBasicBlockAfterInsertBlock(
     //     Builder: LLVMBuilderRef,
     //     BB: & BasicBlock,
     // );
-    /// Append the given basic block to the basic block list of the given function.
+    // /// Append the given basic block to the basic block list of the given function.
     // pub fn LLVMAppendExistingBasicBlock(Fn: &'a Value, BB: & BasicBlock);
+    /// Append a basic block to the end of a function.
     pub fn LLVMAppendBasicBlockInContext<'a>(
         ctx: &'a Context,
         fun: &'a Value,
-        Name: *const c_char,
+        name: *const c_char,
     ) -> &'a BasicBlock;
-
+    ///	Obtain the last instruction in a basic block.
     pub fn LLVMGetLastInstruction<'a>(bb: &'a BasicBlock) -> Option<&'a Value>;
 }

@@ -10,12 +10,12 @@ use crate::metadata::osdi_0_3::{ACCESS_FLAG_INSTANCE, ACCESS_FLAG_SET};
 
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     pub fn access_function_prototype(&self) -> &'ll llvm::Value {
-        let cx = &self.cx;
+        let cx = self.cx;
         let void_ptr = cx.ty_ptr();
         let uint32_t = cx.ty_int();
         let fun_ty = cx.ty_func(&[void_ptr, void_ptr, uint32_t, uint32_t], void_ptr);
-        let name = &format!("access_{}", &self.module.sym);
-        cx.declare_ext_fn(name, fun_ty)
+        let name = format!("access_{}", &self.module.sym);
+        cx.declare_external_fn(&name, fun_ty)
     }
 
     pub fn access_function(&self) -> &'ll llvm::Value {

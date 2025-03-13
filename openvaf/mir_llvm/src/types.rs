@@ -7,12 +7,12 @@ use mir::Const;
 use crate::CodegenCx;
 
 pub struct Types<'ll> {
-    pub double: &'ll Type,
+    pub void: &'ll Type,
+    pub bool: &'ll Type,
+    pub char: &'ll Type,
     pub int: &'ll Type,
     pub size: &'ll Type,
-    pub char: &'ll Type,
-    pub bool: &'ll Type,
-    pub void: &'ll Type,
+    pub double: &'ll Type,
     pub ptr: &'ll Type,
     pub fat_ptr: &'ll Type,
     pub null_ptr_val: &'ll llvm::Value,
@@ -27,12 +27,12 @@ impl<'ll> Types<'ll> {
             // type is ignored anyway
             let ptr = llvm::LLVMPointerType(char, llvm::AddressSpace::DATA);
             Types {
-                double: llvm::LLVMDoubleTypeInContext(llcx),
+                void: llvm::LLVMVoidTypeInContext(llcx),
+                bool: llvm::LLVMInt1TypeInContext(llcx),
+                char,
                 int: llvm::LLVMInt32TypeInContext(llcx),
                 size: llvm::LLVMIntTypeInContext(llcx, pointer_width),
-                char,
-                bool: llvm::LLVMInt1TypeInContext(llcx),
-                void: llvm::LLVMVoidTypeInContext(llcx),
+                double: llvm::LLVMDoubleTypeInContext(llcx),
                 ptr,
                 fat_ptr: ty_struct(llcx, "fat_ptr", &[ptr, llvm::LLVMInt64TypeInContext(llcx)]),
                 null_ptr_val: llvm::LLVMConstPointerNull(ptr),
@@ -50,7 +50,6 @@ fn ty_struct<'ll>(llcx: &'ll llvm::Context, name: &str, elements: &[&'ll Type]) 
     }
 }
 
-/// wrappers for llvm::Type
 impl<'ll> CodegenCx<'_, 'll> {
     #[inline(always)]
     pub fn ty_double(&self) -> &'ll Type {
@@ -114,7 +113,6 @@ impl<'ll> CodegenCx<'_, 'll> {
     }
 }
 
-/// wrappers for constant llvm::Value
 impl<'ll> CodegenCx<'_, 'll> {
     pub fn const_val(&self, val: &Const) -> &'ll Value {
         match *val {
@@ -127,8 +125,8 @@ impl<'ll> CodegenCx<'_, 'll> {
     }
 
     /// # Safety
-    /// indices must be valid and inbounds for the provided ptr
-    /// The pointer must be a constant address
+    /// * Indices must be valid and inbounds for the provided ptr.
+    /// * The pointer must be a constant address.
     pub unsafe fn const_gep(
         &self,
         elem_ty: &'ll llvm::Type,

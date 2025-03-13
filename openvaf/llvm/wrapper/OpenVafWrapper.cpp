@@ -15,7 +15,7 @@ extern "C" {
 // TODO(JW) LLVM 18+ has added LLVMGetFastMathFlags and LLVMSetFastMathFlags for 
 // getting/setting the fast-math flags of an instruction, as well as 
 // LLVMCanValueUseFastMathFlags for checking if an instruction can use such flags.
-// Use that, instead of this wrapper.
+// See if we can use that rather than this wrapper.
 
 /*
 LLVMFastMathFlags LLVMGetFastMathFlags(LLVMValueRef FPMathInst)

@@ -1,9 +1,10 @@
+//! See Also: https://llvm.org/docs/LangRef.html#intrinsic-functions
+
 use llvm::{Type, Value};
 
-use crate::CodegenCx;
-
-impl<'ll> CodegenCx<'_, 'll> {
+impl<'ll> crate::CodegenCx<'_, 'll> {
     pub fn intrinsic(&self, name: &'static str) -> Option<(&'ll Type, &'ll Value)> {
+        // fast path: check the intrinsics function cache
         if let Some(res) = self.intrinsics.borrow().get(name) {
             return Some(*res);
         }
@@ -38,32 +39,30 @@ impl<'ll> CodegenCx<'_, 'll> {
         ifn!("llvm.log2.f64", fn(t_f64) -> t_f64);
         ifn!("llvm.floor.f64", fn(t_f64) -> t_f64);
         ifn!("llvm.ctlz", fn(t_i32, t_bool) -> t_i32);
+        ifn!("llvm.lround.i32.f64", fn(t_f64) -> t_i32);
 
         // not technically intrinsics but part of the C standard library
         // TODO link custom mathematical functions
+
+        // TODO(JW) what's the difference between these and, e.g. `llvm.tan.*`?
         ifn!("tan", fn(t_f64) -> t_f64);
         ifn!("acos", fn(t_f64) -> t_f64);
         ifn!("asin", fn(t_f64) -> t_f64);
         ifn!("atan", fn(t_f64) -> t_f64);
         ifn!("atan2", fn(t_f64, t_f64) -> t_f64);
-        ifn!("sqrt", fn(t_f64) -> t_f64);
         ifn!("cosh", fn(t_f64) -> t_f64);
         ifn!("sinh", fn(t_f64) -> t_f64);
         ifn!("tanh", fn(t_f64) -> t_f64);
         ifn!("acosh", fn(t_f64) -> t_f64);
         ifn!("asinh", fn(t_f64) -> t_f64);
         ifn!("atanh", fn(t_f64) -> t_f64);
+        ifn!("strcmp", fn(t_str, t_str) -> t_i32);
 
-        // hypotenuse
-        // double hypot(double x, double y)
+        // hypotenuse: double hypot(double x, double y)
         if name == "hypot" {
             let name = if self.target.options.is_like_windows { "_hypot" } else { "hypot" };
             return Some(self.insert_intrinsic(name, &[t_f64], t_f64, false));
         }
-
-        ifn!("strcmp", fn(t_str, t_str) -> t_i32);
-        ifn!("llvm.lround.i32.f64", fn(t_f64) -> t_i32);
-
         // int snprintf (char *str, size_t size, const char *format)
         if name == "snprintf" {
             return Some(self.insert_intrinsic("snprintf", &[t_str, t_isize, t_str], t_i32, true));
@@ -101,8 +100,10 @@ impl<'ll> CodegenCx<'_, 'll> {
     ) -> (&'ll llvm::Type, &'ll llvm::Value) {
         let fn_ty =
             if variadic { self.ty_variadic_func(&[], ret) } else { self.ty_func(args, ret) };
-        let f = self.get_func_by_name(name).unwrap_or_else(|| self.declare_ext_fn(name, fn_ty));
+        let f =
+            self.get_func_by_name(name).unwrap_or_else(|| self.declare_external_fn(name, fn_ty));
         self.intrinsics.borrow_mut().insert(name, (fn_ty, f));
+
         (fn_ty, f)
     }
 }

@@ -31,7 +31,6 @@ extern "C" {
 }
 
 // See Also:
-
 // https://github.com/rust-lang/rust/blob/master/compiler/rustc_codegen_llvm/src/llvm_util.rs
 
 static INIT: Once = Once::new();
@@ -91,7 +90,7 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
     //     llvm::LLVMTimeTraceProfilerInitialize();
     // }
 
-    // TODO: remove dependencies on the following unnecessary functions
+    // TODO(JW) remove dependencies on the following unnecessary functions
     // Since LLVM 17, all functions below for initializing legacy passes have been removed.
     // Calls to such functions can simply be dropped, as they are no longer necessary.
     let registry = LLVMGetGlobalPassRegistry();

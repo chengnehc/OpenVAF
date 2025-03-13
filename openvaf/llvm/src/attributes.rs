@@ -4,8 +4,9 @@ use libc::c_char;
 
 use crate::{Attribute, Context, Value};
 
-// Core::Contexts
 extern "C" {
+    /* Core::Contexts */
+
     fn LLVMCreateStringAttribute(
         ctx: &Context,
         key: *const c_char,
@@ -14,6 +15,7 @@ extern "C" {
         val_len: u32,
     ) -> &Attribute;
 
+    /// Defined in OpenVafWrapper.cpp
     pub fn LLVMPurgeAttrs(val: &Value);
 }
 

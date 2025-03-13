@@ -3,17 +3,16 @@
 
 //! Bindings to LLVM's C API.
 //!
-//! Refer to the [LLVM documentation](http://llvm.org/docs/) for more
-//! information.
+//! Refer to the [LLVM documentation](http://llvm.org/docs/) for more information.
 //!
 //! This is a vendored version of [llvm-sys](https://gitlab.com/taricorp/llvm-sys.rs)
 //! adjusted to fit the needs of this project. Furthermore some improvements to llvm made in rustc
 //! have been copied here.
 //!
 //! The buildscript from llvm-sys is replaced with the one from rustc_llvm to allow for faster
-//! compile times (no regex/lazy static), cross compilation and dynamic linking
+//! compile times (no regex/lazy static), cross compilation and dynamic linking.
 //!
-//! Furthermore the types/functions exported here are reduced to only those actually used in OpenVAF to
+//! Furthermore, the types/functions exported here are reduced to only those actually used in OpenVAF to
 //! further improve compile times
 
 use std::fmt;
@@ -57,6 +56,7 @@ pub const False: Bool = 0;
 // TODO move to opaqute times when stabilized
 // BLOCK https://github.com/rust-lang/rust/issues/43467
 
+// JW: Why impl Debug trait for these opaque types?
 pub enum MemoryBuffer {}
 
 impl fmt::Debug for MemoryBuffer {
@@ -122,14 +122,6 @@ impl fmt::Debug for Module {
 pub enum PassRegistry {}
 
 impl fmt::Debug for PassRegistry {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
-}
-
-pub enum PassManagerBuilder {}
-
-impl fmt::Debug for PassManagerBuilder {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Ok(())
     }

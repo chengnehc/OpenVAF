@@ -1,8 +1,11 @@
+//! Core::Contexts
+//!
+//! Contexts are execution states for the core LLVM IR system.
+
 use libc::{c_char, c_int, c_void};
 
 use crate::{Context, DiagnosticHandler, DiagnosticInfo, DiagnosticSeverity};
 
-// Core
 extern "C" {
     // pub fn LLVMShutdown();
     pub fn LLVMCreateMessage(Message: *const c_char) -> *mut c_char;
@@ -12,7 +15,8 @@ extern "C" {
         argv: *const *const c_char,
         overview: *const c_char,
     );
-    // Core::Contexts
+
+    /* Core::Contexts */
     pub fn LLVMContextCreate() -> &'static mut Context;
     pub fn LLVMContextDispose(ctx: &'static mut Context);
     pub fn LLVMContextSetDiagnosticHandler(

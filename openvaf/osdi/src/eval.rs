@@ -30,7 +30,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let ty_ptr = cx.ty_ptr();
         let fun_ty = cx.ty_func(&[ty_ptr, ty_ptr, ty_ptr, ty_ptr], cx.ty_int());
 
-        cx.declare_ext_fn(name, fun_ty)
+        cx.declare_external_fn(name, fun_ty)
     }
 
     pub fn eval(&self) -> &'ll llvm::Value {
@@ -377,7 +377,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         args.resize(num_args as usize + 4, double);
         let fun_ty = cx.ty_func(&args, double);
         let name = &format!("lim_{}_{id}", &self.module.sym);
-        let llfunc = cx.declare_int_fn(name, fun_ty);
+        let llfunc = cx.declare_internal_fn(name, fun_ty);
 
         unsafe {
             let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);

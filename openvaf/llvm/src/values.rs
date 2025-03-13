@@ -8,9 +8,9 @@ use crate::{
 };
 
 extern "C" {
-    // General
+    /* General APIs */
 
-    // Get the enumerated kind of a Value instance.
+    /// Obtain the type of a value.
     pub fn LLVMTypeOf(val: &Value) -> &Type;
     // pub fn LLVMGetValueName2(val: &'a Value, Length: *mut ::libc::size_t) -> *const ::libc::c_char;
     // pub fn LLVMSetValueName2(val: &'a Value, Name: *const ::libc::c_char, NameLen: ::libc::size_t);
@@ -23,19 +23,21 @@ extern "C" {
     // pub fn LLVMIsAMDNode(Val: &'a Value) -> &'a Value;
     // pub fn LLVMIsAMDString(Val: &'a Value) -> &'a Value;
 
-    // Usage
+    /* Usage */
+
     // pub fn LLVMGetFirstUse(Val: &'a Value) -> LLVMUseRef;
     // pub fn LLVMGetNextUse(U: LLVMUseRef) -> LLVMUseRef;
     // pub fn LLVMGetUser(U: LLVMUseRef) -> &'a Value;
     // pub fn LLVMGetUsedValue(U: LLVMUseRef) -> &'a Value;
 
-    // User value
+    /* User value */
+
     // pub fn LLVMGetOperand(Val: &'a Value, Index: ::libc::c_uint) -> &'a Value;
     // pub fn LLVMGetOperandUse(Val: &'a Value, Index: ::libc::c_uint) -> LLVMUseRef;
     // pub fn LLVMSetOperand(User: &'a Value, Index: ::libc::c_uint, Val: &'a Value);
     // pub fn LLVMGetNumOperands(Val: &'a Value) -> ::libc::c_int;
 
-    // Constants
+    /* Constants */
 
     /// Obtain a constant value referring to the null instance of a type.
     pub fn LLVMConstNull(ty: &Type) -> &Value;
@@ -49,7 +51,7 @@ extern "C" {
     /// Obtain a constant that is a constant pointer pointing to NULL for a specified type.
     pub fn LLVMConstPointerNull(ty: &Type) -> &Value;
 
-    // Constants::Scalar
+    /* Constants::Scalar */
 
     pub fn LLVMConstInt(IntTy: &Type, val: c_ulonglong, sign_extend: Bool) -> &Value;
     // pub fn LLVMConstIntOfArbitraryPrecision(
@@ -82,7 +84,7 @@ extern "C" {
     //     losesInfo: *mut LLVMBool,
     // ) -> ::libc::c_double;
 
-    // Composite Constants
+    /* Constants::Composite Constants */
 
     /// Create a ConstantDataSequential and initialize it with a string.
     pub fn LLVMConstStringInContext(
@@ -117,7 +119,7 @@ extern "C" {
     // pub fn LLVMGetElementAsConstant(C: &'a Value, idx: ::libc::c_uint) -> &'a Value;
     // pub fn LLVMConstVector(ScalarConstantVals: *mut &'a Value, Size: ::libc::c_uint) -> &'a Value;
 
-    // Constants::Constant expressions
+    /* Constants::Constant expressions */
 
     // pub fn LLVMGetConstOpcode(ConstantVal: &'a Value) -> Opcode;
     // pub fn LLVMAlignOf(Ty: TypeRef) -> &'a Value;
@@ -164,7 +166,7 @@ extern "C" {
     // pub fn LLVMConstLShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
     // pub fn LLVMConstAShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
 
-    /// GEP stands for get element pointer (in a struct)
+    /// 'GEP' stands for 'Get Element Pointer' (in a struct)
     pub fn LLVMConstInBoundsGEP2<'a>(
         elem_ty: &'a Type,
         ConstantVal: &'a Value,
@@ -243,7 +245,7 @@ extern "C" {
     // ) -> &'a Value;
     // pub fn LLVMBlockAddress(F: &'a Value, BB: LLVMBasicBlockRef) -> &'a Value;
 
-    // Constants::Global Values
+    /* Constants::Global Values */
 
     // pub fn LLVMGetGlobalParent(global: &'a Value) -> ModuleRef;
     pub fn LLVMIsDeclaration(global: &Value) -> Bool;
@@ -254,7 +256,7 @@ extern "C" {
     // pub fn LLVMGetVisibility(global: &'a Value) -> Visibility;
     pub fn LLVMSetVisibility(global: &Value, viz: Visibility);
     // pub fn LLVMGetDLLStorageClass(global: &'a Value) -> LLVMDLLStorageClass;
-    pub fn LLVMSetDLLStorageClass(global: &Value, Class: DLLStorageClass);
+    pub fn LLVMSetDLLStorageClass(global: &Value, class: DLLStorageClass);
     // pub fn LLVMGetUnnamedAddress(global: &'a Value) -> LLVMUnnamedAddr;
     pub fn LLVMSetUnnamedAddress(global: &Value, UnnamedAddr: UnnamedAddr);
     // pub fn LLVMGlobalGetValueType(global: &'a Value) -> TypeRef;
@@ -277,7 +279,7 @@ extern "C" {
     //     Index: ::libc::c_uint,
     // ) -> &'a Metadata;
 
-    // Constants::Global Variables
+    /* Constants::Global Variables */
 
     pub fn LLVMAddGlobal<'a>(module: &'a Module, ty: &'a Type, name: *const c_char) -> &'a Value;
     // pub fn LLVMAddGlobalInAddressSpace(
@@ -303,7 +305,7 @@ extern "C" {
     // pub fn LLVMIsExternallyInitialized(GlobalVar: &'a Value) -> LLVMBool;
     // pub fn LLVMSetExternallyInitialized(GlobalVar: &'a Value, IsExtInit: LLVMBool);
 
-    // Constants::Global Aliases
+    /* Constants::Global Aliases */
 
     // /// Obtain a GlobalAlias value from a Module by its name.
     // ///
@@ -336,7 +338,7 @@ extern "C" {
     //    Name: *const ::libc::c_char,
     //) -> &'a Value;
 
-    // Constants::Function Values
+    /* Constants::Function Values */
 
     //// pub fn LLVMDeleteFunction(Fn: &'a Value);
     ///// Check whether the given function has a personality function.
@@ -381,7 +383,7 @@ extern "C" {
     //pub fn LLVMIntrinsicIsOverloaded(ID: ::libc::c_uint) -> LLVMBool;
 
     /// Obtain the calling function of a function.
-    pub fn LLVMGetFunctionCallConv(Fn: &Value) -> CallConv;
+    pub fn LLVMGetFunctionCallConv(fun: &Value) -> CallConv;
     /// Set the calling convention of a function.
     pub fn LLVMSetFunctionCallConv(fun: &Value, cc: CallConv);
     /// Set the calling convention for a call instruction.
@@ -423,7 +425,7 @@ extern "C" {
     //    V: *const ::libc::c_char,
     //);
 
-    // Constants::Function Values::Function Parameters
+    /* Constants::Function Values::Function Parameters */
 
     // pub fn LLVMCountParams(Fn: &'a Value) -> ::libc::c_uint;
     // pub fn LLVMGetParams(Fn: &'a Value, Params: *mut &'a Value);
@@ -435,15 +437,12 @@ extern "C" {
     // pub fn LLVMGetPreviousParam(Arg: &'a Value) -> &'a Value;
     // pub fn LLVMSetParamAlignment(Arg: &'a Value, Align: ::libc::c_uint);
 
-    // Instruction Builder
-
-    //TODO(JW) LLVM 18+ has added LLVMGetFastMathFlags and LLVMSetFastMathFlags for
-    // getting/setting the fast-math flags of an instruction, as well as
-    // LLVMCanValueUseFastMathFlags for checking if an instruction can use such flags.
+    /// Defined in OpenVafWrapper.cpp
     pub fn LLVMSetPartialFastMath(val: &Value);
+    /// Defined in OpenVafWrapper.cpp
     pub fn LLVMSetFastMath(val: &Value);
 
-    // Instruction::PHI Nodes
+    /* Instruction::PHI Nodes */
 
     /// Add an incoming value to the end of a PHI list.
     pub fn LLVMAddIncoming<'a>(

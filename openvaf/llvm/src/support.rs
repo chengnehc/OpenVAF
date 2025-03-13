@@ -1,17 +1,15 @@
-use core::fmt;
 use std::error::Error;
 use std::ffi::{CStr, CString};
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::Deref;
 
 use libc::c_char;
 
 use crate::{LLVMCreateMessage, LLVMDisposeMessage};
 
-/// An owned LLVM String. Also known as a LLVM Message
+/// An owned LLVM String, also known as a LLVM Message.
 ///
 /// See also: crate 'inkwell'
-///
 /// - https://thedan64.github.io/inkwell/inkwell/support/struct.LLVMString.html
 /// - https://docs.rs/crate/inkwell/latest/source/src/support/mod.rs
 #[derive(Eq)]
@@ -37,13 +35,13 @@ impl LLVMString {
     // }
 
     /// This method will allocate a c string through LLVM
-    pub(crate) fn create_from_str(string: &str) -> LLVMString {
+    pub(crate) fn from_str(string: &str) -> LLVMString {
         let msg = CString::new(string).unwrap();
         unsafe { LLVMString::new(LLVMCreateMessage(msg.as_ptr() as *const _)) }
     }
 
     /// This method will allocate a c string through LLVM
-    pub fn create_from_c_str(string: &CStr) -> LLVMString {
+    pub fn from_c_str(string: &CStr) -> LLVMString {
         unsafe { LLVMString::new(LLVMCreateMessage(string.as_ptr() as *const _)) }
     }
 }

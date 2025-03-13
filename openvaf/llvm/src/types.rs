@@ -11,7 +11,7 @@ extern "C" {
     // pub fn LLVMDumpType(Val: &'a Type);
     pub fn LLVMPrintTypeToString(Val: &Type) -> *mut c_char;
 
-    // Integer Types
+    /* Integer Types */
 
     pub fn LLVMInt1TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     pub fn LLVMInt8TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
@@ -22,7 +22,7 @@ extern "C" {
     pub fn LLVMIntTypeInContext<'a>(ctx: &'a Context, num_bits: c_uint) -> &'a Type;
     // pub fn LLVMGetIntTypeWidth<'a>(ty: &Type) -> c_uint;
 
-    // Floating Point Types
+    /* Floating Point Types */
 
     // pub fn LLVMHalfTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMBFloatTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
@@ -32,7 +32,7 @@ extern "C" {
     // pub fn LLVMFP128TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMPPCFP128TypeInContext<'a>(ctx: &'a Context) -> &'a Type;
 
-    // Function Types
+    /* Function Types */
 
     pub fn LLVMFunctionType<'a>(
         ReturnType: &'a Type,
@@ -40,12 +40,12 @@ extern "C" {
         ParamCount: c_uint,
         IsVarArg: Bool,
     ) -> &'a Type;
-    pub fn LLVMIsFunctionVarArg<'a>(fun_ty: &'a Type) -> Bool;
+    // pub fn LLVMIsFunctionVarArg<'a>(fun_ty: &'a Type) -> Bool;
     pub fn LLVMGetReturnType<'a>(fun_ty: &'a Type) -> &'a Type;
     pub fn LLVMCountParamTypes<'a>(fun_ty: &'a Type) -> c_uint;
     pub fn LLVMGetParamTypes<'a>(fun_ty: &'a Type, dst: *mut &'a Type);
 
-    // Structure Types
+    /* Structure Types */
 
     /// Create a new structure type in a context.
     pub fn LLVMStructTypeInContext<'a>(
@@ -71,7 +71,7 @@ extern "C" {
     //pub fn LLVMIsOpaqueStruct(struct_ty: &Type) -> Bool;
     //pub fn LLVMIsLiteralStruct(struct_ty: &Type) -> Bool;
 
-    // Sequential Types
+    /* Sequential Types */
 
     // pub fn LLVMGetElementType<'a>(ty: &'a Type) -> &'a Type;
     ///// Get the subtypes of the given type.
@@ -86,7 +86,7 @@ extern "C" {
     // pub fn LLVMScalableVectorType(ElementType: &'a Type, ElementCount: c_uint) -> &'a Type;
     // pub fn LLVMGetVectorSize(VectorTy: &'a Type) -> c_uint;
 
-    // Other Types
+    /* Other Types */
 
     pub fn LLVMVoidTypeInContext<'a>(ctx: &'a Context) -> &'a Type;
     // pub fn LLVMLabelTypeInContext<'a>(ctx: &'a Context) -> &'a Type;

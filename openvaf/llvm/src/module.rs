@@ -11,11 +11,12 @@ use crate::support::LLVMString;
 use crate::{Bool, Context, Module, Type, Value};
 
 extern "C" {
+    /// Create a new, empty module in a specific context.
     pub fn LLVMModuleCreateWithNameInContext<'a>(
         ModuleID: *const c_char,
         C: &'a Context,
     ) -> &'a Module;
-    /// Set the original source file name of a module to a string Name with length Len.
+    /// Set the original source file name of a module to a string Name with length `len`.
     pub fn LLVMSetSourceFileName(module: &Module, name: *const c_char, len: size_t);
     /// Set the data layout for a module.
     pub fn LLVMSetDataLayout(module: &Module, DataLayoutStr: *const c_char);
@@ -24,7 +25,8 @@ extern "C" {
     /// Set the target triple for a module.
     pub fn LLVMSetTarget(module: &Module, triple: *const c_char);
 
-    // /// Returns the module flags as an array of flag-key-value triples.  The caller is responsible for freeing this array by calling LLVMDisposeModuleFlagsMetadata.
+    // /// Returns the module flags as an array of flag-key-value triples.
+    // /// The caller is responsible for freeing this array by calling LLVMDisposeModuleFlagsMetadata.
     // pub fn LLVMCopyModuleFlagsMetadata(
     //     module: &Module,
     //     Len: *mut size_t,
@@ -108,13 +110,14 @@ extern "C" {
         name: *const c_char,
         FunctionTy: &'a Type,
     ) -> &'a Value;
-    // pub fn LLVMGetNamedFunction<'a>(module: &Module, name: *const c_char) -> &'a Value;
+    /// Obtain a Function value from a Module by its name.
+    pub fn LLVMGetNamedFunction<'a>(module: &'a Module, name: *const c_char) -> Option<&'a Value>;
     fn LLVMGetFirstFunction(module: &Module) -> Option<&Value>;
     // fn LLVMGetLastFunction<'a>(module: &Module) -> Option<&'a Value>;
     fn LLVMGetNextFunction(fun: &Value) -> Option<&Value>;
     // fn LLVMGetPreviousFunction<'a>(Fn: &'a Value) -> Option<&'a Value>;
 
-    // Core::Linker
+    /* Core::Linker */
 
     /// Link the source module into the destination module.
     ///
@@ -128,19 +131,8 @@ pub fn function_iter(module: &Module) -> impl Iterator<Item = &Value> + '_ {
     iter::successors(fun, |fun| unsafe { LLVMGetNextFunction(fun) })
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VerifierFailureAction {
-    /// Print to stderr and abort the process.
-    AbortProcess = 0,
-    /// Print to stderr and return 1.
-    PrintMessage = 1,
-    /// Return 1 and print nothing.
-    ReturnStatus = 2,
-}
-
 extern "C" {
-    // Analysis
+    /* Analysis */
 
     /// Verify that a module is valid, taking the specified action if not.
     ///
@@ -151,4 +143,15 @@ extern "C" {
         Action: VerifierFailureAction,
         OutMessage: Option<&mut MaybeUninit<LLVMString>>,
     ) -> Bool;
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VerifierFailureAction {
+    /// Print to stderr and abort the process.
+    AbortProcess = 0,
+    /// Print to stderr and return 1.
+    PrintMessage = 1,
+    /// Return 1 and print nothing.
+    ReturnStatus = 2,
 }
