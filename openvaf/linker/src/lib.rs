@@ -78,25 +78,22 @@ fn linker_with_args<'a>(
     add_objects: impl FnOnce(&mut dyn Linker),
 ) -> Box<dyn Linker + 'a> {
     let flavor = target.options.linker_flavor;
-    let mut cmd = get_linker(path.map(|path| path.into_std_path_buf()), flavor, target);
-    disable_localization(cmd.cmd());
+    let mut linker = get_linker(path.map(|path| path.into_std_path_buf()), flavor, target);
+    disable_localization(linker.cmd());
     // This environment variable is pretty magical but is intended for
     // producing deterministic builds. This was first discovered to be used
     // by the `ar` tool as a way to control whether or not mtime entries in
     // the archive headers were set to zero or not. It appears that
     // eventually the linker got updated to do the same thing and now reads
     // this environment variable too in recent versions.
-    cmd.cmd().env("ZERO_AR_DATE", "1");
+    linker.cmd().env("ZERO_AR_DATE", "1");
+    linker.add_pre_link_args(target, flavor);
+    add_objects(&mut *linker);
+    linker.output_filename(out_filename);
+    linker.set_output_kind();
+    linker.add_post_link_args(target, flavor);
 
-    cmd.add_pre_link_args(target, flavor);
-
-    add_objects(&mut *cmd);
-    cmd.output_filename(out_filename);
-    cmd.set_output_kind();
-
-    cmd.add_post_link_args(target, flavor);
-
-    cmd
+    linker
 }
 
 /// The third parameter is for env vars, used on windows to set up the
@@ -178,8 +175,7 @@ fn exec_linker(mut cmd: std::process::Command, _out_filename: &Utf8Path) -> io::
     }
 }
 
-/// Linker abstraction used by `link` to build up the command to invoke a
-/// linker.
+/// Linker abstraction used by `link` to build up the command to invoke a linker.
 ///
 /// This trait is the total list of requirements needed by `back::link` and
 /// represents the meaning of each option being passed down. This trait is then

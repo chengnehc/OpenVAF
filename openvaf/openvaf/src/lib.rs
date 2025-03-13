@@ -160,7 +160,6 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
         opts.input.canonicalize().with_context(|| format!("failed to resolve {}", opts.input))?;
     let input = AbsPathBuf::assert(input);
     let db = CompilationDB::new_from_fs(input, &opts.include, &opts.defines, &opts.lints)?;
-
     let lib_file = match &opts.output {
         CompilationDestination::Cache { cache_dir } => {
             let file_name = cache::file_name(&db, opts);
@@ -173,26 +172,23 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
         }
         CompilationDestination::Path { lib_file } => lib_file.clone(),
     };
-
     let Some(modules) = collect_modules(&db, false, &mut ConsoleSink::new(&db)) else {
         return Ok(CompilationTermination::FatalDiagnostic);
     };
-
     let back = LLVMBackend::new(&opts.codegen_opts, &opts.target, opts.target_cpu.clone(), &[]);
     if opts.dry_run {
         return Ok(CompilationTermination::Compiled { lib_file });
     }
-    let paths = osdi::compile(&db, &modules, &lib_file, &opts.target, &back, true, opts.opt_lvl);
+    let objects = osdi::compile(&db, &modules, &lib_file, &opts.target, &back, true, opts.opt_lvl);
 
-    // TODO configure linker
+    // TODO support linker configuration
     link(None, &opts.target, lib_file.as_ref(), |linker| {
-        for path in &paths {
-            linker.add_object(path);
+        for obj in &objects {
+            linker.add_object(obj);
         }
     })?;
-
-    for obj_file in paths {
-        fs::remove_file(obj_file).context("failed to delete intermediate compile artifact")?;
+    for obj in objects {
+        fs::remove_file(obj).context("failed to delete intermediate compile artifact")?;
     }
 
     let seconds = Instant::elapsed(&start).as_secs_f64();

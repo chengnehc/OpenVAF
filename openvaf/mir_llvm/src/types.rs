@@ -8,13 +8,13 @@ use crate::CodegenCx;
 
 pub struct Types<'ll> {
     pub double: &'ll Type,
-    pub char: &'ll Type,
     pub int: &'ll Type,
     pub size: &'ll Type,
-    pub ptr: &'ll Type,
-    pub fat_ptr: &'ll Type,
+    pub char: &'ll Type,
     pub bool: &'ll Type,
     pub void: &'ll Type,
+    pub ptr: &'ll Type,
+    pub fat_ptr: &'ll Type,
     pub null_ptr_val: &'ll llvm::Value,
 }
 
@@ -28,13 +28,13 @@ impl<'ll> Types<'ll> {
             let ptr = llvm::LLVMPointerType(char, llvm::AddressSpace::DATA);
             Types {
                 double: llvm::LLVMDoubleTypeInContext(llcx),
-                char,
                 int: llvm::LLVMInt32TypeInContext(llcx),
                 size: llvm::LLVMIntTypeInContext(llcx, pointer_width),
-                ptr,
-                fat_ptr: ty_struct(llcx, "fat_ptr", &[ptr, llvm::LLVMInt64TypeInContext(llcx)]),
+                char,
                 bool: llvm::LLVMInt1TypeInContext(llcx),
                 void: llvm::LLVMVoidTypeInContext(llcx),
+                ptr,
+                fat_ptr: ty_struct(llcx, "fat_ptr", &[ptr, llvm::LLVMInt64TypeInContext(llcx)]),
                 null_ptr_val: llvm::LLVMConstPointerNull(ptr),
             }
         }

@@ -289,7 +289,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             builder.params[dst] = BuilderVal::Eager(temperature)
         }
 
-        for (node_id, unknown) in module.dae_system.unknowns.iter_enumerated() {
+        for (node_id, unknown) in module.dae.unknowns.iter_enumerated() {
             if let SimUnknownKind::KirchhoffLaw(node) = unknown {
                 if let Some((dst, val)) =
                     intern.params.index_and_val(&ParamKind::PortConnected { port: *node })
@@ -347,15 +347,10 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     }
                 }
                 CallBackKind::CollapseHint(node1, node2) => {
-                    let node1 = module
-                        .dae_system
-                        .unknowns
-                        .unwrap_index(&SimUnknownKind::KirchhoffLaw(*node1));
+                    let node1 =
+                        module.dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(*node1));
                     let node2 = node2.map(|node2| {
-                        module
-                            .dae_system
-                            .unknowns
-                            .unwrap_index(&SimUnknownKind::KirchhoffLaw(node2))
+                        module.dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(node2))
                     });
                     let mut state = vec![];
                     module.node_collapse.hint(node1, node2, |pair| {
@@ -404,7 +399,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         for (&kind, val) in module.init.intern.outputs.iter() {
             if let PlaceKind::CollapseImplicitEquation(eq) = kind {
                 let should_collapse = val.unwrap_unchecked();
-                let eq = module.dae_system.unknowns.unwrap_index(&SimUnknownKind::Implicit(eq));
+                let eq = module.dae.unknowns.unwrap_index(&SimUnknownKind::Implicit(eq));
 
                 let llcx = cx.llcx;
                 let llbuilder = &*builder.llbuilder;

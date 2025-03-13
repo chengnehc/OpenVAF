@@ -16,13 +16,13 @@ use mir_llvm::{CodegenCx, LLVMBackend};
 use sim_back::{CompiledModule, ModuleInfo};
 use target::spec::Target;
 
-mod access;
 mod bitfield;
 mod compilation_unit;
 mod inst_data;
 mod metadata;
 mod model_data;
 
+mod access;
 mod eval;
 mod load;
 mod noise;
@@ -57,13 +57,12 @@ pub fn compile(
             mir
         })
         .collect();
-    let name = dst.file_stem().expect("destination is a file").to_owned();
+    let name = dst.file_stem().expect("destination should be a file").to_owned();
 
     let mut paths: Vec<Utf8PathBuf> = (0..modules.len() * 4)
         .map(|i| {
             let num = base_n::encode((i + 1) as u128, CASE_INSENSITIVE);
-            let extension = format!("o{num}");
-            dst.with_extension(extension)
+            dst.with_extension(format!("o{num}"))
         })
         .collect();
 
@@ -94,8 +93,8 @@ pub fn compile(
         for (i, module) in modules.iter().enumerate() {
             let _db = db.snapshot();
             scope.spawn(move |_| {
-                let access = format!("access_{}", &module.sym);
-                let llmod = unsafe { back.new_module(&access, opt_lvl).unwrap() };
+                let name = format!("access_{}", &module.sym);
+                let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
                 let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
@@ -148,8 +147,8 @@ pub fn compile(
 
             let _db = db.snapshot();
             scope.spawn(move |_| {
-                let access = format!("eval_{}", &module.sym);
-                let llmod = unsafe { back.new_module(&access, opt_lvl).unwrap() };
+                let name = format!("eval_{}", &module.sym);
+                let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
                 let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, true);
@@ -170,7 +169,6 @@ pub fn compile(
         let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
         let cx = new_codegen(back, &llmod, &literals);
         let tys = OsdiTys::new(&cx, target_data);
-
         let descriptors: Vec<_> = modules
             .iter()
             .map(|module| {

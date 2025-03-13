@@ -59,7 +59,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let dst = LLVMGetParam(llfunc, 3);
 
             for (i, (src, eval_outputs)) in
-                zip(&module.dae_system.noise_sources, &self.inst_data.noise).enumerate()
+                zip(&module.dae.noise_sources, &self.inst_data.noise).enumerate()
             {
                 let fac = self.load_eval_output(eval_outputs.factor, inst, model, llbuilder);
                 let mut pwr = match src.kind {
@@ -127,7 +127,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let inst = LLVMGetParam(llfunc, 0);
             let dst = LLVMGetParam(llfunc, 2);
 
-            for node in module.dae_system.unknowns.indices() {
+            for node in module.dae.unknowns.indices() {
                 if let Some(contrib) = inst_data.read_residual(node, inst, llbuilder, reactive) {
                     inst_data.store_contrib(cx, node, inst, dst, contrib, llbuilder, false);
                 }
@@ -159,7 +159,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let inst = LLVMGetParam(llfunc, 0);
             let dst = LLVMGetParam(llfunc, 2);
 
-            for node in module.dae_system.unknowns.indices() {
+            for node in module.dae.unknowns.indices() {
                 if let Some(contrib) = inst_data.read_lim_rhs(node, inst, llbuilder, reactive) {
                     inst_data.store_contrib(cx, node, inst, dst, contrib, llbuilder, true);
                 }
@@ -183,7 +183,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         prev_solve: &'ll llvm::Value,
         alpha: &'ll llvm::Value,
     ) {
-        let dae_system = &self.module.dae_system;
+        let dae_system = &self.module.dae;
         let mut node_derivatives = TiVec::from(vec![Vec::new(); dae_system.unknowns.len()]);
         for (id, entry) in dae_system.jacobian.iter_enumerated() {
             node_derivatives[entry.row].push(id)
@@ -298,7 +298,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let model = LLVMGetParam(llfunc, 1);
             let alpha = if kind.read_reactive() { LLVMGetParam(llfunc, 2) } else { inst };
 
-            for entry in module.dae_system.jacobian.keys() {
+            for entry in module.dae.jacobian.keys() {
                 let mut res = None;
                 if kind.read_resistive() {
                     res = self.load_jacobian_entry(entry, inst, model, llbuilder, false);

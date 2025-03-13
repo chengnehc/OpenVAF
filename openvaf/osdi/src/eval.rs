@@ -28,8 +28,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let cx = &self.cx;
 
         let ty_ptr = cx.ty_ptr();
-
         let fun_ty = cx.ty_func(&[ty_ptr, ty_ptr, ty_ptr, ty_ptr], cx.ty_int());
+
         cx.declare_ext_fn(name, fun_ty)
     }
 
@@ -47,7 +47,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let model = unsafe { llvm::LLVMGetParam(llfunc, 2) };
         let sim_info = unsafe { llvm::LLVMGetParam(llfunc, 3) };
         let sim_info_ty = self.tys.osdi_sim_info;
-
         // let simparam_ty = self.tys.osdi_sim_paras;
         let simparam = unsafe { builder.struct_gep(sim_info_ty, sim_info, 0) };
 
@@ -75,7 +74,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
         let connected_ports = unsafe { inst_data.load_connected_ports(&builder, instance) };
         let prev_solve: TiVec<_, _> = module
-            .dae_system
+            .dae
             .unknowns
             .indices()
             .map(|node| unsafe {
@@ -84,7 +83,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             .collect();
 
         let get_prev_solve = |node| {
-            if let Some(node) = module.dae_system.unknowns.index(&node) {
+            if let Some(node) = module.dae.unknowns.index(&node) {
                 prev_solve[node]
             } else {
                 info!("node {node:?} is always zero");
@@ -168,7 +167,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                         }
                         ParamKind::PortConnected { port } => {
                             let id = module
-                                .dae_system
+                                .dae
                                 .unknowns
                                 .unwrap_index(&SimUnknownKind::KirchhoffLaw(port));
                             let id = cx.const_unsigned_int(id.into());
@@ -294,21 +293,21 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 };
 
                 let store_matrix = |builder: &Builder<'_, '_, 'll>| {
-                    for entry in module.dae_system.jacobian.keys() {
+                    for entry in module.dae.jacobian.keys() {
                         inst_data.store_jacobian(entry, instance, builder, reactive)
                     }
                 };
                 Self::build_store_results(&builder, llfunc, &flags, jacobian_flag, &store_matrix);
 
                 let store_residual = |builder: &Builder<'_, '_, 'll>| {
-                    for unknown in module.dae_system.unknowns.indices() {
+                    for unknown in module.dae.unknowns.indices() {
                         inst_data.store_residual(unknown, instance, builder, reactive);
                     }
                 };
                 Self::build_store_results(&builder, llfunc, &flags, residual_flag, &store_residual);
 
                 let store_lim_rhs = |builder: &Builder<'_, '_, 'll>| {
-                    for unknown in module.dae_system.unknowns.indices() {
+                    for unknown in module.dae.unknowns.indices() {
                         inst_data.store_lim_rhs(unknown, instance, builder, reactive);
                     }
                 };

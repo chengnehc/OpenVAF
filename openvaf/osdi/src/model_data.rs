@@ -43,8 +43,7 @@ impl<'ll> OsdiModelData<'ll> {
         fields.extend(params.values().copied());
         fields.extend(inst_params.values());
 
-        let name = &cgunit.sym;
-        let name = format!("osdi_model_data_{name}");
+        let name = format!("osdi_model_data_{}", &cgunit.sym);
         let ty = cx.ty_struct(&name, &fields);
 
         OsdiModelData { param_given, params, ty }

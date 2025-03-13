@@ -114,8 +114,8 @@ extern "C" {
     fn LLVMGetNextFunction(fun: &Value) -> Option<&Value>;
     // fn LLVMGetPreviousFunction<'a>(Fn: &'a Value) -> Option<&'a Value>;
 
-    /// Core::Linker
-    ///
+    // Core::Linker
+
     /// Link the source module into the destination module.
     ///
     /// Destroys the source module, returns true on error. Use the diagnostic
@@ -140,8 +140,8 @@ pub enum VerifierFailureAction {
 }
 
 extern "C" {
-    /// Analysis
-    ///
+    // Analysis
+
     /// Verify that a module is valid, taking the specified action if not.
     ///
     /// Optionally returns a human-readable description of any invalid constructs,

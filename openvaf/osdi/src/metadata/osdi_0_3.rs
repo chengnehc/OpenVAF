@@ -132,7 +132,7 @@ impl OsdiTyBuilder<'_, '_, '_> {
                 .into_iter()
                 .max()
                 .unwrap() as u32;
-            size = (size + align - 1) / align;
+            size = size.div_ceil(align);
             let elem = ctx.ty_aint(align * 8);
             let ty = ctx.ty_array(elem, size);
             self.osdi_init_error_payload = Some(ty);

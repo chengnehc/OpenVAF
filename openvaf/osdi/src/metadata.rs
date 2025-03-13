@@ -15,16 +15,16 @@ use crate::inst_data::{
     OsdiInstanceParam, COLLAPSED, JACOBIAN_PTR_REACT, JACOBIAN_PTR_RESIST, NODE_MAPPING, STATE_IDX,
 };
 use crate::load::JacobianLoadType;
-use crate::metadata::osdi_0_3::{
+use crate::ty_len;
+
+#[allow(unused_parens, dead_code)]
+pub mod osdi_0_3;
+use osdi_0_3::{
     OsdiDescriptor, OsdiJacobianEntry, OsdiNode, OsdiNodePair, OsdiNoiseSource, OsdiParamOpvar,
     OsdiTys, JACOBIAN_ENTRY_REACT, JACOBIAN_ENTRY_REACT_CONST, JACOBIAN_ENTRY_RESIST,
     JACOBIAN_ENTRY_RESIST_CONST, PARA_KIND_INST, PARA_KIND_MODEL, PARA_KIND_OPVAR, PARA_TY_INT,
     PARA_TY_REAL, PARA_TY_STR,
 };
-use crate::ty_len;
-
-#[allow(unused_parens, dead_code)]
-pub mod osdi_0_3;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct OsdiLimFunction {
@@ -138,7 +138,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     pub fn nodes(&self, target_data: &TargetData, db: &CompilationDB) -> Vec<OsdiNode> {
         let OsdiCompilationUnit { inst_data, module, .. } = self;
         module
-            .dae_system
+            .dae
             .unknowns
             .iter_enumerated()
             .map(|(id, unknown)| {
@@ -187,7 +187,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             unsafe { LLVMOffsetOfElement(target_data, inst_data.ty, JACOBIAN_PTR_REACT) } as u32;
 
         module
-            .dae_system
+            .dae
             .jacobian
             .iter()
             .map(|entry| {
@@ -254,7 +254,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let model_size = LLVMABISizeOfType(target_data, model_data.ty) as u32;
 
             let noise_sources: Vec<_> = module
-                .dae_system
+                .dae
                 .noise_sources
                 .iter()
                 .map(|source| {
@@ -268,11 +268,11 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             OsdiDescriptor {
                 name: module.info.module.name(db),
 
-                num_nodes: module.dae_system.unknowns.len() as u32,
+                num_nodes: module.dae.unknowns.len() as u32,
                 num_terminals: module.info.module.ports(db).len() as u32,
                 nodes: self.nodes(target_data, db),
 
-                num_jacobian_entries: module.dae_system.jacobian.len() as u32,
+                num_jacobian_entries: module.dae.jacobian.len() as u32,
                 jacobian_entries: self.jacobian_entries(target_data),
 
                 num_collapsible: collapsible.len() as u32,
@@ -317,7 +317,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
 impl OsdiModule<'_> {
     pub fn intern_node_strs(&self, interner: &mut Rodeo, db: &CompilationDB) {
-        for &unknown in self.dae_system.unknowns.iter() {
+        for &unknown in self.dae.unknowns.iter() {
             let (name, units, _) = sim_unknown_info(unknown, db);
             interner.get_or_intern(&name);
             interner.get_or_intern(&units);

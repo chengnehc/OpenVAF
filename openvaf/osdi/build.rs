@@ -2,8 +2,8 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::path::Path;
-use target::spec::get_targets;
 
+use target::spec::get_targets;
 use xshell::{cmd, Shell};
 
 /// Reads an environment variable and adds it to dependencies.
@@ -18,10 +18,10 @@ fn main() {
     // If we're just running `check`, there's no need to actually compute the stdlib just
     // populate dummies
     let no_gen = tracked_env_var_os("RUST_CHECK").is_some();
-    let sh = Shell::new().unwrap();
     let osdi_dir = stdx::project_root().join("openvaf").join("osdi");
     let src_file = osdi_dir.join("stdlib.c");
 
+    let sh = Shell::new().unwrap();
     sh.change_dir(osdi_dir);
     for file in sh.read_dir("header").unwrap() {
         if file.extension().is_none_or(|ext| ext != "h")

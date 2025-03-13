@@ -252,20 +252,20 @@ impl<'ll> OsdiInstanceData<'ll> {
             })
             .collect();
         let residual = module
-            .dae_system
+            .dae
             .residual
             .iter()
             .map(|residual| Residual::new(residual, &mut eval_outputs, ty_f64, module.eval))
             .collect();
         let mut num_react = 0;
         let jacobian = module
-            .dae_system
+            .dae
             .jacobian
             .iter()
             .map(|entry| MatrixEntry::new(entry, module, &mut eval_outputs, ty_f64, &mut num_react))
             .collect();
         let noise = module
-            .dae_system
+            .dae
             .noise_sources
             .iter()
             .map(|source| NoiseSource::new(source, module, &mut eval_outputs, ty_f64))
@@ -278,9 +278,9 @@ impl<'ll> OsdiInstanceData<'ll> {
         });
 
         let param_given = bitfield::arr_ty(params.len() as u32, cx);
-        let jacobian_ptr = cx.ty_array(cx.ty_ptr(), module.dae_system.jacobian.len() as u32);
+        let jacobian_ptr = cx.ty_array(cx.ty_ptr(), module.dae.jacobian.len() as u32);
         let jacobian_ptr_react = cx.ty_array(cx.ty_ptr(), num_react);
-        let node_mapping = cx.ty_array(ty_u32, module.dae_system.unknowns.len() as u32);
+        let node_mapping = cx.ty_array(ty_u32, module.dae.unknowns.len() as u32);
         let collapsed = cx.ty_array(cx.ty_c_bool(), module.node_collapse.num_pairs());
         let temperature = cx.ty_double();
         let connected_ports = cx.ty_int();

@@ -33,8 +33,8 @@ pub fn new_codegen<'a, 'll>(
     llmod: &'ll ModuleLlvm,
     literals: &'a Rodeo,
 ) -> CodegenCx<'a, 'll> {
-    let cx = unsafe { back.new_ctx(literals, llmod) };
-    cx.include_bitcode(stdlib_bitcode(back.target()));
+    let cxt = unsafe { back.new_ctx(literals, llmod) };
+    cxt.include_bitcode(stdlib_bitcode(back.target()));
 
     for fun in llvm::function_iter(llmod.llmod()) {
         unsafe {
@@ -42,22 +42,18 @@ pub fn new_codegen<'a, 'll>(
             if LLVMIsDeclaration(fun) != llvm::False {
                 continue;
             }
-
             LLVMSetLinkage(fun, Linkage::Internal);
             LLVMSetUnnamedAddress(fun, UnnamedAddr::Global);
         }
     }
-
-    let exp_table = cx.get_declared_value("EXP").expect("constant EXP missing from stdlib");
+    let exp_table = cxt.get_declared_value("EXP").expect("constant EXP missing from stdlib");
     let char_table =
-        cx.get_declared_value("FMT_CHARS").expect("constant FMT_CHARS missing from stdlib");
-
+        cxt.get_declared_value("FMT_CHARS").expect("constant FMT_CHARS missing from stdlib");
     unsafe {
         LLVMSetLinkage(exp_table, Linkage::Internal);
         LLVMSetLinkage(char_table, Linkage::Internal);
     }
-
-    cx
+    cxt
 }
 
 pub struct OsdiCompilationUnit<'a, 'b, 'll> {
@@ -105,14 +101,14 @@ impl<'a, 'b, 'll> OsdiCompilationUnit<'a, 'b, 'll> {
 
 pub struct OsdiModule<'a> {
     pub info: &'a ModuleInfo,
-    pub dae_system: &'a DaeSystem,
+    pub dae: &'a DaeSystem,
+    pub init: &'a Initialization,
+    pub node_collapse: &'a NodeCollapse,
     pub eval: &'a Function,
     pub intern: &'a HirInterner,
-    pub init: &'a Initialization,
     pub model_param_setup: &'a Function,
     pub model_param_intern: &'a HirInterner,
     pub lim_table: &'a TiSet<OsdiLimId, OsdiLimFunction>,
-    pub node_collapse: &'a NodeCollapse,
     pub sym: String,
 }
 
@@ -137,7 +133,7 @@ impl<'a> OsdiModule<'a> {
             sym,
             lim_table,
             info,
-            dae_system: dae,
+            dae,
             eval,
             intern,
             init,
