@@ -47,12 +47,13 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let f64_ptr_ty = cx.ty_ptr();
         let fun_ty = cx.ty_func(&[void_ptr, void_ptr, cx.ty_double(), f64_ptr_ty], cx.ty_void());
         let name = &format!("load_noise_{}", module.sym);
-        let llfunc = cx.declare_int_c_fn(name, fun_ty);
+        let llfunc = cx.declare_internal_c_fn(name, fun_ty);
 
         unsafe {
             let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
             let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
             LLVMPositionBuilderAtEnd(llbuilder, entry);
+
             let inst = LLVMGetParam(llfunc, 0);
             let model = LLVMGetParam(llfunc, 1);
             let freq = LLVMGetParam(llfunc, 2);
@@ -74,7 +75,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                         let (ty, fun) = self
                             .cx
                             .intrinsic("llvm.pow.f64")
-                            .unwrap_or_else(|| unreachable!("intrinsic {} not found", name));
+                            .unwrap_or_else(|| unreachable!("intrinsic {name} not found"));
                         let freq_exp =
                             LLVMBuildCall2(llbuilder, ty, fun, [freq, exp].as_ptr(), 2, UNNAMED);
                         LLVMSetPartialFastMath(freq_exp);
@@ -101,7 +102,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 LLVMBuildStore(llbuilder, pwr, dst);
             }
 
-            // TODO noise
             LLVMBuildRetVoid(llbuilder);
             LLVMDisposeBuilder(llbuilder);
         }
@@ -115,15 +115,13 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let fun_ty = cx.ty_func(&[ptr_ty, ptr_ty, ptr_ty], cx.ty_void());
         let name =
             &format!("load_residual_{}_{}", if reactive { "react" } else { "resist" }, module.sym);
-        let llfunc = cx.declare_int_c_fn(name, fun_ty);
+        let llfunc = cx.declare_internal_c_fn(name, fun_ty);
 
         unsafe {
             let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
             let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
-
             LLVMPositionBuilderAtEnd(llbuilder, entry);
 
-            // get params
             let inst = LLVMGetParam(llfunc, 0);
             let dst = LLVMGetParam(llfunc, 2);
 
@@ -147,15 +145,13 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let fun_ty = cx.ty_func(&[void_ptr, void_ptr, f64_ptr_ty], cx.ty_void());
         let name =
             &format!("load_lim_rhs_{}_{}", if reactive { "react" } else { "resist" }, module.sym);
-        let llfunc = cx.declare_int_c_fn(name, fun_ty);
+        let llfunc = cx.declare_internal_c_fn(name, fun_ty);
 
         unsafe {
             let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
             let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
-
             LLVMPositionBuilderAtEnd(llbuilder, entry);
 
-            // get params
             let inst = LLVMGetParam(llfunc, 0);
             let dst = LLVMGetParam(llfunc, 2);
 
@@ -194,14 +190,10 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 let mut res = None;
                 for &entry in &node_derivatives[node] {
                     let node_deriv = dae_system.jacobian[entry].col;
-                    let ddx = if let Some(ddx) =
-                        self.load_jacobian_entry(entry, inst, model, llbuilder, tran)
-                    {
-                        ddx
-                    } else {
+                    let Some(ddx) = self.load_jacobian_entry(entry, inst, model, llbuilder, tran)
+                    else {
                         continue;
                     };
-
                     let voltage = self
                         .inst_data
                         .read_node_voltage(self.cx, node_deriv, inst, prev_solve, llbuilder);
@@ -254,14 +246,13 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         }
         let fun_ty = cx.ty_func(&args, cx.ty_void());
         let name = &format!("load_spice_rhs_{}_{}", if tran { "tran" } else { "dc" }, &module.sym);
-        let llfunc = cx.declare_int_c_fn(name, fun_ty);
+        let llfunc = cx.declare_internal_c_fn(name, fun_ty);
 
         unsafe {
             let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
             let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
             LLVMPositionBuilderAtEnd(llbuilder, entry);
 
-            // get params
             let inst = LLVMGetParam(llfunc, 0);
             let model = LLVMGetParam(llfunc, 1);
             let dst = LLVMGetParam(llfunc, 2);
@@ -286,14 +277,14 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let args = if kind.read_reactive() { &args_ } else { &args_[0..2] };
         let fun_ty = cx.ty_func(args, cx.ty_void());
         let name = &format!("load_jacobian_{}_{}", kind.name(), &module.sym,);
-        let llfunc = cx.declare_int_c_fn(name, fun_ty);
+        let llfunc = cx.declare_internal_c_fn(name, fun_ty);
 
         unsafe {
             let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
             let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
 
             LLVMPositionBuilderAtEnd(llbuilder, entry);
-            // get params
+
             let inst = LLVMGetParam(llfunc, 0);
             let model = LLVMGetParam(llfunc, 1);
             let alpha = if kind.read_reactive() { LLVMGetParam(llfunc, 2) } else { inst };

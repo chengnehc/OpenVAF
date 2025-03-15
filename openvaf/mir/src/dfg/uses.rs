@@ -1,11 +1,10 @@
 use std::borrow::Borrow;
-use std::mem::{self, take};
-use std::slice;
+use std::{mem, slice};
 use stdx::packed_option::PackedOption;
 
 use crate::{DataFlowGraph, Inst, Use, Value};
 
-use super::instructions::DfgInsts;
+use super::insts::DfgInsts;
 use super::values::DfgValues;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -34,9 +33,7 @@ impl Use {
         pub fn set_value(self, dfg: &mut DataFlowGraph, val: Value) {
             dfg.use_set_value(self, val)
         }
-    */
 
-    /*
         pub fn into_cursor(self) -> UseCursor {
             UseCursor { curr: Some(self) }
         }
@@ -110,7 +107,6 @@ impl Iterator for InstUseIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut res = self.cursor.advance(self.dfg);
-
         if res.is_none() {
             for val in &mut self.vals {
                 self.cursor = self.dfg.uses_head_cursor(*val);
@@ -194,29 +190,28 @@ impl DfgValues {
     }
 
     pub fn detach_use(&mut self, use_: Use, insts: &DfgInsts) {
-        let prev = take(&mut self.uses[use_].prev);
-        let next = take(&mut self.uses[use_].next);
+        let prev = mem::take(&mut self.uses[use_].prev);
+        let next = mem::take(&mut self.uses[use_].next);
 
         if !mem::take(&mut self.uses[use_].attached) {
-            return; // already detachted
+            return; // already detached
         }
 
         match (next.expand(), prev.expand()) {
+            (Some(next_), Some(prev_)) => {
+                self.uses[next_].prev = prev;
+                self.uses[prev_].next = next;
+            }
             (None, None) => {
                 let val = self.use_to_value(use_, insts);
                 self.defs[val].uses_head = None.into();
                 self.defs[val].uses_tail = None.into();
-            }
-            (Some(next_), Some(prev_)) => {
-                self.uses[next_].prev = prev;
-                self.uses[prev_].next = next;
             }
             (Some(next_), None) => {
                 let val = self.use_to_value(use_, insts);
                 self.defs[val].uses_head = next_.into();
                 self.uses[next_].prev = None.into();
             }
-
             (None, Some(prev_)) => {
                 let val = self.use_to_value(use_, insts);
                 self.defs[val].uses_tail = prev_.into();
@@ -290,8 +285,8 @@ impl DataFlowGraph {
     pub fn replace_uses(&mut self, dst: Value, src: Value) {
         debug_assert_ne!(dst, src);
 
-        if self.values.tag(src).is_none() {
-            self.values.set_tag(src, self.values.tag(dst))
+        if self.values.get_tag(src).is_none() {
+            self.values.set_tag(src, self.values.get_tag(dst))
         }
 
         // replace values in instructions

@@ -258,7 +258,7 @@ impl<'a> Builder<'a> {
                 if let Some(val) = self.func.dfg.value_def(val).as_const() {
                     self.init.func.dfg.values.make_const(val)
                 } else {
-                    self.init.func.dfg.values.make_invalid_value()
+                    self.init.func.dfg.values.make_invalid()
                 }
             })
         };

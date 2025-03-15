@@ -2,8 +2,8 @@
 //!
 //! A large part of this module is auto-generated.
 
-use std::fmt;
 use std::hash::Hash;
+use std::{fmt, slice};
 
 use crate::entities::{Block, FuncRef, Use, Value};
 
@@ -16,7 +16,7 @@ pub use generated::*;
 pub type ValueList = list_pool::ListHandle<Value>;
 pub type UseList = list_pool::ListHandle<Use>;
 
-/// Memory pool for holding `ValueList`s.
+/// Memory pool
 pub type ValueListPool = list_pool::ListPool<Value>;
 pub type UseListPool = list_pool::ListPool<Use>;
 
@@ -41,6 +41,8 @@ fn instruction_data_size() {
     assert_eq!(std::mem::size_of::<InstructionData>(), 16)
 }
 
+use InstructionData::*;
+
 impl InstructionData {
     pub fn is_terminator(&self) -> bool {
         matches!(self, InstructionData::Branch { .. } | InstructionData::Jump { .. })
@@ -63,86 +65,71 @@ impl InstructionData {
     /// Get references to the value arguments to this instruction.
     pub fn arguments<'a>(&'a self, pool: &'a ValueListPool) -> &'a [Value] {
         match self {
-            InstructionData::Unary { arg, .. } | InstructionData::Branch { cond: arg, .. } => {
-                core::slice::from_ref(arg)
-            }
-            InstructionData::Binary { args, .. } => args,
-            InstructionData::Call { args, .. } | InstructionData::PhiNode(PhiNode { args, .. }) => {
-                args.as_slice(pool)
-            }
-            InstructionData::Jump { .. } => &[],
+            Unary { arg, .. } | Branch { cond: arg, .. } => slice::from_ref(arg),
+            Binary { args, .. } => args,
+            Call { args, .. } | PhiNode(PhiNode { args, .. }) => args.as_slice(pool),
+            Jump { .. } => &[],
         }
     }
 
     /// Get mutable references to the value arguments to this instruction.
     ///
     /// # Note
-    ///
     /// It is up to the caller to ensure that uses are updates as appropriate
     pub fn arguments_mut<'a>(&'a mut self, pool: &'a mut ValueListPool) -> &'a mut [Value] {
         match self {
-            InstructionData::Unary { arg, .. } | InstructionData::Branch { cond: arg, .. } => {
-                core::slice::from_mut(arg)
-            }
-            InstructionData::Binary { args, .. } => &mut *args,
-            InstructionData::Call { args, .. } | InstructionData::PhiNode(PhiNode { args, .. }) => {
-                args.as_mut_slice(pool)
-            }
-            InstructionData::Jump { .. } => &mut [],
+            Unary { arg, .. } | Branch { cond: arg, .. } => slice::from_mut(arg),
+            Binary { args, .. } => &mut *args,
+            Call { args, .. } | PhiNode(PhiNode { args, .. }) => args.as_mut_slice(pool),
+            Jump { .. } => &mut [],
         }
     }
 
     /// Get the opcode of this instruction.
     pub fn opcode(&self) -> Opcode {
         match self {
-            InstructionData::Unary { opcode: op, .. }
-            | InstructionData::Binary { opcode: op, .. } => *op,
-            InstructionData::Call { .. } => Opcode::Call,
-            InstructionData::Jump { .. } => Opcode::Jmp,
-            InstructionData::PhiNode { .. } => Opcode::Phi,
-            InstructionData::Branch { .. } => Opcode::Br,
+            Unary { opcode: op, .. } | Binary { opcode: op, .. } => *op,
+            Branch { .. } => Opcode::Br,
+            Jump { .. } => Opcode::Jmp,
+            Call { .. } => Opcode::Call,
+            PhiNode(PhiNode { .. }) => Opcode::Phi,
         }
     }
 
-    pub fn eq(&self, other: &Self, val_pool: &ValueListPool, forest: &PhiForest) -> bool {
+    pub fn eq(&self, other: &Self, val_pool: &ValueListPool, phi_forest: &PhiForest) -> bool {
         match (self, other) {
+            (Unary { opcode: l_op, arg: l_arg }, Unary { opcode: r_op, arg: r_arg }) => {
+                l_op == r_op && l_arg == r_arg
+            }
+            (Binary { opcode: l_op, args: l_args }, Binary { opcode: r_op, args: r_args }) => {
+                l_op == r_op && l_args == r_args
+            }
             (
-                Self::Unary { opcode: l_op, arg: l_arg },
-                Self::Unary { opcode: r_op, arg: r_arg },
-            ) => l_op == r_op && l_arg == r_arg,
-            (
-                Self::Binary { opcode: l_op, args: l_args },
-                Self::Binary { opcode: r_op, args: r_args },
-            ) => l_op == r_op && l_args == r_args,
-            (
-                Self::Branch {
+                Branch {
+                    cond: l_cond,
                     then_dst: l_then_dst,
                     else_dst: l_else_dst,
-                    cond: l_cond,
                     loop_entry: l_loop_entry,
                 },
-                Self::Branch {
+                Branch {
+                    cond: r_cond,
                     then_dst: r_then_dst,
                     else_dst: r_else_dst,
-                    cond: r_cond,
                     loop_entry: r_loop_entry,
                 },
             ) => {
-                l_then_dst == r_then_dst
+                l_cond == r_cond
+                    && l_then_dst == r_then_dst
                     && l_else_dst == r_else_dst
-                    && l_cond == r_cond
                     && l_loop_entry == r_loop_entry
             }
+            (Jump { destination: l }, Jump { destination: r }) => l == r,
             (
-                Self::Jump { destination: l_destination },
-                Self::Jump { destination: r_destination },
-            ) => l_destination == r_destination,
-            (
-                Self::Call { func_ref: l_func_ref, args: l_args },
-                Self::Call { func_ref: r_func_ref, args: r_args },
+                Call { func_ref: l_func_ref, args: l_args },
+                Call { func_ref: r_func_ref, args: r_args },
             ) => l_func_ref == r_func_ref && l_args.as_slice(val_pool) == r_args.as_slice(val_pool),
 
-            (Self::PhiNode(lnode), Self::PhiNode(rnode)) => lnode.eq(rnode, val_pool, forest),
+            (Self::PhiNode(lnode), Self::PhiNode(rnode)) => lnode.eq(rnode, val_pool, phi_forest),
 
             _ => false,
         }
@@ -152,51 +139,45 @@ impl InstructionData {
         &self,
         state: &mut H,
         val_pool: &ValueListPool,
-        forest: &PhiForest,
+        phi_forest: &PhiForest,
     ) {
         core::mem::discriminant(self).hash(state);
         match self {
-            InstructionData::Unary { opcode: op, arg } => {
+            Unary { opcode: op, arg } => {
                 op.hash(state);
                 arg.hash(state);
             }
-            InstructionData::Binary { opcode: op, args } => {
+            Binary { opcode: op, args } => {
                 op.hash(state);
                 args.hash(state);
             }
-            InstructionData::Branch { cond, then_dst, else_dst, loop_entry } => {
+            Branch { cond, then_dst, else_dst, loop_entry } => {
                 cond.hash(state);
                 then_dst.hash(state);
                 else_dst.hash(state);
                 loop_entry.hash(state);
             }
-            InstructionData::Jump { destination } => {
-                destination.hash(state);
-            }
-            InstructionData::Call { func_ref, args } => {
+            Jump { destination } => destination.hash(state),
+            Call { func_ref, args } => {
                 func_ref.hash(state);
                 args.as_slice(val_pool).hash(state);
             }
-            InstructionData::PhiNode(node) => node.hash(state, val_pool, forest),
+            PhiNode(node) => node.hash(state, val_pool, phi_forest),
         }
     }
 
     #[inline]
     pub fn to_pool<'a>(
         &self,
-        value_lists: &'a ValueListPool,
-        forest: &'a PhiForest,
-        dst_value_lists: &'a mut ValueListPool,
-        dst_forest: &'a mut PhiForest,
+        val_pool: &'a ValueListPool,
+        phi_forest: &'a PhiForest,
+        dst_val_pool: &'a mut ValueListPool,
+        dst_phi_forest: &'a mut PhiForest,
     ) -> Self {
         let mut res = self.clone();
         match &mut res {
-            InstructionData::PhiNode(phi) => {
-                *phi = phi.to_pool(value_lists, forest, dst_value_lists, dst_forest)
-            }
-            InstructionData::Call { args, .. } => {
-                *args = args.to_pool(value_lists, dst_value_lists)
-            }
+            PhiNode(phi) => *phi = phi.to_pool(val_pool, phi_forest, dst_val_pool, dst_phi_forest),
+            Call { args, .. } => *args = args.to_pool(val_pool, dst_val_pool),
             _ => (),
         }
         res
@@ -307,107 +288,26 @@ impl OpcodeConstraints {
 }
 
 // PHI (Φ) nodes are required when a variable can be assigned a different value based on the path of control flow.
-//
-// For example, the value of b at the end of execution of the snippet below:
-//
-// ```code
-// a = 1;
-// if (v < 10)
-//     a = 2;
-// b = a;
-// ```
-//
-// cannot be determined statically. The value of ‘2’ cannot be assigned to the ‘original’ a,
-// since a can be assigned to only once. There are two a ‘s in there, and the last assignment
-// has to choose between which version to pick. This is accomplished by adding a PHI node:
-//
-// ```code
-// a1 = 1;
-// if (v < 10)
-//     a2 = 2;
-// b = PHI(a1, a2);
-// ```
-//
-// The PHI node selects a1 or a2, depending on where the control reached the PHI node.
-// The argument a1 of the PHI node is associated with the block “a1 = 1;” and a2 with the block “a2 = 2;”.
-//
-// PHI nodes have to be explicitly created.
-//
 
-// TODO(JW): maybe refactor this?
-/// A map from the source `Block` to the position of its corresponding `Value` in the `ValueList`
+/// Mapping from incoming blocks to related value positions in `ValueList`
 pub type PhiMap = bforest::Map<Block, u32>;
-/// A memory pool for `PhiMap`s
+/// Memory pool for `PhiMap`s
 pub type PhiForest = bforest::MapForest<Block, u32>;
 
+/// A PHI instruction, for instance:
+/// ```mir
+/// phi [v4, block5], [v5, block6]
+/// ```
 #[derive(Clone, Debug)]
 pub struct PhiNode {
     pub args: ValueList,
     pub blocks: PhiMap,
 }
 
-impl PhiNode {
-    #[inline]
-    pub fn edges<'a>(&self, value_lists: &'a ValueListPool, forest: &'a PhiForest) -> PhiEdges<'a> {
-        let args = self.args.as_slice(value_lists);
-        PhiEdges { iter: self.blocks.iter(forest), args }
-    }
-
-    #[inline]
-    pub fn edge_val(
-        &self,
-        block: Block,
-        val_pool: &ValueListPool,
-        forest: &PhiForest,
-    ) -> Option<Value> {
-        let pos = self.edge_operand(block, forest)?;
-        Some(self.args.as_slice(val_pool)[pos as usize])
-    }
-
-    #[inline]
-    fn edge_operand(&self, block: Block, forest: &PhiForest) -> Option<u32> {
-        self.blocks.get(block, forest, &())
-    }
-
-    #[inline]
-    pub fn to_pool<'a>(
-        &self,
-        value_lists: &'a ValueListPool,
-        forest: &'a PhiForest,
-        dst_value_lists: &'a mut ValueListPool,
-        dst_forest: &'a mut PhiForest,
-    ) -> Self {
-        let args = self.args.to_pool(value_lists, dst_value_lists);
-        let mut blocks = PhiMap::new();
-        blocks.insert_sorted_iter(self.blocks.iter(forest), dst_forest, &(), |_, i| i);
-        Self { args, blocks }
-    }
-
-    #[inline]
-    pub fn eq(&self, other: &Self, val_pool: &ValueListPool, forest: &PhiForest) -> bool {
-        let l_edges = self.edges(val_pool, forest);
-        let r_edges = other.edges(val_pool, forest);
-        l_edges.eq(r_edges)
-    }
-
-    #[inline]
-    pub fn hash<H: std::hash::Hasher>(
-        &self,
-        state: &mut H,
-        val_pool: &ValueListPool,
-        forest: &PhiForest,
-    ) {
-        for (block, val) in self.edges(val_pool, forest) {
-            block.hash(state);
-            val.hash(state)
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub struct PhiEdges<'a> {
-    iter: bforest::MapIter<'a, Block, u32>,
     args: &'a [Value],
+    iter: bforest::MapIter<'a, Block, u32>,
 }
 
 impl Iterator for PhiEdges<'_> {
@@ -416,5 +316,68 @@ impl Iterator for PhiEdges<'_> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(move |(block, pos)| (block, self.args[pos as usize]))
+    }
+}
+
+impl PhiNode {
+    #[inline]
+    pub fn edges<'a>(
+        &self,
+        val_pool: &'a ValueListPool,
+        phi_forest: &'a PhiForest,
+    ) -> PhiEdges<'a> {
+        let args = self.args.as_slice(val_pool);
+        PhiEdges { args, iter: self.blocks.iter(phi_forest) }
+    }
+
+    /// The corresponding value of `block` in the phi instruction
+    #[inline]
+    pub fn edge_val(
+        &self,
+        block: Block,
+        val_pool: &ValueListPool,
+        phi_forest: &PhiForest,
+    ) -> Option<Value> {
+        let pos = self.edge_operand(block, phi_forest)?;
+        Some(self.args.as_slice(val_pool)[pos as usize])
+    }
+
+    #[inline]
+    fn edge_operand(&self, block: Block, phi_forest: &PhiForest) -> Option<u32> {
+        self.blocks.get(block, phi_forest, &())
+    }
+
+    #[inline]
+    pub fn to_pool<'a>(
+        &self,
+        val_pool: &'a ValueListPool,
+        phi_forest: &'a PhiForest,
+        dst_val_pool: &'a mut ValueListPool,
+        dst_phi_forest: &'a mut PhiForest,
+    ) -> Self {
+        let args = self.args.to_pool(val_pool, dst_val_pool);
+        let mut blocks = PhiMap::new();
+        blocks.insert_sorted_iter(self.blocks.iter(phi_forest), dst_phi_forest, &(), |_, i| i);
+        Self { args, blocks }
+    }
+
+    #[inline]
+    pub fn eq(&self, other: &Self, val_pool: &ValueListPool, phi_forest: &PhiForest) -> bool {
+        let l_edges = self.edges(val_pool, phi_forest);
+        let r_edges = other.edges(val_pool, phi_forest);
+        l_edges.eq(r_edges)
+    }
+
+    #[inline]
+    pub fn hash<H: std::hash::Hasher>(
+        &self,
+        state: &mut H,
+        val_pool: &ValueListPool,
+        phi_forest: &PhiForest,
+    ) {
+        for (block, val) in self.edges(val_pool, phi_forest) {
+            block.hash(state);
+            val.hash(state)
+        }
     }
 }

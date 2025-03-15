@@ -126,8 +126,9 @@ extern "C" {
     pub fn LLVMLinkModules2(dst: &Module, src: &Module) -> Bool;
 }
 
-pub fn function_iter(module: &Module) -> impl Iterator<Item = &Value> + '_ {
-    let fun = unsafe { LLVMGetFirstFunction(module) };
+/// Return an iterator over all functions in a LLVM module.
+pub fn function_iter(llmod: &Module) -> impl Iterator<Item = &Value> + '_ {
+    let fun = unsafe { LLVMGetFirstFunction(llmod) };
     iter::successors(fun, |fun| unsafe { LLVMGetNextFunction(fun) })
 }
 

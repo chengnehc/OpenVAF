@@ -56,12 +56,14 @@ pub fn main() {
 }
 
 pub const DATA_ERROR: i32 = 65;
+pub const NORMAL_EXIT: i32 = 0;
 
 fn wrapped_main(matches: ArgMatches) -> Result<i32> {
     let print_expansion = matches.get_flag(PRINT_EXPANSION);
     let dump_json_ = matches.get_flag(DUMP_JSON);
     let opts = matches_to_opts(matches)?;
     *ARGS.lock().unwrap() = Some(opts.clone());
+
     if print_expansion {
         let res = match expand(&opts)? {
             CompilationTermination::Compiled { .. } => 0,
@@ -69,6 +71,7 @@ fn wrapped_main(matches: ArgMatches) -> Result<i32> {
         };
         return Ok(res);
     }
+
     if dump_json_ {
         bail!("currently unimplemented");
         // let res = match dump_json(&opts)? {
@@ -78,15 +81,15 @@ fn wrapped_main(matches: ArgMatches) -> Result<i32> {
         // return Ok(res);
     }
 
-    let res = match compile(&opts)? {
+    let exit_code = match compile(&opts)? {
         CompilationTermination::Compiled { lib_file } => {
             if matches!(opts.output, CompilationDestination::Cache { .. }) {
                 println!("{lib_file}");
             }
-            0
+            NORMAL_EXIT
         }
         CompilationTermination::FatalDiagnostic => DATA_ERROR,
     };
 
-    Ok(res)
+    Ok(exit_code)
 }

@@ -40,7 +40,7 @@ pub fn new_codegen<'a, 'll>(
         unsafe {
             // LLVMPurgeAttrs(fun);
             if LLVMIsDeclaration(fun) != llvm::False {
-                continue;
+                continue; // skip function declarations
             }
             LLVMSetLinkage(fun, Linkage::Internal);
             LLVMSetUnnamedAddress(fun, UnnamedAddr::Global);
@@ -102,11 +102,11 @@ impl<'a, 'b, 'll> OsdiCompilationUnit<'a, 'b, 'll> {
 pub struct OsdiModule<'a> {
     pub info: &'a ModuleInfo,
     pub dae: &'a DaeSystem,
-    pub init: &'a Initialization,
+    pub init: &'a Initialization, // setup_instance
     pub node_collapse: &'a NodeCollapse,
     pub eval: &'a Function,
     pub intern: &'a HirInterner,
-    pub model_param_setup: &'a Function,
+    pub model_param_setup: &'a Function, // setup_model
     pub model_param_intern: &'a HirInterner,
     pub lim_table: &'a TiSet<OsdiLimId, OsdiLimFunction>,
     pub sym: String,

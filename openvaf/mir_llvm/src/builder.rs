@@ -136,26 +136,24 @@ impl<'ll> BuilderVal<'ll> {
     }
 }
 
-// A `mir_llvm::Builder` must have an associative `ll_func`
+// A `mir_llvm::Builder` must have an associative `llfunc`
 #[must_use]
 pub struct Builder<'a, 'cx, 'll> {
     pub llbuilder: &'a mut llvm::Builder<'ll>,
+    pub llfunc: &'ll llvm::Value,
     pub cx: &'a CodegenCx<'cx, 'll>,
-    pub mir_func: &'a Function,
+    pub mir: &'a Function,
     pub blocks: TiVec<Block, Option<&'ll llvm::BasicBlock>>,
+    pub prepend_pos: &'ll llvm::BasicBlock,
     pub values: TiVec<Value, BuilderVal<'ll>>,
     pub params: TiVec<Param, BuilderVal<'ll>>,
     pub callbacks: TiVec<FuncRef, Option<CallbackFun<'ll>>>,
-    pub prepend_pos: &'ll llvm::BasicBlock,
     pub unfinished_phis: Vec<(PhiNode, &'ll llvm::Value)>,
-    pub ll_func: &'ll llvm::Value,
 }
 
 impl Drop for Builder<'_, '_, '_> {
     fn drop(&mut self) {
-        unsafe {
-            llvm::LLVMDisposeBuilder(&mut *(self.llbuilder as *mut _));
-        }
+        unsafe { llvm::LLVMDisposeBuilder(&mut *(self.llbuilder as *mut _)) }
     }
 }
 
@@ -168,15 +166,15 @@ pub enum FastMathMode {
 impl<'a, 'cx, 'll> Builder<'a, 'cx, 'll> {
     pub fn new(
         cx: &'a CodegenCx<'cx, 'll>,
-        mir_func: &'a Function,
-        ll_func: &'ll llvm::Value,
+        mirfun: &'a Function,
+        llfunc: &'ll llvm::Value,
     ) -> Self {
-        let entry = unsafe { llvm::LLVMAppendBasicBlockInContext(cx.llcx, ll_func, UNNAMED) };
+        let entry = unsafe { llvm::LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED) };
         let llbuilder = unsafe { llvm::LLVMCreateBuilderInContext(cx.llcx) };
-        let mut blocks: TiVec<_, _> = vec![None; mir_func.layout.num_blocks()].into();
-        for blk in mir_func.layout.blocks() {
+        let mut blocks: TiVec<_, _> = vec![None; mirfun.layout.num_blocks()].into();
+        for blk in mirfun.layout.blocks() {
             blocks[blk] =
-                unsafe { Some(llvm::LLVMAppendBasicBlockInContext(cx.llcx, ll_func, UNNAMED)) };
+                unsafe { Some(llvm::LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED)) };
         }
         // JW:
         // let blocks: TiVec<_, _> = mir_func
@@ -191,15 +189,15 @@ impl<'a, 'cx, 'll> Builder<'a, 'cx, 'll> {
 
         Builder {
             llbuilder,
+            llfunc,
             cx,
-            mir_func,
+            mir: mirfun,
             blocks,
-            values: vec![BuilderVal::Undef; mir_func.dfg.num_values()].into(),
+            prepend_pos: entry,
+            values: vec![BuilderVal::Undef; mirfun.dfg.num_values()].into(),
             params: Default::default(),
             callbacks: Default::default(),
-            prepend_pos: entry,
             unfinished_phis: Vec::new(),
-            ll_func,
         }
     }
 }
@@ -222,14 +220,14 @@ impl<'ll> Builder<'_, '_, 'll> {
         build_else: impl FnOnce(&mut Self) -> &'ll llvm::Value,
     ) -> &'ll llvm::Value {
         let start = self.prepend_pos;
-        let exit = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.ll_func, UNNAMED);
-        let then_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.ll_func, UNNAMED);
+        let exit = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
+        let then_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
         llvm::LLVMPositionBuilderAtEnd(self.llbuilder, then_bb);
         self.prepend_pos = then_bb;
         let then_val = build_then(self);
         llvm::LLVMBuildBr(self.llbuilder, exit);
 
-        let else_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.ll_func, UNNAMED);
+        let else_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
         llvm::LLVMPositionBuilderAtEnd(self.llbuilder, else_bb);
         self.prepend_pos = else_bb;
         let else_val = build_else(self);
@@ -344,8 +342,8 @@ impl<'ll> Builder<'_, '_, 'll> {
     }
 
     pub fn build_consts(&mut self) {
-        for val in self.mir_func.dfg.values() {
-            match self.mir_func.dfg.value_def(val) {
+        for val in self.mir.dfg.values() {
+            match self.mir.dfg.value_def(val) {
                 ValueDef::Result(_, _) | ValueDef::Invalid => (),
                 ValueDef::Param(param) => self.values[val] = self.params[param].clone(),
                 ValueDef::Const(const_val) => {
@@ -359,12 +357,12 @@ impl<'ll> Builder<'_, '_, 'll> {
     /// Must not be called if any block already contain any non-phi instruction (e.g. must not be
     /// called twice)
     pub unsafe fn build_func(&mut self) {
-        let entry = self.mir_func.layout.entry_block().unwrap();
+        let entry = self.mir.layout.entry_block().unwrap();
         llvm::LLVMBuildBr(self.llbuilder, self.blocks[entry].unwrap());
 
         let mut cfg = ControlFlowGraph::new();
-        cfg.compute(self.mir_func);
-        let po: Vec<_> = cfg.postorder(self.mir_func).collect();
+        cfg.compute(self.mir);
+        let po: Vec<_> = cfg.postorder(self.mir).collect();
         drop(cfg);
         for bb in po.into_iter().rev() {
             self.build_bb(bb)
@@ -372,7 +370,7 @@ impl<'ll> Builder<'_, '_, 'll> {
 
         for (phi, llval) in self.unfinished_phis.iter() {
             let (blocks, vals): (Vec<_>, Vec<_>) = self
-                .mir_func
+                .mir
                 .dfg
                 .phi_edges(phi)
                 .map(|(bb, val)| {
@@ -390,6 +388,7 @@ impl<'ll> Builder<'_, '_, 'll> {
         unsafe { llvm::LLVMPositionBuilderAtEnd(self.llbuilder, self.blocks[bb].unwrap()) }
     }
 
+    /// Position the builder before the terminator instruction of specified block.
     pub fn select_bb_before_terminator(&self, bb: Block) {
         let bb = self.blocks[bb].unwrap();
         unsafe {
@@ -403,9 +402,10 @@ impl<'ll> Builder<'_, '_, 'll> {
     /// * Must not be called twice for the same block.
     pub unsafe fn build_bb(&mut self, bb: Block) {
         self.select_bb(bb);
-        for inst in self.mir_func.layout.block_insts(bb) {
-            // TODO(JW): negative srcloc (i32) is here to indicate fast math mode, which is quite magical.
-            let fast_math = self.mir_func.srclocs.get(inst).is_some_and(|loc| loc.bits() < 0);
+        for inst in self.mir.layout.block_insts(bb) {
+            // TODO(JW): negative srcloc (i32) is used here to indicate
+            // fast math mode, which is quite magical
+            let fast_math = self.mir.srclocs.get(inst).is_some_and(|loc| loc.bits() < 0);
             self.build_inst(
                 inst,
                 if fast_math { FastMathMode::Partial } else { FastMathMode::Disabled },
@@ -432,7 +432,7 @@ impl<'ll> Builder<'_, '_, 'll> {
     /// * Not Phis may be constructed for the current block after this function has been called.
     /// * Must not be called when the builder has selected a block that already contains a terminator.
     pub unsafe fn build_inst(&mut self, inst: Inst, fast_math_mode: FastMathMode) {
-        let (opcode, args) = match self.mir_func.dfg.insts[inst] {
+        let (opcode, args) = match self.mir.dfg.insts[inst] {
             mir::InstructionData::Unary { opcode, ref arg } => (opcode, slice::from_ref(arg)),
             mir::InstructionData::Binary { opcode, ref args } => (opcode, args.as_slice()),
             mir::InstructionData::Jump { destination } => {
@@ -451,14 +451,14 @@ impl<'ll> Builder<'_, '_, 'll> {
             mir::InstructionData::PhiNode(ref phi) => {
                 // TODO does this always produce a valid value?
                 let ty = self
-                    .mir_func
+                    .mir
                     .dfg
                     .phi_edges(phi)
                     .find_map(|(_, val)| self.values[val].get_ty(self))
                     .unwrap();
                 let llval = llvm::LLVMBuildPhi(self.llbuilder, ty, UNNAMED);
                 self.unfinished_phis.push((phi.clone(), llval));
-                let val = self.mir_func.dfg.first_result(inst);
+                let val = self.mir.dfg.first_result(inst);
                 self.values[val] = llval.into();
                 return;
             }
@@ -467,7 +467,7 @@ impl<'ll> Builder<'_, '_, 'll> {
                     return; // assume noop
                 };
 
-                let args = args.as_slice(&self.mir_func.dfg.insts.value_lists);
+                let args = args.as_slice(&self.mir.dfg.insts.value_lists);
                 let args = args.iter().map(|operand| self.values[*operand].get(self));
 
                 if callback.num_state != 0 {
@@ -482,12 +482,12 @@ impl<'ll> Builder<'_, '_, 'll> {
                             .chain(args.iter().copied())
                             .collect();
                         self.call(callback.fun_ty, callback.fun, &operands);
-                        debug_assert!(self.mir_func.dfg.inst_results(inst).is_empty());
+                        debug_assert!(self.mir.dfg.inst_results(inst).is_empty());
                     }
                 } else {
                     let operands: Vec<_> = callback.state.iter().copied().chain(args).collect();
                     let res = self.call(callback.fun_ty, callback.fun, &operands);
-                    let inst_res = self.mir_func.dfg.inst_results(inst);
+                    let inst_res = self.mir.dfg.inst_results(inst);
 
                     match inst_res {
                         [] => (),
@@ -597,8 +597,8 @@ impl<'ll> Builder<'_, '_, 'll> {
                 if matches!(self.values[args[0]], BuilderVal::Undef) {
                     panic!(
                         "{} {}",
-                        self.mir_func.dfg.display_inst(inst),
-                        self.mir_func.layout.inst_block(inst).unwrap()
+                        self.mir.dfg.display_inst(inst),
+                        self.mir.layout.inst_block(inst).unwrap()
                     );
                 }
                 let lhs = self.values[args[0]].get(self);
@@ -659,7 +659,7 @@ impl<'ll> Builder<'_, '_, 'll> {
             Opcode::Br | Opcode::Jmp | Opcode::Call | Opcode::Phi => unreachable!(),
         };
 
-        let res = self.mir_func.dfg.first_result(inst);
+        let res = self.mir.dfg.first_result(inst);
         self.values[res] = val.into();
 
         if matches!(

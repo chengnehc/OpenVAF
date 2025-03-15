@@ -31,6 +31,6 @@ extern "C" {
         fun: &'a Value,
         name: *const c_char,
     ) -> &'a BasicBlock;
-    ///	Obtain the last instruction in a basic block.
+    /// Obtain the last instruction in a basic block.
     pub fn LLVMGetLastInstruction<'a>(bb: &'a BasicBlock) -> Option<&'a Value>;
 }

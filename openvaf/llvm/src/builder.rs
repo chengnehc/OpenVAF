@@ -198,14 +198,14 @@ extern "C" {
         val: &'a Value,
         name: *const c_char,
     ) -> &'a Value;
-    pub fn LLVMBuildFree<'a>(builder: &Builder<'a>, PointerVal: &'a Value) -> &'a Value;
+    pub fn LLVMBuildFree<'a>(builder: &Builder<'a>, ptr: &'a Value) -> &'a Value;
     pub fn LLVMBuildLoad2<'a>(
         builder: &Builder<'a>,
         ty: &'a Type,
         ptr: &'a Value,
         name: *const c_char,
     ) -> &'a Value;
-    pub fn LLVMBuildStore<'a>(builder: &Builder<'a>, Val: &'a Value, Ptr: &'a Value) -> &'a Value;
+    pub fn LLVMBuildStore<'a>(builder: &Builder<'a>, val: &'a Value, ptr: &'a Value) -> &'a Value;
     pub fn LLVMBuildInBoundsGEP2<'a>(
         builder: &Builder<'a>,
         ty: &'a Type,
@@ -219,7 +219,7 @@ extern "C" {
         ty: &'a Type,
         ptr: &'a Value,
         idx: u32,
-        Name: *const c_char,
+        name: *const c_char,
     ) -> &'a Value;
     // pub fn LLVMBuildGlobalString(B: &Builder, Str: *const c_char, Name: *const c_char)
     //     -> &'a Value;
@@ -350,17 +350,17 @@ extern "C" {
     // Comparisons
     pub fn LLVMBuildICmp<'a>(
         builder: &Builder<'a>,
-        Op: IntPredicate,
-        LHS: &'a Value,
-        RHS: &'a Value,
-        Name: *const c_char,
+        op: IntPredicate,
+        lhs: &'a Value,
+        rhs: &'a Value,
+        name: *const c_char,
     ) -> &'a Value;
     pub fn LLVMBuildFCmp<'a>(
         builder: &Builder<'a>,
-        Op: RealPredicate,
-        LHS: &'a Value,
-        RHS: &'a Value,
-        Name: *const c_char,
+        op: RealPredicate,
+        lhs: &'a Value,
+        rhs: &'a Value,
+        name: *const c_char,
     ) -> &'a Value;
 
     // Miscellaneous instructions

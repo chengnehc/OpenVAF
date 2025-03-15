@@ -13,42 +13,8 @@ use crate::compilation_unit::{general_callbacks, OsdiCompilationUnit};
 use crate::inst_data::OsdiInstanceParam;
 
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
-    fn mark_collapsed(&self) -> (&'ll llvm::Value, &'ll llvm::Type) {
-        let OsdiCompilationUnit { inst_data, cx, .. } = self;
-        let fn_type = cx.ty_func(&[cx.ty_ptr(), cx.ty_int()], cx.ty_void());
-        let name = &format!("collapse_{}", &self.module.sym);
-        let llfunc = cx.declare_int_c_fn(name, fn_type);
-
-        unsafe {
-            let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
-            let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
-            LLVMPositionBuilderAtEnd(llbuilder, entry);
-
-            // get params
-            let inst = LLVMGetParam(llfunc, 0);
-            let idx = LLVMGetParam(llfunc, 1);
-
-            inst_data.store_is_collapsible(cx, llbuilder, inst, idx);
-
-            LLVMBuildRetVoid(llbuilder);
-            LLVMDisposeBuilder(llbuilder);
-        }
-
-        (llfunc, fn_type)
-    }
-
-    fn invalid_param_err(cx: &CodegenCx<'_, 'll>) -> (&'ll llvm::Type, &'ll llvm::Value) {
-        let val = cx
-            .get_func_by_name("push_invalid_param_err")
-            .expect("stdlib function push_invalid_param_err is missing");
-
-        let ty = cx.ty_func(&[cx.ty_ptr(), cx.ty_ptr(), cx.ty_ptr(), cx.ty_int()], cx.ty_void());
-
-        (ty, val)
-    }
-
-    pub fn setup_model_prototype(&self) -> &'ll llvm::Value {
-        let cx = &self.cx;
+    pub fn setup_model_fn_prototype(&self) -> &'ll llvm::Value {
+        let cx = self.cx;
         let name = &format!("setup_model_{}", &self.module.sym);
 
         let fun_ty =
@@ -56,25 +22,21 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         cx.declare_external_fn(name, fun_ty)
     }
 
-    pub fn setup_model(&self) -> &'ll llvm::Value {
-        let llfunc = self.setup_model_prototype();
+    pub fn setup_model_fn(&self) -> &'ll llvm::Value {
+        let llfunc = self.setup_model_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, tys, cx, .. } = self;
 
-        let func = &self.module.model_param_setup;
-        let intern = &self.module.model_param_intern;
+        let func = self.module.model_param_setup;
+        let intern = self.module.model_param_intern;
 
-        let mut cfg = ControlFlowGraph::new();
-        cfg.compute(func);
         let mut builder = Builder::new(cx, func, llfunc);
-        let postorder: Vec<_> = cfg.postorder(func).collect();
-
-        let handle = unsafe { llvm::LLVMGetParam(llfunc, 0) };
-        let model = unsafe { llvm::LLVMGetParam(llfunc, 1) };
-        let simparam = unsafe { llvm::LLVMGetParam(llfunc, 2) };
+        let handle = unsafe { LLVMGetParam(llfunc, 0) };
+        let model = unsafe { LLVMGetParam(llfunc, 1) };
+        let simparam = unsafe { LLVMGetParam(llfunc, 2) };
 
         builder.params = vec![BuilderVal::Undef; intern.params.len()].into();
 
-        for (i, param) in model_data.params.keys().copied().enumerate() {
+        for (i, &param) in model_data.params.keys().enumerate() {
             let i = i as u32;
 
             let dst = intern.params.unwrap_index(&ParamKind::Param(param));
@@ -87,16 +49,14 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             builder.params[dst] = BuilderVal::Eager(is_given);
         }
 
-        for (i, param) in inst_data.params.keys().enumerate() {
+        for (i, &param) in inst_data.params.keys().enumerate() {
             let i = i as u32;
 
             let is_given =
                 unsafe { model_data.is_nth_inst_param_given(cx, i, model, builder.llbuilder) };
-
             let val =
                 unsafe { model_data.read_nth_inst_param(inst_data, i, model, builder.llbuilder) };
-
-            match *param {
+            match param {
                 OsdiInstanceParam::Builtin(builtin) => {
                     if let Some(dst) = intern.params.index(&ParamKind::ParamSysFun(builtin)) {
                         let default_val = builtin.default_value();
@@ -161,10 +121,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             builder.build_func();
         }
 
-        let exit_bb = *postorder
-            .iter()
+        let mut cfg = ControlFlowGraph::new();
+        cfg.compute(func);
+        let exit_bb = cfg
+            .postorder(func)
             .find(|bb| {
-                func.layout.last_inst(**bb).is_none_or(|term| !func.dfg.insts[term].is_terminator())
+                func.layout.last_inst(*bb).is_none_or(|term| !func.dfg.insts[term].is_terminator())
             })
             .unwrap();
 
@@ -186,18 +148,16 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         llfunc
     }
 
-    pub fn setup_instance_prototype(&self) -> &'ll llvm::Value {
+    pub fn setup_instance_fn_prototype(&self) -> &'ll llvm::Value {
+        let cx = self.cx;
         let name = &format!("setup_instance_{}", &self.module.sym);
-        let cx = &self.cx;
-
-        let ty_void_ptr = cx.ty_ptr();
-
+        let void_ptr_ty = cx.ty_ptr();
         let simparam_ptr_ty = cx.ty_ptr();
         let fun_ty = cx.ty_func(
             &[
-                ty_void_ptr,
-                ty_void_ptr,
-                ty_void_ptr,
+                void_ptr_ty,
+                void_ptr_ty,
+                void_ptr_ty,
                 cx.ty_double(),
                 cx.ty_int(),
                 simparam_ptr_ty,
@@ -209,47 +169,48 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         cx.declare_external_fn(name, fun_ty)
     }
 
-    pub fn setup_instance(&mut self) -> &'ll llvm::Value {
-        let mark_collapsed = self.mark_collapsed();
-        let llfunc = self.setup_instance_prototype();
+    pub fn setup_instance_fn(&mut self) -> &'ll llvm::Value {
+        let mark_collapsed = self.mark_collapsed_fn();
+        let llfunc = self.setup_instance_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, tys, cx, module, .. } = self;
 
         let func = &module.init.func;
         let intern = &module.init.intern;
         let mut builder = Builder::new(cx, func, llfunc);
 
-        let handle = unsafe { llvm::LLVMGetParam(llfunc, 0) };
-        let instance = unsafe { llvm::LLVMGetParam(llfunc, 1) };
-        let model = unsafe { llvm::LLVMGetParam(llfunc, 2) };
-        let temperature = unsafe { llvm::LLVMGetParam(llfunc, 3) };
-        let connected_terminals = unsafe { llvm::LLVMGetParam(llfunc, 4) };
-        let simparam = unsafe { llvm::LLVMGetParam(llfunc, 5) };
-        let res = unsafe { llvm::LLVMGetParam(llfunc, 6) };
+        let handle = unsafe { LLVMGetParam(llfunc, 0) };
+        let instance = unsafe { LLVMGetParam(llfunc, 1) };
+        let model = unsafe { LLVMGetParam(llfunc, 2) };
+        let temperature = unsafe { LLVMGetParam(llfunc, 3) };
+        let connected_terminals = unsafe { LLVMGetParam(llfunc, 4) };
+        let simparam = unsafe { LLVMGetParam(llfunc, 5) };
+        let res = unsafe { LLVMGetParam(llfunc, 6) };
 
-        let ret_flags = unsafe { builder.alloca(cx.ty_int()) };
-        unsafe { builder.store(ret_flags, cx.const_int(0)) };
+        let ret_flag = unsafe { builder.alloca(cx.ty_int()) };
+        unsafe { builder.store(ret_flag, cx.const_int(0)) };
 
         builder.params = vec![BuilderVal::Undef; intern.params.len()].into();
 
         let true_ = cx.const_bool(true);
 
-        for (i, param) in inst_data.params.keys().enumerate() {
+        for (i, &param) in inst_data.params.keys().enumerate() {
             let i = i as u32;
 
-            let is_inst_given =
+            // Some params are both instance and model params
+            let is_given_in_inst =
                 unsafe { inst_data.is_nth_param_given(cx, i, instance, builder.llbuilder) };
             let is_given = unsafe {
-                let is_given_model =
+                let is_given_in_model =
                     model_data.is_nth_inst_param_given(cx, i, model, builder.llbuilder);
-                builder.select(is_inst_given, true_, is_given_model)
+                builder.select(is_given_in_inst, true_, is_given_in_model)
             };
 
             let inst_val = unsafe { inst_data.read_nth_param(i, instance, builder.llbuilder) };
             let model_val =
                 unsafe { model_data.read_nth_inst_param(inst_data, i, model, builder.llbuilder) };
-            let val = unsafe { builder.select(is_inst_given, inst_val, model_val) };
+            let val = unsafe { builder.select(is_given_in_inst, inst_val, model_val) };
 
-            match *param {
+            match param {
                 OsdiInstanceParam::Builtin(builtin) => {
                     let default_val = builtin.default_value();
                     let default_val = cx.const_real(default_val);
@@ -328,7 +289,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         }
 
         let invalid_param_err = Self::invalid_param_err(cx);
-        builder.callbacks = general_callbacks(intern, &mut builder, ret_flags, handle, simparam);
+        builder.callbacks = general_callbacks(intern, &mut builder, ret_flag, handle, simparam);
         for (call_id, call) in intern.callbacks.iter_enumerated() {
             let cb = match call {
                 CallBackKind::ParamInfo(ParamInfoKind::Invalid, param) => {
@@ -404,8 +365,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 let llcx = cx.llcx;
                 let llbuilder = &*builder.llbuilder;
                 unsafe {
-                    let else_bb = LLVMAppendBasicBlockInContext(llcx, builder.ll_func, UNNAMED);
-                    let then_bb = LLVMAppendBasicBlockInContext(llcx, builder.ll_func, UNNAMED);
+                    let else_bb = LLVMAppendBasicBlockInContext(llcx, builder.llfunc, UNNAMED);
+                    let then_bb = LLVMAppendBasicBlockInContext(llcx, builder.llfunc, UNNAMED);
                     let should_collapse = builder.values[should_collapse].get(&builder);
                     LLVMBuildCondBr(llbuilder, should_collapse, then_bb, else_bb);
                     LLVMPositionBuilderAtEnd(llbuilder, then_bb);
@@ -435,5 +396,38 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         }
 
         llfunc
+    }
+
+    fn mark_collapsed_fn(&self) -> (&'ll llvm::Value, &'ll llvm::Type) {
+        let OsdiCompilationUnit { inst_data, cx, .. } = self;
+        let name = &format!("collapse_{}", &self.module.sym);
+        let fn_type = cx.ty_func(&[cx.ty_ptr(), cx.ty_int()], cx.ty_void());
+        let llfunc = cx.declare_internal_c_fn(name, fn_type);
+
+        unsafe {
+            let entry = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
+            let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
+            LLVMPositionBuilderAtEnd(llbuilder, entry);
+
+            let inst = LLVMGetParam(llfunc, 0);
+            let idx = LLVMGetParam(llfunc, 1);
+            inst_data.store_is_collapsible(cx, llbuilder, inst, idx);
+
+            LLVMBuildRetVoid(llbuilder);
+            LLVMDisposeBuilder(llbuilder);
+        }
+
+        (llfunc, fn_type)
+    }
+
+    fn invalid_param_err(cx: &CodegenCx<'_, 'll>) -> (&'ll llvm::Type, &'ll llvm::Value) {
+        let val = cx
+            .get_func_by_name("push_invalid_param_err")
+            .expect("stdlib function push_invalid_param_err is missing");
+
+        let ty_ptr = cx.ty_ptr();
+        let ty = cx.ty_func(&[ty_ptr, ty_ptr, ty_ptr, cx.ty_int()], cx.ty_void());
+
+        (ty, val)
     }
 }

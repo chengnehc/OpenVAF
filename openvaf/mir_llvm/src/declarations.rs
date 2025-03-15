@@ -57,7 +57,7 @@ impl<'ll> CodegenCx<'_, 'll> {
     }
 
     /// Declare a internal function with ccc (C call convention).
-    pub fn declare_int_c_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
+    pub fn declare_internal_c_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
         // Function addresses are never significant, allowing functions to be merged.
         let fun = declare_raw_fn(
             self,
@@ -101,8 +101,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         unsafe { llvm::LLVMGetNamedGlobal(self.llmod, name.as_ptr()) }
     }
 
-    /// Gets defined or externally defined (AvailableExternally linkage) value by
-    /// name.
+    /// Gets defined or externally defined (externally linked) value by name.
     pub fn get_defined_value(&self, name: &str) -> Option<&'ll Value> {
         self.get_declared_value(name).and_then(|val| {
             let declaration = unsafe { llvm::LLVMIsDeclaration(val) != False };

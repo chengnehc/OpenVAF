@@ -11,9 +11,12 @@ use crate::{bitfield, lltype};
 const NUM_CONST_FIELDS: u32 = 1;
 
 pub struct OsdiModelData<'ll> {
-    pub param_given: &'ll llvm::Type,
-    pub params: IndexMap<Parameter, &'ll llvm::Type, RandomState>,
+    // llvm type for model data struct
     pub ty: &'ll llvm::Type,
+    // llvm types for static (always present) model data struct fields
+    pub param_given: &'ll llvm::Type,
+    // llvm types for dynamic model data struct fields
+    pub params: IndexMap<Parameter, &'ll llvm::Type, RandomState>,
 }
 
 impl<'ll> OsdiModelData<'ll> {
@@ -28,25 +31,30 @@ impl<'ll> OsdiModelData<'ll> {
             .info
             .params
             .keys()
-            .filter_map(|param| {
-                if inst_params.contains_key(&OsdiInstanceParam::User(*param)) {
-                    None
-                } else {
-                    Some((*param, lltype(&param.ty(db), cx)))
-                }
-            })
+            .filter(|&param| !inst_params.contains_key(&OsdiInstanceParam::User(*param)))
+            .map(|param| (*param, lltype(&param.ty(db), cx)))
             .collect();
-
         let param_given = bitfield::arr_ty((inst_params.len() + params.len()) as u32, cx);
 
-        let mut fields: Vec<_> = vec![param_given];
+        let mut fields = vec![param_given];
         fields.extend(params.values().copied());
         fields.extend(inst_params.values());
 
         let name = format!("osdi_model_data_{}", &cgunit.sym);
         let ty = cx.ty_struct(&name, &fields);
 
-        OsdiModelData { param_given, params, ty }
+        OsdiModelData { ty, param_given, params }
+    }
+
+    pub fn param_loc(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        param: Parameter,
+        ptr: &'ll llvm::Value,
+    ) -> Option<MemLoc<'ll>> {
+        let pos = self.params.get_index_of(&param)? as u32;
+        let loc = self.nth_param_loc(cx, pos, ptr);
+        Some(loc)
     }
 
     pub fn nth_param_loc(
@@ -60,17 +68,6 @@ impl<'ll> OsdiModelData<'ll> {
         let indices =
             vec![cx.const_unsigned_int(0), cx.const_unsigned_int(elem)].into_boxed_slice();
         MemLoc { ptr, ptr_ty: self.ty, ty, indices }
-    }
-
-    pub fn param_loc(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        param: Parameter,
-        ptr: &'ll llvm::Value,
-    ) -> Option<MemLoc<'ll>> {
-        let pos = self.params.get_index_of(&param)? as u32;
-        let res = self.nth_param_loc(cx, pos, ptr);
-        Some(res)
     }
 
     pub unsafe fn param_ptr(
@@ -153,6 +150,18 @@ impl<'ll> OsdiModelData<'ll> {
         LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
     }
 
+    pub unsafe fn is_param_given(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        param: Parameter,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) -> Option<&'ll llvm::Value> {
+        let pos = self.params.get_index_of(&param)?;
+        let res = self.is_nth_param_given(cx, pos as u32, ptr, llbuilder);
+        Some(res)
+    }
+
     pub unsafe fn is_nth_param_given(
         &self,
         cx: &CodegenCx<'_, 'll>,
@@ -162,17 +171,6 @@ impl<'ll> OsdiModelData<'ll> {
     ) -> &'ll llvm::Value {
         let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, 0, UNNAMED);
         bitfield::is_set(cx, pos, arr_ptr, self.param_given, llbuilder)
-    }
-
-    pub unsafe fn is_nth_inst_param_given(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        pos: u32,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) -> &'ll llvm::Value {
-        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, 0, UNNAMED);
-        bitfield::is_set(cx, pos + self.params.len() as u32, arr_ptr, self.param_given, llbuilder)
     }
 
     pub unsafe fn is_inst_param_given(
@@ -186,16 +184,28 @@ impl<'ll> OsdiModelData<'ll> {
         let pos = inst_data.params.get_index_of(&param).unwrap();
         self.is_nth_inst_param_given(cx, pos as u32, ptr, llbuilder)
     }
-    pub unsafe fn is_param_given(
+
+    pub unsafe fn is_nth_inst_param_given(
         &self,
         cx: &CodegenCx<'_, 'll>,
-        param: Parameter,
+        pos: u32,
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
-    ) -> Option<&'ll llvm::Value> {
-        let pos = self.params.get_index_of(&param)?;
-        let res = self.is_nth_param_given(cx, pos as u32, ptr, llbuilder);
-        Some(res)
+    ) -> &'ll llvm::Value {
+        let pos = pos + self.params.len() as u32;
+        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, 0, UNNAMED);
+        bitfield::is_set(cx, pos, arr_ptr, self.param_given, llbuilder)
+    }
+
+    pub unsafe fn set_nth_param_given(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        pos: u32,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) {
+        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, 0, UNNAMED);
+        bitfield::set_bit(cx, pos, arr_ptr, self.param_given, llbuilder)
     }
 
     pub unsafe fn set_nth_inst_param_given(
@@ -207,16 +217,6 @@ impl<'ll> OsdiModelData<'ll> {
     ) {
         let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, 0, UNNAMED);
         bitfield::set_bit(cx, pos + self.params.len() as u32, arr_ptr, self.param_given, llbuilder)
-    }
-    pub unsafe fn set_nth_param_given(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        pos: u32,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) {
-        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, 0, UNNAMED);
-        bitfield::set_bit(cx, pos, arr_ptr, self.param_given, llbuilder)
     }
 
     // pub unsafe fn set_param_given(

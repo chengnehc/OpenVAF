@@ -4,10 +4,11 @@ use stdx::iter::zip;
 
 use typed_index_collections::{TiSliceKeys, TiVec};
 
-use crate::dfg::values::{DfgValues, ValueDataType};
 use crate::entities::Tag;
 use crate::instructions::{UseList, UseListPool};
 use crate::{DataFlowGraph, Inst, InstructionData, Use, Value, ValueList, ValueListPool};
+
+use super::values::{DfgValues, ValueDataType};
 
 #[derive(Clone)]
 pub struct DfgInsts {
@@ -15,7 +16,7 @@ pub struct DfgInsts {
     ///
     /// The instructions in this map are not in program order. That is tracked by `Layout`, along
     /// with the block containing each instruction.
-    pub(super) declarations: TiVec<Inst, InstructionData>,
+    pub(super) decls: TiVec<Inst, InstructionData>,
 
     /// List of result values for each instruction.
     ///
@@ -39,26 +40,24 @@ impl Default for DfgInsts {
     }
 }
 
-/// Allow immutable access to instructions via indexing.
 impl Index<Inst> for DfgInsts {
     type Output = InstructionData;
 
     fn index(&self, inst: Inst) -> &InstructionData {
-        &self.declarations[inst]
+        &self.decls[inst]
     }
 }
 
-/// Allow mutable access to instructions via indexing.
 impl IndexMut<Inst> for DfgInsts {
     fn index_mut(&mut self, inst: Inst) -> &mut InstructionData {
-        &mut self.declarations[inst]
+        &mut self.decls[inst]
     }
 }
 
 impl DfgInsts {
     pub fn new() -> Self {
         Self {
-            declarations: TiVec::new(),
+            decls: TiVec::new(),
             results: TiVec::new(),
             uses: TiVec::new(),
             value_lists: ValueListPool::new(),
@@ -67,7 +66,7 @@ impl DfgInsts {
     }
 
     pub fn clear(&mut self) {
-        self.declarations.clear();
+        self.decls.clear();
         self.results.clear();
         self.uses.clear();
         self.value_lists.clear();
@@ -75,30 +74,84 @@ impl DfgInsts {
     }
 
     pub fn iter(&self) -> TiSliceKeys<Inst> {
-        self.declarations.keys()
+        self.decls.keys()
     }
 
-    /// Get the total number of instructions created in this function, whether they are currently
-    /// inserted in the layout or not.
+    /// Get the total number of instructions created in this function,
+    /// whether they are currently inserted in the layout or not.
     pub fn num(&self) -> usize {
-        self.declarations.len()
+        self.decls.len()
     }
 
     pub fn is_valid(&self, inst: Inst) -> bool {
-        usize::from(inst) < self.declarations.len()
+        usize::from(inst) < self.num()
     }
 
-    /// Removes all uses of the instruction
-    pub fn zap(&self, inst: Inst, values: &mut DfgValues) {
-        let uses = self.uses[inst].as_slice(&self.use_lists);
-        for use_ in uses {
-            values.detach_use(*use_, self);
-        }
+    /// Get all value arguments on `inst` as a slice.
+    pub fn args(&self, inst: Inst) -> &[Value] {
+        self.decls[inst].arguments(&self.value_lists)
+    }
+
+    /// Get all value arguments on `inst` as a mutable slice.
+    pub fn args_mut(&mut self, inst: Inst) -> &mut [Value] {
+        self.decls[inst].arguments_mut(&mut self.value_lists)
+    }
+
+    /// Test if `inst` has any result values currently.
+    pub fn has_results(&self, inst: Inst) -> bool {
+        !self.results[inst].is_empty()
+    }
+
+    /// Return all the results of an instruction.
+    pub fn results(&self, inst: Inst) -> &[Value] {
+        self.results[inst].as_slice(&self.value_lists)
+    }
+
+    /// Get the first result of an instruction.
+    ///
+    /// This function panics if the instruction doesn't have any result.
+    pub fn first_result(&self, inst: Inst) -> Value {
+        self.results[inst]
+            .first(&self.value_lists)
+            .expect("Instruction should have at least one result")
+    }
+
+    /// Detach the list of result values from `inst` and return it.
+    ///
+    /// This leaves `inst` without any result values. New result values can be created by calling
+    /// `make_inst_results` or by using a `replace(inst)` builder.
+    pub fn detach_results(&mut self, inst: Inst) -> ValueList {
+        self.results[inst].take()
+    }
+
+    /// Clear the list of result values from `inst`.
+    ///
+    /// This leaves `inst` without any result values. New result values can be created by calling
+    /// `make_inst_results` or by using a `replace(inst)` builder.
+    pub fn clear_results(&mut self, inst: Inst) {
+        self.results[inst].clear(&mut self.value_lists)
     }
 
     pub fn safe_to_remove(&self, inst: Inst, values: &DfgValues) -> bool {
         self.results(inst).iter().all(|res| values.is_dead(*res))
     }
+
+    /// Return all the uses of an instruction.
+    pub fn operands(&self, inst: Inst) -> &[Use] {
+        self.uses[inst].as_slice(&self.use_lists)
+    }
+
+    /// Removes all uses of the instruction
+    pub fn zap(&self, inst: Inst, values: &mut DfgValues) {
+        for use_ in self.operands(inst) {
+            values.detach_use(*use_, self);
+        }
+    }
+
+    // /// Return all the uses of an instruction.
+    // pub fn operands_mut(&mut self, inst: Inst) -> &mut [Use] {
+    //     self.uses[inst].as_mut_slice(&mut self.use_lists)
+    // }
 
     ///// Replace the results of one instruction with aliases to the results of another.
     /////
@@ -135,59 +188,6 @@ impl DfgInsts {
 
     //    self.clear_results(dest_inst);
     //}
-
-    /// Get all value arguments on `inst` as a slice.
-    pub fn args(&self, inst: Inst) -> &[Value] {
-        self.declarations[inst].arguments(&self.value_lists)
-    }
-
-    /// Get all value arguments on `inst` as a mutable slice.
-    pub fn args_mut(&mut self, inst: Inst) -> &mut [Value] {
-        self.declarations[inst].arguments_mut(&mut self.value_lists)
-    }
-
-    /// Detach the list of result values from `inst` and return it.
-    ///
-    /// This leaves `inst` without any result values. New result values can be created by calling
-    /// `make_inst_results` or by using a `replace(inst)` builder.
-    pub fn detach_results(&mut self, inst: Inst) -> ValueList {
-        self.results[inst].take()
-    }
-
-    /// Clear the list of result values from `inst`.
-    ///
-    /// This leaves `inst` without any result values. New result values can be created by calling
-    /// `make_inst_results` or by using a `replace(inst)` builder.
-    pub fn clear_results(&mut self, inst: Inst) {
-        self.results[inst].clear(&mut self.value_lists)
-    }
-
-    /// Get the first result of an instruction.
-    ///
-    /// This function panics if the instruction doesn't have any result.
-    pub fn first_result(&self, inst: Inst) -> Value {
-        self.results[inst].first(&self.value_lists).expect("Instruction has no results")
-    }
-
-    /// Test if `inst` has any result values currently.
-    pub fn has_results(&self, inst: Inst) -> bool {
-        !self.results[inst].is_empty()
-    }
-
-    /// Return all the results of an instruction.
-    pub fn results(&self, inst: Inst) -> &[Value] {
-        self.results[inst].as_slice(&self.value_lists)
-    }
-
-    /// Return all the uses of an instruction.
-    pub fn operands(&self, inst: Inst) -> &[Use] {
-        self.uses[inst].as_slice(&self.use_lists)
-    }
-
-    // /// Return all the uses of an instruction.
-    // pub fn operands_mut(&mut self, inst: Inst) -> &mut [Use] {
-    //     self.uses[inst].as_mut_slice(&mut self.use_lists)
-    // }
 }
 
 /// Operations that require mutable access to `values` and `uses` (but logically still belong to
@@ -199,14 +199,14 @@ impl DataFlowGraph {
     /// Create a new instruction with `data`.
     pub fn make_inst(&mut self, data: InstructionData) -> Inst {
         // add instructions
-        let inst = self.insts.declarations.push_and_get_key(data);
+        let inst = self.insts.decls.push_and_get_key(data);
         self.insts.results.push(ValueList::new());
         self.insts.uses.push(UseList::new());
-
         // update use list
-        let args = self.insts.declarations[inst].arguments(&self.insts.value_lists).iter().copied();
+        let args = self.insts.decls[inst].arguments(&self.insts.value_lists).iter().copied();
         let uses = args.enumerate().map(|(i, arg)| self.values.make_use(arg, inst, i as u16));
         self.insts.uses[inst].extend(uses, &mut self.insts.use_lists);
+
         inst
     }
 
@@ -229,7 +229,7 @@ impl DataFlowGraph {
             sig.returns as usize
         } else {
             // Create result values corresponding to the opcode's constraints.
-            let constraints = self.insts.declarations[inst].opcode().constraints();
+            let constraints = self.insts.decls[inst].opcode().constraints();
             constraints.num_fixed_results()
         };
 
@@ -246,9 +246,9 @@ impl DataFlowGraph {
     /// Append a *new* value to the result value list for `inst`.
     pub fn append_result(&mut self, inst: Inst, tag: Option<Tag>) -> Value {
         let res = self.values.defs.next_key();
-        let num = self.insts.results[inst].push(res, &mut self.insts.value_lists);
-        debug_assert!(num <= u16::MAX as usize, "Too many result values");
-        self.values.make(ValueDataType::Inst { inst, num: num as u16 }, tag)
+        let idx = self.insts.results[inst].push(res, &mut self.insts.value_lists);
+        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
+        self.values.make(ValueDataType::Inst { inst, idx: idx as u16 }, tag)
     }
 
     /// Attach an existing value to the result value list for `inst`.
@@ -259,14 +259,9 @@ impl DataFlowGraph {
     /// created automatically. The `res` value must not be attached to anything else.
     pub fn attach_result(&mut self, inst: Inst, res: Value) {
         debug_assert!(!self.value_attached(res));
-        let num = self.insts.results[inst].push(res, &mut self.insts.value_lists);
-        debug_assert!(num <= u16::MAX as usize, "Too many result values");
-        self.values.defs[res].ty = ValueDataType::Inst { num: num as u16, inst };
-    }
-
-    /// Removes all uses of `inst`.
-    pub fn zap_inst(&mut self, inst: Inst) {
-        self.insts.zap(inst, &mut self.values)
+        let idx = self.insts.results[inst].push(res, &mut self.insts.value_lists);
+        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
+        self.values.defs[res].ty = ValueDataType::Inst { idx: idx as u16, inst };
     }
 
     pub fn update_inst(&mut self, inst: Inst, data: InstructionData) {
@@ -275,20 +270,23 @@ impl DataFlowGraph {
         self.update_inst_uses(inst);
     }
 
+    /// Removes all uses of `inst`.
+    pub fn zap_inst(&mut self, inst: Inst) {
+        self.insts.zap(inst, &mut self.values)
+    }
+
     /// Update the uses of `inst` using argument values.
     pub fn update_inst_uses(&mut self, inst: Inst) {
-        let data = self.insts.declarations[inst].clone();
-        let pool = &mut self.insts.use_lists;
-
-        let uses = self.insts.uses[inst].clone();
-        let args = self.insts.declarations[inst].arguments(&self.insts.value_lists);
+        let data = self.insts.decls[inst].clone();
+        let args = data.arguments(&self.insts.value_lists);
+        let arg_len = args.len();
         let mut args = args.iter().copied();
 
+        let pool = &mut self.insts.use_lists;
+        let uses = self.insts.uses[inst].clone();
         for (use_, val) in zip(uses.as_slice(pool), &mut args) {
             self.values.attach_use(*use_, val);
         }
-
-        let arg_len = data.arguments(&self.insts.value_lists).len();
         let use_len = uses.len(pool);
 
         if arg_len > use_len {

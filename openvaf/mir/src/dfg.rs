@@ -1,5 +1,3 @@
-//! Data flow graph tracking Instructions, Values, and blocks.
-//!
 //! See Also:
 //!
 //! https://docs.rs/cranelift-codegen/0.116.1/cranelift_codegen/ir/dfg/index.html
@@ -15,7 +13,7 @@ use crate::instructions::PhiForest;
 use crate::write::write_operands;
 use crate::{Block, FuncRef, FunctionSignature, Ieee64, InstructionData, Use, ValueList};
 
-mod instructions;
+mod insts;
 mod phis;
 mod postorder;
 mod uses;
@@ -24,7 +22,7 @@ mod values;
 #[cfg(test)]
 mod tests;
 
-use instructions::DfgInsts;
+use insts::DfgInsts;
 use values::ValueDataType;
 
 pub use postorder::{Postorder, PostorderParts};
@@ -167,8 +165,7 @@ pub struct DisplayInst<'a>(&'a DataFlowGraph, Inst);
 
 impl fmt::Display for DisplayInst<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let dfg = self.0;
-        let inst = self.1;
+        let DisplayInst(dfg, inst) = *self;
 
         if let Some((first, rest)) = dfg.inst_results(inst).split_first() {
             write!(f, "{}", first)?;
@@ -284,7 +281,7 @@ impl DataFlowGraph {
     }
 
     pub fn tag(&self, val: Value) -> Option<Tag> {
-        self.values.tag(val)
+        self.values.get_tag(val)
     }
 
     pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
@@ -296,8 +293,8 @@ impl DataFlowGraph {
     /// An attached value can't be attached to something else without first being detached.
     pub fn value_attached(&self, v: Value) -> bool {
         match self.values.defs[v].ty {
-            ValueDataType::Inst { inst, num, .. } => {
-                Some(&v) == self.insts.results(inst).get(num as usize)
+            ValueDataType::Inst { inst, idx, .. } => {
+                Some(&v) == self.insts.results(inst).get(idx as usize)
             }
             _ => false,
         }
@@ -306,16 +303,13 @@ impl DataFlowGraph {
     pub fn value_dead(&self, val: Value) -> bool {
         self.values.is_dead(val)
     }
-}
 
-/// Create values.
-impl DataFlowGraph {
     pub fn make_param(&mut self, param: Param) -> Value {
         self.values.make_param(param)
     }
 
     pub fn make_invalid_value(&mut self) -> Value {
-        self.values.make_invalid_value()
+        self.values.make_invalid()
     }
 
     pub fn iconst(&mut self, val: i32) -> Value {

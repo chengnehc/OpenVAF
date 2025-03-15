@@ -99,7 +99,7 @@ pub fn compile(
                 let tys = OsdiTys::new(&cx, target_data_);
                 let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
-                cguint.access_function();
+                cguint.access_fn();
                 debug_assert!(llmod.verify_and_print());
 
                 if emit {
@@ -117,7 +117,7 @@ pub fn compile(
                 let tys = OsdiTys::new(&cx, target_data_);
                 let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
-                cguint.setup_model();
+                cguint.setup_model_fn();
                 debug_assert!(llmod.verify_and_print());
 
                 if emit {
@@ -135,7 +135,7 @@ pub fn compile(
                 let tys = OsdiTys::new(&cx, target_data_);
                 let mut cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
-                cguint.setup_instance();
+                cguint.setup_instance_fn();
                 debug_assert!(llmod.verify_and_print());
 
                 if emit {
@@ -154,7 +154,7 @@ pub fn compile(
                 let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, true);
 
                 // println!("{:?}", module.eval);
-                cguint.eval();
+                cguint.eval_fn();
                 // println!("{}", llmod.to_str());
                 debug_assert!(llmod.verify_and_print());
 
@@ -237,7 +237,7 @@ pub fn compile(
 impl OsdiModule<'_> {
     fn intern_names(&self, literals: &mut Rodeo, db: &CompilationDB) {
         literals.get_or_intern(self.info.module.name(db));
-        self.intern_node_strs(literals, db);
+        self.intern_unknown_names(literals, db);
         literals.get_or_intern_static("Multiplier (Verilog-A $mfactor)");
         literals.get_or_intern_static("deg");
         literals.get_or_intern_static("m");
@@ -294,12 +294,12 @@ fn ty_len(ty: &Type) -> Option<u32> {
 
 fn lltype<'ll>(ty: &Type, cx: &CodegenCx<'_, 'll>) -> &'ll llvm::Type {
     let llty = match ty.base_type() {
-        Type::Real => cx.ty_double(),
+        Type::Void => cx.ty_void(),
+        Type::Bool => cx.ty_c_bool(),
         Type::Integer => cx.ty_int(),
+        Type::Real => cx.ty_double(),
         Type::String => cx.ty_ptr(),
         Type::EmptyArray => cx.ty_array(cx.ty_int(), 0),
-        Type::Bool => cx.ty_c_bool(),
-        Type::Void => cx.ty_void(),
         Type::Err | Type::Array { .. } => unreachable!(),
     };
 

@@ -8,15 +8,16 @@ use crate::Function;
 fn basic() {
     let mut func = Function::with_name("foo".to_owned());
 
-    let block = func.layout.append_new_block();
-    let v3 = func.dfg.make_param(0u32.into());
-    let v4 = func.dfg.make_param(1u32.into());
-    let v5 = func.dfg.iconst(3);
+    let v1 = func.dfg.make_param(0u32.into());
+    let v2 = func.dfg.make_param(1u32.into());
+    let v3 = func.dfg.iconst(3);
 
+    let block = func.layout.append_new_block();
     let mut cursor = FuncCursor::new(&mut func);
     cursor.set_position(CursorPosition::After(block));
-    let v6 = cursor.ins().iadd(v3, v4);
-    cursor.ins().isub(v6, v5);
+
+    let v4 = cursor.ins().iadd(v1, v2);
+    cursor.ins().isub(v4, v3);
 
     let expected = expect![[r#"
         function %foo(v16, v17) {

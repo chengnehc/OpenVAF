@@ -8,60 +8,60 @@ use super::*;
 #[test]
 fn make_inst() {
     let mut dfg = DataFlowGraph::new();
-    let v3 = dfg.make_param(0u32.into());
+    let v1 = dfg.make_param(0u32.into());
 
-    let idata = InstructionData::Binary { opcode: Opcode::Fadd, args: [F_ZERO, v3] };
+    let idata = InstructionData::Binary { opcode: Opcode::Fadd, args: [F_ZERO, v1] };
     let inst = dfg.make_inst(idata);
-
     dfg.make_inst_results(inst);
+
     assert_eq!(inst.to_string(), "inst0");
     expect![[r#"
         "v17 = fadd v3, v16"
     "#]]
     .assert_debug_eq(&dfg.display_inst(inst).to_string());
 
-    let v4 = dfg.first_result(inst);
-    assert_eq!(dfg.inst_results(inst), &[v4]);
-    assert_eq!(dfg.value_def(v4), ValueDef::Result(inst, 0));
-    // v4 is attached (to an in instruction as its result)
-    assert!(dfg.value_attached(v4));
-    // v4 is not used elsewhere
-    assert_eq!(dfg.uses(v4).count(), 0);
+    let v2 = dfg.first_result(inst);
+    assert_eq!(dfg.inst_results(inst), &[v2]);
+    assert_eq!(dfg.value_def(v2), ValueDef::Result(inst, 0));
+    // v2 is attached (to an in instruction as its result)
+    assert!(dfg.value_attached(v2));
+    // v2 is not used elsewhere
+    assert_eq!(dfg.uses(v2).count(), 0);
 
-    let idata = InstructionData::Binary { opcode: Opcode::Fadd, args: [v4, v4] };
+    let idata = InstructionData::Binary { opcode: Opcode::Fadd, args: [v2, v2] };
     let inst = dfg.make_inst(idata);
     dfg.make_inst_results(inst);
 
-    let v5 = dfg.first_result(inst);
-    assert_eq!(dfg.value_def(v5), ValueDef::Result(inst, 0));
-    // `v5` is not used elsewhere.
-    assert_eq!(dfg.uses(v5).count(), 0);
-    // `v4` is used twice by `inst` as its operands.
-    assert_eq!(dfg.uses(v4).count(), 2);
+    let v3 = dfg.first_result(inst);
+    assert_eq!(dfg.value_def(v3), ValueDef::Result(inst, 0));
+    // `v3` is not used elsewhere.
+    assert_eq!(dfg.uses(v3).count(), 0);
+    // `v2` is used twice by `inst` as its operands.
+    assert_eq!(dfg.uses(v2).count(), 2);
     // linked list is FIFO, so reverse the iterator.
     // The code does not make any guarantee about the order of the iterator, so if
     // this test ever fails because of order, it's ok to change this.
-    assert_eq!(dfg.uses_double_ended(v4).rev().collect::<Vec<_>>(), dfg.operands(inst));
+    assert_eq!(dfg.uses_double_ended(v2).rev().collect::<Vec<_>>(), dfg.operands(inst));
 
     // test that updating is a noop when nothing has changed
     dfg.zap_inst(inst);
     dfg.update_inst_uses(inst);
-    assert_eq!(dfg.uses(v4).count(), 2);
+    assert_eq!(dfg.uses(v2).count(), 2);
 
-    dfg.replace_uses(v4, F_ZERO);
+    dfg.replace_uses(v2, F_ZERO);
     assert_eq!(dfg.instr_args(inst), &[F_ZERO, F_ZERO]);
     assert_eq!(dfg.uses(F_ZERO).count(), 3);
-    assert!(dfg.value_dead(v4));
-    assert_eq!(dfg.uses_double_ended(v4).rev().count(), 0);
+    assert!(dfg.value_dead(v2));
+    assert_eq!(dfg.uses_double_ended(v2).rev().count(), 0);
 
     dfg.zap_inst(inst);
-    assert_eq!(dfg.uses(v3).count(), 1);
+    assert_eq!(dfg.uses(v1).count(), 1);
     assert_eq!(dfg.uses(F_ZERO).count(), 1);
 
-    dfg.instr_args_mut(inst).copy_from_slice(&[v3, v4]);
+    dfg.instr_args_mut(inst).copy_from_slice(&[v1, v2]);
     dfg.update_inst_uses(inst);
-    assert_eq!(dfg.uses(v4).count(), 1);
-    assert_eq!(dfg.uses(v3).count(), 2);
+    assert_eq!(dfg.uses(v2).count(), 1);
+    assert_eq!(dfg.uses(v1).count(), 2);
     assert_eq!(dfg.uses(F_ZERO).count(), 1);
 }
 

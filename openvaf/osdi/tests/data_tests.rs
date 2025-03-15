@@ -1,11 +1,11 @@
+use camino::Utf8Path;
+use paths::AbsPathBuf;
 use std::path::Path;
 
-use camino::Utf8Path;
 use hir::diagnostics::ConsoleSink;
 use hir::CompilationDB;
 use llvm::OptLevel;
 use mir_llvm::LLVMBackend;
-use paths::AbsPathBuf;
 use sim_back::collect_modules;
 use target::spec::Target;
 

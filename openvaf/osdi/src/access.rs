@@ -9,7 +9,7 @@ use crate::compilation_unit::OsdiCompilationUnit;
 use crate::metadata::osdi_0_3::{ACCESS_FLAG_INSTANCE, ACCESS_FLAG_SET};
 
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
-    pub fn access_function_prototype(&self) -> &'ll llvm::Value {
+    pub fn access_fn_prototype(&self) -> &'ll llvm::Value {
         let cx = self.cx;
         let void_ptr = cx.ty_ptr();
         let uint32_t = cx.ty_int();
@@ -18,8 +18,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         cx.declare_external_fn(&name, fun_ty)
     }
 
-    pub fn access_function(&self) -> &'ll llvm::Value {
-        let llfunc = self.access_function_prototype();
+    pub fn access_fn(&self) -> &'ll llvm::Value {
+        let llfunc = self.access_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, cx, .. } = &self;
 
         unsafe {
@@ -28,8 +28,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let model_bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
             let inst_bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
             let opvar_bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
-            let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
 
+            let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
             LLVMPositionBuilderAtEnd(llbuilder, entry);
 
             // get params
@@ -38,18 +38,17 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let param_id = LLVMGetParam(llfunc, 2);
             let flags = LLVMGetParam(llfunc, 3);
 
+            // check various flags
             let access_flag_instance = cx.const_unsigned_int(ACCESS_FLAG_INSTANCE);
             let access_flag_set = cx.const_unsigned_int(ACCESS_FLAG_SET);
             let zero = cx.const_unsigned_int(0);
 
-            // check various flags
             let flags_and_instance = LLVMBuildAnd(llbuilder, flags, access_flag_instance, UNNAMED);
+            let flags_and_set = LLVMBuildAnd(llbuilder, flags, access_flag_set, UNNAMED);
+
             let instance_flag_set =
                 LLVMBuildICmp(llbuilder, IntNE, flags_and_instance, zero, UNNAMED);
-
-            let flags_and_set = LLVMBuildAnd(llbuilder, flags, access_flag_set, UNNAMED);
             let write_flag_set = LLVMBuildICmp(llbuilder, IntNE, flags_and_set, zero, UNNAMED);
-
             LLVMBuildCondBr(llbuilder, instance_flag_set, inst_bb, model_bb);
 
             // inst params
@@ -127,8 +126,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 LLVMBuildRet(llbuilder, ptr);
             }
 
-            let null_ptr = cx.const_null_ptr();
-
             // opvars
             LLVMPositionBuilderAtEnd(llbuilder, opvar_bb);
             let switch_opvar =
@@ -147,6 +144,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             }
 
             //return NULL on unknown id
+            let null_ptr = cx.const_null_ptr();
             LLVMPositionBuilderAtEnd(llbuilder, err_exit);
             LLVMBuildRet(llbuilder, null_ptr);
 

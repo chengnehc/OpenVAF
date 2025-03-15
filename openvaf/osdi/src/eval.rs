@@ -23,18 +23,18 @@ use crate::metadata::OsdiLimFunction;
 use crate::OsdiLimId;
 
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
-    pub fn eval_prototype(&self) -> &'ll llvm::Value {
-        let name = &format!("eval_{}", &self.module.sym);
-        let cx = &self.cx;
+    pub fn eval_fn_prototype(&self) -> &'ll llvm::Value {
+        let cx = self.cx;
 
+        let name = &format!("eval_{}", &self.module.sym);
         let ty_ptr = cx.ty_ptr();
-        let fun_ty = cx.ty_func(&[ty_ptr, ty_ptr, ty_ptr, ty_ptr], cx.ty_int());
+        let fun_ty = cx.ty_func(&[ty_ptr; 4], cx.ty_int());
 
         cx.declare_external_fn(name, fun_ty)
     }
 
-    pub fn eval(&self) -> &'ll llvm::Value {
-        let llfunc = self.eval_prototype();
+    pub fn eval_fn(&self) -> &'ll llvm::Value {
+        let llfunc = self.eval_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, cx, module, .. } = self;
 
         let func = module.eval;
@@ -47,44 +47,41 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let model = unsafe { llvm::LLVMGetParam(llfunc, 2) };
         let sim_info = unsafe { llvm::LLVMGetParam(llfunc, 3) };
         let sim_info_ty = self.tys.osdi_sim_info;
-        // let simparam_ty = self.tys.osdi_sim_paras;
         let simparam = unsafe { builder.struct_gep(sim_info_ty, sim_info, 0) };
 
         const ABSTIME_OFFSET: u32 = 1;
 
-        let prev_result = unsafe {
+        let prev_solve = unsafe {
             let ptr = builder.struct_gep(sim_info_ty, sim_info, 2);
             builder.load(cx.ty_ptr(), ptr)
         };
-
         let prev_state = unsafe {
             let ptr = builder.struct_gep(sim_info_ty, sim_info, 3);
             builder.load(cx.ty_ptr(), ptr)
         };
-
         let next_state = unsafe {
             let ptr = builder.struct_gep(sim_info_ty, sim_info, 4);
             builder.load(cx.ty_ptr(), ptr)
         };
-
         let flags = MemLoc::struct_gep(sim_info, sim_info_ty, cx.ty_int(), 5, cx);
 
         let ret_flags = unsafe { builder.alloca(cx.ty_int()) };
         unsafe { builder.store(ret_flags, cx.const_int(0)) };
 
         let connected_ports = unsafe { inst_data.load_connected_ports(&builder, instance) };
-        let prev_solve: TiVec<_, _> = module
+
+        let prev_solve_vec: TiVec<_, _> = module
             .dae
             .unknowns
             .indices()
             .map(|node| unsafe {
-                inst_data.read_node_voltage(cx, node, instance, prev_result, builder.llbuilder)
+                inst_data.read_node_voltage(cx, node, instance, prev_solve, builder.llbuilder)
             })
             .collect();
 
         let get_prev_solve = |node| {
             if let Some(node) = module.dae.unknowns.index(&node) {
-                prev_solve[node]
+                prev_solve_vec[node]
             } else {
                 info!("node {node:?} is always zero");
                 cx.const_real(0.0)
@@ -95,7 +92,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             .map(|i| unsafe { inst_data.read_state_idx(cx, i.into(), instance, builder.llbuilder) })
             .collect();
 
-        let true_ = cx.const_bool(true);
         let mut params: TiVec<_, _> = intern
             .params
             .raw
@@ -158,7 +154,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                                         builder.llbuilder,
                                     );
 
-                                    builder.select(inst_given, true_, model_given)
+                                    builder.select(inst_given, cx.const_bool(true), model_given)
                                 }
                                 None => model_data
                                     .is_param_given(cx, param, model, builder.llbuilder)
@@ -283,7 +279,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
         // store parameters
         builder.select_bb(exit_bb);
-
         unsafe {
             for reactive in [false, true] {
                 let (jacobian_flag, residual_flag, lim_rhs_flag) = if reactive {

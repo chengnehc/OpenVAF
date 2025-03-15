@@ -362,8 +362,7 @@ impl<'a> fmt::Display for DisplayValuesWithDelimiter<'a> {
 }
 */
 
-/// A lasso resolver that always returns `"<DUMMY>"`.
-/// Mainly useful for debugging
+/// A lasso resolver that always returns `"<DUMMY>"`, intended for debugging.
 pub struct DummyResolver;
 
 impl lasso::Resolver for DummyResolver {

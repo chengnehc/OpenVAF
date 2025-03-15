@@ -5,7 +5,7 @@ use ahash::AHashMap;
 use lasso::Spur;
 use typed_index_collections::TiVec;
 
-use crate::dfg::uses::UseData;
+use super::uses::UseData;
 use crate::entities::{Param, Tag};
 use crate::{DataFlowGraph, Ieee64, Inst, Use, Value};
 
@@ -49,28 +49,15 @@ impl From<ValueDataType> for ValueData {
 
 #[derive(Clone, Debug)]
 pub(super) enum ValueDataType {
-    /// Value is defined by an instruction.
-    Inst {
-        num: u16,
-        inst: Inst,
-    },
-    /// A function parameter
-    Param {
-        param: Param,
-    },
-    Fconst {
-        val: Ieee64,
-    },
-    Iconst {
-        val: i32,
-    },
-    Sconst {
-        val: Spur,
-    },
     Alias(Value),
-    Invalid,
+    Inst { inst: Inst, idx: u16 },
+    Param { param: Param },
+    Fconst { val: Ieee64 },
+    Iconst { val: i32 },
+    Sconst { val: Spur },
     True,
     False,
+    Invalid,
 }
 
 /// Where did a value come from?
@@ -87,22 +74,18 @@ pub enum ValueDef {
 }
 
 impl ValueDef {
-    /// Unwrap the instruction where the value was defined as its result, or panic.
     #[inline]
     pub fn unwrap_inst(&self) -> Inst {
         self.inst().expect("Value is not an instruction result")
     }
-
     #[inline]
     pub fn unwrap_result(&self) -> (Inst, usize) {
         self.result().expect("Value is not an instruction result")
     }
-
     #[inline]
     pub fn unwrap_const(&self) -> Const {
         self.as_const().expect("Value is not a constant")
     }
-
     #[inline]
     pub fn unwrap_param(&self) -> Param {
         self.as_param().expect("Value is not a parameter")
@@ -116,7 +99,6 @@ impl ValueDef {
             _ => None,
         }
     }
-
     /// Get the instruction and its index where the value was defined, if any.
     #[inline]
     pub fn result(&self) -> Option<(Inst, usize)> {
@@ -125,7 +107,6 @@ impl ValueDef {
             _ => None,
         }
     }
-
     /// Use the value defined as a constant.
     #[inline]
     pub fn as_const(&self) -> Option<Const> {
@@ -134,7 +115,6 @@ impl ValueDef {
             _ => None,
         }
     }
-
     /// Use the value defined as a function parameter.
     #[inline]
     pub fn as_param(&self) -> Option<Param> {
@@ -153,35 +133,6 @@ pub enum Const {
     Bool(bool),
 }
 
-/// Allocate and initialize predefined constants.
-macro_rules! consts {
-    ( $(pub const $name: ident: $ty: ident = $val: expr;)* ) => {
-        consts!(@const 0, $($name),*);
-        pub(super) fn init(dst: &mut DfgValues){
-            $(consts!(@init $ty dst $val);)*
-        }
-    };
-
-    (@const $pos: expr, $name: ident $(,$rem: ident)*) => {
-        pub const $name: Value = Value::with_number_($pos);
-        consts!(@const $pos + 1, $($rem),*);
-    };
-
-    (@const $pos: expr,) => {};
-
-    (@init f64 $dst: ident $val: expr) => {
-        $dst.fconst($val.into())
-    };
-
-    (@init i32 $dst: ident $val: expr) => {
-        $dst.iconst($val)
-    };
-
-    (@init bool $dst: ident $val: expr) => {
-        $dst.make($val, None)
-    };
-}
-
 use consts::*;
 
 /// Predefined constants, with name from `v0` to `v15`.
@@ -189,10 +140,40 @@ pub mod consts {
     use super::{DfgValues, Value, ValueDataType};
     use std::f64::consts::{LN_2, LOG10_E};
 
-    // The order of these constant values shall not be changed, otherwise tests could fail.
+    /// Allocate and initialize predefined constants.
+    macro_rules! consts {
+        ( $(pub const $name: ident: $ty: ident = $val: expr;)* ) => {
+            consts!(@const 0, $($name),*);
+            pub(super) fn init(dst: &mut DfgValues){
+                $(consts!(@init $ty dst $val);)*
+            }
+        };
+
+        (@const $pos: expr, $name: ident $(,$rem: ident)*) => {
+            pub const $name: Value = Value::with_number_($pos);
+            consts!(@const $pos + 1, $($rem),*);
+        };
+
+        (@const $pos: expr,) => {};
+
+        (@init f64 $dst: ident $val: expr) => {
+            $dst.fconst($val.into())
+        };
+        (@init i32 $dst: ident $val: expr) => {
+            $dst.iconst($val)
+        };
+        (@init bool $dst: ident $val: expr) => {
+            $dst.make($val, None)
+        };
+        (@init invalid $dst: ident $val: expr) => {
+            $dst.make_invalid()
+        };
+    }
+
+    // The order of these constant values shall not be changed, otherwise tests would fail.
     consts! {
         // Placeholder for unused values that must remain (in 'phi's)
-        pub const GRAVESTONE: bool = ValueDataType::False;
+        pub const GRAVESTONE: invalid = ValueDataType::Invalid;
         pub const FALSE: bool = ValueDataType::False;
         pub const TRUE: bool = ValueDataType::True;
         pub const F_ZERO: f64 = 0.0;
@@ -221,7 +202,6 @@ impl From<bool> for Value {
     }
 }
 
-/// Handling values.
 impl DfgValues {
     pub fn new() -> Self {
         let mut res = Self {
@@ -231,10 +211,8 @@ impl DfgValues {
             real_consts: AHashMap::new(),
             str_consts: AHashMap::new(),
         };
-
+        // initialize predefined constants
         consts::init(&mut res);
-        res.defs[GRAVESTONE].ty = ValueDataType::Invalid;
-
         // normalize to plus zero for consts
         res.real_consts.insert((-0f64).into(), F_ZERO);
 
@@ -253,62 +231,23 @@ impl DfgValues {
     pub fn num(&self) -> usize {
         self.defs.len()
     }
-
-    /// Allocate an extended value entry.
-    #[inline]
-    pub(super) fn make(&mut self, ty: ValueDataType, tag: Option<Tag>) -> Value {
-        let data = ValueData::new(ty, tag.into());
-        self.defs.push_and_get_key(data)
+    /// Check if a value reference is valid.
+    pub fn is_valid(&self, v: Value) -> bool {
+        usize::from(v) < self.num()
     }
-
-    pub fn make_invalid_value(&mut self) -> Value {
-        self.make(ValueDataType::Invalid, None)
+    /// A value is dead if it is not used by any instruction
+    pub fn is_dead(&self, v: Value) -> bool {
+        self.defs[v].uses_head.is_none()
     }
-
-    pub fn make_param(&mut self, param: Param) -> Value {
-        self.make(ValueDataType::Param { param }, None)
-    }
-
-    pub fn make_param_at(&mut self, param: Param, val: Value) {
-        self.defs[val].ty = ValueDataType::Param { param };
-    }
-
-    #[inline]
-    pub fn make_alias(&mut self, val: Value) -> Value {
-        self.make(ValueDataType::Alias(val), None)
-    }
-
-    #[inline]
-    pub fn make_alias_at(&mut self, val: Value, dst: Value) {
-        self.defs[dst].ty = ValueDataType::Alias(val);
-    }
-
-    #[inline]
-    pub fn resolve_alias(&self, mut val: Value) -> Value {
-        while let ValueDataType::Alias(res) = self.defs[val].ty {
-            val = res
-        }
-        val
-    }
-
     /// Get an iterator over all values.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = Value> {
         self.defs.keys()
     }
-
-    /// Check if a value reference is valid.
-    pub fn is_valid(&self, v: Value) -> bool {
-        usize::from(v) < self.defs.len()
-    }
-
     /// Get the definition of a value.
-    ///
-    /// This is either the instruction that defined it or the Block that has the value as an
-    /// parameter.
     #[inline]
     pub fn def(&self, v: Value) -> ValueDef {
         match self.defs[v].ty {
-            ValueDataType::Inst { inst, num } => ValueDef::Result(inst, num as usize),
+            ValueDataType::Inst { inst, idx } => ValueDef::Result(inst, idx as usize),
             ValueDataType::Param { param } => ValueDef::Param(param),
             ValueDataType::Fconst { val } => ValueDef::Const(Const::Float(val)),
             ValueDataType::Iconst { val } => ValueDef::Const(Const::Int(val)),
@@ -318,11 +257,10 @@ impl DfgValues {
             ValueDataType::Alias(_) | ValueDataType::Invalid => ValueDef::Invalid,
         }
     }
-
     #[inline]
     pub fn def_allow_alias(&self, v: Value) -> ValueDef {
         match self.defs[v].ty {
-            ValueDataType::Inst { inst, num } => ValueDef::Result(inst, num as usize),
+            ValueDataType::Inst { inst, idx } => ValueDef::Result(inst, idx as usize),
             ValueDataType::Param { param } => ValueDef::Param(param),
             ValueDataType::Fconst { val } => ValueDef::Const(Const::Float(val)),
             ValueDataType::Iconst { val } => ValueDef::Const(Const::Int(val)),
@@ -333,69 +271,34 @@ impl DfgValues {
             ValueDataType::Invalid => ValueDef::Invalid,
         }
     }
-    /* JW: not used
-        pub fn unwrap_bool(&self, v: Value) -> bool {
-            match self.defs[v].ty {
-                ValueDataType::True => true,
-                ValueDataType::False => false,
-                ref ty => unreachable!("called unwrap_bool on {:?} value", ty),
-            }
-        }
 
-        pub fn unwrap_f64(&self, v: Value) -> f64 {
-            match self.defs[v].ty {
-                ValueDataType::Fconst { val } => val.into(),
-                ref ty => unreachable!("called unwrap_f64 on {:?} value", ty),
-            }
-        }
-
-        pub fn unwrap_i32(&self, v: Value) -> i32 {
-            match self.defs[v].ty {
-                ValueDataType::Iconst { val } => val,
-                ref ty => unreachable!("called unwrap_i32 on {:?} value", ty),
-            }
-        }
-
-        pub fn unwrap_str(&self, v: Value) -> Spur {
-            match self.defs[v].ty {
-                ValueDataType::Sconst { val } => val,
-                ref ty => unreachable!("called unwrap_str on {:?} value", ty),
-            }
-        }
-    */
-    pub fn tag(&self, val: Value) -> Option<Tag> {
-        self.defs[val].tag.expand()
+    /// Allocate an extended value entry.
+    #[inline]
+    pub(super) fn make(&mut self, ty: ValueDataType, tag: Option<Tag>) -> Value {
+        let data = ValueData::new(ty, tag.into());
+        self.defs.push_and_get_key(data)
     }
-
-    pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
-        self.defs[val].tag = tag.into()
+    #[inline]
+    pub fn make_invalid(&mut self) -> Value {
+        self.make(ValueDataType::Invalid, None)
     }
-
-    pub fn is_dead(&self, val: Value) -> bool {
-        self.defs[val].uses_head.is_none()
+    #[inline]
+    pub fn make_param(&mut self, param: Param) -> Value {
+        self.make(ValueDataType::Param { param }, None)
     }
-
-    pub fn iconst(&mut self, val: i32) -> Value {
-        *self.int_consts.entry(val).or_insert_with(|| {
-            let data = ValueDataType::Iconst { val }.into();
-            self.defs.push_and_get_key(data)
-        })
+    #[inline]
+    pub fn make_param_at(&mut self, param: Param, val: Value) {
+        self.defs[val].ty = ValueDataType::Param { param };
     }
-
-    pub fn fconst(&mut self, val: Ieee64) -> Value {
-        *self.real_consts.entry(val).or_insert_with(|| {
-            let data = ValueDataType::Fconst { val }.into();
-            self.defs.push_and_get_key(data)
-        })
+    #[inline]
+    pub fn make_alias(&mut self, val: Value) -> Value {
+        self.make(ValueDataType::Alias(val), None)
     }
-
-    pub fn sconst(&mut self, val: Spur) -> Value {
-        *self.str_consts.entry(val).or_insert_with(|| {
-            let data = ValueDataType::Sconst { val }.into();
-            self.defs.push_and_get_key(data)
-        })
+    #[inline]
+    pub fn make_alias_at(&mut self, val: Value, dst: Value) {
+        self.defs[dst].ty = ValueDataType::Alias(val);
     }
-
+    /// Note: bool constant (true/false) is never allocated twice.
     pub fn make_const(&mut self, val: Const) -> Value {
         match val {
             Const::Float(val) => self.fconst(val),
@@ -405,20 +308,42 @@ impl DfgValues {
             Const::Bool(true) => TRUE,
         }
     }
-
+    pub fn iconst(&mut self, val: i32) -> Value {
+        *self.int_consts.entry(val).or_insert_with(|| {
+            let data = ValueDataType::Iconst { val }.into();
+            self.defs.push_and_get_key(data)
+        })
+    }
+    pub fn fconst(&mut self, val: Ieee64) -> Value {
+        *self.real_consts.entry(val).or_insert_with(|| {
+            let data = ValueDataType::Fconst { val }.into();
+            self.defs.push_and_get_key(data)
+        })
+    }
+    pub fn sconst(&mut self, val: Spur) -> Value {
+        *self.str_consts.entry(val).or_insert_with(|| {
+            let data = ValueDataType::Sconst { val }.into();
+            self.defs.push_and_get_key(data)
+        })
+    }
     pub fn iconst_at(&mut self, val: i32, dst: Value) {
         self.int_consts.insert(val, dst);
         self.defs[dst].ty = ValueDataType::Iconst { val };
     }
-
     pub fn fconst_at(&mut self, val: Ieee64, dst: Value) {
         self.real_consts.insert(val, dst);
         self.defs[dst].ty = ValueDataType::Fconst { val };
     }
-
     pub fn sconst_at(&mut self, val: Spur, dst: Value) {
         self.str_consts.insert(val, dst);
         self.defs[dst].ty = ValueDataType::Sconst { val };
+    }
+
+    pub fn get_tag(&self, val: Value) -> Option<Tag> {
+        self.defs[val].tag.expand()
+    }
+    pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
+        self.defs[val].tag = tag.into()
     }
 }
 
@@ -434,11 +359,14 @@ impl Default for DfgValues {
     }
 }
 
-// Handling aliases.
 impl DataFlowGraph {
     #[inline]
-    pub fn resolve_alias(&self, val: Value) -> Value {
-        self.values.resolve_alias(val)
+    pub fn resolve_alias(&self, v: Value) -> Value {
+        let mut val = v;
+        while let ValueDataType::Alias(alias) = self.values.defs[val].ty {
+            val = alias
+        }
+        val
     }
 
     pub fn strip_alias(&mut self) {
@@ -452,14 +380,10 @@ impl DataFlowGraph {
             let mut val: Value = val.into();
             loop {
                 let def = unsafe { self.values.defs.get_unchecked(val) };
-                if let ValueDataType::Alias(alias) = def.ty {
-                    stack.push(val);
-                    val = alias
-                } else {
-                    break;
-                }
+                let ValueDataType::Alias(alias) = def.ty else { break };
+                stack.push(val);
+                val = alias
             }
-
             if let Some(first) = stack.first() {
                 self.replace_uses(*first, val);
                 for it in stack[1..].iter().copied() {

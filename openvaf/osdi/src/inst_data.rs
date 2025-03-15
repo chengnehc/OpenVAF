@@ -26,6 +26,7 @@ pub enum OsdiInstanceParam {
     User(Parameter),
 }
 
+/// offset of element/field in instance data struct
 pub const NUM_CONST_FIELDS: u32 = 8;
 pub const PARAM_GIVEN: u32 = 0;
 pub const JACOBIAN_PTR_RESIST: u32 = 1;
@@ -149,6 +150,7 @@ impl MatrixEntry {
             *num_react += 1;
             Some(Offset(*num_react - 1))
         };
+
         MatrixEntry {
             resist: get_output(entry.resist),
             react: get_output(entry.react),
@@ -180,6 +182,7 @@ impl NoiseSource {
             dae::NoiseSourceKind::FlickerNoise { pwr, exp } => [get_output(pwr), get_output(exp)],
             dae::NoiseSourceKind::NoiseTable { .. } => [EvalOutput::NONE; 2],
         };
+
         NoiseSource { args, factor: get_output(source.factor) }
     }
 
@@ -206,9 +209,9 @@ pub struct OsdiInstanceData<'ll> {
     pub cache_slots: TiVec<CacheSlot, &'ll llvm::Type>,
 
     pub residual: TiVec<SimUnknown, Residual>,
-    pub noise: Vec<NoiseSource>,
-    pub opvars: IndexMap<Variable, EvalOutput, RandomState>,
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,
+    pub opvars: IndexMap<Variable, EvalOutput, RandomState>,
+    pub noise: Vec<NoiseSource>,
     pub bound_step: Option<EvalOutputSlot>,
 }
 
@@ -323,26 +326,11 @@ impl<'ll> OsdiInstanceData<'ll> {
             eval_outputs,
             cache_slots,
             residual,
-            noise,
-            opvars,
             jacobian,
+            opvars,
+            noise,
             bound_step,
         }
-    }
-
-    pub unsafe fn store_bound_step(
-        &self,
-        ptr: &'ll llvm::Value,
-        builder: &mir_llvm::Builder<'_, '_, 'll>,
-    ) {
-        if let Some(slot) = self.bound_step {
-            self.store_eval_output_slot(slot, ptr, builder);
-        }
-    }
-
-    pub fn bound_step_elem(&self) -> Option<u32> {
-        let elem = self.eval_output_slot_elem(self.bound_step?);
-        Some(elem)
     }
 
     pub unsafe fn param_ptr(
@@ -369,6 +357,17 @@ impl<'ll> OsdiInstanceData<'ll> {
         (ptr, ty)
     }
 
+    pub fn param_loc(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        param: OsdiInstanceParam,
+        ptr: &'ll llvm::Value,
+    ) -> Option<MemLoc<'ll>> {
+        let pos = self.params.get_index_of(&param)? as u32;
+        let loc = self.nth_param_loc(cx, pos, ptr);
+        Some(loc)
+    }
+
     pub fn nth_param_loc(
         &self,
         cx: &CodegenCx<'_, 'll>,
@@ -378,17 +377,6 @@ impl<'ll> OsdiInstanceData<'ll> {
         let ty = self.params.get_index(pos as usize).unwrap().1;
         let elem = NUM_CONST_FIELDS + pos;
         MemLoc::struct_gep(ptr, self.ty, ty, elem, cx)
-    }
-
-    pub fn param_loc(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        param: OsdiInstanceParam,
-        ptr: &'ll llvm::Value,
-    ) -> Option<MemLoc<'ll>> {
-        let pos = self.params.get_index_of(&param)? as u32;
-        let res = self.nth_param_loc(cx, pos, ptr);
-        Some(res)
     }
 
     pub unsafe fn read_param(
@@ -404,12 +392,12 @@ impl<'ll> OsdiInstanceData<'ll> {
 
     pub unsafe fn store_nth_param(
         &self,
-        param_id: u32,
+        pos: u32,
         ptr: &'ll llvm::Value,
         val: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let (ptr, _) = self.nth_param_ptr(param_id, ptr, llbuilder);
+        let (ptr, _) = self.nth_param_ptr(pos, ptr, llbuilder);
         LLVMBuildStore(llbuilder, val, ptr)
     }
 
@@ -540,17 +528,6 @@ impl<'ll> OsdiInstanceData<'ll> {
     //     bitfield::word_ptr_and_mask(cx, pos, arr_ptr, self.param_given, llbuilder)
     // }
 
-    pub unsafe fn is_nth_param_given(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        pos: u32,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) -> &'ll llvm::Value {
-        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
-        bitfield::is_set(cx, pos, arr_ptr, self.param_given, llbuilder)
-    }
-
     pub unsafe fn is_param_given(
         &self,
         cx: &CodegenCx<'_, 'll>,
@@ -561,6 +538,17 @@ impl<'ll> OsdiInstanceData<'ll> {
         let pos = self.params.get_index_of(&param)?;
         let res = self.is_nth_param_given(cx, pos as u32, ptr, llbuilder);
         Some(res)
+    }
+
+    pub unsafe fn is_nth_param_given(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        pos: u32,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) -> &'ll llvm::Value {
+        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
+        bitfield::is_set(cx, pos, arr_ptr, self.param_given, llbuilder)
     }
 
     pub unsafe fn set_nth_param_given(
@@ -790,7 +778,6 @@ impl<'ll> OsdiInstanceData<'ll> {
                 UNNAMED,
             );
         }
-
         val
     }
 
@@ -863,6 +850,21 @@ impl<'ll> OsdiInstanceData<'ll> {
     ) {
         let ptr = builder.struct_gep(self.ty, ptr, CONNECTED);
         builder.store(ptr, val)
+    }
+
+    pub unsafe fn store_bound_step(
+        &self,
+        ptr: &'ll llvm::Value,
+        builder: &mir_llvm::Builder<'_, '_, 'll>,
+    ) {
+        if let Some(slot) = self.bound_step {
+            self.store_eval_output_slot(slot, ptr, builder);
+        }
+    }
+
+    pub fn bound_step_elem(&self) -> Option<u32> {
+        let elem = self.eval_output_slot_elem(self.bound_step?);
+        Some(elem)
     }
 }
 

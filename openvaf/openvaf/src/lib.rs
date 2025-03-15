@@ -46,6 +46,9 @@ pub struct Opts {
     pub target: Target,
     pub target_cpu: String,
 }
+
+// JW: Not implemented: dump serialized MIR as json file
+
 // pub fn dump_json(opts: &Opts) -> Result<CompilationTermination> {
 //     let input =
 //         opts.input.canonicalize().with_context(|| format!("failed to resolve {}", opts.input))?;

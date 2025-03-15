@@ -1,6 +1,6 @@
 //! Metadata of compiled module
 
-use ahash::AHashSet;
+use ahash::{AHashSet, RandomState};
 use hir::diagnostics::{BaseDB, ConsoleSink, Diagnostic, FileId, Label, LabelStyle, Report};
 use hir::{
     CompilationDB, CompilationUnit, DiagnosticSink, Module, ParamSysFun, Parameter,
@@ -42,9 +42,9 @@ pub fn collect_modules(
 
 pub struct ModuleInfo {
     pub module: Module,
-    pub params: IndexMap<Parameter, ParamInfo, ahash::RandomState>,
-    pub param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, ahash::RandomState>,
-    pub op_vars: IndexMap<Variable, OpVar, ahash::RandomState>,
+    pub params: IndexMap<Parameter, ParamInfo, RandomState>,
+    pub param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, RandomState>,
+    pub op_vars: IndexMap<Variable, OpVar, RandomState>,
 }
 
 impl ModuleInfo {
@@ -55,8 +55,8 @@ impl ModuleInfo {
         all_vars_op: bool,
         sink: &mut ConsoleSink,
     ) -> ModuleInfo {
-        let mut params: IndexMap<Parameter, ParamInfo, ahash::RandomState> = IndexMap::default();
-        let mut param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, ahash::RandomState> =
+        let mut params: IndexMap<Parameter, ParamInfo, RandomState> = IndexMap::default();
+        let mut param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, RandomState> =
             IndexMap::default();
         let mut op_vars = IndexMap::default();
 

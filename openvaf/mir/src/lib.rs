@@ -79,12 +79,6 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn clear(&mut self) {
-        self.dfg.clear();
-        self.layout.clear();
-        self.srclocs.clear();
-    }
-
     pub fn new() -> Function {
         Self {
             name: String::new(),
@@ -98,6 +92,12 @@ impl Function {
         let mut func = Function::new();
         func.name = name;
         func
+    }
+
+    pub fn clear(&mut self) {
+        self.dfg.clear();
+        self.layout.clear();
+        self.srclocs.clear();
     }
 
     pub fn to_debug_string(&self) -> String {
@@ -239,12 +239,10 @@ impl SourceLoc {
     pub fn new(bits: i32) -> Self {
         Self(bits)
     }
-
     /// Is this the default source location?
     pub fn is_default(self) -> bool {
         self == Default::default()
     }
-
     /// Read the bits of this source location.
     pub fn bits(self) -> i32 {
         self.0
@@ -279,7 +277,7 @@ impl fmt::Display for SourceLoc {
 #[repr(transparent)]
 pub struct Unknown(pub u32);
 impl_idx_from!(Unknown(u32));
-impl_debug!(match Unknown{Unknown(raw) => "unknown{}",raw;});
+impl_debug!(match Unknown{Unknown(raw) => "unknown{raw}";});
 
 #[derive(Debug, Clone, Default)]
 pub struct KnownDerivatives {
@@ -288,7 +286,6 @@ pub struct KnownDerivatives {
     // pub standin_calls: AHashMap<FuncRef, u32>,
 }
 
-// TODO(JW) what is the purpose of this？
 pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
     let func = func.as_ref();
     while let Some(inst) = func.dfg.value_def(val).inst() {
