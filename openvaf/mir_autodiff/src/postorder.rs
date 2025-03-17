@@ -71,7 +71,7 @@ impl<'a, 'b, 'c> Postorder<'a, 'b, 'c> {
     }
 
     fn transverse_use(&mut self, use_: Use) {
-        let inst = self.dfg.use_to_operand(use_).0;
+        let inst = self.dfg.use_to_user(use_);
         self.transverse_inst(inst);
     }
 

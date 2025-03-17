@@ -1,3 +1,5 @@
+//! Derivative builder
+
 use std::ops::Range;
 use stdx::iter::zip;
 use stdx::packed_option::{PackedOption, ReservedValue};
@@ -78,7 +80,7 @@ impl<'f> InstInserterBase<'f> for &'f mut DerivativeBuilder<'_, '_> {
             if let Some(first_inst) = self.func.layout.first_inst(new_block) {
                 self.func.layout.prepend_inst(inst, first_inst);
             } else {
-                self.func.layout.append_inst_to_bb(inst, new_block);
+                self.func.layout.append_inst_to_block(inst, new_block);
             }
         } else {
             self.func.layout.append_inst(inst, self.dst.0);

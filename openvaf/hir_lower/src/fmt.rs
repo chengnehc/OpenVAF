@@ -37,13 +37,7 @@ pub enum FmtArgKind {
 }
 
 impl BodyLowerContext<'_, '_, '_> {
-    pub fn resolved_ty(&self, expr: ExprId) -> Type {
-        self.body
-            .need_type_cast(expr)
-            .map(|(_, dst)| dst.to_owned())
-            .unwrap_or_else(|| self.body.expr_type(expr))
-    }
-
+    /// Define an instruction of Display
     pub fn ins_display(&mut self, kind: DisplayKind, newline: bool, args: &[ExprId]) {
         let mut fmt_lit = String::new();
         let mut call_args = vec![GRAVESTONE];
@@ -161,5 +155,12 @@ impl BodyLowerContext<'_, '_, '_> {
         call_args[0] = self.ctxt.sconst(&fmt_lit);
         self.ctxt
             .call(CallBackKind::Print { kind, arg_tys: arg_tys.into_boxed_slice() }, &call_args);
+    }
+
+    pub fn resolved_ty(&self, expr: ExprId) -> Type {
+        self.body
+            .need_type_cast(expr)
+            .map(|(_, dst)| dst.to_owned())
+            .unwrap_or_else(|| self.body.expr_type(expr))
     }
 }

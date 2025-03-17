@@ -662,7 +662,7 @@ impl<'a> Parser<'a> {
         let inst = ctx.function.dfg.make_inst(inst_data);
         let num_results =
             ctx.function.dfg.make_inst_results_reusing(inst, results.iter().map(|x| Some(*x)));
-        ctx.function.layout.append_inst_to_bb(inst, block);
+        ctx.function.layout.append_inst_to_block(inst, block);
 
         if !srcloc.is_default() {
             ctx.function.srclocs[inst] = srcloc;

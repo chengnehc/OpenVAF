@@ -144,12 +144,10 @@ impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> WorkStack<T> {
     /// Attempt to pop an element from the work queue.
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
-        if let Some(element) = self.deque.pop() {
-            self.set.remove(element);
-            Some(element)
-        } else {
-            None
-        }
+        let element = self.deque.pop()?;
+        self.set.remove(element);
+
+        Some(element)
     }
 
     /// Attempt to take an element from the work queue

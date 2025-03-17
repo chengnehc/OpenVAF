@@ -54,40 +54,32 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         self
     }
 
-    /// This function should be used for reading variables to correctly handle tagging.
-    pub fn read_var(&mut self, var: Variable) -> Value {
-        let place = self.dec_place(PlaceKind::Var(var));
-        let mut val = self.func.use_var(place);
-        if self.tagged_vars.contains(&var) {
-            val = self.func.ins().optbarrier(val);
-            self.intern.tagged_reads.insert(val, var);
-        }
-        val
+    pub fn get_place(&self, kind: PlaceKind) -> Option<Place> {
+        self.places.index(&kind)
     }
 
-    /// Declare a mutable memory location (place) which will be translated to SSA
-    /// (phi stmts where necessary) automatically.
+    /// Declare a mutable memory location (place) in the entry block, which
+    /// will be translated to SSA automatically.
     ///
-    /// If the requested place already exists, then simply return it.
-    /// Otherwise, a new memory slot is created and initialized (if necessary) in
-    /// the entry block of MIR function.
+    /// If the requested place already exists, simply return it, otherwise a
+    /// new memory slot is created and initialized (if necessary).
     pub fn dec_place(&mut self, kind: PlaceKind) -> Place {
+        use PlaceKind::*;
         let (place, inserted) = self.places.ensure(kind);
         if inserted {
-            // set initial value for the place
             let init_val = match kind {
                 // such kinds of places are always initialized
-                PlaceKind::Param(_)
-                | PlaceKind::ParamMin(_)
-                | PlaceKind::ParamMax(_)
-                | PlaceKind::FunctionReturn { .. }
-                | PlaceKind::FunctionArg { .. } => return place,
+                Param(_)
+                | ParamMin(_)
+                | ParamMax(_)
+                | FunctionReturn { .. }
+                | FunctionArg { .. } => return place,
 
-                PlaceKind::Var(var) => self.use_param(ParamKind::HiddenState(var)),
-                PlaceKind::Contribute { .. } | PlaceKind::ImplicitResidual { .. } => F_ZERO,
-                PlaceKind::CollapseImplicitEquation(_) => TRUE,
-                PlaceKind::IsPotential(_) => FALSE,
-                PlaceKind::BoundStep => INFINITY,
+                Var(var) => self.use_param(ParamKind::HiddenState(var)),
+                Contribute { .. } | ImplicitResidual { .. } => F_ZERO,
+                CollapseImplicitEquation(_) => TRUE,
+                IsPotential(_) => FALSE,
+                BoundStep => INFINITY,
             };
             let block = self.func.func.layout.entry_block().unwrap();
             self.func.def_var_at(place, init_val, block);
@@ -105,8 +97,25 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         self.func.use_var(place)
     }
 
-    pub fn get_place(&self, kind: PlaceKind) -> Option<Place> {
-        self.places.index(&kind)
+    /// Return the corresponding MIR value of a HIR variable.
+    ///
+    /// This function should be used to correctly handle tagging.
+    pub fn read_var(&mut self, var: Variable) -> Value {
+        let place = self.dec_place(PlaceKind::Var(var));
+        let mut val = self.func.use_var(place);
+        if self.tagged_vars.contains(&var) {
+            val = self.func.ins().optbarrier(val);
+            self.intern.tagged_reads.insert(val, var);
+        }
+        val
+    }
+
+    pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
+        self.intern.outputs.insert(kind, val.into());
+    }
+
+    pub fn get_param(&mut self, kind: ParamKind) -> Option<Value> {
+        self.intern.params.get(&kind).copied()
     }
 
     pub fn def_param(&mut self, kind: ParamKind, val: Value) {
@@ -119,15 +128,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         *entry.or_insert_with(|| self.func.make_param(len.into()))
     }
 
-    pub fn get_param(&mut self, kind: ParamKind) -> Option<Value> {
-        self.intern.params.get(&kind).copied()
-    }
-
-    pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
-        self.intern.outputs.insert(kind, val.into());
-    }
-
-    /// Return the first result of a callback instruction
+    /// Define a callback function and return the first result of it.
     pub fn call1(&mut self, kind: CallBackKind, args: &[Value]) -> Value {
         let inst = self.call(kind, args);
         self.dfg().first_result(inst)
@@ -301,13 +302,13 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
 
         ((then_tail, then_val), (else_tail, else_val))
     }
+}
 
-    /* API wrappers of `FunctionBuilder` */
-
+/* API wrappers of `FunctionBuilder` */
+impl<'c> MainLowerContext<'_, 'c> {
     pub(crate) fn dfg(&self) -> &DataFlowGraph {
         &self.func.func.dfg
     }
-
     pub(crate) fn dfg_mut(&mut self) -> &mut DataFlowGraph {
         &mut self.func.func.dfg
     }
@@ -315,44 +316,36 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     pub(crate) fn get_srcloc(&self) -> SourceLoc {
         self.func.get_srcloc()
     }
-
     pub(crate) fn set_srcloc(&mut self, loc: SourceLoc) {
         self.func.set_srcloc(loc)
-    }
-
-    pub(crate) fn ins(&mut self) -> InsertBuilder<'_, FuncInstBuilder<'_, 'c>> {
-        self.func.ins()
-    }
-
-    pub fn fconst(&mut self, val: f64) -> Value {
-        self.func.fconst(val)
-    }
-
-    pub fn iconst(&mut self, val: i32) -> Value {
-        self.func.iconst(val)
-    }
-
-    pub fn sconst(&mut self, val: &str) -> Value {
-        self.func.sconst(val)
     }
 
     pub(crate) fn current_block(&self) -> Block {
         self.func.current_block()
     }
-
     pub(crate) fn create_block(&mut self) -> Block {
         self.func.create_block()
     }
-
-    pub(crate) fn switch_to_block(&mut self, bb: Block) {
-        self.func.switch_to_block(bb)
+    pub(crate) fn switch_to_block(&mut self, block: Block) {
+        self.func.switch_to_block(block)
     }
-
-    pub(crate) fn seal_block(&mut self, bb: Block) {
-        self.func.seal_block(bb)
+    pub(crate) fn seal_block(&mut self, block: Block) {
+        self.func.seal_block(block)
     }
-
     pub(crate) fn ensured_sealed(&mut self) {
         self.func.ensured_sealed()
+    }
+
+    pub(crate) fn ins(&mut self) -> InsertBuilder<'_, FuncInstBuilder<'_, 'c>> {
+        self.func.ins()
+    }
+    pub(crate) fn fconst(&mut self, val: f64) -> Value {
+        self.func.fconst(val)
+    }
+    pub(crate) fn iconst(&mut self, val: i32) -> Value {
+        self.func.iconst(val)
+    }
+    pub(crate) fn sconst(&mut self, val: &str) -> Value {
+        self.func.sconst(val)
     }
 }

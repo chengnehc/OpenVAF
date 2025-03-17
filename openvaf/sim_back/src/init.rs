@@ -42,7 +42,7 @@ impl Initialization {
         for _ in 0..builder.func.layout.num_blocks() {
             builder.init.func.layout.make_block();
         }
-        let mut blocks = builder.func.layout.blocks_cursor();
+        let mut blocks = builder.func.layout.block_cursor();
         while let Some(bb) = blocks.next(&builder.func.layout) {
             builder.split_block(bb);
         }
@@ -182,7 +182,7 @@ impl<'a> Builder<'a> {
                     return None;
                 }
 
-                let ty = if let Some(tag) = self.func.dfg.tag(val) {
+                let ty = if let Some(tag) = self.func.dfg.get_tag(val) {
                     let idx = usize::from(tag);
                     let place = self.intern.outputs.get_index(idx).unwrap().0;
                     place.ty(self.db)
@@ -202,7 +202,7 @@ impl<'a> Builder<'a> {
                 let cache_slot = ensure_cache_slot(Some(old_inst), idx, ty);
 
                 let new_val = self.val_map[&val];
-                let (new_inst, _) = self.init.func.dfg.value_def(new_val).unwrap_result();
+                let new_inst = self.init.func.dfg.value_def(new_val).unwrap_inst();
 
                 self.func
                     .dfg
@@ -273,7 +273,7 @@ impl<'a> Builder<'a> {
             new_inst,
             self.func.dfg.inst_results(inst).iter().map(|val| Some(self.val_map[val])),
         );
-        self.init.func.layout.append_inst_to_bb(new_inst, bb);
+        self.init.func.layout.append_inst_to_block(new_inst, bb);
         let srcloc = self.func.srclocs.get(inst).copied().unwrap_or_default();
         let new_inst_ = self.init.func.srclocs.push_and_get_key(srcloc);
         debug_assert_eq!(new_inst_, new_inst);
@@ -289,20 +289,25 @@ impl<'a> Builder<'a> {
         let is_output = self.func.dfg.insts[inst].opcode() == Opcode::OptBarrier
             && self.output_values.contains(self.func.dfg.first_result(inst));
         let cache_inst = !is_output
-            && self.func.dfg.inst_results(inst).iter().any(|val| self.func.dfg.tag(*val).is_some());
+            && self
+                .func
+                .dfg
+                .inst_results(inst)
+                .iter()
+                .any(|val| self.func.dfg.get_tag(*val).is_some());
 
         if is_output {
             cov_mark::hit!(op_independent_output);
             let val = self.func.dfg.first_result(inst);
             let arg = strip_optbarrier(&*self.func, val);
             // if the argument is already cached, just keep the opt barrier
-            let needs_cache = self.func.dfg.tag(arg).is_none();
+            let needs_cache = self.func.dfg.get_tag(arg).is_none();
             let inst = self.func.dfg.value_def(arg).inst().filter(|_| needs_cache);
             if let Some(inst) = inst {
                 cov_mark::hit!(cache_output);
                 let param = self.init_cache.insert_full(arg, inst).0 + self.intern.params.len();
                 // needed to ensure the type is calculated correctly
-                if let Some(tag) = self.func.dfg.tag(val) {
+                if let Some(tag) = self.func.dfg.get_tag(val) {
                     self.func.dfg.set_tag(arg, Some(tag));
                 }
                 self.func.dfg.values.make_param_at(param.into(), arg);

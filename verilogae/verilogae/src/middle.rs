@@ -113,8 +113,8 @@ pub fn build_module_mir(
 
     let mut dom_tree = DominatorTree::default();
     dom_tree.compute(&func, &cfg, true, false, true);
-    let unknowns = intern.unknowns(&mut func, false);
-    auto_diff(&mut func, &dom_tree, &unknowns, &[]);
+    let derivatives = intern.derivative_info(&mut func, false);
+    auto_diff(&mut func, &dom_tree, &derivatives, &[]);
     cfg.clear();
     cfg.compute(&func);
     sparse_conditional_constant_propagation(&mut func, &cfg);

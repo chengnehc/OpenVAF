@@ -12,10 +12,16 @@ struct LayoutCursor<'f> {
 }
 
 impl<'f> Cursor for LayoutCursor<'f> {
+    fn layout(&self) -> &Layout {
+        self.layout
+    }
+    fn layout_mut(&mut self) -> &mut Layout {
+        self.layout
+    }
+
     fn position(&self) -> CursorPosition {
         self.pos
     }
-
     fn set_position(&mut self, pos: CursorPosition) {
         self.pos = pos;
     }
@@ -23,17 +29,8 @@ impl<'f> Cursor for LayoutCursor<'f> {
     fn srcloc(&self) -> SourceLoc {
         unimplemented!()
     }
-
     fn set_srcloc(&mut self, _srcloc: SourceLoc) {
         unimplemented!()
-    }
-
-    fn layout(&self) -> &Layout {
-        self.layout
-    }
-
-    fn layout_mut(&mut self) -> &mut Layout {
-        self.layout
     }
 }
 
@@ -217,14 +214,14 @@ fn append_inst() {
     assert_eq!(layout.inst_block(i1), None);
     assert_eq!(layout.inst_block(i2), None);
 
-    layout.append_inst_to_bb(i1, e1);
+    layout.append_inst_to_block(i1, e1);
     assert_eq!(layout.inst_block(i0), None);
     assert_eq!(layout.inst_block(i1), Some(e1));
     assert_eq!(layout.inst_block(i2), None);
     let v: Vec<Inst> = layout.block_insts(e1).collect();
     assert_eq!(v, [i1]);
 
-    layout.append_inst_to_bb(i2, e1);
+    layout.append_inst_to_block(i2, e1);
     assert_eq!(layout.inst_block(i0), None);
     assert_eq!(layout.inst_block(i1), Some(e1));
     assert_eq!(layout.inst_block(i2), Some(e1));
@@ -235,7 +232,7 @@ fn append_inst() {
     let v: Vec<Inst> = layout.block_insts(e1).rev().collect();
     assert_eq!(v, [i2, i1]);
 
-    layout.append_inst_to_bb(i0, e1);
+    layout.append_inst_to_block(i0, e1);
     verify(&mut layout, &[(e1, &[i1, i2, i0])]);
 
     // Test cursor positioning.
@@ -292,7 +289,7 @@ fn insert_inst() {
     assert_eq!(layout.inst_block(i1), None);
     assert_eq!(layout.inst_block(i2), None);
 
-    layout.append_inst_to_bb(i1, e1);
+    layout.append_inst_to_block(i1, e1);
     assert_eq!(layout.inst_block(i0), None);
     assert_eq!(layout.inst_block(i1), Some(e1));
     assert_eq!(layout.inst_block(i2), None);
@@ -328,10 +325,10 @@ fn multiple_blocks() {
     let i2 = Inst::from(2u32);
     let i3 = Inst::from(3u32);
 
-    layout.append_inst_to_bb(i0, e0);
-    layout.append_inst_to_bb(i1, e0);
-    layout.append_inst_to_bb(i2, e1);
-    layout.append_inst_to_bb(i3, e1);
+    layout.append_inst_to_block(i0, e0);
+    layout.append_inst_to_block(i1, e0);
+    layout.append_inst_to_block(i2, e1);
+    layout.append_inst_to_block(i3, e1);
 
     let v0: Vec<Inst> = layout.block_insts(e0).collect();
     let v1: Vec<Inst> = layout.block_insts(e1).collect();
@@ -353,7 +350,7 @@ fn split_block() {
     let i3 = Inst::from(3u32);
 
     layout.append_block(e0);
-    layout.append_inst_to_bb(i0, e0);
+    layout.append_inst_to_block(i0, e0);
     assert_eq!(layout.inst_block(i0), Some(e0));
     layout.split_block(e1, i0);
     assert_eq!(layout.inst_block(i0), Some(e1));
@@ -374,9 +371,9 @@ fn split_block() {
     assert_eq!(cur.prev_inst(), None);
     assert_eq!(cur.prev_block(), None);
 
-    layout.append_inst_to_bb(i1, e0);
-    layout.append_inst_to_bb(i2, e0);
-    layout.append_inst_to_bb(i3, e0);
+    layout.append_inst_to_block(i1, e0);
+    layout.append_inst_to_block(i2, e0);
+    layout.append_inst_to_block(i3, e0);
     layout.split_block(e2, i2);
 
     assert_eq!(layout.inst_block(i0), Some(e1));

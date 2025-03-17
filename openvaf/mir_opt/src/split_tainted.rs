@@ -21,7 +21,7 @@ pub fn propagate_taint(
 
     for val in tainted {
         for use_ in func.dfg.uses(val) {
-            let inst = func.dfg.use_to_operand(use_).0;
+            let inst = func.dfg.use_to_user(use_);
             solver.taint_inst(inst)
         }
     }
@@ -107,7 +107,7 @@ impl TaintSolver<'_> {
             }
 
             for use_ in self.func.dfg.inst_uses(inst) {
-                let user = self.func.dfg.use_to_operand(use_).0;
+                let user = self.func.dfg.use_to_user(use_);
                 self.taint_inst(user);
             }
         }
@@ -126,7 +126,7 @@ pub fn propagate_direct_taint(
 
     for val in tainted {
         for use_ in func.dfg.uses(val) {
-            let inst = func.dfg.use_to_operand(use_).0;
+            let inst = func.dfg.use_to_user(use_);
             solver.taint_inst(inst)
         }
     }
@@ -170,7 +170,7 @@ impl DirectTaintSolver<'_> {
                 }
             } else {
                 for use_ in self.func.dfg.inst_uses(inst) {
-                    let user = self.func.dfg.use_to_operand(use_).0;
+                    let user = self.func.dfg.use_to_user(use_);
                     self.taint_inst(user);
                 }
             }

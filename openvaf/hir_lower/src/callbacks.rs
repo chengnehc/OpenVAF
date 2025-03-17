@@ -13,6 +13,7 @@ pub enum CallBackKind {
     SimParam,
     SimParamOpt,
     SimParamStr,
+    TimeDerivative,
     Derivative(Param),
     NodeDerivative(Node),
     ParamInfo(ParamInfoKind, Parameter),
@@ -21,7 +22,6 @@ pub enum CallBackKind {
     Analysis,
     BuiltinLimit { name: Spur, num_args: u32 },
     StoreLimit(LimitState),
-    TimeDerivative,
     WhiteNoise { name: Spur, idx: u32 },
     FlickerNoise { name: Spur, idx: u32 },
     NoiseTable(Box<NoiseTable>),
@@ -44,6 +44,12 @@ impl CallBackKind {
             },
             CallBackKind::SimParamStr => FunctionSignature {
                 name: "simparam_str".to_owned(),
+                params: 1,
+                returns: 1,
+                has_side_effects: false,
+            },
+            CallBackKind::TimeDerivative => FunctionSignature {
+                name: "ddt".to_string(),
                 params: 1,
                 returns: 1,
                 has_side_effects: false,
@@ -102,12 +108,6 @@ impl CallBackKind {
                 returns: 1,
                 has_side_effects: false,
             },
-            CallBackKind::TimeDerivative => FunctionSignature {
-                name: "ddt".to_string(),
-                params: 1,
-                returns: 1,
-                has_side_effects: false,
-            },
             CallBackKind::WhiteNoise { name, .. } => FunctionSignature {
                 name: format!("white_noise({name:?})"),
                 params: 1,
@@ -148,10 +148,10 @@ impl CallBackKind {
             self,
             CallBackKind::SimParam
                 | CallBackKind::SimParamOpt
-                | CallBackKind::StoreLimit(_)
-                | CallBackKind::Analysis
                 | CallBackKind::SimParamStr
+                | CallBackKind::Analysis
                 | CallBackKind::LimDiscontinuity
+                | CallBackKind::StoreLimit(_)
                 | CallBackKind::BuiltinLimit { .. }
         )
     }

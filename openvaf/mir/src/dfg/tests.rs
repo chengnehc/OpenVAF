@@ -10,8 +10,8 @@ fn make_inst() {
     let mut dfg = DataFlowGraph::new();
     let v1 = dfg.make_param(0u32.into());
 
-    let idata = InstructionData::Binary { opcode: Opcode::Fadd, args: [F_ZERO, v1] };
-    let inst = dfg.make_inst(idata);
+    let data = InstructionData::Binary { opcode: Opcode::Fadd, args: [F_ZERO, v1] };
+    let inst = dfg.make_inst(data);
     dfg.make_inst_results(inst);
 
     assert_eq!(inst.to_string(), "inst0");
@@ -23,22 +23,22 @@ fn make_inst() {
     let v2 = dfg.first_result(inst);
     assert_eq!(dfg.inst_results(inst), &[v2]);
     assert_eq!(dfg.value_def(v2), ValueDef::Result(inst, 0));
-    // v2 is attached (to an in instruction as its result)
+    // v2 is attached (to an instruction as its result)
     assert!(dfg.value_attached(v2));
-    // v2 is not used elsewhere
+    // v2 is not used anywhere
     assert_eq!(dfg.uses(v2).count(), 0);
 
-    let idata = InstructionData::Binary { opcode: Opcode::Fadd, args: [v2, v2] };
-    let inst = dfg.make_inst(idata);
+    let data = InstructionData::Binary { opcode: Opcode::Fadd, args: [v2, v2] };
+    let inst = dfg.make_inst(data);
     dfg.make_inst_results(inst);
 
     let v3 = dfg.first_result(inst);
     assert_eq!(dfg.value_def(v3), ValueDef::Result(inst, 0));
-    // `v3` is not used elsewhere.
+    // `v3` is not used anywhere.
     assert_eq!(dfg.uses(v3).count(), 0);
     // `v2` is used twice by `inst` as its operands.
     assert_eq!(dfg.uses(v2).count(), 2);
-    // linked list is FIFO, so reverse the iterator.
+    // JW: linked list is FIFO, so reverse the iterator first.
     // The code does not make any guarantee about the order of the iterator, so if
     // this test ever fails because of order, it's ok to change this.
     assert_eq!(dfg.uses_double_ended(v2).rev().collect::<Vec<_>>(), dfg.operands(inst));

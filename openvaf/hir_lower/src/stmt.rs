@@ -22,10 +22,9 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             Stmt::If { cond, then_branch, else_branch } => {
                 let cond = self.lower_expr(cond);
-                self.ctxt.make_if(cond, |main_ctxt, br| {
+                self.ctxt.make_if(cond, |ctxt, br| {
                     let stmt = if br { then_branch } else { else_branch };
-                    BodyLowerContext { ctxt: main_ctxt, body: self.body, path: self.path }
-                        .lower_stmt(stmt);
+                    BodyLowerContext { ctxt, body: self.body, path: self.path }.lower_stmt(stmt);
                 });
             }
             Stmt::ForLoop { init, cond, incr, body } => {
@@ -57,7 +56,7 @@ impl BodyLowerContext<'_, '_, '_> {
             if matches!(dst, BranchWrite::Named(_)) {
                 self.lower_contribute_unnamed_branch(&mut negate, &mut hi, &mut lo, is_potential)
             }
-            self.ctxt.call(CallBackKind::CollapseHint(hi, lo), &[]); // TODO(JW) make collapse hint a 'place' instead?
+            self.ctxt.call(CallBackKind::CollapseHint(hi, lo), &[]);
         }
 
         self.ctxt.def_place(

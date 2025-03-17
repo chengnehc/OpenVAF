@@ -97,7 +97,7 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
         let Some(entry) = self.as_subgraph_entry(inst) else { return };
 
         self.workqueue
-            .extend(self.func.dfg.inst_uses(inst).map(|use_| self.func.dfg.use_to_operand(use_).0));
+            .extend(self.func.dfg.inst_uses(inst).map(|use_| self.func.dfg.use_to_user(use_)));
 
         self.curr_subgraph.insert(inst);
 
@@ -122,7 +122,7 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
             }
             self.curr_subgraph.insert(inst);
             for use_ in self.func.dfg.inst_uses(inst) {
-                let (inst, _) = self.func.dfg.use_to_operand(use_);
+                let inst = self.func.dfg.use_to_user(use_);
                 if !self.curr_subgraph.contains(inst) {
                     self.workqueue.push(inst)
                 }
@@ -143,7 +143,7 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
             }
 
             for use_ in self.func.dfg.inst_uses(inst) {
-                let (user, _) = self.func.dfg.use_to_operand(use_);
+                let user = self.func.dfg.use_to_user(use_);
                 if !self.curr_subgraph.contains(user) {
                     edges.push(inst);
                     break;

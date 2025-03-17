@@ -574,7 +574,7 @@ impl GVN {
 
         if leader_changed || class_changed {
             for use_ in func.dfg.inst_uses(inst) {
-                let inst = func.dfg.use_to_operand(use_).0;
+                let inst = func.dfg.use_to_user(use_);
                 let dfs_id = self.dfs_map.inst_to_dfs[inst].unwrap_unchecked();
                 self.touched_insts.insert(dfs_id);
             }
@@ -623,7 +623,6 @@ impl GVN {
                     next_leader
                 } else {
                     let dfs_id = old_class_.insts.iter().max().unwrap();
-
                     self.dfs_map.dfs_to_inst[dfs_id]
                 };
                 old_class_.leader = leader.into();

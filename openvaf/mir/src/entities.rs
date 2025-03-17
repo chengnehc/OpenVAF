@@ -144,7 +144,7 @@ impl FuncRef {
 pub enum AnyEntity {
     /// The whole function.
     Function,
-    /// a basic block.
+    /// A basic block.
     Block(Block),
     /// An instruction.
     Inst(Inst),

@@ -171,9 +171,11 @@ impl Serializer<'_> {
                 ValueDef::Invalid => unreachable!(),
             }
             sel.serialize_key("uses");
-            sel.serialize_list_entries(sel.func.dfg.uses(val).map(|use_| {
-                sel.inst_map.get_index_of(&sel.func.dfg.use_to_operand(use_).0).unwrap()
-            }));
+            sel.serialize_list_entries(
+                sel.func.dfg.uses(val).map(|use_| {
+                    sel.inst_map.get_index_of(&sel.func.dfg.use_to_user(use_)).unwrap()
+                }),
+            );
         });
     }
 

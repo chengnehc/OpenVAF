@@ -18,13 +18,13 @@ pub struct DfgInsts {
     /// with the block containing each instruction.
     pub(super) decls: TiVec<Inst, InstructionData>,
 
-    /// List of result values for each instruction.
+    /// List (handle) of result values for each instruction.
     ///
     /// This map gets resized automatically by `make_inst()` so it is always in sync with the
     /// primary `insts` map.
-    pub results: TiVec<Inst, ValueList>,
+    pub(super) results: TiVec<Inst, ValueList>,
 
-    /// List of uses for each instruction.
+    /// List (handle) of uses (operands) for each instruction.
     ///
     /// This map gets resized automatically by `make_inst()` so it is always in sync with the
     /// primary `insts` map.
@@ -102,12 +102,12 @@ impl DfgInsts {
         !self.results[inst].is_empty()
     }
 
-    /// Return all the results of an instruction.
+    /// Return all the result values of `inst`.
     pub fn results(&self, inst: Inst) -> &[Value] {
         self.results[inst].as_slice(&self.value_lists)
     }
 
-    /// Get the first result of an instruction.
+    /// Get the first result of `inst`.
     ///
     /// This function panics if the instruction doesn't have any result.
     pub fn first_result(&self, inst: Inst) -> Value {
@@ -132,10 +132,6 @@ impl DfgInsts {
         self.results[inst].clear(&mut self.value_lists)
     }
 
-    pub fn safe_to_remove(&self, inst: Inst, values: &DfgValues) -> bool {
-        self.results(inst).iter().all(|res| values.is_dead(*res))
-    }
-
     /// Return all the uses of an instruction.
     pub fn operands(&self, inst: Inst) -> &[Use] {
         self.uses[inst].as_slice(&self.use_lists)
@@ -146,6 +142,10 @@ impl DfgInsts {
         for use_ in self.operands(inst) {
             values.detach_use(*use_, self);
         }
+    }
+
+    pub fn safe_to_remove(&self, inst: Inst, values: &DfgValues) -> bool {
+        self.results(inst).iter().all(|res| values.is_dead(*res))
     }
 
     // /// Return all the uses of an instruction.

@@ -275,7 +275,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             builder.build_consts();
             builder.build_func();
         }
-        let exit_bb = func.layout.last_block().unwrap();
+        let exit_bb = func.layout.exit_block().unwrap();
 
         // store parameters
         builder.select_bb(exit_bb);

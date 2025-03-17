@@ -215,8 +215,7 @@ pub fn duplicate_phis_set() {
     cursor.next_inst();
     cursor.ins().jump(4u32.into());
 
-    let mut cfg = ControlFlowGraph::new();
-    cfg.compute(&func);
+    let mut cfg = ControlFlowGraph::with_function(&func);
     simplify_cfg(&mut func, &mut cfg);
 
     let expect = expect![[r#"

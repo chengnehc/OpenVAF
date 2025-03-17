@@ -1,4 +1,4 @@
-use std::mem::take;
+use std::mem;
 
 use ahash::AHashMap;
 use bitset::{BitSet, HybridBitSet, SparseBitMatrix};
@@ -11,6 +11,55 @@ use crate::ChainRule;
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Debug, Clone)]
+pub struct LiveDerivatives {
+    pub mat: SparseBitMatrix<Inst, Derivative>,
+    pub(crate) conversions: AHashMap<Inst, Vec<ChainRule>>,
+}
+
+impl LiveDerivatives {
+    pub fn build(
+        func: &Function,
+        intern: &mut DerivativeIntern,
+        extra_derivatives: &[(Value, mir::Unknown)],
+        dom_tree: &DominatorTree,
+    ) -> LiveDerivatives {
+        let mut builder = LiveDerivativeBuilder::new(func, intern);
+        builder.populate_reachable_unknowns();
+        builder.insert_extra_derivative(extra_derivatives);
+        let mut workqueue = builder.initial_live_derivative_workque();
+        builder.live_derivative_fixpoint(&mut workqueue);
+        builder.strip_unneeded_derivatives();
+        let (mut res, buf) = builder.finish();
+
+        res.run_subgraph_opt(func, intern, extra_derivatives, dom_tree, buf);
+
+        res
+    }
+
+    pub fn of_inst(&self, inst: Inst) -> Option<&HybridBitSet<Derivative>> {
+        self.mat.row(inst).filter(|row| !row.is_empty_sparse())
+    }
+
+    pub fn compute_inst(
+        &self,
+        inst: Inst,
+        func: &Function,
+        unknowns: &DerivativeIntern,
+    ) -> HybridBitSet<Derivative> {
+        let mut dst = HybridBitSet::new_empty();
+        for val in func.dfg.inst_results(inst) {
+            for use_ in func.dfg.uses(*val) {
+                let user = func.dfg.use_to_user(use_);
+                if let Some(row) = self.mat.row(user) {
+                    dst.union(row, unknowns.num_derivatives());
+                }
+            }
+        }
+        dst
+    }
+}
 
 struct LiveDerivativeBuilder<'a, 'b> {
     live_derivatives: LiveDerivatives,
@@ -61,8 +110,11 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
     /// If a derivative is not reachable at a certain instruction it can be assumed that its value is 0 here.
     /// The results are stored in `self.reachable_derivatives`.
     fn populate_reachable_unknowns(&mut self) {
-        let mut post_order =
-            Postorder::from_parts(&self.func.dfg, take(&mut self.post_order_parts), self.intern);
+        let mut post_order = Postorder::from_parts(
+            &self.func.dfg,
+            mem::take(&mut self.post_order_parts),
+            self.intern,
+        );
 
         for (unknown, param) in self.intern.unknowns.iter_enumerated() {
             post_order.populate(*param);
@@ -82,8 +134,11 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
     ///
     /// This function must be called whenever a new higher order derivative is created
     fn populate_reachable(&mut self, derivative: Derivative) {
-        let mut post_order =
-            Postorder::from_parts(&self.func.dfg, take(&mut self.post_order_parts), self.intern);
+        let mut post_order = Postorder::from_parts(
+            &self.func.dfg,
+            mem::take(&mut self.post_order_parts),
+            self.intern,
+        );
         post_order.clear();
         for inst in self.reachable_derivatives.rows() {
             let base = self.intern.get_base_derivative(derivative);
@@ -144,8 +199,11 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
     }
 
     fn initial_live_derivative_workque(&mut self) -> WorkQueue<Inst> {
-        let mut post_order =
-            Postorder::from_parts(&self.func.dfg, take(&mut self.post_order_parts), self.intern);
+        let mut post_order = Postorder::from_parts(
+            &self.func.dfg,
+            mem::take(&mut self.post_order_parts),
+            self.intern,
+        );
         for param in self.intern.unknowns.iter() {
             post_order.populate(*param)
         }
@@ -223,7 +281,7 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
     /// This function strip unneeded live derivatives by taking an intersection with the reachable
     /// derivatives
     fn strip_unneeded_derivatives(&mut self) {
-        let mut reachable_derivatives = take(&mut self.reachable_derivatives);
+        let mut reachable_derivatives = mem::take(&mut self.reachable_derivatives);
         self.live_derivatives.mat.ensure_columns(self.intern.num_derivatives());
         reachable_derivatives.ensure_columns(self.intern.num_derivatives());
         self.live_derivatives.mat.intersect(&reachable_derivatives);
@@ -240,54 +298,5 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
     pub fn finish(mut self) -> (LiveDerivatives, BitSet<Inst>) {
         self.visited.clear();
         (self.live_derivatives, self.visited)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct LiveDerivatives {
-    pub mat: SparseBitMatrix<Inst, Derivative>,
-    pub(crate) conversions: AHashMap<Inst, Vec<ChainRule>>,
-}
-
-impl LiveDerivatives {
-    pub fn build(
-        func: &Function,
-        intern: &mut DerivativeIntern,
-        extra_derivatives: &[(Value, mir::Unknown)],
-        dom_tree: &DominatorTree,
-    ) -> LiveDerivatives {
-        let mut builder = LiveDerivativeBuilder::new(func, intern);
-        builder.populate_reachable_unknowns();
-        builder.insert_extra_derivative(extra_derivatives);
-        let mut workqueue = builder.initial_live_derivative_workque();
-        builder.live_derivative_fixpoint(&mut workqueue);
-        builder.strip_unneeded_derivatives();
-        let (mut res, buf) = builder.finish();
-
-        res.run_subgraph_opt(func, intern, extra_derivatives, dom_tree, buf);
-
-        res
-    }
-
-    pub fn of_inst(&self, inst: Inst) -> Option<&HybridBitSet<Derivative>> {
-        self.mat.row(inst).filter(|row| !row.is_empty_sparse())
-    }
-
-    pub fn compute_inst(
-        &self,
-        inst: Inst,
-        func: &Function,
-        unknowns: &DerivativeIntern,
-    ) -> HybridBitSet<Derivative> {
-        let mut dst = HybridBitSet::new_empty();
-        for val in func.dfg.inst_results(inst) {
-            for use_ in func.dfg.uses(*val) {
-                let user = func.dfg.use_to_operand(use_).0;
-                if let Some(row) = self.mat.row(user) {
-                    dst.union(row, unknowns.num_derivatives());
-                }
-            }
-        }
-        dst
     }
 }

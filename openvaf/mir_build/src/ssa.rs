@@ -24,9 +24,8 @@ use mir::{Block, Function, PhiNode, Value, ValueList, GRAVESTONE};
 use smallvec::SmallVec;
 use typed_index_collections::TiVec;
 
-pub(crate) use mir::ControlFlowGraph as CompleteCfg;
-
 use crate::Place;
+pub(crate) use mir::ControlFlowGraph as CompleteCfg;
 
 pub(crate) trait ControlFlowGraph {
     type Predecessors<'a>: Iterator<Item = Block> + 'a
@@ -75,19 +74,6 @@ impl<'c> ControlFlowGraph for &'c CompleteCfg {
     }
 }
 
-// Here is how it should be used when translating to MIR:
-//
-// - for each basic block, create a corresponding data for SSA construction with `declare_block`;
-//
-// - while traversing a basic block and translating instruction, use `def_var` and `use_var`
-//   to record definitions and uses of variables, these methods will give you the corresponding
-//   SSA values;
-//
-// - when all the instructions in a basic block have been translated, the block is said _filled_
-// and only then you can add it as a predecessor to other blocks with `declare_block_predecessor`;
-//
-// - when you have constructed all the predecessor to a basic block, call `seal_block` on it
-//   with the `Function` that you are building.
 pub(crate) struct IncompleteCfg {
     blocks: TiVec<Block, SSABlockData>,
 }
@@ -118,38 +104,6 @@ impl ControlFlowGraph for IncompleteCfg {
     }
 }
 
-/// Structure containing the data relevant the construction of SSA for a given function.
-///
-/// The parameter struct `Variable` corresponds to the way variables are represented in the
-/// non-SSA language you're translating from.
-///
-/// The SSA building relies on information about the variables used and defined.
-///
-/// This SSA building module allows you to def and use variables on the fly while you are
-/// constructing the CFG, no need for a separate SSA pass after the CFG is completed.
-///
-/// A basic block is said _filled_ if all the instruction that it contains have been translated,
-/// and it is said _sealed_ if all of its predecessors have been declared. Only filled predecessors
-/// can be declared.
-pub(crate) struct SSABuilder<Blocks: ControlFlowGraph> {
-    // TODO: Consider a sparse representation rather than Map-of-Map.
-    /// Records for every variable and for every relevant block, the last definition of
-    /// the variable in the block.
-    variables: TiVec<Place, TiVec<Block, PackedOption<Value>>>,
-
-    /// Records the position of the basic blocks and the list of values used but not defined in the
-    /// block. It could be `CompleteCfg` or `IncompleteCfg`.
-    cfg: Blocks,
-
-    /// Call stack for use in the `use_var`/`predecessors_lookup` state machine.
-    calls: Vec<Call>,
-
-    /// Result stack for use in the `use_var`/`predecessors_lookup` state machine.
-    results: Vec<Value>,
-    // /// Reused storage for cycle-detection.
-    // visited: BitSet<Block>,
-}
-
 #[derive(Clone, Default)]
 struct SSABlockData {
     // The predecessors of the Block with the block and branch instruction.
@@ -167,7 +121,7 @@ struct SSABlockData {
 impl SSABlockData {
     fn add_predecessor(&mut self, new_pred: Block) {
         debug_assert!(!self.sealed, "sealed blocks cannot accept new predecessors");
-        // keep all predecesso blocks in order
+        // keep all predecessor blocks in order
         if let Some(pos) = self.predecessors.iter().position(|&e| e >= new_pred) {
             debug_assert_ne!(self.predecessors[pos], new_pred);
             self.predecessors.insert(pos, new_pred);
@@ -176,6 +130,32 @@ impl SSABlockData {
             self.predecessors.push(new_pred);
         };
     }
+}
+
+/// Structure containing the data relevant the construction of SSA for a given function.
+///
+/// The parameter struct `Variable` corresponds to the way variables are represented in the
+/// non-SSA language you're translating from.
+///
+/// The SSA building relies on information about the variables used and defined.
+///
+/// This SSA building module allows you to def and use variables on the fly while you are
+/// constructing the CFG, no need for a separate SSA pass after the CFG is completed.
+///
+/// A basic block is said _filled_ if all the instruction that it contains have been translated,
+/// and it is said _sealed_ if all of its predecessors have been declared. Only filled predecessors
+/// can be declared.
+pub(crate) struct SSABuilder<C: ControlFlowGraph> {
+    // TODO: Consider a sparse representation rather than Map-of-Map.
+    /// Records for every variable and for every relevant block, the last definition of
+    /// the variable in the block.
+    variables: TiVec<Place, TiVec<Block, PackedOption<Value>>>,
+    /// Records the position of the basic blocks. It could be `CompleteCfg` or `IncompleteCfg`.
+    cfg: C,
+    /// Call stack for use in the `use_var`/`predecessors_lookup` state machine.
+    calls: Vec<Call>,
+    /// Result stack for use in the `use_var`/`predecessors_lookup` state machine.
+    results: Vec<Value>,
 }
 
 impl<'a> SSABuilder<&'a CompleteCfg> {
@@ -195,19 +175,6 @@ impl<'a> SSABuilder<&'a CompleteCfg> {
     }
 }
 
-// Here is how it should be used when translating to MIR:
-//
-// - for each basic block, create a corresponding data for SSA construction with `declare_block`;
-//
-// - while traversing a basic block and translating instruction, use `def_var` and `use_var`
-//   to record definitions and uses of variables, these methods will give you the corresponding
-//   SSA values;
-//
-// - when all the instructions in a basic block have been translated, the block is said _filled_
-//   and only then you can add it as a predecessor to other blocks with `declare_block_predecessor`;
-//
-// - when you have constructed all the predecessor to a basic block, call `seal_block` on it
-//   with the `Function` that you are building.
 impl SSABuilder<IncompleteCfg> {
     /// Allocate a new blank SSA builder struct.
     pub fn new() -> Self {
@@ -256,7 +223,6 @@ impl SSABuilder<IncompleteCfg> {
     /// Callers are expected to avoid adding the same predecessor more than once in the case
     /// of a jump table.
     pub fn declare_block_predecessor(&mut self, block: Block, pred: Block) {
-        // debug_assert!(!self.is_sealed(block));
         self.cfg.blocks[block].add_predecessor(pred)
     }
 

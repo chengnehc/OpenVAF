@@ -6,7 +6,7 @@ pub fn inst_combine(func: &mut Function) {
     let mut work_list = Vec::new();
     let mut ctx = SimplifyCtx::<f64, _>::new(func, |val, _| val);
 
-    let mut block_cursor = ctx.func.layout.blocks_cursor();
+    let mut block_cursor = ctx.func.layout.block_cursor();
     while let Some(block) = block_cursor.next(&ctx.func.layout) {
         let mut inst_cursor = ctx.func.layout.block_inst_cursor(block);
         while let Some(inst) = inst_cursor.next(&ctx.func.layout) {
@@ -29,8 +29,8 @@ pub fn inst_combine(func: &mut Function) {
 fn replace_uses(func: &mut Function, workque: &mut Vec<Inst>, inst: Inst, replace: Value) {
     let old = func.dfg.first_result(inst);
     for use_ in func.dfg.uses(old) {
-        let use_ = func.dfg.use_to_operand(use_).0;
-        workque.push(use_)
+        let inst = func.dfg.use_to_user(use_);
+        workque.push(inst)
     }
 
     func.dfg.replace_uses(old, replace);

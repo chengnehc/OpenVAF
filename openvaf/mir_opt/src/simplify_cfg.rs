@@ -52,7 +52,7 @@ impl SimplifyCfg<'_> {
 
         loop {
             self.local_changed = false;
-            let mut cursor = self.func.layout.blocks_cursor();
+            let mut cursor = self.func.layout.block_cursor();
             // Loop over all of the basic blocks and remove them if they are unneeded.
             while let Some(bb) = cursor.next {
                 self.simplify_bb(bb);
@@ -113,7 +113,7 @@ impl SimplifyCfg<'_> {
                 if let Some((_, first_val)) = edges.find(|it| it.1 != phi_val) {
                     if edges.all(|(_, val)| val == first_val || val == phi_val) {
                         for use_ in self.func.dfg.uses(phi_val) {
-                            let inst = self.func.dfg.use_to_operand(use_).0;
+                            let inst = self.func.dfg.use_to_user(use_);
                             if let Some(inst) = self.func.layout.inst_block(inst) {
                                 self.vals_changed.insert(inst);
                             }
@@ -437,7 +437,7 @@ impl SimplifyCfg<'_> {
             }
 
             for use_ in self.func.dfg.inst_uses(inst) {
-                let inst = self.func.dfg.use_to_operand(use_).0;
+                let inst = self.func.dfg.use_to_user(use_);
                 // check that all uses are phi nodes (otherwise we produce invalid code in loops
                 // where we dominate a block with multiple predecessor
                 if self.func.layout.inst_block(inst).is_none() {

@@ -209,10 +209,10 @@ impl super::Builder<'_> {
 
         postorder.clear();
         scratch_buf.clear();
-        let mut transversal =
+        let mut traversal =
             func.dfg.inst_uses_postorder_with(inst, (mem::take(scratch_buf), Vec::new()), |_| true);
-        postorder.extend(&mut transversal);
-        *scratch_buf = transversal.visited;
+        postorder.extend(&mut traversal);
+        *scratch_buf = traversal.visited;
         let visisted = scratch_buf;
 
         let is_op_dependent = |val| {

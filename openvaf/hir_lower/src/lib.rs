@@ -5,15 +5,14 @@ use std::iter::FilterMap;
 use stdx::packed_option::PackedOption;
 use stdx::{impl_debug_display, impl_idx_from};
 
-use ahash::{AHashMap, AHashSet};
-use bitset::HybridBitSet;
+use ahash::AHashSet;
 use hir::{
     Branch, BranchWrite, CompilationDB, Module, Node, ParamSysFun, Parameter, Type, Variable,
 };
 use indexmap::IndexMap;
 use lasso::Rodeo;
 use mir::builder::InstBuilder;
-use mir::{DataFlowGraph, FuncRef, Function, Inst, KnownDerivatives, Param, Unknown, Value};
+use mir::{DataFlowGraph, FuncRef, Function, Inst, KnownDerivatives, Param, Value};
 use mir_build::{FunctionBuilder, FunctionBuilderContext, RetBuilder};
 use typed_index_collections::TiVec;
 use typed_indexmap::{map, TiMap, TiSet};
@@ -36,9 +35,9 @@ pub use parameters::ParamInfoKind;
 
 /// A builder to lower HIR into MIR
 pub struct MirBuilder<'a> {
-    db: &'a CompilationDB,
-
     module: Module,
+    db: &'a CompilationDB,
+    func_ctxt: Option<&'a mut FunctionBuilderContext>,
     // predicate indicating whether a `Place` should be treated as output
     is_output: &'a dyn Fn(PlaceKind) -> bool,
     // to store required output variables
@@ -49,8 +48,6 @@ pub struct MirBuilder<'a> {
     tag_writes: bool,
     // for simulator backend
     lower_equations: bool,
-
-    func_ctxt: Option<&'a mut FunctionBuilderContext>,
 }
 
 impl<'a> MirBuilder<'a> {
@@ -61,14 +58,14 @@ impl<'a> MirBuilder<'a> {
         required_vars: &'a mut dyn Iterator<Item = Variable>,
     ) -> MirBuilder<'a> {
         MirBuilder {
-            db,
             module,
+            db,
+            func_ctxt: None,
             is_output,
             required_vars,
             tagged_reads: AHashSet::new(),
             tag_writes: false,
             lower_equations: false,
-            func_ctxt: None,
         }
     }
 
@@ -143,16 +140,24 @@ impl<'a> MirBuilder<'a> {
 /// from the HIR，which allows the MIR to remain independent of the frontend/HIR.
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct HirInterner {
-    pub outputs: IndexMap<PlaceKind, PackedOption<Value>, ahash::RandomState>,
+    /// Mapping from MIR function `Param`s to MIR `Value`s
     pub params: TiMap<Param, ParamKind, Value>,
+    /// Callback function definitions in the MIR function
     pub callbacks: TiSet<FuncRef, CallBackKind>,
+    /// The user instructions of each callback function
     pub callback_uses: TiVec<FuncRef, Vec<Inst>>,
-    pub tagged_reads: IndexMap<Value, Variable, ahash::RandomState>,
+    /// for implicit unknowns created by the simulator backend
     pub implicit_equations: TiVec<ImplicitEquation, ImplicitEquationKind>,
+    /// for storing internal states induced by $limit
     pub lim_state: TiMap<LimitState, Value, Vec<(Value, bool)>>,
+    /// Mapping from output `Place`s to MIR `Value`s
+    // TODO(JW): use `TiMap`?
+    pub outputs: IndexMap<PlaceKind, PackedOption<Value>, ahash::RandomState>,
+    /// JW: for VerilogAE(?)
+    pub tagged_reads: IndexMap<Value, Variable, ahash::RandomState>,
 }
 
-/*
+/* impl trait type alias is not yet stable
 pub type LiveParams<'a> = FilterMap<
     map::Iter<'a, Param, ParamKind, Value>,
     impl FnMut((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)> + Clone,
@@ -160,38 +165,33 @@ pub type LiveParams<'a> = FilterMap<
 */
 
 impl HirInterner {
-    pub fn unknowns(&self, func: impl AsRef<Function>, sim_derivatives: bool) -> KnownDerivatives {
+    pub fn derivative_info(
+        &self,
+        func: impl AsRef<Function>,
+        sim_derivatives: bool,
+    ) -> KnownDerivatives {
         let func = func.as_ref();
-        let mut unknowns = TiSet::default();
-        let mut ddx_calls = AHashMap::default();
-        // let mut nodes: AHashMap<NodeId, HybridBitSet<Value>> = AHashMap::new();
-        // let mut required_nodes: IndexSet<NodeId, RandomState> = IndexSet::default();
-        for (param, (kind, &val)) in self.params.iter_enumerated() {
-            if func.dfg.value_dead(val) {
-                continue;
+        let KnownDerivatives { mut unknowns, mut ddx_calls } = KnownDerivatives::default();
+
+        let mut ensure_ddx = |ddx, unk, neg| match self.callbacks.index(&ddx) {
+            Some(ddx) => {
+                let (pos_dst, neg_dst): &mut (_, _) = ddx_calls.entry(ddx).or_default();
+                let dst = if neg { neg_dst } else { pos_dst };
+                dst.insert(unk, func.dfg.num_values());
+                true
             }
+            None => false,
+        };
 
-            let param_required = Self::contains_ddx(
-                &mut ddx_calls,
-                func,
-                &self.callbacks,
-                &CallBackKind::Derivative(param),
-                unknowns.len().into(),
-                false,
-            );
-
+        for (param, &kind, val) in self.live_params(&func.dfg) {
+            let ddx = CallBackKind::Derivative(param);
+            let param_required = ensure_ddx(ddx, unknowns.len().into(), false);
             let mut node_required = |node, neg| {
-                Self::contains_ddx(
-                    &mut ddx_calls,
-                    func,
-                    &self.callbacks,
-                    &CallBackKind::NodeDerivative(node),
-                    unknowns.len().into(),
-                    neg,
-                )
+                let ddx = CallBackKind::NodeDerivative(node);
+                ensure_ddx(ddx, unknowns.len().into(), neg)
             };
 
-            let required = match *kind {
+            let required = match kind {
                 ParamKind::Voltage { hi, lo: Some(lo) } => {
                     sim_derivatives | node_required(hi, false) | node_required(lo, true)
                 }
@@ -205,28 +205,15 @@ impl HirInterner {
             }
         }
 
+        /* Deal with limit state */
         for (param, vals) in self.lim_state.iter() {
             for &(val, neg) in vals {
                 let param = func.dfg.value_def(*param).unwrap_param();
-
-                let mut required = Self::contains_ddx(
-                    &mut ddx_calls,
-                    func,
-                    &self.callbacks,
-                    &CallBackKind::Derivative(param),
-                    unknowns.len().into(),
-                    neg,
-                );
-
+                let ddx = CallBackKind::Derivative(param);
+                let mut required = ensure_ddx(ddx, unknowns.len().into(), neg);
                 let mut node_required = |node, neg| {
-                    Self::contains_ddx(
-                        &mut ddx_calls,
-                        func,
-                        &self.callbacks,
-                        &CallBackKind::NodeDerivative(node),
-                        unknowns.len().into(),
-                        neg,
-                    )
+                    let ddx = CallBackKind::NodeDerivative(node);
+                    ensure_ddx(ddx, unknowns.len().into(), neg)
                 };
 
                 match *self.params.get_index(param).unwrap().0 {
@@ -246,35 +233,6 @@ impl HirInterner {
         KnownDerivatives { unknowns, ddx_calls }
     }
 
-    // TODO(JW): this func should not have side effect
-    fn contains_ddx(
-        ddx_calls: &mut AHashMap<FuncRef, (HybridBitSet<Unknown>, HybridBitSet<Unknown>)>,
-        func: &Function,
-        callbacks: &TiSet<FuncRef, CallBackKind>,
-        ddx: &CallBackKind,
-        val: Unknown,
-        neg: bool,
-    ) -> bool {
-        match callbacks.index(ddx) {
-            Some(ddx) => {
-                // side effect
-                let (pos_dst, neg_dst) = ddx_calls.entry(ddx).or_default();
-                if neg {
-                    neg_dst.insert(val, func.dfg.num_values());
-                } else {
-                    pos_dst.insert(val, func.dfg.num_values());
-                }
-                true
-            }
-            None => false,
-        }
-    }
-
-    pub fn is_param_live(&self, func: impl AsRef<Function>, kind: &ParamKind) -> bool {
-        let func = func.as_ref();
-        self.params.raw.get(kind).is_some_and(|val| !func.dfg.value_dead(*val))
-    }
-
     pub fn ensure_param(&mut self, func: impl AsMut<Function>, kind: ParamKind) -> Value {
         Self::ensure_param_(&mut self.params, func, kind)
     }
@@ -288,6 +246,10 @@ impl HirInterner {
         let len = params.len();
         let entry = params.raw.entry(kind);
         *entry.or_insert_with(|| func.as_mut().dfg.make_param(len.into()))
+    }
+
+    pub fn is_param_live(&self, func: impl AsRef<Function>, kind: &ParamKind) -> bool {
+        self.params.get(kind).is_some_and(|val| !func.as_ref().dfg.value_dead(*val))
     }
 
     // FIXME(JW) return type is too complicated
@@ -309,25 +271,25 @@ pub enum ParamKind {
     Voltage { hi: Node, lo: Option<Node> },
     Current(CurrentKind),
     ImplicitUnknown(ImplicitEquation),
+    PortConnected { port: Node },
+    Param(Parameter),
+    ParamSysFun(ParamSysFun),
+    ParamGiven { param: Parameter },
+    Temperature,
     Abstime,
     EnableIntegration,
     HiddenState(Variable),
     EnableLim,
     PrevState(LimitState),
     NewState(LimitState),
-    Param(Parameter),
-    ParamSysFun(ParamSysFun),
-    Temperature,
-    PortConnected { port: Node },
-    ParamGiven { param: Parameter },
 }
 
 impl ParamKind {
     fn unwrap_pot_node(&self) -> Node {
-        match self {
-            ParamKind::Voltage { hi, lo: None } => *hi,
-            _ => unreachable!("called unwrap_pot_node on {:?}", self),
-        }
+        let ParamKind::Voltage { hi, lo: None } = self else {
+            unreachable!("{self:?} is not a potential node")
+        };
+        *hi
     }
 
     pub fn is_op_dependent(&self) -> bool {
@@ -350,9 +312,9 @@ impl ParamKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PlaceKind {
     Contribute { dst: BranchWrite, is_reactive: bool, is_potential: bool },
-    ImplicitResidual { equation: ImplicitEquation, reactive: bool },
-    CollapseImplicitEquation(ImplicitEquation),
     IsPotential(BranchWrite),
+    CollapseImplicitEquation(ImplicitEquation),
+    ImplicitResidual { equation: ImplicitEquation, reactive: bool },
     Var(Variable),
     Param(Parameter),
     ParamMin(Parameter),
@@ -364,17 +326,15 @@ pub enum PlaceKind {
 
 impl PlaceKind {
     pub fn ty(&self, db: &CompilationDB) -> Type {
+        use PlaceKind::*;
+
         match *self {
-            PlaceKind::Var(var) => var.ty(db),
-            PlaceKind::FunctionReturn(fun) => fun.return_ty(db),
-            PlaceKind::FunctionArg(arg) => arg.ty(db),
-            PlaceKind::ParamMin(param) | PlaceKind::ParamMax(param) | PlaceKind::Param(param) => {
-                param.ty(db)
-            }
-            PlaceKind::IsPotential(_) | PlaceKind::CollapseImplicitEquation(_) => Type::Bool,
-            PlaceKind::ImplicitResidual { .. }
-            | PlaceKind::Contribute { .. }
-            | PlaceKind::BoundStep => Type::Real,
+            Var(var) => var.ty(db),
+            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
+            FunctionReturn(fun) => fun.return_ty(db),
+            FunctionArg(arg) => arg.ty(db),
+            IsPotential(_) | CollapseImplicitEquation(_) => Type::Bool,
+            ImplicitResidual { .. } | Contribute { .. } | BoundStep => Type::Real,
         }
     }
 
@@ -426,18 +386,11 @@ impl_debug_display! {
     match ImplicitEquation {ImplicitEquation(i) => "inode{}", i;}
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LimitState(u32);
-impl_idx_from!(LimitState(u32));
-impl_debug_display! {
-    match LimitState {LimitState(i) => "lim_state{}", i;}
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ImplicitEquationKind {
     Ddt,
-    NoiseSrc,
     Idt(IdtKind),
+    NoiseSrc,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -460,16 +413,20 @@ impl IdtKind {
     pub const fn has_ic(self) -> bool {
         !matches!(self, IdtKind::Basic)
     }
-
     pub const fn has_assert(self) -> bool {
         matches!(self, IdtKind::Assert)
     }
-
     pub const fn has_modulus(self) -> bool {
         matches!(self, IdtKind::Modulus | IdtKind::ModulusOffset)
     }
-
     pub const fn has_offset(self) -> bool {
         matches!(self, IdtKind::ModulusOffset)
     }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LimitState(u32);
+impl_idx_from!(LimitState(u32));
+impl_debug_display! {
+    match LimitState {LimitState(i) => "lim_state{}", i;}
 }

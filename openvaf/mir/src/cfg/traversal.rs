@@ -4,7 +4,7 @@
 
 use bitset::BitSet;
 
-use crate::cfg::Successors;
+use super::Successors;
 use crate::Block;
 use crate::ControlFlowGraph;
 
@@ -104,19 +104,16 @@ impl Iterator for Postorder<'_> {
     type Item = Block;
 
     fn next(&mut self) -> Option<Block> {
-        let next = self.visit_stack.pop().map(|(bb, _)| bb);
-        if next.is_some() {
-            self.traverse_successor(self.cfg);
-        }
+        let (bb, _) = self.visit_stack.pop()?;
+        self.traverse_successor(self.cfg);
 
-        next
+        Some(bb)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
+        let lower = self.visit_stack.len();
         // All the blocks, minus the number of blocks we've visited.
         let upper = self.cfg.data.len() - self.visited.count();
-
-        let lower = self.visit_stack.len();
 
         (lower, Some(upper))
     }
@@ -142,11 +139,6 @@ impl Iterator for Postorder<'_> {
 /// A reverse postorder traversal of this graph is either `A B C D` or `A C B D`
 /// Note that for a graph containing no loops (i.e., a DAG), this is equivalent to
 /// a topological sort.
-///
-/// Construction of a `ReversePostorder` traversal requires doing a full
-/// postorder traversal of the graph, therefore this traversal should be
-/// constructed as few times as possible. Use the `reset` method to be able
-/// to re-use the traversal
 #[derive(Clone, Debug)]
 pub struct ReversePostorder {
     blocks: Vec<Block>,
@@ -154,6 +146,10 @@ pub struct ReversePostorder {
 }
 
 impl ReversePostorder {
+    /// Construction of a `ReversePostorder` traversal requires doing a full
+    /// postorder traversal of the graph, therefore this traversal should be
+    /// constructed as few times as possible.
+    /// Use the `reset` method to be able to re-use the traversal
     pub fn new(cfg: &ControlFlowGraph, root: Block) -> Self {
         let blocks: Vec<_> = Postorder::new(cfg, root).collect();
         let len = blocks.len();

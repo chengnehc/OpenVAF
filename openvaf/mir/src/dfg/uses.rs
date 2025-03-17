@@ -9,11 +9,11 @@ use super::values::DfgValues;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct UseData {
-    pub(super) parent: Inst,
-    pub(super) parent_idx: u16,
+    pub(super) user: Inst,
+    pub(super) idx: u16,
     attached: bool,
-    next: PackedOption<Use>,
     prev: PackedOption<Use>,
+    next: PackedOption<Use>,
 }
 
 impl Use {
@@ -25,23 +25,13 @@ impl Use {
         values.uses[self].next.expand()
     }
 
+    pub fn to_user(self, dfg: &DataFlowGraph) -> Inst {
+        dfg.use_to_user(self)
+    }
+
     pub fn to_value(self, dfg: &DataFlowGraph) -> Value {
         dfg.use_to_value(self)
     }
-
-    /*
-        pub fn set_value(self, dfg: &mut DataFlowGraph, val: Value) {
-            dfg.use_set_value(self, val)
-        }
-
-        pub fn into_cursor(self) -> UseCursor {
-            UseCursor { curr: Some(self) }
-        }
-
-        pub fn into_iter<D: Borrow<DfgValues>>(self, dfg: &D) -> UseIter<'_> {
-            self.into_cursor().into_iter(dfg)
-        }
-    */
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
@@ -160,43 +150,90 @@ impl DoubleEndedIterator for DoubleEndedUseIter<'_> {
 }
 
 impl DfgValues {
-    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
-        (self.uses[use_].parent, self.uses[use_].parent_idx)
+    pub fn uses(&self, value: Value) -> UseIter {
+        self.uses_head_cursor(value).into_iter(self)
     }
 
-    pub fn make_use(&mut self, val: Value, parent: Inst, parent_idx: u16) -> Use {
+    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
+        DoubleEndedUseIter {
+            head: self.defs[value].uses_head.expand(),
+            tail: self.defs[value].uses_tail.expand(),
+            dfg: self,
+        }
+    }
+
+    fn uses_head_cursor(&self, value: Value) -> UseCursor {
+        self.defs[value].uses_head.into()
+    }
+
+    #[allow(unused)]
+    fn uses_tail_cursor(&self, value: Value) -> UseCursor {
+        self.defs[value].uses_tail.into()
+    }
+
+    pub fn use_to_user(&self, use_: Use) -> Inst {
+        self.uses[use_].user
+    }
+
+    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
+        (self.uses[use_].user, self.uses[use_].idx)
+    }
+
+    pub fn use_to_value(&self, use_: Use, insts: &DfgInsts) -> Value {
+        let UseData { user, idx, .. } = self.uses[use_];
+        insts.args(user)[idx as usize]
+    }
+
+    pub fn use_to_value_mut<'a>(&self, use_: Use, insts: &'a mut DfgInsts) -> &'a mut Value {
+        let UseData { user, idx, .. } = self.uses[use_];
+        &mut insts.args_mut(user)[idx as usize]
+    }
+
+    pub fn is_use_detached(&self, use_: Use) -> bool {
+        !self.uses[use_].attached
+    }
+
+    pub fn make_use(&mut self, val: Value, user: Inst, idx: u16) -> Use {
         let def = &mut self.defs[val];
         let use_ = self.uses.push_and_get_key(UseData {
-            parent,
-            parent_idx,
+            user,
+            idx,
             attached: true,
-            next: def.uses_head,
             prev: None.into(),
+            next: def.uses_head,
         });
-
         if let Some(old_head) = def.uses_head.expand() {
             self.uses[old_head].prev = use_.into();
         } else {
             def.uses_tail = use_.into();
         }
-
         def.uses_head = use_.into();
+
         use_
     }
 
-    pub fn detach_operand(&mut self, inst: Inst, arg: u16, insts: &DfgInsts) {
-        let use_ = insts.operands(inst)[arg as usize];
-        self.detach_use(use_, insts)
+    pub fn attach_use(&mut self, use_: Use, val: Value) {
+        debug_assert!(
+            self.is_use_detached(use_),
+            "use_ must be detached from old value before being added back"
+        );
+        let data = &mut self.uses[use_];
+        data.attached = true;
+        if let Some(old_head) = self.defs[val].uses_head.expand() {
+            data.next = old_head.into();
+            self.uses[old_head].prev = use_.into();
+        } else {
+            self.defs[val].uses_tail = use_.into();
+        }
+        self.defs[val].uses_head = use_.into();
     }
 
     pub fn detach_use(&mut self, use_: Use, insts: &DfgInsts) {
         let prev = mem::take(&mut self.uses[use_].prev);
         let next = mem::take(&mut self.uses[use_].next);
-
         if !mem::take(&mut self.uses[use_].attached) {
             return; // already detached
         }
-
         match (next.expand(), prev.expand()) {
             (Some(next_), Some(prev_)) => {
                 self.uses[next_].prev = prev;
@@ -218,57 +255,6 @@ impl DfgValues {
                 self.uses[prev_].next = None.into();
             }
         }
-    }
-
-    pub fn attach_use(&mut self, use_: Use, val: Value) {
-        debug_assert!(
-            self.is_use_detached(use_),
-            "use_ must be detached from old value before being added back"
-        );
-        let data = &mut self.uses[use_];
-        data.attached = true;
-        if let Some(old_head) = self.defs[val].uses_head.expand() {
-            data.next = old_head.into();
-            self.uses[old_head].prev = use_.into();
-        } else {
-            self.defs[val].uses_tail = use_.into();
-        }
-
-        self.defs[val].uses_head = use_.into();
-    }
-
-    pub fn is_use_detached(&self, use_: Use) -> bool {
-        !self.uses[use_].attached
-    }
-
-    pub fn uses(&self, value: Value) -> UseIter {
-        self.uses_head_cursor(value).into_iter(self)
-    }
-
-    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
-        DoubleEndedUseIter {
-            head: self.defs[value].uses_head.expand(),
-            tail: self.defs[value].uses_tail.expand(),
-            dfg: self,
-        }
-    }
-
-    pub fn uses_head_cursor(&self, value: Value) -> UseCursor {
-        self.defs[value].uses_head.into()
-    }
-
-    pub fn uses_tail_cursor(&self, value: Value) -> UseCursor {
-        self.defs[value].uses_tail.into()
-    }
-
-    pub fn use_to_value(&self, use_: Use, insts: &DfgInsts) -> Value {
-        let data = self.uses[use_];
-        insts.args(data.parent)[data.parent_idx as usize]
-    }
-
-    pub fn use_to_value_mut<'a>(&self, use_: Use, insts: &'a mut DfgInsts) -> &'a mut Value {
-        let data = self.uses[use_];
-        &mut insts.args_mut(data.parent)[data.parent_idx as usize]
     }
 }
 
@@ -309,17 +295,9 @@ impl DataFlowGraph {
         }
     }
 
-    pub fn use_set_value(&mut self, use_: Use, val: Value) {
-        debug_assert!(!self.is_use_detached(use_));
-        self.values.detach_use(use_, &self.insts);
-        let data = self.values.uses[use_];
-        self.insts.args_mut(data.parent)[data.parent_idx as usize] = val;
-        self.attach_use(use_, val);
-    }
-
     pub fn inst_uses(&self, inst: Inst) -> InstUseIter {
         let mut vals = self.inst_results(inst).iter();
-        let cursor = vals.next().map(|res| self.uses_head_cursor(*res)).unwrap_or_default();
+        let cursor = vals.next().map(|res| self.values.uses_head_cursor(*res)).unwrap_or_default();
         InstUseIter { cursor, vals, dfg: &self.values }
     }
 }

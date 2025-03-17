@@ -1,6 +1,5 @@
 use std::fmt::Write;
-use std::fs::{self, DirEntry};
-use std::mem;
+use std::{fs, mem};
 
 use ahash::RandomState;
 use indexmap::IndexMap;
@@ -125,7 +124,7 @@ struct Header {
 }
 
 impl Header {
-    fn new(entry: DirEntry) -> Option<Self> {
+    fn new(entry: fs::DirEntry) -> Option<Self> {
         if !entry.file_type().ok()?.is_file() {
             return None;
         }

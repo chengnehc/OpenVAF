@@ -222,7 +222,7 @@ pub trait Cursor {
     /// Go to the bottom of the exit `block`.
     /// At this position, inserted instructions will be appended to `block`.
     fn goto_exit(&mut self) {
-        self.goto_bottom(self.layout().last_block().unwrap());
+        self.goto_bottom(self.layout().exit_block().unwrap());
     }
 
     /// Get the block corresponding to the current position.
@@ -237,11 +237,8 @@ pub trait Cursor {
 
     /// Get the instruction corresponding to the current position, if any.
     fn current_inst(&self) -> Option<Inst> {
-        use self::CursorPosition::*;
-        match self.position() {
-            At(inst) => Some(inst),
-            _ => None,
-        }
+        let CursorPosition::At(inst) = self.position() else { return None };
+        Some(inst)
     }
 
     /// Go to the position after a specific instruction, which must be inserted
@@ -360,7 +357,7 @@ pub trait Cursor {
         let prev = if let Some(block) = self.current_block() {
             self.layout().prev_block(block)
         } else {
-            self.layout().last_block()
+            self.layout().exit_block()
         };
         self.set_position(match prev {
             Some(block) => CursorPosition::After(block),
@@ -503,7 +500,7 @@ pub trait Cursor {
         match self.position() {
             Nowhere | Before(..) => panic!("Invalid insert_inst position"),
             At(cur) => self.layout_mut().prepend_inst(inst, cur),
-            After(block) => self.layout_mut().append_inst_to_bb(inst, block),
+            After(block) => self.layout_mut().append_inst_to_block(inst, block),
         }
     }
 

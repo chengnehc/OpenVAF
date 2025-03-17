@@ -15,35 +15,23 @@
 //! https://docs.rs/crate/cranelift-codegen/latest/source/src/dominator_tree.rs
 
 use std::cmp::Ordering;
-use std::fs::File;
-use std::path::Path;
 use stdx::packed_option::PackedOption;
 
 use bitset::SparseBitMatrix;
 use typed_index_collections::{TiSlice, TiVec};
 
 use crate::cfg::Successors;
-use crate::ControlFlowGraph;
-use crate::{Block, Function};
+use crate::{Block, ControlFlowGraph, Function};
 
-/* AB: unused
-trait CfgREVERSE {
-    type Successors;
-    type Predecessors;
+mod render;
 
-    fn successors(cfg: &ControlFlowGraph, bb: Block) -> Self::Successors;
-    fn predecessors(cfg: &ControlFlowGraph, bb: Block) -> Self::Successors;
-}
-
-trait ToIter {}
-*/
-
-/// Dominator tree node. We keep one of these per block.
+/// Dominator tree node, one for each block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DomTreeNode {
     /// Number of this node in a (reverse) post-order traversal of the CFG, starting from 1.
     /// This number is monotonic in the reverse postorder but not contiguous.
-    /// Unreachable nodes get number 0, all others are positive.
+    ///
+    /// Unreachable nodes get number `0`, all others are positive.
     rpo_number: u32,
 
     /// The immediate dominator of this block, represented as the branch or jump instruction at the
@@ -64,50 +52,12 @@ pub struct DominatorTree {
     reverse_nodes: TiVec<Block, DomTreeNode>,
     /// CFG post-order of all reachable blocks.
     postorder: Vec<Block>,
+    // Scratch memory used by `compute_postorder()`.
     stack: Vec<(Block, Successors)>,
-    // valid: bool
 }
 
+/// Methods for querying the dominator tree.
 impl DominatorTree {
-    /// Allocate and compute a dominator tree.
-    pub fn with_func_and_cfg(_func: &Function, _cfg: &ControlFlowGraph) -> Self {
-        todo!();
-    }
-
-    /// Clear the data structures used to represent the dominator tree.
-    pub fn clear(&mut self) {
-        self.nodes.clear();
-        self.reverse_nodes.clear();
-        self.postorder.clear();
-        debug_assert!(self.stack.is_empty());
-        // self.valid = false;
-    }
-
-    /// Reset and compute a CFG post-order and dominator tree.
-    pub fn compute(
-        &mut self,
-        func: &Function,
-        cfg: &ControlFlowGraph,
-        dom: bool,
-        pdom: bool,
-        postorder: bool,
-    ) {
-        debug_assert!(cfg.is_valid());
-        self.clear();
-        if pdom {
-            self.compute_reverse_postorder(func, cfg);
-            self.compute_domtree::<true>(cfg);
-            self.postorder.clear();
-        }
-        if dom || postorder {
-            self.compute_postorder(func, cfg);
-        }
-        if dom {
-            self.compute_domtree::<false>(cfg);
-        }
-        // self.valid = true;
-    }
-
     /// Get the CFG post-order of blocks that was used to compute the dominator tree.
     ///
     /// Note that this post-order is not updated automatically when the CFG is modified. It is
@@ -145,66 +95,84 @@ impl DominatorTree {
         block == dominator
     }
 
-    pub fn compute_dom_frontiers(
-        &self,
-        cfg: &ControlFlowGraph,
-        dst: &mut SparseBitMatrix<Block, Block>,
-    ) {
-        dst.clear(self.nodes.len(), self.nodes.len());
-        for bb in self.nodes.keys() {
-            let mut predecessors = cfg.pred_iter(bb);
-            let first = if let Some(first) = predecessors.next() { first } else { continue };
-            let second = if let Some(second) = predecessors.next() { second } else { continue };
-            Self::propagate_dom_frontiers(&self.nodes, first, bb, dst);
-            Self::propagate_dom_frontiers(&self.nodes, second, bb, dst);
-            for pred in predecessors {
-                Self::propagate_dom_frontiers(&self.nodes, pred, bb, dst);
-            }
-        }
-    }
-
-    pub fn compute_postdom_frontiers(
-        &self,
-        cfg: &ControlFlowGraph,
-        dst: &mut SparseBitMatrix<Block, Block>,
-    ) {
-        dst.clear(self.reverse_nodes.len(), self.reverse_nodes.len());
-        for bb in self.reverse_nodes.keys() {
-            if let Some((bb1, bb2)) = cfg.successors_of(bb).as_pair() {
-                Self::propagate_dom_frontiers(&self.reverse_nodes, bb1, bb, dst);
-                Self::propagate_dom_frontiers(&self.reverse_nodes, bb2, bb, dst);
-            }
-        }
-    }
-
-    /// walk up the dominator tree until we reach the dominator of to
-    fn propagate_dom_frontiers(
+    /// Compute the common dominator of two basic blocks.
+    ///
+    /// Both basic blocks are assumed to be reachable.
+    fn common_dominator(
         nodes: &TiSlice<Block, DomTreeNode>,
-        mut pos: Block,
-        bb: Block,
-        dst: &mut SparseBitMatrix<Block, Block>,
-    ) {
-        let end = nodes[bb].idom;
-        while PackedOption::from(pos) != end {
-            dst.insert(pos, bb);
-            if let Some(idom) = nodes[pos].idom.expand() {
-                pos = idom
-            } else {
-                break;
+        mut bb1: Block,
+        mut bb2: Block,
+    ) -> Block {
+        loop {
+            let rpo1 = nodes[bb1].rpo_number;
+            let rpo2 = nodes[bb2].rpo_number;
+            match rpo1.cmp(&rpo2) {
+                Ordering::Less => bb2 = nodes[bb2].idom.expect("Unreachable basic block?"),
+                Ordering::Greater => bb1 = nodes[bb1].idom.expect("Unreachable basic block?"),
+                Ordering::Equal => return bb1,
             }
         }
     }
+}
 
-    // pub fn dom_frontiers(&self, block: Block) -> &HybridBitSet<Block> {
-    //     debug_assert!(self.config.has_dom_frontiers, "dominance frontiers were not calculated");
-    //     &self.nodes[block].dom_frontiers
-    // }
+impl DominatorTree {
+    /// Allocate a new blank dominator tree. Use `compute` to compute the dominator tree for a
+    /// function.
+    pub fn new() -> Self {
+        Default::default()
+    }
 
-    /// Reset all internal data structures and compute a post-order of the control flow graph.
+    /// Allocate and compute a dominator tree.
+    pub fn with_func_and_cfg(_func: &Function, _cfg: &ControlFlowGraph) -> Self {
+        // let block_capacity = func.layout.block_capacity();
+        // let mut domtree = Self {
+        //     nodes: TiVec::with_capacity(block_capacity),
+        //     postorder: Vec::with_capacity(block_capacity),
+        //     stack: Vec::new(),
+        // };
+        //let domtree = DominatorTree::new();
+        //domtree.compute(func, cfg);
+        //domtree
+        todo!()
+    }
+
+    /// Clear the data structures used to represent the dominator tree.
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.reverse_nodes.clear();
+        self.postorder.clear();
+        debug_assert!(self.stack.is_empty());
+    }
+
+    /// Reset and compute a CFG post-order and dominator tree.
+    pub fn compute(
+        &mut self,
+        func: &Function,
+        cfg: &ControlFlowGraph,
+        dom: bool,
+        pdom: bool,
+        postorder: bool,
+    ) {
+        debug_assert!(cfg.is_valid());
+        self.clear();
+        if pdom {
+            self.compute_reverse_postorder(func, cfg);
+            self.compute_domtree::<true>(cfg);
+            self.postorder.clear();
+        }
+        if dom || postorder {
+            self.compute_postorder(func, cfg);
+        }
+        if dom {
+            self.compute_domtree::<false>(cfg);
+        }
+    }
+
+    /// Reset all internal data structures and compute a reverse post-order of the control flow graph.
     ///
     /// During this algorithm only, use `rpo_number` to hold the following state:
     ///
-    ///   UNDEF:    block has not yet been reached in the pre-order.
+    ///   UNDEF: block has not yet been reached in the pre-order.
     ///   SEEN: block has been pushed on the stack but successors not yet pushed.
     ///   DONE: Successors pushed.
     ///
@@ -212,13 +180,10 @@ impl DominatorTree {
         // self.compute_reverse_cfg_postorder(func, cfg);
         self.reverse_nodes
             .resize(func.layout.num_blocks(), DomTreeNode { rpo_number: UNDEF, idom: None.into() });
-        match func.layout.last_block() {
-            Some(block) => {
-                self.stack.push((block, Successors(None.into(), None.into())));
-                self.reverse_nodes[block].rpo_number = SEEN;
-            }
-            None => return,
-        }
+
+        let Some(block) = func.layout.exit_block() else { return };
+        self.stack.push((block, Successors::default()));
+        self.reverse_nodes[block].rpo_number = SEEN;
 
         while let Some((block, _)) = self.stack.pop() {
             match self.reverse_nodes[block].rpo_number {
@@ -244,7 +209,7 @@ impl DominatorTree {
             }
         }
 
-        debug_assert_eq!(self.postorder.last().copied(), func.layout.last_block());
+        debug_assert_eq!(self.postorder.last().copied(), func.layout.exit_block());
     }
 
     /// Reset all internal data structures and compute a post-order of the control flow graph.
@@ -256,17 +221,12 @@ impl DominatorTree {
     ///   DONE: Successors pushed.
     ///
     fn compute_postorder(&mut self, func: &Function, cfg: &ControlFlowGraph) {
-        // self.compute_reverse_cfg_postorder(func, cfg);
         self.nodes
             .resize(func.layout.num_blocks(), DomTreeNode { rpo_number: UNDEF, idom: None.into() });
 
-        match func.layout.entry_block() {
-            Some(block) => {
-                self.stack.push((block, cfg.successors_of(block)));
-                self.nodes[block].rpo_number = SEEN;
-            }
-            None => return,
-        }
+        let Some(block) = func.layout.entry_block() else { return };
+        self.stack.push((block, cfg.successors_of(block)));
+        self.nodes[block].rpo_number = SEEN;
 
         loop {
             while let Some(block) = self.stack.last_mut().and_then(|(_, succ)| succ.pop()) {
@@ -275,13 +235,9 @@ impl DominatorTree {
                     self.stack.push((block, cfg.successors_of(block)))
                 }
             }
-
-            if let Some((bb, _)) = self.stack.pop() {
-                self.nodes[bb].rpo_number = DONE;
-                self.postorder.push(bb)
-            } else {
-                break;
-            }
+            let Some((block, _)) = self.stack.pop() else { break };
+            self.nodes[block].rpo_number = DONE;
+            self.postorder.push(block)
         }
         debug_assert_eq!(self.postorder.last().copied(), func.layout.entry_block());
     }
@@ -297,14 +253,11 @@ impl DominatorTree {
         // 2+: block is reachable and has an assigned RPO number.
 
         // We'll be iterating over a reverse post-order of the CFG, skipping the entry block.
-        let (entry_block, postorder) = match self.postorder.as_slice().split_last() {
-            Some((&eb, rest)) => (eb, rest),
-            None => return,
-        };
+        let Some((entry_block, postorder)) = self.postorder.as_slice().split_last() else { return };
 
         // Do a first pass where we assign RPO numbers to all reachable nodes.
         let nodes = if REVERSE { &mut self.reverse_nodes } else { &mut self.nodes };
-        nodes[entry_block].rpo_number = 2;
+        nodes[*entry_block].rpo_number = 2;
         for (rpo_idx, &block) in postorder.iter().rev().enumerate() {
             // Update the current node and give it an RPO number.
             // The entry block got 2, the rest start at 3
@@ -370,76 +323,54 @@ impl DominatorTree {
         idom
     }
 
-    fn common_dominator(
-        nodes: &TiSlice<Block, DomTreeNode>,
-        mut bb1: Block,
-        mut bb2: Block,
-    ) -> Block {
-        loop {
-            let rpo1 = nodes[bb1].rpo_number;
-            let rpo2 = nodes[bb2].rpo_number;
-            match rpo1.cmp(&rpo2) {
-                Ordering::Less => bb2 = nodes[bb2].idom.expect("Unreachable basic block?"),
-                Ordering::Greater => bb1 = nodes[bb1].idom.expect("Unreachable basic block?"),
-                Ordering::Equal => return bb1,
+    // pub fn dom_frontiers(&self, block: Block) -> &HybridBitSet<Block> {
+    //     debug_assert!(self.config.has_dom_frontiers, "dominance frontiers were not calculated");
+    //     &self.nodes[block].dom_frontiers
+    // }
+    pub fn compute_dom_frontiers(
+        &self,
+        cfg: &ControlFlowGraph,
+        dst: &mut SparseBitMatrix<Block, Block>,
+    ) {
+        dst.clear(self.nodes.len(), self.nodes.len());
+        for bb in self.nodes.keys() {
+            let mut predecessors = cfg.pred_iter(bb);
+            let Some(first) = predecessors.next() else { continue };
+            let Some(second) = predecessors.next() else { continue };
+            Self::propagate_dom_frontiers(&self.nodes, first, bb, dst);
+            Self::propagate_dom_frontiers(&self.nodes, second, bb, dst);
+            for pred in predecessors {
+                Self::propagate_dom_frontiers(&self.nodes, pred, bb, dst);
             }
         }
     }
-}
 
-pub struct DomTreeRender<'a> {
-    pub dom_tree: &'a DominatorTree,
-    pub func: &'a Function,
-    pub name: &'a str,
-    pub reverse: bool,
-}
-
-impl DominatorTree {
-    pub fn render_idom(&self, dst: &Path, name: &str, func: &Function) {
-        DomTreeRender { dom_tree: self, func, name, reverse: false }.to_dot(dst)
+    pub fn compute_postdom_frontiers(
+        &self,
+        cfg: &ControlFlowGraph,
+        dst: &mut SparseBitMatrix<Block, Block>,
+    ) {
+        dst.clear(self.reverse_nodes.len(), self.reverse_nodes.len());
+        for bb in self.reverse_nodes.keys() {
+            if let Some((bb1, bb2)) = cfg.successors_of(bb).as_pair() {
+                Self::propagate_dom_frontiers(&self.reverse_nodes, bb1, bb, dst);
+                Self::propagate_dom_frontiers(&self.reverse_nodes, bb2, bb, dst);
+            }
+        }
     }
 
-    pub fn render_ipdom(&self, dst: &Path, name: &str, func: &Function) {
-        DomTreeRender { dom_tree: self, func, name, reverse: true }.to_dot(dst)
-    }
-
-    // pub fn render_dom_frontier(&self, dst: &Path, name: &str, func: &Function) {
-    //     DomTreeRender { dom_tree: self, func, name, postdom: false, frontiers: true }.to_dot(dst)
-    // }
-}
-
-impl DomTreeRender<'_> {
-    pub fn to_dot(&self, dst: &Path) {
-        let mut dst = File::create(dst).unwrap();
-        dot::render(self, &mut dst).unwrap()
-    }
-}
-
-impl<'a> dot::Labeller<'a, Block, (Block, Block)> for DomTreeRender<'a> {
-    fn graph_id(&'a self) -> dot::Id<'a> {
-        dot::Id::new(self.name).unwrap()
-    }
-
-    fn node_id(&'a self, n: &Block) -> dot::Id<'a> {
-        dot::Id::new(n.to_string()).unwrap()
-    }
-}
-
-impl<'a> dot::GraphWalk<'a, Block, (Block, Block)> for DomTreeRender<'a> {
-    fn nodes(&'a self) -> dot::Nodes<'a, Block> {
-        self.func.layout.blocks().collect()
-    }
-
-    fn edges(&'a self) -> dot::Edges<'a, (Block, Block)> {
-        let nodes = if self.reverse { &self.dom_tree.reverse_nodes } else { &self.dom_tree.nodes };
-        self.func.layout.blocks().filter_map(|bb| Some((nodes[bb].idom.expand()?, bb))).collect()
-    }
-
-    fn source(&'a self, edge: &(Block, Block)) -> Block {
-        edge.0
-    }
-
-    fn target(&'a self, edge: &(Block, Block)) -> Block {
-        edge.1
+    /// walk up the dominator tree until we reach the dominator of to
+    fn propagate_dom_frontiers(
+        nodes: &TiSlice<Block, DomTreeNode>,
+        mut pos: Block,
+        bb: Block,
+        dst: &mut SparseBitMatrix<Block, Block>,
+    ) {
+        let end = nodes[bb].idom;
+        while PackedOption::from(pos) != end {
+            dst.insert(pos, bb);
+            let Some(idom) = nodes[pos].idom.expand() else { break };
+            pos = idom
+        }
     }
 }

@@ -4,6 +4,18 @@ use crate::instructions::{PhiEdges, PhiNode};
 use crate::{Block, DataFlowGraph, Inst, InstructionData, Value, GRAVESTONE};
 
 impl DataFlowGraph {
+    pub fn phi_edges(&self, phi: &PhiNode) -> PhiEdges {
+        phi.edges(&self.insts.value_lists, &self.phi_forest)
+    }
+
+    pub fn phi_edge_val(&self, phi: &PhiNode, pred: Block) -> Option<Value> {
+        phi.edge_val(pred, &self.insts.value_lists, &self.phi_forest)
+    }
+
+    pub fn phi_eq(&self, phi1: &PhiNode, phi2: &PhiNode) -> bool {
+        phi1.eq(phi2, &self.insts.value_lists, &self.phi_forest)
+    }
+
     #[inline]
     pub fn insert_phi_edge(&mut self, inst: Inst, block: Block, val: Value) {
         let PhiNode { mut args, mut blocks } = self.insts[inst].unwrap_phi().clone();
@@ -32,19 +44,20 @@ impl DataFlowGraph {
 
     #[inline]
     pub fn try_remove_phi_edge_at(&mut self, inst: Inst, block: Block) -> Option<(Value, u32)> {
-        if let InstructionData::PhiNode(PhiNode { args, mut blocks }) = self.insts[inst].clone() {
-            if let Some(pos) = blocks.remove(block, &mut self.phi_forest, &()) {
-                self.detach_operand(inst, pos as u16);
-                // this use might be reattched again so we replace the value with a constant where
-                // uses currently don't matter that much
-                // TODO introduce dedicated gravestone value
-                let val = mem::replace(&mut self.instr_args_mut(inst)[pos as usize], GRAVESTONE);
-                self.insts[inst] = PhiNode { blocks, args }.into();
-                return Some((val, pos));
-            }
-        }
+        let InstructionData::PhiNode(PhiNode { args, mut blocks }) = self.insts[inst].clone()
+        else {
+            return None;
+        };
+        let pos = blocks.remove(block, &mut self.phi_forest, &())?;
+        self.detach_operand(inst, pos as u16);
 
-        None
+        // this use might be reattached again so we replace the value with a constant where
+        // uses currently don't matter that much
+        // TODO introduce dedicated gravestone value
+        let val = mem::replace(&mut self.instr_args_mut(inst)[pos as usize], GRAVESTONE);
+        self.insts[inst] = PhiNode { blocks, args }.into();
+
+        Some((val, pos))
     }
 
     #[inline]
@@ -54,30 +67,17 @@ impl DataFlowGraph {
         inst: Inst,
         block: Block,
     ) -> Option<(Value, u32)> {
-        if let Some(pos) = blocks.remove(block, &mut self.phi_forest, &()) {
-            self.detach_operand(inst, pos as u16);
-            // this use might be reattched again so we replace the value with a constant where
-            // uses currently don't matter that much
-            // TODO introduce dedicated gravestone value
-            let val = mem::replace(
-                &mut args.as_mut_slice(&mut self.insts.value_lists)[pos as usize],
-                GRAVESTONE,
-            );
-            Some((val, pos))
-        } else {
-            None
-        }
-    }
+        let pos = blocks.remove(block, &mut self.phi_forest, &())?;
+        self.detach_operand(inst, pos as u16);
 
-    pub fn phi_edges(&self, phi: &PhiNode) -> PhiEdges {
-        phi.edges(&self.insts.value_lists, &self.phi_forest)
-    }
+        // this use might be reattached again so we replace the value with a constant where
+        // uses currently don't matter that much
+        // TODO introduce dedicated gravestone value
+        let val = mem::replace(
+            &mut args.as_mut_slice(&mut self.insts.value_lists)[pos as usize],
+            GRAVESTONE,
+        );
 
-    pub fn phi_edge_val(&self, phi: &PhiNode, pred: Block) -> Option<Value> {
-        phi.edge_val(pred, &self.insts.value_lists, &self.phi_forest)
-    }
-
-    pub fn phi_eq(&self, phi1: &PhiNode, phi2: &PhiNode) -> bool {
-        phi1.eq(phi2, &self.insts.value_lists, &self.phi_forest)
+        Some((val, pos))
     }
 }

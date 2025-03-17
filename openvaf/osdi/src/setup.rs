@@ -121,8 +121,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             builder.build_func();
         }
 
-        let mut cfg = ControlFlowGraph::new();
-        cfg.compute(func);
+        let cfg = ControlFlowGraph::with_function(func);
         let exit_bb = cfg
             .postorder(func)
             .find(|bb| {
@@ -335,7 +334,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             builder.build_consts();
             builder.build_func();
         }
-        let exit_bb = func.layout.last_block().unwrap();
+        let exit_bb = func.layout.exit_block().unwrap();
 
         // store parameters
         for (i, param) in inst_data.params.keys().enumerate() {

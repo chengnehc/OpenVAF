@@ -66,7 +66,10 @@ pub struct InsertBuilder<'f, IIB: InstInserterBase<'f>> {
     unused: PhantomData<&'f u32>,
 }
 
-impl<'f, IIB: InstInserterBase<'f>> InsertBuilder<'f, IIB> {
+impl<'f, IIB> InsertBuilder<'f, IIB>
+where
+    IIB: InstInserterBase<'f>,
+{
     /// Create a new builder which inserts instructions at `pos`.
     /// The `dfg` and `pos.layout` references should be from the same `Function`.
     pub fn new(inserter: IIB) -> Self {
@@ -101,7 +104,10 @@ impl<'f, IIB: InstInserterBase<'f>> InsertBuilder<'f, IIB> {
     }
 }
 
-impl<'f, IIB: InstInserterBase<'f>> InstBuilderBase<'f> for InsertBuilder<'f, IIB> {
+impl<'f, IIB> InstBuilderBase<'f> for InsertBuilder<'f, IIB>
+where
+    IIB: InstInserterBase<'f>,
+{
     fn data_flow_graph(&self) -> &DataFlowGraph {
         self.inserter.data_flow_graph()
     }

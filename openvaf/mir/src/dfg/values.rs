@@ -11,7 +11,7 @@ use crate::{DataFlowGraph, Ieee64, Inst, Use, Value};
 
 #[derive(Clone)]
 pub struct DfgValues {
-    /// Primary value table with entries for all values.
+    /// Primary value table with entries for all values
     pub(super) defs: TiVec<Value, ValueData>,
 
     /// Primary Use table with entries for all uses

@@ -61,7 +61,7 @@ pub use crate::entities::{AnyEntity, Block, FuncRef, Inst, Param, Use, Value};
 pub use crate::instructions::{
     InstructionData, InstructionFormat, Opcode, PhiMap, PhiNode, ValueList, ValueListPool,
 };
-pub use crate::layout::{InstCursor, InstIter, Layout};
+pub use crate::layout::{Insts, Layout};
 
 /// A MIR function.
 ///
@@ -80,12 +80,7 @@ pub struct Function {
 
 impl Function {
     pub fn new() -> Function {
-        Self {
-            name: String::new(),
-            dfg: DataFlowGraph::new(),
-            layout: Layout::new(),
-            srclocs: TiVec::new(),
-        }
+        Default::default()
     }
 
     pub fn with_name(name: String) -> Function {
@@ -148,7 +143,7 @@ pub struct FunctionSignature {
 impl_display! {
     match FunctionSignature{
         FunctionSignature{name, params, returns, has_side_effects} =>
-        "{}fn %{}({}) -> {}", if *has_side_effects {""} else {"const "}, name, params, returns;
+        "{}fn %{name}({params}) -> {returns}", if *has_side_effects {""} else {"const "};
     }
 }
 
@@ -169,28 +164,7 @@ impl Function {
         }
     }
 
-    /// Split the block containing `before` into two.
-    ///
-    /// Insert `new_block` after the old block and move `before` and the following instructions to
-    /// `new_block`:
-    ///
-    /// ```text
-    /// old_block:
-    ///     i1
-    ///     i2
-    ///     i3 << before
-    ///     i4
-    /// ```
-    /// becomes:
-    ///
-    /// ```text
-    /// old_block:
-    ///     i1
-    ///     i2
-    /// new_block:
-    ///     i3 << before
-    ///     i4
-    /// ```
+    /// Split the block containing `before` into two and update phis within the block.
     pub fn split_block(&mut self, new_block: Block, before: Inst) {
         let old_block = self.layout.inst_block(before).unwrap();
         self.layout.split_block(new_block, before);
@@ -208,7 +182,6 @@ impl Function {
         }
     }
 
-    // TODO(JW): what is opt barriers for?
     /* JW: not used.
         pub fn remove_opt_barriers(&mut self) {
             for inst in self.dfg.insts.iter() {
@@ -225,14 +198,25 @@ impl Function {
     */
 }
 
-/// Source locations for instructions.
-pub type SourceLocs = TiVec<Inst, SourceLoc>;
+pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
+    let func = func.as_ref();
+    while let Some(inst) = func.dfg.value_def(val).inst() {
+        if let InstructionData::Unary { opcode: Opcode::OptBarrier, arg } = func.dfg.insts[inst] {
+            val = arg;
+        } else {
+            break;
+        }
+    }
+    val
+}
 
 /// An opaque 32-bit repr for source location of instructions
 ///
 /// Default value is used for instructions that can't be given a real source location.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct SourceLoc(i32);
+
+pub type SourceLocs = TiVec<Inst, SourceLoc>;
 
 impl SourceLoc {
     /// Create a new source location with the given bits.
@@ -284,16 +268,4 @@ pub struct KnownDerivatives {
     pub unknowns: TiSet<Unknown, Value>,
     pub ddx_calls: AHashMap<FuncRef, (HybridBitSet<Unknown>, HybridBitSet<Unknown>)>,
     // pub standin_calls: AHashMap<FuncRef, u32>,
-}
-
-pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
-    let func = func.as_ref();
-    while let Some(inst) = func.dfg.value_def(val).inst() {
-        if let InstructionData::Unary { opcode: Opcode::OptBarrier, arg } = func.dfg.insts[inst] {
-            val = arg;
-        } else {
-            break;
-        }
-    }
-    val
 }

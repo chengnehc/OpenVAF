@@ -173,10 +173,10 @@ impl Builder<'_> {
 
         postorder.clear();
         scratch_buf.clear();
-        let mut transversal =
+        let mut traversal =
             func.dfg.uses_postorder_with(unknown, (mem::take(scratch_buf), Vec::new()), |_| true);
-        (&mut transversal).for_each(|_| ());
-        *scratch_buf = transversal.visited;
+        (&mut traversal).for_each(|_| ());
+        *scratch_buf = traversal.visited;
         let mut found_linear = false;
         for val in vals {
             match self.analyze_dependency(RECUSE_DEPTH, val, unknown) {
@@ -380,10 +380,10 @@ impl Builder<'_> {
 
         postorder.clear();
         scratch_buf.clear();
-        let mut transversal =
+        let mut traversal =
             func.dfg.uses_postorder_with(val, (mem::take(scratch_buf), Vec::new()), |_| true);
-        postorder.extend(&mut transversal);
-        *scratch_buf = transversal.visited;
+        postorder.extend(&mut traversal);
+        *scratch_buf = traversal.visited;
 
         let is_op_dependent = |val| {
             if let Some(inst) = func.dfg.value_def(val).inst() {

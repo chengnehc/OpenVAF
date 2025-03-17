@@ -5,49 +5,89 @@
 //!
 //! https://docs.rs/cranelift-codegen/latest/cranelift_codegen/flowgraph/index.html
 
-use std::{fs::File, iter::FilterMap, ops::Index, path::Path};
-
+use std::iter::FilterMap;
+use std::ops::Index;
 use stdx::packed_option::PackedOption;
+
 use typed_index_collections::TiVec;
 
 use crate::{Block, Function, InstructionData};
 
 //mod tests;
+mod render;
 mod traversal;
+
 pub use traversal::{Postorder, ReversePostorder};
 
-/// A container for the successors and predecessors of some Block.
+/// The Control Flow Graph maintains a mapping of blocks to their predecessors
+/// and successors.
 ///
-/// MIR allows >=1 predecessors and at most 2 successors for each basic block.
-///
-/// For each basic block:
-/// - in degree >= 1
-/// - out degree = 1 | 2
+/// For each basic block, at leaset 1 predecessors and at most 2 successors are allowed.
+/// This means that each node in the CFG has >=1 in-degree and 0, 1 or 2 out-degree.
+#[derive(Clone, Default)]
+pub struct ControlFlowGraph {
+    /// Mapping of blocks to their predecessors and successors.
+    data: TiVec<Block, CFGNode>,
+    /// The memory pool to store predecessor sets.
+    pred_forest: bforest::SetForest<Block>,
+    /// Is this CFG valid?
+    valid: bool,
+}
+
+/// A container for the successors and predecessors of some block.
 #[derive(Clone, Default)]
 pub struct CFGNode {
     pub predecessors: bforest::Set<Block>,
     pub successors: Successors,
 }
 
-/// Two possible successor blocks.
+/// Each `CFGNode` has at most two possible successor blocks.
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
 pub struct Successors(pub PackedOption<Block>, pub PackedOption<Block>);
 
+/// Iterators over block predecessors/successors.
+pub type PredIter<'a> = bforest::SetIter<'a, Block>;
+pub type PredRevIter<'a> = bforest::RevSetIter<'a, Block>;
+pub type SuccIter = FilterMap<
+    std::array::IntoIter<PackedOption<Block>, 2>,
+    fn(PackedOption<Block>) -> Option<Block>,
+>;
+
 impl Successors {
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.0.is_none()
+    }
+    #[inline]
+    pub fn contains(self, block: Block) -> bool {
+        let expected = PackedOption::from(block);
+        (self.0 == expected) | (self.1 == expected)
+    }
+    #[inline]
+    pub fn iter(self) -> SuccIter {
+        [self.0, self.1].into_iter().filter_map(|it| it.expand())
+    }
+    #[inline]
+    pub fn as_array(self) -> [PackedOption<Block>; 2] {
+        [self.0, self.1]
+    }
+    #[inline]
+    pub fn as_pair(self) -> Option<(Block, Block)> {
+        Some((self.0.expand()?, self.1.expand()?))
+    }
+
     #[inline]
     pub fn clear(&mut self) {
         self.0 = None.into();
         self.1 = None.into();
     }
-
     #[inline]
     pub fn pop(&mut self) -> Option<Block> {
         self.1.take().or_else(|| self.0.take())
     }
-
     #[inline]
-    pub fn insert(&mut self, bb: Block) -> bool {
-        let res = PackedOption::from(bb);
+    pub fn insert(&mut self, block: Block) -> bool {
+        let res = PackedOption::from(block);
         if self.0.is_none() {
             self.0 = res;
         } else if self.0 == res {
@@ -57,121 +97,26 @@ impl Successors {
         } else if self.1 == res {
             return false;
         } else if cfg!(debug_assertions) {
-            unreachable!("not space to insert {} into [{:?}, {:?}]", bb, self.0, self.1);
+            unreachable!("no space to insert {block} into [{:?}, {:?}]", self.0, self.1);
         }
 
         true
     }
+}
 
-    #[inline]
-    pub fn is_empty(self) -> bool {
-        self.0.is_none()
-    }
+impl Index<Block> for ControlFlowGraph {
+    type Output = CFGNode;
 
-    #[inline]
-    pub fn contains(self, bb: Block) -> bool {
-        let expected = PackedOption::from(bb);
-        (self.0 == expected) | (self.1 == expected)
-    }
-
-    #[inline]
-    pub fn iter(self) -> SuccIter {
-        [self.0, self.1].into_iter().filter_map(|it| it.expand())
-    }
-
-    #[inline]
-    pub fn as_array(self) -> [PackedOption<Block>; 2] {
-        [self.0, self.1]
-    }
-
-    pub fn as_pair(self) -> Option<(Block, Block)> {
-        Some((self.0.expand()?, self.1.expand()?))
+    fn index(&self, block: Block) -> &Self::Output {
+        &self.data[block]
     }
 }
 
-/// Iterator over block predecessors/successors. The iterator type is `Block`.
-pub type PredIter<'a> = bforest::SetIter<'a, Block>;
-pub type PredRevIter<'a> = bforest::RevSetIter<'a, Block>;
-pub type SuccIter = FilterMap<
-    std::array::IntoIter<PackedOption<Block>, 2>,
-    fn(PackedOption<Block>) -> Option<Block>,
->;
-
-/// The Control Flow Graph maintains
-#[derive(Clone)]
-pub struct ControlFlowGraph {
-    /// Mapping of blocks to their predecessors and successors.
-    data: TiVec<Block, CFGNode>,
-    /// The memory pool where all predecessors are stored.
-    pred_forest: bforest::SetForest<Block>,
-    /// Is this CFG valid?
-    valid: bool,
-}
-
-/// A CFG rendered using GraphViz API
-pub struct CfgRender<'a> {
-    pub cfg: &'a ControlFlowGraph,
-    pub func: &'a Function,
-    pub name: &'a str,
-}
-
-impl ControlFlowGraph {
-    pub fn render(&self, dst: &Path, name: &str, func: &Function) {
-        CfgRender { cfg: self, func, name }.to_dot(dst)
-    }
-}
-
-impl CfgRender<'_> {
-    pub fn to_dot(&self, dst: &Path) {
-        let mut dst = File::create(dst).unwrap();
-        dot::render(self, &mut dst).unwrap()
-    }
-}
-
-impl<'a> dot::Labeller<'a, Block, (Block, Block)> for CfgRender<'a> {
-    fn graph_id(&'a self) -> dot::Id<'a> {
-        dot::Id::new(self.name).unwrap()
-    }
-
-    fn node_id(&'a self, n: &Block) -> dot::Id<'a> {
-        dot::Id::new(n.to_string()).unwrap()
-    }
-}
-
-impl<'a> dot::GraphWalk<'a, Block, (Block, Block)> for CfgRender<'a> {
-    fn nodes(&'a self) -> dot::Nodes<'a, Block> {
-        self.func.layout.blocks().collect()
-    }
-
-    fn edges(&'a self) -> dot::Edges<'a, (Block, Block)> {
-        self.func
-            .layout
-            .blocks()
-            .flat_map(|bb| self.cfg.data[bb].successors.iter().map(move |succ| (bb, succ)))
-            .collect()
-    }
-
-    fn source(&'a self, edge: &(Block, Block)) -> Block {
-        edge.0
-    }
-
-    fn target(&'a self, edge: &(Block, Block)) -> Block {
-        edge.1
-    }
-}
-
+/// Main APIs for operations on CFG.
 impl ControlFlowGraph {
     /// Allocate a new blank control flow graph.
     pub fn new() -> Self {
-        Self { data: TiVec::new(), valid: false, pred_forest: bforest::SetForest::new() }
-    }
-
-    /// Clear all data structures in this control flow graph.
-    pub fn clear(&mut self) {
-        self.data.clear();
-        self.pred_forest.clear();
-        self.data.raw.as_mut_slice().fill(CFGNode::default());
-        self.valid = false;
+        Default::default()
     }
 
     /// Allocate and compute the control flow graph for `func`.
@@ -181,9 +126,19 @@ impl ControlFlowGraph {
         cfg
     }
 
-    /// Compute the control flow graph of `func`.
+    /// Clear all data structures in this control flow graph.
+    pub fn clear(&mut self) {
+        self.data.clear();
+        self.pred_forest.clear();
+        self.data.fill(CFGNode::default());
+        self.valid = false;
+    }
+
+    /// Compute the control flow graph of `func` from scratch.
     ///
-    /// This will clear and overwrite any information already stored in this data structure.
+    /// # Note
+    /// * This will clear and overwrite any information already stored in CFG.
+    /// * This operation is expensive and `recompute_block` should be used when possible.
     pub fn compute(&mut self, func: &Function) {
         self.clear();
         self.data.resize(func.layout.num_blocks(), CFGNode::default());
@@ -208,14 +163,9 @@ impl ControlFlowGraph {
         }
     }
 
-    fn invalidate_block_successors(&mut self, block: Block) {
-        // Temporarily take ownership because we need mutable access to self.data inside the loop.
-        // Unfortunately borrowck cannot see that our mut accesses to predecessors don't alias
-        // our iteration over successors.
-        let successors = std::mem::take(&mut self.data[block].successors);
-        for succ in successors.iter() {
-            self.data[succ].predecessors.retain(&mut self.pred_forest, |pred| pred != block);
-        }
+    pub fn add_edge(&mut self, from: Block, to: Block) {
+        self.data[from].successors.insert(to);
+        self.data[to].predecessors.insert(from, &mut self.pred_forest, &());
     }
 
     /// Recompute the control flow graph of `block`.
@@ -250,40 +200,44 @@ impl ControlFlowGraph {
                     self.data[pred].successors.1 = new_;
                 }
             }
-
             self.data[new].predecessors.insert(pred, &mut self.pred_forest, &());
         }
         self.data[old].predecessors.clear(&mut self.pred_forest);
         self.invalidate_block_successors(old);
     }
 
-    pub fn add_edge(&mut self, from: Block, to: Block) {
-        self.data[from].successors.insert(to);
-        self.data[to].predecessors.insert(from, &mut self.pred_forest, &());
+    fn invalidate_block_successors(&mut self, block: Block) {
+        // Temporarily take ownership because we need mutable access to self.data inside the loop.
+        // Unfortunately borrowck cannot see that our mut accesses to predecessors don't alias
+        // our iteration over successors.
+        let successors = std::mem::take(&mut self.data[block].successors);
+        for succ in successors.iter() {
+            self.data[succ].predecessors.retain(&mut self.pred_forest, |pred| pred != block);
+        }
     }
 
     pub fn ensure_block(&mut self, block: Block) {
         self.data.resize(usize::from(block) + 1, CFGNode::default())
     }
 
-    /// Get an iterator over the CFG predecessors to `block`.
+    /// Get an iterator over the predecessors to `block`.
     pub fn pred_iter(&self, block: Block) -> PredIter<'_> {
         self.data[block].predecessors.iter(&self.pred_forest)
     }
 
-    /// Get an reverse iterator over the CFG predecessors to `block`.
+    /// Get an reverse iterator over the predecessors to `block`.
     pub fn pred_rev_iter(&self, block: Block) -> PredRevIter<'_> {
         self.data[block].predecessors.iter_rev(&self.pred_forest)
-    }
-
-    pub fn is_predecessor(&self, test_block: Block, this: Block) -> bool {
-        self.data[this].predecessors.contains(test_block, &self.pred_forest, &())
     }
 
     /// Get an iterator over the CFG successors to `block`.
     pub fn succ_iter(&self, block: Block) -> SuccIter {
         debug_assert!(self.is_valid());
         self.data[block].successors.iter()
+    }
+
+    pub fn is_predecessor(&self, test_block: Block, this: Block) -> bool {
+        self.data[this].predecessors.contains(test_block, &self.pred_forest, &())
     }
 
     #[inline]
@@ -295,30 +249,22 @@ impl ControlFlowGraph {
     #[inline]
     pub fn unique_successor_of(&self, block: Block) -> Option<Block> {
         let mut iter = self.succ_iter(block);
-        let res = iter.next();
-        if iter.next().is_none() {
-            res
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    pub fn self_loop(&self, bb: Block) -> bool {
-        let mut iter = self.pred_iter(bb);
-        iter.all(|pred| pred == bb)
+        let res = iter.next()?;
+        iter.next().is_none().then_some(res)
     }
 
     /// Returns the single predecessor of `block`, if any.
     #[inline]
-    pub fn single_predecessor_of(&self, bb: Block) -> Option<Block> {
-        let mut iter = self.pred_iter(bb);
+    pub fn single_predecessor_of(&self, block: Block) -> Option<Block> {
+        let mut iter = self.pred_iter(block);
         let res = iter.next()?;
-        if iter.next().is_none() {
-            Some(res)
-        } else {
-            None
-        }
+        iter.next().is_none().then_some(res)
+    }
+
+    #[inline]
+    pub fn self_loop(&self, block: Block) -> bool {
+        let mut iter = self.pred_iter(block);
+        iter.all(|pred| pred == block)
     }
 
     /// Check if the CFG is in a valid state.
@@ -326,18 +272,9 @@ impl ControlFlowGraph {
     /// Note that this doesn't perform any kind of validity checks. It simply checks if the
     /// `compute()` method has been called since the last `clear()`. It does not check that the
     /// CFG is consistent with the function.
+    #[inline]
     pub fn is_valid(&self) -> bool {
         self.valid
-    }
-
-    #[inline]
-    pub fn reverse_postorder_from(&self, start: Block) -> ReversePostorder {
-        ReversePostorder::new(self, start)
-    }
-
-    #[inline]
-    pub fn reverse_postorder(&self, func: &Function) -> ReversePostorder {
-        ReversePostorder::new(self, func.layout.entry_block().unwrap())
     }
 
     #[inline]
@@ -349,18 +286,14 @@ impl ControlFlowGraph {
     pub fn postorder(&self, func: &Function) -> Postorder {
         Postorder::new(self, func.layout.entry_block().unwrap())
     }
-}
 
-impl Default for ControlFlowGraph {
-    fn default() -> Self {
-        Self::new()
+    #[inline]
+    pub fn reverse_postorder_from(&self, start: Block) -> ReversePostorder {
+        ReversePostorder::new(self, start)
     }
-}
 
-impl Index<Block> for ControlFlowGraph {
-    type Output = CFGNode;
-
-    fn index(&self, bb: Block) -> &Self::Output {
-        &self.data[bb]
+    #[inline]
+    pub fn reverse_postorder(&self, func: &Function) -> ReversePostorder {
+        ReversePostorder::new(self, func.layout.entry_block().unwrap())
     }
 }

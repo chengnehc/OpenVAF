@@ -5,8 +5,7 @@ use stdx::{impl_debug, impl_idx_from};
 
 use ahash::AHashMap;
 use bitset::HybridBitSet;
-use mir::Unknown;
-use mir::{FuncRef, KnownDerivatives, Value};
+use mir::{FuncRef, KnownDerivatives, Unknown, Value};
 use typed_indexmap::TiSet;
 
 /// An opaque reference to a derivative.
@@ -15,7 +14,7 @@ use typed_indexmap::TiSet;
 pub struct Derivative(u32);
 impl_idx_from!(Derivative(u32));
 impl_debug! {match Derivative{
-    Derivative(raw) => "derivative{}",raw;
+    Derivative(raw) => "derivative{}", raw;
 }}
 
 impl Derivative {

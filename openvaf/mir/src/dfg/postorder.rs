@@ -4,7 +4,7 @@ use crate::{DataFlowGraph, Inst, InstUseIter, Use, Value};
 
 pub type PostorderParts<'a> = (BitSet<Inst>, Vec<(Inst, InstUseIter<'a>)>);
 
-/// Postorder traversal of a data flow graph
+/// Postorder traversal of instructions in a data flow graph
 ///
 /// Postorder traversal is when each node is visited after all of its
 /// successors, except when the successor is only reachable by a back-edge
@@ -39,23 +39,24 @@ impl<'a, F: FnMut(Inst) -> bool> Postorder<'a, F> {
         }
     }
 
+    pub fn from_parts(dfg: &'a DataFlowGraph, mut parts: PostorderParts<'a>, descend: F) -> Self {
+        parts.0.ensure(dfg.num_insts());
+
+        Postorder { dfg, visited: parts.0, visit_stack: parts.1, descend }
+    }
+
     pub fn into_parts(self) -> PostorderParts<'a> {
         (self.visited, self.visit_stack)
     }
 
-    pub fn from_parts(dfg: &'a DataFlowGraph, mut parts: PostorderParts<'a>, descend: F) -> Self {
-        parts.0.ensure(dfg.num_insts());
-        Postorder { dfg, visited: parts.0, visit_stack: parts.1, descend }
+    pub fn clear(&mut self) {
+        self.visited.clear();
     }
 
     pub fn populate(&mut self, val: Value) {
         for use_ in self.dfg.uses(val) {
             self.traverse_use(use_)
         }
-    }
-
-    pub fn clear(&mut self) {
-        self.visited.clear();
     }
 
     pub fn traverse_successor(&mut self) {
@@ -65,11 +66,11 @@ impl<'a, F: FnMut(Inst) -> bool> Postorder<'a, F> {
     }
 
     fn traverse_use(&mut self, use_: Use) {
-        let inst = self.dfg.use_to_operand(use_).0;
+        let inst = self.dfg.use_to_user(use_);
         self.traverse_inst(inst);
     }
 
-    pub fn traverse_inst(&mut self, inst: Inst) {
+    fn traverse_inst(&mut self, inst: Inst) {
         if (self.descend)(inst) && self.visited.insert(inst) {
             self.visit_stack.push((inst, self.dfg.inst_uses(inst)));
         }
@@ -80,18 +81,17 @@ impl<F: FnMut(Inst) -> bool> Iterator for Postorder<'_, F> {
     type Item = Inst;
 
     fn next(&mut self) -> Option<Inst> {
-        let next = self.visit_stack.pop().map(|(inst, _)| inst);
-        if next.is_some() {
-            self.traverse_successor();
-        }
+        let (inst, _) = self.visit_stack.pop()?;
+        self.traverse_successor();
 
-        next
+        Some(inst)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
+        let lower = self.visit_stack.len();
         // All the blocks, minus the number of blocks we've visited.
         let upper = self.dfg.num_insts() - self.visited.count();
-        let lower = self.visit_stack.len();
+
         (lower, Some(upper))
     }
 }

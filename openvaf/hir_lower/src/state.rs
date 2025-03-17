@@ -27,6 +27,6 @@ impl HirInterner {
             }
         }
         ctxt.ensured_sealed();
-        ctxt.func.func.layout.append_inst_to_bb(term, ctxt.current_block())
+        ctxt.func.func.layout.append_inst_to_block(term, ctxt.current_block())
     }
 }

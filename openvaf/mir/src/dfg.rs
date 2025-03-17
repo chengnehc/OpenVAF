@@ -258,9 +258,7 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that interact with values.
-///
-/// These are just wrappers around functions defined for `DfgValues` for convenience
+/// Routines that interact with `DfgValues`
 impl DataFlowGraph {
     pub fn num_values(&self) -> usize {
         self.values.num()
@@ -270,27 +268,18 @@ impl DataFlowGraph {
         self.values.iter()
     }
 
-    pub fn value_is_valid(&self, v: Value) -> bool {
-        self.values.is_valid(v)
-    }
-
     /// Get the definition source of a value.
     #[inline]
     pub fn value_def(&self, v: Value) -> ValueDef {
         self.values.def(v)
     }
 
-    pub fn tag(&self, val: Value) -> Option<Tag> {
-        self.values.get_tag(val)
+    pub fn value_valid(&self, v: Value) -> bool {
+        self.values.is_valid(v)
     }
 
-    pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
-        self.values.set_tag(val, tag)
-    }
-
-    /// A value is attached if it is an instruction result or a function parameter.
-    ///
-    /// An attached value can't be attached to something else without first being detached.
+    /// A value is attached if it is an instruction result.
+    /// Such value can't be attached to something else without first being detached.
     pub fn value_attached(&self, v: Value) -> bool {
         match self.values.defs[v].ty {
             ValueDataType::Inst { inst, idx, .. } => {
@@ -300,8 +289,17 @@ impl DataFlowGraph {
         }
     }
 
+    /// A value is dead if it is not used by any instruction in the DFG.
     pub fn value_dead(&self, val: Value) -> bool {
         self.values.is_dead(val)
+    }
+
+    pub fn get_tag(&self, val: Value) -> Option<Tag> {
+        self.values.get_tag(val)
+    }
+
+    pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
+        self.values.set_tag(val, tag)
     }
 
     pub fn make_param(&mut self, param: Param) -> Value {
@@ -329,12 +327,40 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that interact with uses.
-///
-/// These are just wrappers around functions defined for `DfgValues` for convenience
+/// Routines that interact with `Use`s.
 impl DataFlowGraph {
-    pub fn make_use(&mut self, val: Value, parent: Inst, parent_idx: u16) -> Use {
-        self.values.make_use(val, parent, parent_idx)
+    /// Return an iterator over all uses of a given value
+    pub fn uses(&self, value: Value) -> UseIter<'_> {
+        self.values.uses(value)
+    }
+
+    /// Return a double-ended iterator over all uses of a given value
+    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
+        self.values.uses_double_ended(value)
+    }
+
+    pub fn use_to_user(&self, use_: Use) -> Inst {
+        self.values.use_to_user(use_)
+    }
+
+    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
+        self.values.use_to_operand(use_)
+    }
+
+    pub fn use_to_value(&self, use_: Use) -> Value {
+        self.values.use_to_value(use_, &self.insts)
+    }
+
+    pub fn use_to_value_mut(&mut self, use_: Use) -> &mut Value {
+        self.values.use_to_value_mut(use_, &mut self.insts)
+    }
+
+    pub fn make_use(&mut self, val: Value, user: Inst, pos: u16) -> Use {
+        self.values.make_use(val, user, pos)
+    }
+
+    pub fn attach_use(&mut self, use_: Use, val: Value) {
+        self.values.attach_use(use_, val);
     }
 
     pub fn detach_use(&mut self, use_: Use) {
@@ -347,55 +373,27 @@ impl DataFlowGraph {
         debug_assert_eq!(pos as usize, pos_);
     }
 
-    pub fn detach_operand(&mut self, inst: Inst, pos: u16) {
-        let use_ = self.operands(inst)[pos as usize];
-        self.values.detach_use(use_, &self.insts)
-    }
-
     pub fn attach_operand(&mut self, inst: Inst, pos: u16) {
         let use_ = self.insts.uses[inst].as_slice(&self.insts.use_lists)[pos as usize];
         let val = self.insts.args(inst)[pos as usize];
         self.values.attach_use(use_, val);
     }
 
+    pub fn detach_operand(&mut self, inst: Inst, pos: u16) {
+        let use_ = self.operands(inst)[pos as usize];
+        self.values.detach_use(use_, &self.insts)
+    }
+
     pub fn set_operand_value(&mut self, val: Value, inst: Inst, pos: u16) {
         let use_ = self.insts.uses[inst].as_slice(&self.insts.use_lists)[pos as usize];
-        self.use_set_value(use_, val)
+        self.set_use_value(use_, val)
     }
 
-    pub fn attach_use(&mut self, use_: Use, val: Value) {
-        self.values.attach_use(use_, val);
-    }
-
-    pub fn is_use_detached(&self, use_: Use) -> bool {
-        self.values.is_use_detached(use_)
-    }
-
-    pub fn uses(&self, value: Value) -> UseIter<'_> {
-        self.values.uses(value)
-    }
-
-    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
-        self.values.uses_double_ended(value)
-    }
-
-    pub fn uses_head_cursor(&self, value: Value) -> UseCursor {
-        self.values.uses_head_cursor(value)
-    }
-
-    pub fn uses_tail_cursor(&self, value: Value) -> UseCursor {
-        self.values.uses_tail_cursor(value)
-    }
-
-    pub fn use_to_value(&self, use_: Use) -> Value {
-        self.values.use_to_value(use_, &self.insts)
-    }
-
-    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
-        self.values.use_to_operand(use_)
-    }
-
-    pub fn use_to_value_mut(&mut self, use_: Use) -> &mut Value {
-        self.values.use_to_value_mut(use_, &mut self.insts)
+    pub fn set_use_value(&mut self, use_: Use, val: Value) {
+        debug_assert!(!self.values.is_use_detached(use_));
+        self.values.detach_use(use_, &self.insts);
+        let data = self.values.uses[use_];
+        self.insts.args_mut(data.user)[data.idx as usize] = val;
+        self.attach_use(use_, val);
     }
 }

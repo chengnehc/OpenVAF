@@ -66,17 +66,17 @@ impl Function {
                 }
 
                 for use_ in self.dfg.inst_uses(inst) {
-                    let (use_inst, _) = self.dfg.use_to_operand(use_);
+                    let user = self.dfg.use_to_user(use_);
                     let use_val = use_.to_value(&self.dfg);
                     assert!(
                         self.dfg.inst_results(inst).contains(&use_val),
                         "invalid use {} ({use_val})",
-                        self.dfg.display_inst(use_inst)
+                        self.dfg.display_inst(user)
                     );
                     assert!(
-                        self.layout.inst_block(use_inst).is_some(),
+                        self.layout.inst_block(user).is_some(),
                         "removed use {}",
-                        self.dfg.display_inst(use_inst)
+                        self.dfg.display_inst(user)
                     );
                 }
 

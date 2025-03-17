@@ -360,8 +360,7 @@ impl<'ll> Builder<'_, '_, 'll> {
         let entry = self.mir.layout.entry_block().unwrap();
         llvm::LLVMBuildBr(self.llbuilder, self.blocks[entry].unwrap());
 
-        let mut cfg = ControlFlowGraph::new();
-        cfg.compute(self.mir);
+        let cfg = ControlFlowGraph::with_function(self.mir);
         let po: Vec<_> = cfg.postorder(self.mir).collect();
         drop(cfg);
         for bb in po.into_iter().rev() {

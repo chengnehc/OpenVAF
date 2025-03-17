@@ -400,9 +400,8 @@ impl BodyLowerContext<'_, '_, '_> {
                         NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                             let hi = self.body.into_node(args[0]);
                             let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                            self.ctxt.nodes(hi, lo,
-                            |hi, lo| ParamKind::Current(CurrentKind::Unnamed{hi, lo})
-                        )},
+                            self.ctxt.nodes(hi, lo, |hi, lo| ParamKind::Current(CurrentKind::Unnamed{hi, lo}))
+                        },
                         NATURE_ACCESS_BRANCH => self.ctxt.use_param(ParamKind::Current(
                             CurrentKind::Branch(self.body.into_branch(args[0]))
                         )),
@@ -438,21 +437,21 @@ impl BodyLowerContext<'_, '_, '_> {
                 if self.ctxt.no_equations {
                     return F_ZERO;
                 }
-                // JW: it seems that tolerance is currently not supported.
+                // JW: tolerance is currently not supported
                 let arg = self.lower_expr(args[0]);
                 self.ctxt.call1(CallBackKind::TimeDerivative, &[arg])
             }
             BuiltIn::ddx => {
                 let val = self.lower_expr(args[0]);
                 let unknown = self.lower_expr(args[1]);
-                let call = if signature == DDX_POT {
+                let kind = if signature == DDX_POT {
                     // TODO how to handle gnd nodes?
                     let node = self.ctxt.unwrap_pot_node(unknown);
                     CallBackKind::NodeDerivative(node)
                 } else {
                     CallBackKind::Derivative(self.ctxt.dfg().value_def(unknown).unwrap_param())
                 };
-                self.ctxt.call1(call, &[val])
+                self.ctxt.call1(kind, &[val])
             }
             BuiltIn::idt | BuiltIn::idtmod if self.ctxt.no_equations => {
                 match signature {

@@ -89,8 +89,8 @@ fn syntax_ui(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let (_, actual) = db.parse_and_check();
 
-    std::fs::write(file.with_extension("log"), actual)?;
-    //expect_file![file.with_extension("log")].assert_eq(&actual);
+    // std::fs::write(file.with_extension("log"), actual)?;
+    expect_file![file.with_extension("log")].assert_eq(&actual);
 
     Ok(())
 }

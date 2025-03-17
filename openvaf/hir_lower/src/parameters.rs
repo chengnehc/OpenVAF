@@ -309,7 +309,7 @@ impl HirInterner {
             ctx.ctxt.switch_to_block(exit);
         }
         ctxt.ensured_sealed();
-        ctxt.func.func.layout.append_inst_to_bb(term, ctxt.current_block());
+        ctxt.func.func.layout.append_inst_to_block(term, ctxt.current_block());
 
         for (i, param) in params.iter().copied().enumerate() {
             let val = &mut self.params.raw[&ParamKind::Param(param)];

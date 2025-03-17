@@ -97,7 +97,7 @@ impl<'a> Builder<'a> {
     /// Consume the builder and generate the DAE system
     pub(super) fn finish(mut self) -> DaeSystem {
         let sim_unknown_reads = self.sim_unknown_reads();
-        let derivative_info = self.intern.unknowns(&self.cursor, true);
+        let derivative_info = self.intern.derivative_info(&self.cursor, true);
         let extra_derivatives = self
             .jacobian_derivatives(sim_unknown_reads.iter().map(|&(_, val)| val), &derivative_info);
         // TODO(perf): incrementally update dom_tree (for switch branches) instead
