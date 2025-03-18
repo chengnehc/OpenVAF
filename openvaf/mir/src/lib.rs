@@ -61,7 +61,7 @@ pub use crate::entities::{AnyEntity, Block, FuncRef, Inst, Param, Use, Value};
 pub use crate::instructions::{
     InstructionData, InstructionFormat, Opcode, PhiMap, PhiNode, ValueList, ValueListPool,
 };
-pub use crate::layout::{Insts, Layout};
+pub use crate::layout::{InstIter, Layout};
 
 /// A MIR function.
 ///
@@ -236,15 +236,6 @@ impl SourceLoc {
         self.0 *= -1;
     }
 }
-
-// JW: cranelift IR uses the all-ones bit pattern `!0` as default instead
-/*
-impl Default for SourceLoc {
-    fn default() -> Self {
-        Self(!0)
-    }
-}
-*/
 
 impl fmt::Display for SourceLoc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

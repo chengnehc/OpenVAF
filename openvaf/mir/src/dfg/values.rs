@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use stdx::packed_option::PackedOption;
 
 use ahash::AHashMap;
@@ -344,12 +343,6 @@ impl DfgValues {
     }
     pub fn set_tag(&mut self, val: Value, tag: Option<Tag>) {
         self.defs[val].tag = tag.into()
-    }
-}
-
-impl Borrow<DfgValues> for DataFlowGraph {
-    fn borrow(&self) -> &DfgValues {
-        &self.values
     }
 }
 

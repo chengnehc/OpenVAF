@@ -138,7 +138,19 @@ pub trait Cursor {
         self
     }
 
-    /// Rebuild this cursor positioned at the last instruction in `block`.
+    /// Rebuild this cursor positioned at the last instruction in `block`
+    ///
+    /// This is intended to be used as a builder method:
+    ///
+    /// ```
+    /// # use cranelift_codegen::ir::{Function, Block, Inst};
+    /// # use cranelift_codegen::cursor::{Cursor, FuncCursor};
+    /// fn edit_func(func: &mut Function, block: Block) {
+    ///     let mut pos = FuncCursor::new(func).at_last_inst(block);
+    ///
+    ///     // Use `pos`...
+    /// }
+    /// ```
     fn at_last_inst(mut self, block: Block) -> Self
     where
         Self: Sized,
@@ -148,6 +160,17 @@ pub trait Cursor {
     }
 
     /// Rebuild this cursor positioned after `inst`.
+    /// This is intended to be used as a builder method:
+    ///
+    /// ```
+    /// # use cranelift_codegen::ir::{Function, Block, Inst};
+    /// # use cranelift_codegen::cursor::{Cursor, FuncCursor};
+    /// fn edit_func(func: &mut Function, inst: Inst) {
+    ///     let mut pos = FuncCursor::new(func).after_inst(inst);
+    ///
+    ///     // Use `pos`...
+    /// }
+    /// ```
     fn after_inst(mut self, inst: Inst) -> Self
     where
         Self: Sized,
@@ -217,12 +240,6 @@ pub trait Cursor {
     {
         self.goto_exit();
         self
-    }
-
-    /// Go to the bottom of the exit `block`.
-    /// At this position, inserted instructions will be appended to `block`.
-    fn goto_exit(&mut self) {
-        self.goto_bottom(self.layout().exit_block().unwrap());
     }
 
     /// Get the block corresponding to the current position.
@@ -298,6 +315,12 @@ pub trait Cursor {
     fn goto_bottom(&mut self, block: Block) {
         debug_assert!(self.layout().is_block_inserted(block));
         self.set_position(CursorPosition::After(block));
+    }
+
+    /// Go to the bottom of the exit `block`.
+    /// At this position, inserted instructions will be appended to `block`.
+    fn goto_exit(&mut self) {
+        self.goto_bottom(self.layout().exit_block().unwrap());
     }
 
     /// Go to the top of the next block in layout order and return it.
@@ -550,6 +573,26 @@ impl<'f> FuncCursor<'f> {
         Self { pos: CursorPosition::Nowhere, srcloc: Default::default(), func }
     }
 
+    /// Rebuild this cursor positioned after `inst`.
+    ///
+    /// If `inst` is a phi, advance until the following instruction is not a phi instruction.
+    ///
+    /// This is intended for situations where an instruction will be inserted after the definition
+    /// of an unknown value.
+    pub fn after_inst_no_phi(self, mut inst: Inst) -> Self
+    where
+        Self: Sized,
+    {
+        while let Some(next) = self.layout().next_inst(inst) {
+            if self.func.dfg.insts[next].is_phi() {
+                inst = next;
+            } else {
+                break;
+            }
+        }
+        self.after_inst(inst)
+    }
+
     /// Use the source location of `inst` for future instructions.
     pub fn use_srcloc(&mut self, inst: Inst) {
         self.srcloc = self.func.srclocs[inst];
@@ -558,26 +601,6 @@ impl<'f> FuncCursor<'f> {
     /// Create an instruction builder that inserts an instruction at the current position.
     pub fn ins(&mut self) -> InsertBuilder<&mut FuncCursor<'f>> {
         InsertBuilder::new(self)
-    }
-
-    /// Rebuild this cursor positioned after `inst`.
-    /// If `inst` is a phi instruction this function will advance until the following instruction
-    /// is not a phi instruction.
-    ///
-    /// This is intended for situtions where an instruction will be inserted after the definition
-    /// of an unknown value.
-    pub fn after_inst_no_phi(self, mut inst: Inst) -> Self
-    where
-        Self: Sized,
-    {
-        while let Some(next) = self.func.layout.next_inst(inst) {
-            if self.func.dfg.insts[next].is_phi() {
-                inst = next;
-            } else {
-                break;
-            }
-        }
-        self.after_inst(inst)
     }
 }
 

@@ -38,10 +38,8 @@ fn make_inst() {
     assert_eq!(dfg.uses(v3).count(), 0);
     // `v2` is used twice by `inst` as its operands.
     assert_eq!(dfg.uses(v2).count(), 2);
-    // JW: linked list is FIFO, so reverse the iterator first.
-    // The code does not make any guarantee about the order of the iterator, so if
-    // this test ever fails because of order, it's ok to change this.
-    assert_eq!(dfg.uses_double_ended(v2).rev().collect::<Vec<_>>(), dfg.operands(inst));
+
+    assert_eq!(dfg.uses(v2).rev().collect::<Vec<_>>(), dfg.operands(inst));
 
     // test that updating is a noop when nothing has changed
     dfg.zap_inst(inst);
@@ -52,7 +50,7 @@ fn make_inst() {
     assert_eq!(dfg.instr_args(inst), &[F_ZERO, F_ZERO]);
     assert_eq!(dfg.uses(F_ZERO).count(), 3);
     assert!(dfg.value_dead(v2));
-    assert_eq!(dfg.uses_double_ended(v2).rev().count(), 0);
+    assert_eq!(dfg.uses(v2).count(), 0);
 
     dfg.zap_inst(inst);
     assert_eq!(dfg.uses(v1).count(), 1);

@@ -8,8 +8,8 @@ pub fn dead_code_elimination(func: &mut Function, output_values: &BitSet<Value>)
     let mut work_list =
         WorkQueue { deque: VecDeque::new(), set: BitSet::new_filled(func.dfg.num_insts()) };
 
-    let mut block_cursor = func.layout.rev_block_cursor();
-    while let Some(block) = block_cursor.next(&func.layout) {
+    let mut block_cursor = func.layout.block_cursor();
+    while let Some(block) = block_cursor.next_back(&func.layout) {
         let mut inst_cursor = func.layout.block_inst_cursor(block);
         while let Some(inst) = inst_cursor.next_back(&func.layout) {
             process(&mut work_list, inst, func, output_values);

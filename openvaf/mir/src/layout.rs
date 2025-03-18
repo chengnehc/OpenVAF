@@ -156,7 +156,6 @@ impl Layout {
             curr = n.next.expand();
             *n = InstNode::default();
         }
-
         self.blocks[block].first_inst = None.into();
         self.blocks[block].last_inst = None.into();
     }
@@ -165,7 +164,7 @@ impl Layout {
         debug_assert!(self.is_block_inserted(block), "block not in the layout");
         debug_assert!(self.first_inst(block).is_none(), "block must be empty.");
 
-        // Clear the `block` node and extract links.
+        // Extract links and clear the `block` node.
         let n = &mut self.blocks[block];
         let prev = n.prev;
         let next = n.next;
@@ -213,16 +212,12 @@ impl Layout {
     }
 
     /// Return an iterator over all blocks in layout order.
-    pub fn blocks(&self) -> Blocks {
-        Blocks { layout: self, next: self.first_block }
+    pub fn blocks(&self) -> BlockIter {
+        BlockIter { layout: self, cursor: self.block_cursor() }
     }
 
     pub fn block_cursor(&self) -> BlockCursor {
-        BlockCursor { next: self.first_block }
-    }
-
-    pub fn rev_block_cursor(&self) -> RevBlockCursor {
-        RevBlockCursor { next: self.last_block }
+        BlockCursor { head: self.first_block.into(), tail: self.last_block.into() }
     }
 }
 
@@ -234,50 +229,60 @@ struct BlockNode {
     last_inst: PackedOption<Inst>,
 }
 
-pub struct Blocks<'f> {
+pub struct BlockIter<'f> {
     layout: &'f Layout,
-    next: Option<Block>,
+    cursor: BlockCursor,
 }
-impl Iterator for Blocks<'_> {
+impl Iterator for BlockIter<'_> {
     type Item = Block;
 
     fn next(&mut self) -> Option<Block> {
-        let block = self.next?;
-        self.next = self.layout.next_block(block);
+        self.cursor.next(self.layout)
+    }
+}
 
-        Some(block)
+impl DoubleEndedIterator for BlockIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.cursor.next_back(self.layout)
     }
 }
 
 /// Use a layout reference in a for loop.
 impl<'f> IntoIterator for &'f Layout {
     type Item = Block;
-    type IntoIter = Blocks<'f>;
+    type IntoIter = BlockIter<'f>;
 
-    fn into_iter(self) -> Blocks<'f> {
+    fn into_iter(self) -> BlockIter<'f> {
         self.blocks()
     }
 }
 
 pub struct BlockCursor {
-    pub next: Option<Block>,
+    pub head: PackedOption<Block>,
+    pub tail: PackedOption<Block>,
 }
+
 impl BlockCursor {
     pub fn next(&mut self, layout: &Layout) -> Option<Block> {
-        let block = self.next?;
-        self.next = layout.next_block(block);
+        let block = self.head.expand()?;
+        if self.head == self.tail {
+            self.head = None.into();
+            self.tail = None.into();
+        } else {
+            self.head = layout.blocks[block].next
+        }
 
         Some(block)
     }
-}
 
-pub struct RevBlockCursor {
-    pub next: Option<Block>,
-}
-impl RevBlockCursor {
-    pub fn next(&mut self, layout: &Layout) -> Option<Block> {
-        let block = self.next?;
-        self.next = layout.prev_block(block);
+    pub fn next_back(&mut self, layout: &Layout) -> Option<Block> {
+        let block = self.tail.expand()?;
+        if self.head == self.tail {
+            self.head = None.into();
+            self.tail = None.into();
+        } else {
+            self.tail = layout.blocks[block].prev
+        }
 
         Some(block)
     }
@@ -314,19 +319,13 @@ impl Layout {
     }
 
     /// Iterate over the instructions in `block` in layout order.
-    pub fn block_insts(&self, block: Block) -> Insts {
-        Insts {
-            layout: self,
-            head: self.blocks[block].first_inst.into(),
-            tail: self.blocks[block].last_inst.into(),
-        }
+    pub fn block_insts(&self, block: Block) -> InstIter {
+        let cursor = self.block_inst_cursor(block);
+        InstIter { layout: self, cursor }
     }
 
     pub fn block_inst_cursor(&self, block: Block) -> InstCursor {
-        InstCursor {
-            head: self.blocks[block].first_inst.into(),
-            tail: self.blocks[block].last_inst.into(),
-        }
+        InstCursor { head: self.first_inst(block).into(), tail: self.last_inst(block).into() }
     }
 
     /// Fetch the terminator of `block`, which is the last instruction within the block.
@@ -372,10 +371,10 @@ impl Layout {
             self.inst_block(before).expect("Instruction before insertion point not in the layout");
 
         let after = self.insts[before].prev;
-        let inst_node = &mut self.insts[inst];
-        inst_node.block = block.into();
-        inst_node.next = before.into();
-        inst_node.prev = after;
+        let n = &mut self.insts[inst];
+        n.block = block.into();
+        n.next = before.into();
+        n.prev = after;
         self.insts[before].prev = inst.into();
         match after.expand() {
             None => self.blocks[block].first_inst = inst.into(),
@@ -394,10 +393,10 @@ impl Layout {
             self.inst_block(after).expect("Instruction after insertion point not in the layout");
 
         let before = self.insts[after].next;
-        let inst_node = &mut self.insts[inst];
-        inst_node.block = block.into();
-        inst_node.next = before;
-        inst_node.prev = after.into();
+        let n = &mut self.insts[inst];
+        n.block = block.into();
+        n.next = before;
+        n.prev = after.into();
         self.insts[after].next = inst.into();
         match before.expand() {
             None => self.blocks[block].last_inst = inst.into(),
@@ -410,12 +409,10 @@ impl Layout {
         let block = self.inst_block(inst).expect("Instruction already removed.");
         let n = &mut self.insts[inst];
 
-        // Clear the `inst` node and extract links.
+        // Extract links and clear the `inst` node.
         let prev = n.prev;
         let next = n.next;
-        n.block = None.into();
-        n.prev = None.into();
-        n.next = None.into();
+        *n = InstNode::default();
 
         // Fix up links to `inst`.
         match prev.expand() {
@@ -431,22 +428,18 @@ impl Layout {
     /// Merges `succ` ito `pred` by removing the terminator from `pred` and appending all
     /// instructions of `succ` to `pred`. Afterwards `succ` is removed from the layout.
     ///
-    /// #Note
+    /// # Note
     /// It is up to the caller to ensure that this merge is valid:
-    ///
     /// * No phis remain in `succ`
     /// * `pred` is terminated by a `jump` to `succ`
     /// * no other branches to `succ` remain
-    /// * that `succ` has no arguments
     pub fn merge_blocks(&mut self, pred: Block, succ: Block) {
         // remove branch instructions from `pred`
         if let Some(succ_start) = self.blocks[succ].first_inst.expand() {
-            let pred_end = {
-                let mut cursor = self.block_inst_cursor(pred);
-                let jmp_branch = cursor.next_back(self).unwrap();
-                self.insts[jmp_branch] = InstNode::default();
-                cursor.next_back(self)
-            };
+            let term = self.block_terminator(pred).unwrap();
+            let pred_end = self.prev_inst(term);
+
+            self.insts[term] = InstNode::default();
 
             let mut cursor = self.block_inst_cursor(succ);
             while let Some(inst) = cursor.next(self) {
@@ -462,7 +455,6 @@ impl Layout {
                 // just update the block
                 self.blocks[pred].first_inst = self.blocks[succ].first_inst;
             }
-
             self.blocks[pred].last_inst = self.blocks[succ].last_inst;
         } else {
             // successor is empty... Kind of odd but probably valid (collapse empty jump the
@@ -552,74 +544,51 @@ struct InstNode {
 
 /// Iterate over instructions in a block in layout order. See `Layout::block_insts()`.
 #[derive(Clone)]
-pub struct Insts<'f> {
+pub struct InstIter<'f> {
     layout: &'f Layout,
-    head: Option<Inst>,
-    tail: Option<Inst>,
+    cursor: InstCursor,
 }
 
-impl<'f> Iterator for Insts<'f> {
+impl Iterator for InstIter<'_> {
     type Item = Inst;
 
     fn next(&mut self) -> Option<Inst> {
-        let rval = self.head;
-        if let Some(inst) = rval {
-            if self.head == self.tail {
-                self.head = None;
-                self.tail = None;
-            } else {
-                self.head = self.layout.insts[inst].next.into();
-            }
-        }
-        rval
+        self.cursor.next(self.layout)
     }
 }
 
-impl<'f> DoubleEndedIterator for Insts<'f> {
+impl DoubleEndedIterator for InstIter<'_> {
     fn next_back(&mut self) -> Option<Inst> {
-        let rval = self.tail;
-        if let Some(inst) = rval {
-            if self.head == self.tail {
-                self.head = None;
-                self.tail = None;
-            } else {
-                self.tail = self.layout.insts[inst].prev.into();
-            }
-        }
-        rval
+        self.cursor.next_back(self.layout)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct InstCursor {
-    pub head: Option<Inst>,
-    pub tail: Option<Inst>,
+    pub head: PackedOption<Inst>,
+    pub tail: PackedOption<Inst>,
 }
 
 impl InstCursor {
     pub fn next(&mut self, layout: &Layout) -> Option<Inst> {
-        let rval = self.head;
-        if let Some(inst) = rval {
-            if self.head == self.tail {
-                self.head = None;
-                self.tail = None;
-            } else {
-                self.head = layout.insts[inst].next.into();
-            }
+        let inst = self.head.expand()?;
+        if self.head == self.tail {
+            self.head = None.into();
+            self.tail = None.into();
+        } else {
+            self.head = layout.insts[inst].next;
         }
-        rval
+        Some(inst)
     }
 
     pub fn next_back(&mut self, layout: &Layout) -> Option<Inst> {
-        let rval = self.tail;
-        if let Some(inst) = rval {
-            if self.head == self.tail {
-                self.head = None;
-                self.tail = None;
-            } else {
-                self.tail = layout.insts[inst].prev.into();
-            }
+        let inst = self.tail.expand()?;
+        if self.head == self.tail {
+            self.head = None.into();
+            self.tail = None.into();
+        } else {
+            self.tail = layout.insts[inst].prev;
         }
-        rval
+        Some(inst)
     }
 }

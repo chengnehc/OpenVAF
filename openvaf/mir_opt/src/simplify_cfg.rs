@@ -54,7 +54,7 @@ impl SimplifyCfg<'_> {
             self.local_changed = false;
             let mut cursor = self.func.layout.block_cursor();
             // Loop over all of the basic blocks and remove them if they are unneeded.
-            while let Some(bb) = cursor.next {
+            while let Some(bb) = cursor.head.expand() {
                 self.simplify_bb(bb);
                 // only advance after simplification to avoid visiting dead blocks
                 cursor.next(&self.func.layout);
@@ -139,7 +139,7 @@ impl SimplifyCfg<'_> {
     fn simplify_duplicates_phis_naive(&mut self, bb: Block) {
         // This is worstcase O(n_phis^2) which is faster for smaller phis
         let mut cursor = self.func.layout.block_inst_cursor(bb);
-        while let Some(inst) = cursor.head {
+        while let Some(inst) = cursor.head.expand() {
             if let InstructionData::PhiNode(phi1) = self.func.dfg.insts[inst].clone() {
                 let val = self.func.dfg.first_result(inst);
                 let mut cursor2 = cursor;
@@ -150,7 +150,7 @@ impl SimplifyCfg<'_> {
                         if self.func.dfg.phi_eq(&phi1, phi2) {
                             let duplicate_val = self.func.dfg.first_result(inst2);
                             for use_ in self.func.dfg.uses(duplicate_val) {
-                                let inst = self.func.dfg.use_to_operand(use_).0;
+                                let inst = self.func.dfg.use_to_user(use_);
                                 if let Some(inst) = self.func.layout.inst_block(inst) {
                                     self.vals_changed.insert(inst);
                                 }

@@ -198,7 +198,7 @@ impl DataFlowGraph {
 
     /// Create a new instruction with `data`.
     pub fn make_inst(&mut self, data: InstructionData) -> Inst {
-        // add instructions
+        // add instruction data
         let inst = self.insts.decls.push_and_get_key(data);
         self.insts.results.push(ValueList::new());
         self.insts.uses.push(UseList::new());
@@ -221,7 +221,6 @@ impl DataFlowGraph {
         I: Iterator<Item = Option<Value>>,
     {
         let mut reuse = reuse.fuse();
-
         self.insts.results[inst].clear(&mut self.insts.value_lists);
 
         // Get the call signature if this is a function call.
@@ -243,27 +242,7 @@ impl DataFlowGraph {
         num_results
     }
 
-    /// Append a *new* value to the result value list for `inst`.
-    pub fn append_result(&mut self, inst: Inst, tag: Option<Tag>) -> Value {
-        let res = self.values.defs.next_key();
-        let idx = self.insts.results[inst].push(res, &mut self.insts.value_lists);
-        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
-        self.values.make(ValueDataType::Inst { inst, idx: idx as u16 }, tag)
-    }
-
-    /// Attach an existing value to the result value list for `inst`.
-    ///
-    /// The `res` value is appended to the end of the result list.
-    ///
-    /// This is a very low-level operation. Usually, instruction results are
-    /// created automatically. The `res` value must not be attached to anything else.
-    pub fn attach_result(&mut self, inst: Inst, res: Value) {
-        debug_assert!(!self.value_attached(res));
-        let idx = self.insts.results[inst].push(res, &mut self.insts.value_lists);
-        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
-        self.values.defs[res].ty = ValueDataType::Inst { idx: idx as u16, inst };
-    }
-
+    /// Update the `inst` using new `data`.
     pub fn update_inst(&mut self, inst: Inst, data: InstructionData) {
         self.zap_inst(inst);
         self.insts[inst] = data;
@@ -300,5 +279,27 @@ impl DataFlowGraph {
             // remove excess uses
             self.insts.uses[inst].truncate(arg_len, pool);
         }
+    }
+
+    /// Append a *new* value to the result value list for `inst`.
+    fn append_result(&mut self, inst: Inst, tag: Option<Tag>) -> Value {
+        let val = self.values.defs.next_key();
+        let idx = self.insts.results[inst].push(val, &mut self.insts.value_lists);
+        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
+        self.values.make(ValueDataType::Inst { inst, idx: idx as u16 }, tag)
+    }
+
+    /// Attach an *existing* value to the result value list for `inst`.
+    ///
+    /// The value is appended to the end of the result list. The value must
+    /// not be attached to anything else.
+    ///
+    /// This is a very low-level operation. Usually, instruction results are
+    /// created automatically.
+    fn attach_result(&mut self, inst: Inst, val: Value) {
+        debug_assert!(!self.value_attached(val));
+        let idx = self.insts.results[inst].push(val, &mut self.insts.value_lists);
+        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
+        self.values.defs[val].ty = ValueDataType::Inst { idx: idx as u16, inst };
     }
 }

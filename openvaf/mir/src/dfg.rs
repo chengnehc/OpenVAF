@@ -26,7 +26,7 @@ use insts::DfgInsts;
 use values::ValueDataType;
 
 pub use postorder::{Postorder, PostorderParts};
-pub use uses::{DoubleEndedUseIter, InstUseIter, UseCursor, UseIter};
+pub use uses::{InstUseIter, UseCursor, UseIter};
 pub use values::{consts, Const, DfgValues, ValueDef};
 
 /// A data flow graph defines all instructions and basic blocks in a function as well as
@@ -77,9 +77,7 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that interact with instructions.
-///
-/// These are just wrappers around the functions defined for `DfgInsts` for convenience
+/// Routines that query dfg instructions
 impl DataFlowGraph {
     /// Get the total number of instructions created in this function, whether they are currently
     /// inserted in the layout or not.
@@ -168,9 +166,9 @@ impl fmt::Display for DisplayInst<'_> {
         let DisplayInst(dfg, inst) = *self;
 
         if let Some((first, rest)) = dfg.inst_results(inst).split_first() {
-            write!(f, "{}", first)?;
+            write!(f, "{first}")?;
             for v in rest {
-                write!(f, ", {}", v)?;
+                write!(f, ", {v}")?;
             }
             write!(f, " = ")?;
         }
@@ -180,9 +178,9 @@ impl fmt::Display for DisplayInst<'_> {
     }
 }
 
-// Dealing with results of instructions.
 impl DataFlowGraph {
     /// An instruction is safe to remove if none of its results is used anywhere.
+    /// Howerver, an instruction could have side effects.
     pub fn instr_safe_to_remove(&self, inst: Inst) -> bool {
         self.insts.safe_to_remove(inst, &self.values)
     }
@@ -258,7 +256,7 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that interact with `DfgValues`
+/// Routines that query dfg values
 impl DataFlowGraph {
     pub fn num_values(&self) -> usize {
         self.values.num()
@@ -278,6 +276,11 @@ impl DataFlowGraph {
         self.values.is_valid(v)
     }
 
+    /// A value is dead if it is not used by any instruction in the DFG.
+    pub fn value_dead(&self, val: Value) -> bool {
+        self.values.is_dead(val)
+    }
+
     /// A value is attached if it is an instruction result.
     /// Such value can't be attached to something else without first being detached.
     pub fn value_attached(&self, v: Value) -> bool {
@@ -287,11 +290,6 @@ impl DataFlowGraph {
             }
             _ => false,
         }
-    }
-
-    /// A value is dead if it is not used by any instruction in the DFG.
-    pub fn value_dead(&self, val: Value) -> bool {
-        self.values.is_dead(val)
     }
 
     pub fn get_tag(&self, val: Value) -> Option<Tag> {
@@ -327,24 +325,15 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that interact with `Use`s.
+/// Routines that interact with uses.
 impl DataFlowGraph {
     /// Return an iterator over all uses of a given value
     pub fn uses(&self, value: Value) -> UseIter<'_> {
         self.values.uses(value)
     }
 
-    /// Return a double-ended iterator over all uses of a given value
-    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
-        self.values.uses_double_ended(value)
-    }
-
     pub fn use_to_user(&self, use_: Use) -> Inst {
         self.values.use_to_user(use_)
-    }
-
-    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
-        self.values.use_to_operand(use_)
     }
 
     pub fn use_to_value(&self, use_: Use) -> Value {

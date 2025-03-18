@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::{mem, slice};
 use stdx::packed_option::PackedOption;
 
@@ -16,167 +15,9 @@ pub struct UseData {
     next: PackedOption<Use>,
 }
 
-impl Use {
-    pub fn prev(self, values: &DfgValues) -> Option<Use> {
-        values.uses[self].prev.expand()
-    }
-
-    pub fn next(self, values: &DfgValues) -> Option<Use> {
-        values.uses[self].next.expand()
-    }
-
-    pub fn to_user(self, dfg: &DataFlowGraph) -> Inst {
-        dfg.use_to_user(self)
-    }
-
-    pub fn to_value(self, dfg: &DataFlowGraph) -> Value {
-        dfg.use_to_value(self)
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
-pub struct UseCursor {
-    pub curr: Option<Use>,
-}
-
-impl UseCursor {
-    /// returns the current use and advances the cursor forward
-    pub fn advance(&mut self, dfg: &DfgValues) -> Option<Use> {
-        let res = self.curr?;
-        self.curr = res.next(dfg);
-        Some(res)
-    }
-
-    /// returns the current use and advances the cursor backward
-    pub fn advance_back(&mut self, dfg: &DfgValues) -> Option<Use> {
-        let res = self.curr?;
-        self.curr = res.prev(dfg);
-        Some(res)
-    }
-
-    pub fn into_iter<D: Borrow<DfgValues>>(self, dfg: &D) -> UseIter<'_> {
-        UseIter { cursor: self, dfg: dfg.borrow() }
-    }
-}
-
-impl From<Option<Use>> for UseCursor {
-    fn from(curr: Option<Use>) -> Self {
-        UseCursor { curr }
-    }
-}
-
-impl From<PackedOption<Use>> for UseCursor {
-    fn from(curr: PackedOption<Use>) -> Self {
-        UseCursor { curr: curr.expand() }
-    }
-}
-
-#[derive(Clone)]
-pub struct UseIter<'a> {
-    pub cursor: UseCursor,
-    dfg: &'a DfgValues,
-}
-
-impl Iterator for UseIter<'_> {
-    type Item = Use;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.cursor.advance(self.dfg)
-    }
-}
-
-#[derive(Clone)]
-pub struct InstUseIter<'a> {
-    vals: slice::Iter<'a, Value>,
-    cursor: UseCursor,
-    dfg: &'a DfgValues,
-}
-
-impl Iterator for InstUseIter<'_> {
-    type Item = Use;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut res = self.cursor.advance(self.dfg);
-        if res.is_none() {
-            for val in &mut self.vals {
-                self.cursor = self.dfg.uses_head_cursor(*val);
-                if let Some(new_res) = self.cursor.advance(self.dfg) {
-                    res = Some(new_res);
-                    break;
-                }
-            }
-        }
-        res
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct DoubleEndedUseIter<'a> {
-    head: Option<Use>,
-    tail: Option<Use>,
-    dfg: &'a DfgValues,
-}
-
-impl Iterator for DoubleEndedUseIter<'_> {
-    type Item = Use;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let rval = self.head;
-        if let Some(use_) = rval {
-            if self.head == self.tail {
-                self.head = None;
-                self.tail = None;
-            } else {
-                self.head = use_.next(self.dfg);
-            }
-        }
-        rval
-    }
-}
-
-impl DoubleEndedIterator for DoubleEndedUseIter<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let rval = self.tail;
-        if let Some(use_) = rval {
-            if self.head == self.tail {
-                self.head = None;
-                self.tail = None;
-            } else {
-                self.tail = use_.prev(self.dfg);
-            }
-        }
-        rval
-    }
-}
-
 impl DfgValues {
-    pub fn uses(&self, value: Value) -> UseIter {
-        self.uses_head_cursor(value).into_iter(self)
-    }
-
-    pub fn uses_double_ended(&self, value: Value) -> DoubleEndedUseIter<'_> {
-        DoubleEndedUseIter {
-            head: self.defs[value].uses_head.expand(),
-            tail: self.defs[value].uses_tail.expand(),
-            dfg: self,
-        }
-    }
-
-    fn uses_head_cursor(&self, value: Value) -> UseCursor {
-        self.defs[value].uses_head.into()
-    }
-
-    #[allow(unused)]
-    fn uses_tail_cursor(&self, value: Value) -> UseCursor {
-        self.defs[value].uses_tail.into()
-    }
-
     pub fn use_to_user(&self, use_: Use) -> Inst {
         self.uses[use_].user
-    }
-
-    pub fn use_to_operand(&self, use_: Use) -> (Inst, u16) {
-        (self.uses[use_].user, self.uses[use_].idx)
     }
 
     pub fn use_to_value(&self, use_: Use, insts: &DfgInsts) -> Value {
@@ -193,6 +34,68 @@ impl DfgValues {
         !self.uses[use_].attached
     }
 
+    pub fn uses(&self, value: Value) -> UseIter {
+        let cursor = self.uses_cursor(value);
+        UseIter { cursor, dfg: self }
+    }
+
+    fn uses_cursor(&self, value: Value) -> UseCursor {
+        UseCursor { head: self.defs[value].uses_head, tail: self.defs[value].uses_tail }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub struct UseCursor {
+    head: PackedOption<Use>,
+    tail: PackedOption<Use>,
+}
+
+impl UseCursor {
+    pub fn advance(&mut self, values: &DfgValues) -> Option<Use> {
+        let use_ = self.head.expand()?;
+        if self.head == self.tail {
+            self.head = None.into();
+            self.tail = None.into();
+        } else {
+            self.head = values.uses[use_].next;
+        }
+        Some(use_)
+    }
+
+    pub fn advance_back(&mut self, values: &DfgValues) -> Option<Use> {
+        let use_ = self.tail.expand()?;
+        if self.head == self.tail {
+            self.head = None.into();
+            self.tail = None.into();
+        } else {
+            self.tail = values.uses[use_].prev;
+        }
+        Some(use_)
+    }
+}
+
+#[derive(Clone)]
+pub struct UseIter<'a> {
+    dfg: &'a DfgValues,
+    cursor: UseCursor,
+}
+
+impl Iterator for UseIter<'_> {
+    type Item = Use;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.cursor.advance(self.dfg)
+    }
+}
+
+impl DoubleEndedIterator for UseIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.cursor.advance_back(self.dfg)
+    }
+}
+
+impl DfgValues {
+    /// Create a new use of `val` as the `idx` argument of `inst`
     pub fn make_use(&mut self, val: Value, user: Inst, idx: u16) -> Use {
         let def = &mut self.defs[val];
         let use_ = self.uses.push_and_get_key(UseData {
@@ -212,6 +115,7 @@ impl DfgValues {
         use_
     }
 
+    /// Attach a use to a value.
     pub fn attach_use(&mut self, use_: Use, val: Value) {
         debug_assert!(
             self.is_use_detached(use_),
@@ -276,7 +180,7 @@ impl DataFlowGraph {
         }
 
         // replace values in instructions
-        let mut cursor = self.values.uses_head_cursor(dst);
+        let mut cursor = self.values.uses_cursor(dst);
         while let Some(use_) = cursor.advance(&self.values) {
             *self.use_to_value_mut(use_) = src;
         }
@@ -297,7 +201,30 @@ impl DataFlowGraph {
 
     pub fn inst_uses(&self, inst: Inst) -> InstUseIter {
         let mut vals = self.inst_results(inst).iter();
-        let cursor = vals.next().map(|res| self.values.uses_head_cursor(*res)).unwrap_or_default();
+        let cursor = vals.next().map(|v| self.values.uses_cursor(*v)).unwrap_or_default();
         InstUseIter { cursor, vals, dfg: &self.values }
+    }
+}
+
+#[derive(Clone)]
+pub struct InstUseIter<'a> {
+    dfg: &'a DfgValues,
+    vals: slice::Iter<'a, Value>,
+    cursor: UseCursor,
+}
+
+impl Iterator for InstUseIter<'_> {
+    type Item = Use;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut use_ = self.cursor.advance(self.dfg);
+        if use_.is_none() {
+            for val in &mut self.vals {
+                self.cursor = self.dfg.uses_cursor(*val);
+                let new_use = self.cursor.advance(self.dfg)?;
+                use_ = Some(new_use);
+            }
+        }
+        use_
     }
 }

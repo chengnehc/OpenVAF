@@ -67,7 +67,7 @@ impl Function {
 
                 for use_ in self.dfg.inst_uses(inst) {
                     let user = self.dfg.use_to_user(use_);
-                    let use_val = use_.to_value(&self.dfg);
+                    let use_val = self.dfg.use_to_value(use_);
                     assert!(
                         self.dfg.inst_results(inst).contains(&use_val),
                         "invalid use {} ({use_val})",
