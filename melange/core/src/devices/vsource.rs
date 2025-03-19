@@ -1,11 +1,10 @@
 use std::cell::Cell;
-
+use std::iter::zip;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
 use anyhow::{bail, Result};
 use num_complex::Complex64;
-use stdx::iter::zip;
 use typed_index_collections::TiSlice;
 
 use crate::circuit::Node;

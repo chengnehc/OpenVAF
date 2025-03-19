@@ -32,12 +32,13 @@ use typed_index_collections::TiVec;
 mod ssa;
 use ssa::SSABuilder;
 
-/// An opaque reference to a place, namely a mutable memory location.
+/// An opaque reference to a place. It could be viewed as a Variable or
+/// a (possibly mutable) memory location.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Place(u32);
 impl_idx_from!(Place(u32));
 impl_debug_display!(
-    match Place { Place(val) => "place{}", val;}
+    match Place { Place(i) => "place{i}";}
 );
 
 pub struct FunctionBuilder<'a> {
@@ -97,8 +98,8 @@ enum BlockStatus {
     Filled,
 }
 
-/// Implementation of the [`InstInserterBase`] trait that has one convenience method
-/// per MIR instruction.
+/// Implementation of the [`InstInserterBase`] trait that has
+/// one convenience method per MIR instruction.
 pub struct FuncInstBuilder<'short, 'long: 'short> {
     builder: &'short mut FunctionBuilder<'long>,
     block: Block,
@@ -328,7 +329,7 @@ impl<'a> FunctionBuilder<'a> {
         self.func_ctxt.ssa.seal_all_blocks(self.func);
     }
 
-    /// Ensure the block at current position is inserted into the layout and sealed.
+    /// Ensure that the block at current position is inserted into the layout, as well as sealed.
     pub fn ensured_sealed(&mut self) {
         self.ensure_inserted_block();
         if !self.func_ctxt.ssa.is_sealed(self.position) {
@@ -386,6 +387,13 @@ impl<'a> FunctionBuilder<'a> {
         self.func.import_function(data)
     }
 
+    /// Returns an object with `InstBuilder` trait that allows to conveniently appending an
+    /// instruction to the current `Block` being built.
+    pub fn ins<'short>(&'short mut self) -> InsertBuilder<'short, FuncInstBuilder<'short, 'a>> {
+        InsertBuilder::new(FuncInstBuilder::new(self, self.position))
+    }
+
+    // TODO(JW): this is not used anywhere, probably should be used.
     /// Returns a `FuncCursor` pointed at the current position ready for inserting instructions.
     ///
     /// This can be used to insert SSA code that doesn't need to access locals and that doesn't
@@ -393,12 +401,6 @@ impl<'a> FunctionBuilder<'a> {
     pub fn cursor(&mut self) -> FuncCursor {
         self.ensure_inserted_block();
         FuncCursor::new(self.func).with_srcloc(self.srcloc).at_bottom(self.position)
-    }
-
-    /// Returns an `InstBuilder` that allows to conveniently appending an
-    /// instruction to the current `Block` being built.
-    pub fn ins<'short>(&'short mut self) -> InsertBuilder<'short, FuncInstBuilder<'short, 'a>> {
-        InsertBuilder::new(FuncInstBuilder::new(self, self.position))
     }
 
     /// Declare that translation of the current function is complete.

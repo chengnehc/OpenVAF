@@ -1,6 +1,5 @@
-use std::iter;
+use std::iter::{self, zip};
 use std::ops::{Index, IndexMut};
-use stdx::iter::zip;
 
 use typed_index_collections::{TiSliceKeys, TiVec};
 
@@ -282,6 +281,9 @@ impl DataFlowGraph {
     }
 
     /// Append a *new* value to the result value list for `inst`.
+    ///
+    /// This is a very low-level operation. Usually, instruction results are
+    /// created automatically by `make_inst_results`
     fn append_result(&mut self, inst: Inst, tag: Option<Tag>) -> Value {
         let val = self.values.defs.next_key();
         let idx = self.insts.results[inst].push(val, &mut self.insts.value_lists);

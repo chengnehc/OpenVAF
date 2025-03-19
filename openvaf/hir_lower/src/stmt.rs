@@ -22,7 +22,7 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             Stmt::If { cond, then_branch, else_branch } => {
                 let cond = self.lower_expr(cond);
-                self.ctxt.make_if(cond, |ctxt, br| {
+                self.ctxt.make_if_stmt(cond, |ctxt, br| {
                     let stmt = if br { then_branch } else { else_branch };
                     BodyLowerContext { ctxt, body: self.body, path: self.path }.lower_stmt(stmt);
                 });

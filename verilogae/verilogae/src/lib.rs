@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::Write;
+use std::iter::zip;
 use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
@@ -9,7 +10,6 @@ use lasso::Rodeo;
 use linker::link;
 use mir_llvm::LLVMBackend;
 use salsa::ParallelDatabase;
-use stdx::iter::zip;
 use stdx::pretty;
 use termcolor::ColorChoice::Auto;
 use termcolor::{Color, ColorSpec, StandardStream, WriteColor};

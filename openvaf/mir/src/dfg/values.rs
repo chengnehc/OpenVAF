@@ -353,6 +353,7 @@ impl Default for DfgValues {
 }
 
 impl DataFlowGraph {
+    // TODO(JW) deal with alias cycle
     #[inline]
     pub fn resolve_alias(&self, v: Value) -> Value {
         let mut val = v;

@@ -1,9 +1,9 @@
 use std::alloc::{alloc_zeroed, handle_alloc_error, Layout};
 use std::cell::Cell;
 use std::ffi::{c_char, CStr};
+use std::iter::zip;
 use std::{fmt, mem, panic, process, ptr, slice};
 use stdx::format_to;
-use stdx::iter::zip;
 
 use anyhow::{bail, Result};
 use bitflags::bitflags;

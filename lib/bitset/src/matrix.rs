@@ -3,10 +3,9 @@
 //! https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs#L1398
 
 use std::fmt::{self, Debug};
+use std::iter::{self, zip};
 use std::marker::PhantomData;
-use std::{iter, mem};
-
-use stdx::iter::zip;
+use std::mem;
 use stdx::vec::{SliceExtensions, VecExtensions};
 
 use crate::{

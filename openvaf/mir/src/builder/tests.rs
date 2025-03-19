@@ -1,4 +1,4 @@
-use crate::builder::InstBuilder;
+use super::InstBuilder;
 use crate::cursor::{Cursor, FuncCursor};
 use crate::{Function, ValueDef};
 
@@ -16,14 +16,12 @@ fn reuse_results() {
 
     // Detach `v1` from `imul`
     pos.func.dfg.clear_results(imul);
-    // Create `iadd` with result value `v1` and insert it *before* `imul`
+    // Create `iadd` reusing result `v1`
     pos.ins().with_result(v1).iadd(arg0, c0);
-    // After inserting `iadd`, the cursor position is now at `imul`
+    // the cursor should now be positioned at `imul`
     assert_eq!(pos.current_inst(), Some(imul));
-    // The `iadd` just inserted becomes the previous instruction
+    // `iadd` should be the previous instruction
     let iadd = pos.prev_inst().unwrap();
-    // `v1` is the result of `iadd`
+    // `v1` should be the first result of `iadd`
     assert_eq!(pos.func.dfg.value_def(v1), ValueDef::Result(iadd, 0));
-
-    println!("{:?}", func);
 }

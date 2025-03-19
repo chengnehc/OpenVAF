@@ -1,4 +1,4 @@
-use stdx::iter::zip;
+use std::iter::zip;
 
 use llvm::{
     LLVMAppendBasicBlockInContext, LLVMBuildCall2, LLVMBuildFAdd, LLVMBuildFDiv, LLVMBuildFMul,

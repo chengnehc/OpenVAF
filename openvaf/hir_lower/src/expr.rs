@@ -1,4 +1,4 @@
-use stdx::iter::zip;
+use std::iter::zip;
 
 use hir::builtin::{
     FLICKER_NOISE_NAME, NOISE_TABLE_FILE_NAME, NOISE_TABLE_INLINE_NAME, WHITE_NOISE_NAME,
@@ -489,7 +489,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 let cut_off = self.ctxt.fconst(1e30f64.ln());
                 let off = self.ctxt.fconst(1e30f64);
                 let linearize = self.ctxt.ins().fgt(arg0, cut_off);
-                self.ctxt.make_select(linearize, |func, linearize| {
+                self.ctxt.make_select_expr(linearize, |func, linearize| {
                     if linearize {
                         let delta = func.ins().fsub(arg0, cut_off);
                         let lin = func.ins().fmul(off, delta);
@@ -666,7 +666,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 call_args.extend(args[2..].iter().map(|arg| self.lower_expr(*arg)));
 
                 let enable_lim = self.ctxt.use_param(ParamKind::EnableLim);
-                let res = self.ctxt.make_select(enable_lim, |func, lim| {
+                let res = self.ctxt.make_select_expr(enable_lim, |func, lim| {
                     if lim {
                         func.call1(
                             CallBackKind::BuiltinLimit { name, num_args: args.len() as u32 },

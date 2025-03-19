@@ -1,3 +1,4 @@
+use std::iter::zip;
 use std::mem::replace;
 use std::rc::Rc;
 
@@ -5,7 +6,6 @@ use anyhow::{bail, Context, Result};
 use cli_table::{print_stdout, Cell, Style, Table, TableStruct};
 use klu_rs::{FixedKluMatrix, KluData};
 use num_complex::Complex64;
-use stdx::iter::zip;
 use typed_index_collections::{TiSlice, TiVec};
 
 use crate::circuit::{CircuitModelSrc, InstanceId, ModelId, Node};

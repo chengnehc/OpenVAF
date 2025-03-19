@@ -31,3 +31,5 @@ markus_notes
 !.vscode/launch-openvaf*.json
 *~
 .clangd
+*.bak
+*.dbg

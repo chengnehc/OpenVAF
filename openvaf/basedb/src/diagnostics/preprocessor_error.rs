@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use stdx::iter::zip;
+use std::iter::zip;
 
 use ahash::AHashSet;
 use syntax::PreprocessError;

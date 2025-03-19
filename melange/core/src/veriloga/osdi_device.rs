@@ -1,13 +1,14 @@
-use anyhow::{bail, Result};
 use std::alloc::{alloc_zeroed, handle_alloc_error, Layout};
 use std::cell::Cell;
 use std::ffi::{c_void, CStr, CString};
+use std::iter::zip;
 use std::mem::{align_of, swap};
 use std::os::raw::c_char;
 use std::rc::Rc;
 use std::{ptr, slice};
 use stdx::format_to;
-use stdx::iter::zip;
+
+use anyhow::{bail, Result};
 use typed_index_collections::TiSlice;
 
 use crate::circuit::Node;

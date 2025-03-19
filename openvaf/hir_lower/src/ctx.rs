@@ -1,3 +1,9 @@
+//! The main HIR lowering context.
+//!
+//! The most important methods are:
+//! * def_place, def_param
+//! * use_place, use_param
+
 use ahash::AHashSet;
 use hir::{CompilationDB, Node, Type, Variable};
 use mir::builder::{InsertBuilder, InstBuilder};
@@ -17,7 +23,6 @@ pub struct MainLowerContext<'a, 'c> {
     pub func: FunctionBuilder<'c>,
     pub intern: &'a mut HirInterner,
 
-    /// mutable memory locations for values
     pub places: TiSet<Place, PlaceKind>,
     tagged_vars: AHashSet<Variable>,
 
@@ -58,11 +63,11 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         self.places.index(&kind)
     }
 
-    /// Declare a mutable memory location (place) in the entry block, which
-    /// will be translated to SSA automatically.
+    /// Declare and initialize (if necessary) a mutable memory location in
+    /// the entry block, which will be translated to SSA values automatically.
     ///
     /// If the requested place already exists, simply return it, otherwise a
-    /// new memory slot is created and initialized (if necessary).
+    /// new memory slot is created.
     pub fn dec_place(&mut self, kind: PlaceKind) -> Place {
         use PlaceKind::*;
         let (place, inserted) = self.places.ensure(kind);
@@ -74,7 +79,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 | ParamMax(_)
                 | FunctionReturn { .. }
                 | FunctionArg { .. } => return place,
-
+                // A `Variable` without propoer initialization would cause hidden state
                 Var(var) => self.use_param(ParamKind::HiddenState(var)),
                 Contribute { .. } | ImplicitResidual { .. } => F_ZERO,
                 CollapseImplicitEquation(_) => TRUE,
@@ -97,7 +102,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         self.func.use_var(place)
     }
 
-    /// Return the corresponding MIR value of a HIR variable.
+    /// Return the MIR SSA value of a HIR variable.
     ///
     /// This function should be used to correctly handle tagging.
     pub fn read_var(&mut self, var: Variable) -> Value {
@@ -108,10 +113,6 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
             self.intern.tagged_reads.insert(val, var);
         }
         val
-    }
-
-    pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
-        self.intern.outputs.insert(kind, val.into());
     }
 
     pub fn get_param(&mut self, kind: ParamKind) -> Option<Value> {
@@ -128,24 +129,11 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         *entry.or_insert_with(|| self.func.make_param(len.into()))
     }
 
-    /// Define a callback function and return the first result of it.
-    pub fn call1(&mut self, kind: CallBackKind, args: &[Value]) -> Value {
-        let inst = self.call(kind, args);
-        self.dfg().first_result(inst)
+    pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
+        self.intern.outputs.insert(kind, val.into());
     }
 
-    pub fn call(&mut self, kind: CallBackKind, args: &[Value]) -> Inst {
-        let tracked = !self.no_equations && kind.tracked();
-        let func = self.dec_callback(kind);
-        let res = self.func.ins().call(func, args);
-        if tracked {
-            self.intern.callback_uses[func].push(res)
-        }
-        res
-    }
-
-    /// Declare a callback function. If it already exists then simply return it,
-    /// otherwise a new callback is created.
+    /// Declare a callback function. If it already exists then simply return it.
     pub fn dec_callback(&mut self, kind: CallBackKind) -> FuncRef {
         let data = kind.signature();
         let (func_ref, changed) = self.intern.callbacks.ensure(kind);
@@ -155,6 +143,23 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
             debug_assert_eq!(func_ref, sig);
         }
         func_ref
+    }
+
+    /// Declare and define a callback function, and return the instruction
+    pub fn call(&mut self, kind: CallBackKind, args: &[Value]) -> Inst {
+        let tracked = !self.no_equations && kind.tracked();
+        let func_ref = self.dec_callback(kind);
+        let inst = self.func.ins().call(func_ref, args);
+        if tracked {
+            self.intern.callback_uses[func_ref].push(inst)
+        }
+        inst
+    }
+
+    /// Declare and define a callback function, and return its first result.
+    pub fn call1(&mut self, kind: CallBackKind, args: &[Value]) -> Value {
+        let inst = self.call(kind, args);
+        self.dfg().first_result(inst)
     }
 
     pub fn node(&self, node: Node) -> Option<Node> {
@@ -261,17 +266,16 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         self.func.ins().unary1(op, val)
     }
 
-    pub fn make_select(
+    pub fn make_select_expr(
         &mut self,
         cond: Value,
         lower_branch: impl FnMut(&mut Self, bool) -> Value,
     ) -> Value {
-        let (then_src, else_src) = self.make_if(cond, lower_branch);
-
+        let (then_src, else_src) = self.make_if_stmt(cond, lower_branch);
         self.func.ins().phi(&[then_src, else_src])
     }
 
-    pub fn make_if<T>(
+    pub fn make_if_stmt<T>(
         &mut self,
         cond: Value,
         mut lower_branch: impl FnMut(&mut Self, bool) -> T,

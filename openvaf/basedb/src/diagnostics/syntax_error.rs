@@ -1,5 +1,4 @@
-use std::iter::once;
-use stdx::iter::zip;
+use std::iter::{once, zip};
 
 use syntax::sourcemap::FileSpan;
 use syntax::SyntaxKind::BLOCK_STMT;

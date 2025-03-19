@@ -130,7 +130,6 @@ impl FuncWriter for PlainWriter {
 }
 
 /// Write `func` to `w` as equivalent text.
-/// Use `isa` to emit ISA-dependent annotations.
 pub fn write_function(
     w: &mut dyn Write,
     func: &Function,
@@ -140,8 +139,6 @@ pub fn write_function(
 }
 
 /// Writes `func` to `w` as text.
-/// write_function_plain is passed as 'closure' to print instructions as text.
-/// pretty_function_error is passed as 'closure' to add error decoration.
 pub fn decorate_function<FW: FuncWriter>(
     func_w: &mut FW,
     w: &mut dyn Write,
@@ -156,22 +153,19 @@ pub fn decorate_function<FW: FuncWriter>(
         .dfg
         .values()
         .filter_map(|val| {
-            if let ValueDef::Param(def) = func.dfg.value_def(val) {
-                Some((def.into(), val))
+            if let ValueDef::Param(param) = func.dfg.value_def(val) {
+                Some((param.into(), val))
             } else {
                 None
             }
         })
         .collect();
     params.sort_by_key(|(pos, _)| *pos);
-    let mut seen = false;
-    for (_, val) in params {
-        if seen {
-            write!(w, ", ")?;
-        } else {
-            seen = true
+    if let Some((first, rest)) = params.split_first() {
+        write!(w, "{}", first.1)?;
+        for (_, val) in rest {
+            write!(w, ", {val}")?;
         }
-        write!(w, "{}", val)?;
     }
     writeln!(w, ") {{")?;
     let mut any = func_w.write_preamble(w, func, interner)?;
@@ -188,10 +182,6 @@ pub fn decorate_function<FW: FuncWriter>(
 //----------------------------------------------------------------------
 //
 // Basic blocks
-
-// fn write_arg(w: &mut dyn Write, arg: Value) -> fmt::Result {
-//     write!(w, "{}", arg)
-// }
 
 /// Write out the basic block header, outdented:
 ///
@@ -255,29 +245,21 @@ fn write_instruction(w: &mut dyn Write, func: &Function, inst: Inst, indent: usi
     // Source location goes first.
     let srcloc = func.srclocs.get(inst).copied().unwrap_or_default();
     if !srcloc.is_default() {
-        write!(s, "{} ", srcloc)?;
+        write!(s, "{srcloc} ")?;
     }
 
     // Write out prefix and indent the instruction.
     write!(w, "{1:0$}", indent, s)?;
 
     // Write out the result values, if any.
-    let mut has_results = false;
-    for r in func.dfg.inst_results(inst) {
-        if !has_results {
-            has_results = true;
-            write!(w, "{}", r)?;
-        } else {
-            write!(w, ", {}", r)?;
+    if let Some((first, rest)) = func.dfg.inst_results(inst).split_first() {
+        write!(w, "{first}")?;
+        for v in rest {
+            write!(w, ", {v}")?;
         }
-    }
-    if has_results {
         write!(w, " = ")?;
     }
-
-    let opcode = func.dfg.insts[inst].opcode();
-    write!(w, "{}", opcode)?;
-
+    write!(w, "{}", func.dfg.insts[inst].opcode())?;
     write_operands(w, &func.dfg, inst)?;
     writeln!(w)?;
 
@@ -288,57 +270,44 @@ fn write_instruction(w: &mut dyn Write, func: &Function, inst: Inst, indent: usi
 pub fn write_operands(w: &mut dyn Write, dfg: &DataFlowGraph, inst: Inst) -> fmt::Result {
     let pool = &dfg.insts.value_lists;
     match dfg.insts[inst].clone() {
-        InstructionData::Unary { arg, .. } => write!(w, " {}", arg),
+        InstructionData::Unary { arg, .. } => write!(w, " {arg}"),
         InstructionData::Binary { args, .. } => write!(w, " {}, {}", args[0], args[1]),
         InstructionData::Jump { destination, .. } => {
-            write!(w, " {}", destination)
+            write!(w, " {destination}")
         }
         InstructionData::Branch { then_dst, else_dst, cond, loop_entry, .. } => {
             let tag = if loop_entry { "[loop]" } else { "" };
-            write!(w, " {}, {}{}, {}", cond, then_dst, tag, else_dst)
+            write!(w, " {cond}, {then_dst}{tag}, {else_dst}")
         }
         InstructionData::Call { func_ref, ref args, .. } => {
-            write!(w, " {}({})", func_ref, DisplayValues(args.as_slice(pool)))
+            write!(w, " {func_ref}({})", DisplayValues(args.as_slice(pool)))
         }
         InstructionData::PhiNode(PhiNode { args, blocks }) => {
             let mut first = true;
             let args = args.as_slice(&dfg.insts.value_lists);
-            for (block, i) in blocks.iter(&dfg.phi_forest) {
+            for (block, idx) in blocks.iter(&dfg.phi_forest) {
                 if first {
                     first = false;
                 } else {
                     write!(w, ",")?;
                 }
-
-                write!(w, " ")?;
-                write!(w, "[")?;
-                write!(w, "{}, {}", args[i as usize], block)?;
-                write!(w, "]")?;
+                let val = args[idx as usize];
+                write!(w, " [{val}, {block}]")?;
             }
             Ok(())
         }
     }
 }
 
-// /// Write block args using optional parentheses.
-// fn write_block_args(w: &mut dyn Write, args: &[Value]) -> fmt::Result {
-//     if args.is_empty() {
-//         Ok(())
-//     } else {
-//         write!(w, "({})", DisplayValues(args))
-//     }
-// }
-
 /// Displayable slice of values.
 struct DisplayValues<'a>(&'a [Value]);
 
 impl fmt::Display for DisplayValues<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for (i, val) in self.0.iter().enumerate() {
-            if i == 0 {
-                write!(f, "{}", val)?;
-            } else {
-                write!(f, ", {}", val)?;
+        if let Some((first, rest)) = self.0.split_first() {
+            write!(f, "{first}")?;
+            for val in rest {
+                write!(f, ", {val}")?;
             }
         }
         Ok(())

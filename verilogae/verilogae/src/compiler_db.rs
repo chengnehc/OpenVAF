@@ -1,5 +1,6 @@
 use std::fs;
 use std::iter::repeat;
+use std::iter::zip;
 
 use ahash::{AHashMap, AHashSet};
 use anyhow::{bail, Result};
@@ -14,7 +15,6 @@ use hir_lower::CurrentKind;
 use indexmap::IndexMap;
 use lasso::{Rodeo, Spur};
 use smol_str::SmolStr;
-use stdx::iter::zip;
 use syntax::ast::{self, Attr, Expr, LiteralKind, PathExpr};
 use syntax::sourcemap::FileSpan;
 use syntax::{AstNode, TextRange};

@@ -87,7 +87,7 @@ impl HirInterner {
             let ops = CmpOps::from_ty(&ty);
             let invalid = ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::Invalid, param));
 
-            let (then_src, else_src) = ctxt.make_if(param_given, |ctx, param_given| {
+            let (then_src, else_src) = ctxt.make_if_stmt(param_given, |ctx, param_given| {
                 if param_given {
                     if build_stores {
                         let exit = ctx.create_block();
@@ -183,24 +183,26 @@ impl HirInterner {
 
                                 if let Some((min, max)) = lowered_bounds {
                                     let is_min = ctx.ctxt.ins().binary1(ops.le.unwrap(), val, min);
-                                    let min = ctx.ctxt.make_select(is_min, |builder, is_min| {
-                                        if is_min {
-                                            builder.ins().call(min_inclusive, &[]);
-                                            val
-                                        } else {
-                                            min
-                                        }
-                                    });
+                                    let min =
+                                        ctx.ctxt.make_select_expr(is_min, |builder, is_min| {
+                                            if is_min {
+                                                builder.ins().call(min_inclusive, &[]);
+                                                val
+                                            } else {
+                                                min
+                                            }
+                                        });
 
                                     let is_max = ctx.ctxt.ins().binary1(ops.le.unwrap(), max, val);
-                                    let max = ctx.ctxt.make_select(is_max, |builder, is_max| {
-                                        if is_max {
-                                            builder.ins().call(max_inclusive, &[]);
-                                            val
-                                        } else {
-                                            min
-                                        }
-                                    });
+                                    let max =
+                                        ctx.ctxt.make_select_expr(is_max, |builder, is_max| {
+                                            if is_max {
+                                                builder.ins().call(max_inclusive, &[]);
+                                                val
+                                            } else {
+                                                min
+                                            }
+                                        });
 
                                     lowered_bounds = Some((min, max));
                                 } else if ops.le.is_some() {
@@ -222,14 +224,15 @@ impl HirInterner {
                                     };
 
                                     let is_min = ctx.ctxt.ins().binary1(op, start, min);
-                                    let min = ctx.ctxt.make_select(is_min, |builder, is_min| {
-                                        if is_min {
-                                            builder.ins().call(call, &[]);
-                                            start
-                                        } else {
-                                            min
-                                        }
-                                    });
+                                    let min =
+                                        ctx.ctxt.make_select_expr(is_min, |builder, is_min| {
+                                            if is_min {
+                                                builder.ins().call(call, &[]);
+                                                start
+                                            } else {
+                                                min
+                                            }
+                                        });
 
                                     let (op, call) = if range.end_inclusive {
                                         (ops.le.unwrap(), max_inclusive)
@@ -238,14 +241,15 @@ impl HirInterner {
                                     };
 
                                     let is_max = ctx.ctxt.ins().binary1(op, max, end);
-                                    let max = ctx.ctxt.make_select(is_max, |builder, is_max| {
-                                        if is_max {
-                                            builder.ins().call(call, &[]);
-                                            start
-                                        } else {
-                                            min
-                                        }
-                                    });
+                                    let max =
+                                        ctx.ctxt.make_select_expr(is_max, |builder, is_max| {
+                                            if is_max {
+                                                builder.ins().call(call, &[]);
+                                                start
+                                            } else {
+                                                min
+                                            }
+                                        });
 
                                     lowered_bounds = Some((min, max));
                                 } else {
@@ -368,7 +372,7 @@ impl BodyLowerContext<'_, '_, '_> {
                     let op = ops.in_bound(range.start_inclusive);
                     let is_lo_ok = self.ctxt.ins().binary1(op, start, param_val);
 
-                    let is_ok = self.ctxt.make_select(is_lo_ok, |builder, is_ok| {
+                    let is_ok = self.ctxt.make_select_expr(is_lo_ok, |builder, is_ok| {
                         if is_ok {
                             let op = ops.in_bound(range.end_inclusive);
                             builder.ins().binary1(op, param_val, end)

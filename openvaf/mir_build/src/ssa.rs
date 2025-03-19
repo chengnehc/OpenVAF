@@ -12,8 +12,8 @@
 //! <https://link.springer.com/content/pdf/10.1007/978-3-642-37051-9_6.pdf>
 //!
 
-use std::{iter, slice};
-use stdx::iter::zip;
+use std::iter::{self, zip};
+use std::slice;
 use stdx::packed_option::PackedOption;
 
 use bforest::Map;
@@ -319,9 +319,16 @@ enum Call {
 }
 
 impl<C: ControlFlowGraph> SSABuilder<C> {
+    /// Returns `true` if and only if `seal_block` has been called on the argument.
+    pub fn is_sealed(&self, block: Block) -> bool {
+        self.cfg.sealed(block)
+    }
+
     /// Declares a new definition of a variable in a given basic block.
+    ///
     /// The SSA value is passed as an argument because it should be created with
-    /// `ir::DataFlowGraph::append_result`.
+    /// `DataFlowGraph::make_inst_results`, or (`DataFlowGraph::append_result`)
+    /// at a lowerer level.
     pub fn def_var(&mut self, var: Place, val: Value, block: Block) {
         if usize::from(var) >= self.variables.len() {
             self.variables.resize(usize::from(var) + 1, TiVec::default());
@@ -334,8 +341,7 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
     }
 
     /// Declares a use of a variable in a given basic block. Returns the SSA value corresponding
-    /// to the current SSA definition of this variable and a list of newly created Blocks that
-    /// are the results of critical edge splitting for `br_table` with arguments.
+    /// to the current SSA definition of this variable.
     ///
     /// If the variable has never been defined in this blocks or recursively in its predecessors,
     /// this method will silently create an initializer that might contain invalid data. You are
@@ -350,60 +356,22 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
         }
         // Otherwise, use Global Value Numbering (Algorithm 2 in the paper).
         // This resolves the Value with respect to its predecessors.
-        debug_assert!(self.calls.is_empty());
-        debug_assert!(self.results.is_empty());
 
         // Prepare the 'calls' and 'results' stacks for the state machine.
+        debug_assert!(self.calls.is_empty());
+        debug_assert!(self.results.is_empty());
         self.use_var_nonlocal(func, var, block);
 
         self.run_state_machine(func, var)
-    }
-
-    /// There are two conditions for being able to optimize the lookup of a non local var:
-    ///  * The block must have a single predecessor
-    ///  * The block cannot be part of a predecessor loop
-    ///
-    /// To check for these conditions we perform a graph search over block predecessors
-    /// marking visited blocks and aborting if we find a previously seen block.
-    /// We stop the search if we find a block with multiple predecessors since the
-    /// original algorithm can handle these cases.
-    fn can_optimize_var_lookup(&mut self, block: Block, block_cnt: usize) -> bool {
-        // Check that the initial block only has one predecessor. This is only a requirement
-        // for the first block.
-        if !self.cfg.has_single_predecessor(block) {
-            return false;
-        }
-
-        let mut visited = HybridBitSet::new_empty();
-        let mut current = block;
-        loop {
-            // We haven't found the original block and we have either reached the entry
-            // block, or we found the end of this line of dead blocks, either way we are
-            // safe to optimize this line of lookups.
-            // We can stop the search here, the algorithm can handle these cases, even if they are
-            // in an undefined island.
-            if !self.cfg.has_single_predecessor(block) {
-                return true;
-            }
-
-            if visited.contains(current) {
-                return false;
-            }
-
-            let next = self.cfg.predecessors(block).next().unwrap();
-            visited.insert(current, block_cnt);
-            current = next;
-        }
     }
 
     /// Resolve the minimal SSA Value of `var` in `block` by traversing predecessors.
     ///
     /// This function sets up state for `run_state_machine()` but does not execute it.
     fn use_var_nonlocal(&mut self, func: &mut Function, var: Place, block: Block) {
-        let optimize_var_lookup = self.can_optimize_var_lookup(block, func.layout.num_blocks());
         if self.cfg.sealed(block) {
             // Optimize the common case of one predecessor: no param needed.
-            if optimize_var_lookup {
+            if self.can_optimize_var_lookup(block, func.layout.num_blocks()) {
                 let pred = self.cfg.predecessors(block).next().unwrap();
                 self.calls.push(Call::FinishSealedOnePredecessor(block));
                 self.calls.push(Call::UseVar(pred));
@@ -413,10 +381,8 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
                 if C::NEEDS_TAG {
                     func.dfg.set_tag(val, Some(u32::from(var).into()));
                 }
-
                 // Define the operandless param added above to prevent lookup cycles.
                 self.def_var(var, val, block);
-
                 // Look up a use_var for each predecessor.
                 self.begin_predecessors_lookup(val, block);
             }
@@ -428,10 +394,44 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
             self.cfg.push_undef_phis(block, var, val);
             // Define the operandless param added above to prevent lookup cycles.
             self.def_var(var, val, block);
-
             // Nothing more can be known at this point.
             self.results.push(val);
         };
+    }
+
+    /// There are two conditions for being able to optimize the lookup of a non local var:
+    ///  1. The block must have one single predecessor
+    ///  2. The block cannot be part of a predecessor loop
+    ///
+    /// To check for these conditions we perform a graph search over block predecessors
+    /// marking visited blocks and aborting if we find a previously seen block.
+    /// We stop the search if we find a block with multiple predecessors since the
+    /// original algorithm can handle these cases.
+    fn can_optimize_var_lookup(&mut self, block: Block, block_cnt: usize) -> bool {
+        // Check that the initial block only has one predecessor.
+        // This is only a requirement for the initial block.
+        if !self.cfg.has_single_predecessor(block) {
+            return false;
+        }
+
+        let mut visited = HybridBitSet::new_empty();
+        let mut current = block;
+        loop {
+            // We haven't found the original block and we have either reached the entry
+            // block, or found the end of this line of dead blocks. It's safe to stop
+            // the search here either way, the algorithm can handle these cases even if
+            // blocks are in an undefined island.
+            if !self.cfg.has_single_predecessor(block) {
+                return true;
+            }
+            // predecessor loop occurred
+            if visited.contains(current) {
+                return false;
+            }
+            let next = self.cfg.predecessors(block).next().unwrap();
+            visited.insert(current, block_cnt);
+            current = next;
+        }
     }
 
     /// For blocks with a single predecessor, once we've determined the value,
@@ -570,11 +570,6 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
 
         self.results.truncate(self.results.len() - num_predecessors);
         self.results.push(result_val);
-    }
-
-    /// Returns `true` if and only if `seal_block` has been called on the argument.
-    pub fn is_sealed(&self, block: Block) -> bool {
-        self.cfg.sealed(block)
     }
 
     /// The main algorithm is naturally recursive: when there's a `use_var` in a

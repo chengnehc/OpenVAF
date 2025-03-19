@@ -1,4 +1,4 @@
-use stdx::iter::zip;
+use std::iter::zip;
 
 use hir::BodyRef;
 use mir::builder::InstBuilder;
@@ -32,7 +32,7 @@ impl<'c1, 'c2> BodyLowerContext<'_, 'c1, 'c2> {
         mut lower_then_val: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>) -> Value,
         mut lower_else_val: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>) -> Value,
     ) -> Value {
-        self.ctxt.make_select(cond, |ctxt, br| {
+        self.ctxt.make_select_expr(cond, |ctxt, br| {
             let body_ctxt = BodyLowerContext { ctxt, body: self.body, path: self.path };
             if br {
                 lower_then_val(body_ctxt)
@@ -47,7 +47,7 @@ impl<'c1, 'c2> BodyLowerContext<'_, 'c1, 'c2> {
         cond: Value,
         mut lower_body: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>, bool) -> T,
     ) -> ((Block, T), (Block, T)) {
-        self.ctxt.make_if(cond, |ctx, branch| {
+        self.ctxt.make_if_stmt(cond, |ctx, branch| {
             let ctx = BodyLowerContext { ctxt: ctx, body: self.body, path: self.path };
             lower_body(ctx, branch)
         })

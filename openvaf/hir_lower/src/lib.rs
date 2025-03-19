@@ -140,8 +140,12 @@ impl<'a> MirBuilder<'a> {
 /// from the HIR，which allows the MIR to remain independent of the frontend/HIR.
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct HirInterner {
-    /// Mapping from MIR function `Param`s to MIR `Value`s
+    /// Mapping from MIR function `Param`s to SSA `Value`s
     pub params: TiMap<Param, ParamKind, Value>,
+    /// Mapping from output `Place`s to SSA `Value`s
+    // JW: use `TiMap` instead?
+    pub outputs: IndexMap<PlaceKind, PackedOption<Value>, ahash::RandomState>,
+    //pub outputs: TiMap<Place, PlaceKind, PackedOption<Value>>,
     /// Callback function definitions in the MIR function
     pub callbacks: TiSet<FuncRef, CallBackKind>,
     /// The user instructions of each callback function
@@ -150,9 +154,6 @@ pub struct HirInterner {
     pub implicit_equations: TiVec<ImplicitEquation, ImplicitEquationKind>,
     /// for storing internal states induced by $limit
     pub lim_state: TiMap<LimitState, Value, Vec<(Value, bool)>>,
-    /// Mapping from output `Place`s to MIR `Value`s
-    // TODO(JW): use `TiMap`?
-    pub outputs: IndexMap<PlaceKind, PackedOption<Value>, ahash::RandomState>,
     /// JW: for VerilogAE(?)
     pub tagged_reads: IndexMap<Value, Variable, ahash::RandomState>,
 }
@@ -267,6 +268,51 @@ impl HirInterner {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PlaceKind {
+    Var(Variable),
+    FunctionReturn(hir::Function),
+    FunctionArg(hir::FunctionArg),
+    Param(Parameter),
+    ParamMin(Parameter),
+    ParamMax(Parameter),
+    Contribute { dst: BranchWrite, is_reactive: bool, is_potential: bool },
+    IsPotential(BranchWrite),
+    ImplicitResidual { equation: ImplicitEquation, reactive: bool },
+    CollapseImplicitEquation(ImplicitEquation),
+    BoundStep,
+}
+
+impl From<hir::AssignmentLhs> for PlaceKind {
+    fn from(hir: hir::AssignmentLhs) -> Self {
+        match hir {
+            hir::AssignmentLhs::Variable(var) => PlaceKind::Var(var),
+            hir::AssignmentLhs::FunctionReturn(fun) => PlaceKind::FunctionReturn(fun),
+            hir::AssignmentLhs::FunctionArg(arg) => PlaceKind::FunctionArg(arg),
+        }
+    }
+}
+
+impl PlaceKind {
+    pub fn ty(&self, db: &CompilationDB) -> Type {
+        use PlaceKind::*;
+
+        match *self {
+            Var(var) => var.ty(db),
+            FunctionReturn(fun) => fun.return_ty(db),
+            FunctionArg(arg) => arg.ty(db),
+            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
+            IsPotential(_) | CollapseImplicitEquation(_) => Type::Bool,
+            Contribute { .. } | ImplicitResidual { .. } | BoundStep => Type::Real,
+        }
+    }
+
+    pub fn is_init_only(&self) -> bool {
+        matches!(self, Self::CollapseImplicitEquation(_))
+    }
+}
+
+/// A parameter during initialization is mutable (write default in case it's not given)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ParamKind {
     Voltage { hi: Node, lo: Option<Node> },
     Current(CurrentKind),
@@ -308,52 +354,6 @@ impl ParamKind {
     }
 }
 
-/// A parameter during initialization is mutable (write default in case it's not given)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum PlaceKind {
-    Contribute { dst: BranchWrite, is_reactive: bool, is_potential: bool },
-    IsPotential(BranchWrite),
-    CollapseImplicitEquation(ImplicitEquation),
-    ImplicitResidual { equation: ImplicitEquation, reactive: bool },
-    Var(Variable),
-    Param(Parameter),
-    ParamMin(Parameter),
-    ParamMax(Parameter),
-    FunctionReturn(hir::Function),
-    FunctionArg(hir::FunctionArg),
-    BoundStep,
-}
-
-impl PlaceKind {
-    pub fn ty(&self, db: &CompilationDB) -> Type {
-        use PlaceKind::*;
-
-        match *self {
-            Var(var) => var.ty(db),
-            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
-            FunctionReturn(fun) => fun.return_ty(db),
-            FunctionArg(arg) => arg.ty(db),
-            IsPotential(_) | CollapseImplicitEquation(_) => Type::Bool,
-            ImplicitResidual { .. } | Contribute { .. } | BoundStep => Type::Real,
-        }
-    }
-
-    /// ???
-    pub fn is_init_only(&self) -> bool {
-        matches!(self, Self::CollapseImplicitEquation(_))
-    }
-}
-
-impl From<hir::AssignmentLhs> for PlaceKind {
-    fn from(hir: hir::AssignmentLhs) -> Self {
-        match hir {
-            hir::AssignmentLhs::Variable(var) => PlaceKind::Var(var),
-            hir::AssignmentLhs::FunctionReturn(fun) => PlaceKind::FunctionReturn(fun),
-            hir::AssignmentLhs::FunctionArg(arg) => PlaceKind::FunctionArg(arg),
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CurrentKind {
     Branch(Branch),
@@ -369,7 +369,8 @@ impl From<BranchWrite> for CurrentKind {
     }
 }
 impl TryFrom<CurrentKind> for BranchWrite {
-    type Error = (); // FIXME(JW) should not use () as Error type
+    type Error = ();
+    // FIXME(JW) should not use () as Error type
     fn try_from(kind: CurrentKind) -> Result<BranchWrite, ()> {
         match kind {
             CurrentKind::Branch(branch) => Ok(BranchWrite::Named(branch)),
@@ -383,7 +384,7 @@ impl TryFrom<CurrentKind> for BranchWrite {
 pub struct ImplicitEquation(u32);
 impl_idx_from!(ImplicitEquation(u32));
 impl_debug_display! {
-    match ImplicitEquation {ImplicitEquation(i) => "inode{}", i;}
+    match ImplicitEquation {ImplicitEquation(i) => "inode{i}";}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

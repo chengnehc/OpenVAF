@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::{mem, ptr};
-use stdx::iter::zip;
+use std::iter::zip;
 
 use anyhow::Result;
 use indexmap::IndexSet;

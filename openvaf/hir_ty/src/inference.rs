@@ -2,9 +2,9 @@
 //! the type of each expression.
 
 use std::borrow::Cow;
+use std::iter::zip;
 use std::mem;
 use std::sync::Arc;
-use stdx::iter::zip;
 
 use ahash::AHashMap;
 use arena::ArenaMap;

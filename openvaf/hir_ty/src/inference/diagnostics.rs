@@ -1,4 +1,4 @@
-use stdx::iter::zip;
+use std::iter::zip;
 use stdx::pretty;
 
 use basedb::diagnostics::{

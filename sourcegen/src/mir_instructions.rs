@@ -1,10 +1,11 @@
 //! See Also:
 //!
 //! https://docs.rs/cranelift-codegen-meta/latest/cranelift_codegen_meta/gen_inst/index.html
+//!
+use std::iter::zip;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use stdx::iter::zip;
 
 use crate::{add_preamble, ensure_file_contents, project_root, reformat};
 

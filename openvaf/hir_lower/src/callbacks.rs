@@ -123,7 +123,7 @@ impl CallBackKind {
             CallBackKind::NoiseTable(table) => FunctionSignature {
                 name: format!(
                     "table_noise{}({:?}, {:?})",
-                    if table.log { "lob" } else { "" },
+                    if table.log { "log" } else { "" },
                     table.name,
                     &table.vals
                 ),
