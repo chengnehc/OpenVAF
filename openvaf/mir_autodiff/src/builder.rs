@@ -1,7 +1,7 @@
 //! Derivative builder
 
-use std::ops::Range;
 use std::iter::zip;
+use std::ops::Range;
 use stdx::packed_option::{PackedOption, ReservedValue};
 
 use ahash::AHashMap;
