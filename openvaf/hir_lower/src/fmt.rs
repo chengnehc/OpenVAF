@@ -37,7 +37,6 @@ pub enum FmtArgKind {
 }
 
 impl BodyLowerContext<'_, '_, '_> {
-    /// Define an instruction of Display
     pub fn ins_display(&mut self, kind: DisplayKind, newline: bool, args: &[ExprId]) {
         let mut fmt_lit = String::new();
         let mut call_args = vec![GRAVESTONE];

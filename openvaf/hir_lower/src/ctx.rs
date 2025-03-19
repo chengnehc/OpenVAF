@@ -1,14 +1,16 @@
 //! The main HIR lowering context.
 //!
 //! The most important methods are:
-//! * def_place, def_param
+//! * def_place
 //! * use_place, use_param
+//! * call
 
 use ahash::AHashSet;
 use hir::{CompilationDB, Node, Type, Variable};
 use mir::builder::{InsertBuilder, InstBuilder};
 use mir::{
-    Block, DataFlowGraph, FuncRef, Inst, Opcode, SourceLoc, Value, FALSE, F_ZERO, INFINITY, TRUE,
+    Block, DataFlowGraph, FuncRef, Ieee64, Inst, Opcode, Param, SourceLoc, Value, FALSE, F_ZERO,
+    INFINITY, TRUE,
 };
 use mir_build::{FuncInstBuilder, FunctionBuilder, Place};
 use typed_indexmap::TiSet;
@@ -46,9 +48,9 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
             db,
             func,
             intern,
+            no_equations,
             places: TiSet::default(),
             tagged_vars: AHashSet::default(),
-            no_equations,
             inside_lim: false,
             num_noise_sources: 0,
         }
@@ -57,10 +59,6 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     pub fn with_tagged_vars(mut self, vars: AHashSet<Variable>) -> Self {
         self.tagged_vars = vars;
         self
-    }
-
-    pub fn get_place(&self, kind: PlaceKind) -> Option<Place> {
-        self.places.index(&kind)
     }
 
     /// Declare and initialize (if necessary) a mutable memory location in
@@ -79,7 +77,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 | ParamMax(_)
                 | FunctionReturn { .. }
                 | FunctionArg { .. } => return place,
-                // A `Variable` without propoer initialization would cause hidden state
+                // A `Variable` without proper initialization would cause hidden state
                 Var(var) => self.use_param(ParamKind::HiddenState(var)),
                 Contribute { .. } | ImplicitResidual { .. } => F_ZERO,
                 CollapseImplicitEquation(_) => TRUE,
@@ -115,8 +113,13 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         val
     }
 
-    pub fn get_param(&mut self, kind: ParamKind) -> Option<Value> {
+    pub fn get_param_value(&self, kind: ParamKind) -> Option<Value> {
         self.intern.params.get(&kind).copied()
+    }
+
+    pub fn get_param_kind(&mut self, param: Param) -> &ParamKind {
+        let (kind, _) = self.intern.params.get_index(param).unwrap();
+        kind
     }
 
     pub fn def_param(&mut self, kind: ParamKind, val: Value) {
@@ -133,30 +136,32 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         self.intern.outputs.insert(kind, val.into());
     }
 
-    /// Declare a callback function. If it already exists then simply return it.
+    /// Declare a callback function. If it already exists then simply return
+    /// the function reference.
     pub fn dec_callback(&mut self, kind: CallBackKind) -> FuncRef {
         let data = kind.signature();
         let (func_ref, changed) = self.intern.callbacks.ensure(kind);
         if changed {
-            self.intern.callback_uses.push(Vec::new());
+            self.intern.callback_users.push(Vec::new());
             let sig = self.func.import_function(data);
             debug_assert_eq!(func_ref, sig);
         }
         func_ref
     }
 
-    /// Declare and define a callback function, and return the instruction
+    /// Make an instruction that calls a callback function of `kind` with `args`
     pub fn call(&mut self, kind: CallBackKind, args: &[Value]) -> Inst {
         let tracked = !self.no_equations && kind.tracked();
         let func_ref = self.dec_callback(kind);
         let inst = self.func.ins().call(func_ref, args);
         if tracked {
-            self.intern.callback_uses[func_ref].push(inst)
+            self.intern.callback_users[func_ref].push(inst)
         }
         inst
     }
 
-    /// Declare and define a callback function, and return its first result.
+    /// Make an instruction that calls a callback function of `kind` with `args`
+    /// and return its first result value
     pub fn call1(&mut self, kind: CallBackKind, args: &[Value]) -> Value {
         let inst = self.call(kind, args);
         self.dfg().first_result(inst)
@@ -185,7 +190,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 self.func.ins().fneg(lo)
             }
             (Some(hi), Some(lo)) => {
-                if let Some(inverted) = self.get_param(kind(lo, Some(hi))) {
+                if let Some(inverted) = self.get_param_value(kind(lo, Some(hi))) {
                     self.func.ins().fneg(inverted)
                 } else {
                     self.use_param(kind(hi, Some(lo)))
@@ -193,11 +198,6 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
             }
             (None, None) => F_ZERO,
         }
-    }
-
-    pub fn unwrap_pot_node(&mut self, val: Value) -> Node {
-        let param = self.dfg().value_def(val).unwrap_param();
-        self.intern.params.get_index(param).unwrap().0.unwrap_pot_node()
     }
 
     /// Start lowering a `$limit` function by allocating a state slot
@@ -343,7 +343,7 @@ impl<'c> MainLowerContext<'_, 'c> {
     pub(crate) fn ins(&mut self) -> InsertBuilder<'_, FuncInstBuilder<'_, 'c>> {
         self.func.ins()
     }
-    pub(crate) fn fconst(&mut self, val: f64) -> Value {
+    pub(crate) fn fconst(&mut self, val: Ieee64) -> Value {
         self.func.fconst(val)
     }
     pub(crate) fn iconst(&mut self, val: i32) -> Value {

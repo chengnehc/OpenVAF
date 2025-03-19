@@ -131,9 +131,9 @@ impl<'a> Context<'a> {
         let dfg = &mut self.func.dfg;
         self.op_dependent_insts.ensure(dfg.num_insts());
 
-        for (cb, uses) in self.intern.callback_uses.iter_mut_enumerated() {
+        for (cb, users) in self.intern.callback_users.iter_mut_enumerated() {
             if self.intern.callbacks[cb].is_noise() {
-                uses.retain(|&inst| {
+                users.retain(|&inst| {
                     if self.func.layout.inst_block(inst).is_none() {
                         return false;
                     }
@@ -163,7 +163,7 @@ impl<'a> Context<'a> {
         self.op_dependent_vals.clear();
         self.op_dependent_insts.clear();
         self.op_dependent_insts.ensure(dfg.num_insts());
-        for (cb, uses) in self.intern.callback_uses.iter_mut_enumerated() {
+        for (cb, uses) in self.intern.callback_users.iter_mut_enumerated() {
             if self.intern.callbacks[cb].is_op_dependent() {
                 uses.retain(|&inst| {
                     if self.func.layout.inst_block(inst).is_none() {

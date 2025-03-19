@@ -24,7 +24,7 @@ use lasso::Rodeo;
 use mir::builder::{InsertBuilder, InstBuilder, InstInserterBase};
 use mir::cursor::{Cursor, FuncCursor};
 use mir::{
-    Block, ControlFlowGraph, DataFlowGraph, FuncRef, Function, FunctionSignature, Inst,
+    Block, ControlFlowGraph, DataFlowGraph, FuncRef, Function, FunctionSignature, Ieee64, Inst,
     InstructionData, Param, Value,
 };
 use typed_index_collections::TiVec;
@@ -448,8 +448,8 @@ impl FunctionBuilder<'_> {
         self.func.dfg.make_param(param)
     }
 
-    pub fn fconst(&mut self, val: f64) -> Value {
-        self.func.dfg.fconst(val.into())
+    pub fn fconst(&mut self, val: Ieee64) -> Value {
+        self.func.dfg.fconst(val)
     }
 
     pub fn iconst(&mut self, val: i32) -> Value {

@@ -59,7 +59,7 @@ pub(super) enum ValueDataType {
     Invalid,
 }
 
-/// Where did a value come from?
+/// Where did a SSA value come from?
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueDef {
     /// Value is the n'th result of an instruction.

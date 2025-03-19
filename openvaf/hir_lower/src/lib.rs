@@ -142,17 +142,15 @@ impl<'a> MirBuilder<'a> {
 pub struct HirInterner {
     /// Mapping from MIR function `Param`s to SSA `Value`s
     pub params: TiMap<Param, ParamKind, Value>,
-    /// Mapping from output `Place`s to SSA `Value`s
-    // JW: use `TiMap` instead?
+    /// Mapping from output `Place`s to possible SSA `Value`s
     pub outputs: IndexMap<PlaceKind, PackedOption<Value>, ahash::RandomState>,
-    //pub outputs: TiMap<Place, PlaceKind, PackedOption<Value>>,
-    /// Callback function definitions in the MIR function
+    /// Callback function declarations in the MIR function
     pub callbacks: TiSet<FuncRef, CallBackKind>,
-    /// The user instructions of each callback function
-    pub callback_uses: TiVec<FuncRef, Vec<Inst>>,
-    /// for implicit unknowns created by the simulator backend
+    /// User instructions (callers) of each callback function
+    pub callback_users: TiVec<FuncRef, Vec<Inst>>,
+    /// Implicit equation unknowns needed by simulator backend
     pub implicit_equations: TiVec<ImplicitEquation, ImplicitEquationKind>,
-    /// for storing internal states induced by $limit
+    /// Internal states induced by $limit
     pub lim_state: TiMap<LimitState, Value, Vec<(Value, bool)>>,
     /// JW: for VerilogAE(?)
     pub tagged_reads: IndexMap<Value, Variable, ahash::RandomState>,
@@ -272,7 +270,7 @@ pub enum PlaceKind {
     Var(Variable),
     FunctionReturn(hir::Function),
     FunctionArg(hir::FunctionArg),
-    Param(Parameter),
+    Param(Parameter), // A parameter during initialization is mutable (write default in case it's not given)
     ParamMin(Parameter),
     ParamMax(Parameter),
     Contribute { dst: BranchWrite, is_reactive: bool, is_potential: bool },
@@ -311,7 +309,6 @@ impl PlaceKind {
     }
 }
 
-/// A parameter during initialization is mutable (write default in case it's not given)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ParamKind {
     Voltage { hi: Node, lo: Option<Node> },
@@ -331,7 +328,7 @@ pub enum ParamKind {
 }
 
 impl ParamKind {
-    fn unwrap_pot_node(&self) -> Node {
+    fn unwrap_potential_node(&self) -> Node {
         let ParamKind::Voltage { hi, lo: None } = self else {
             unreachable!("{self:?} is not a potential node")
         };

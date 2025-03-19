@@ -34,124 +34,19 @@ pub struct BodyRef<'a> {
     infere: &'a inference::Inference,
 }
 
+/// Statements
 impl<'a> BodyRef<'a> {
     pub fn entry_stmts(&self) -> &'a [StmtId] {
         &self.body.entry_stmts
     }
 
-    /// Returns the type that was inferred for this expression
-    pub fn expr_type(&self, expr: ExprId) -> Type {
-        self.infere.expr_types[expr].to_value().unwrap()
-    }
-
-    /// Returns whether the result of an expression
-    /// needs to be cast to a different type before use.
-    pub fn need_type_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
-        let dst = self.infere.casts.get(&expr)?;
-        let src = self.expr_type(expr);
-        debug_assert_ne!(&src, dst, "cast types must be different");
-        Some((src, dst))
-    }
-
-    pub fn get_call_signature(&self, expr: ExprId) -> Signature {
-        self.infere.resolved_signatures.get(&expr).copied().unwrap_or(Signature(u32::MAX))
-    }
-
-    pub fn as_literal(&self, expr: ExprId) -> Option<&'a Literal> {
-        match &self.body.exprs[expr] {
-            hir_def::Expr::Literal(lit) => Some(lit),
-            _ => None,
-        }
-    }
-
-    // AB: get integer literal
-    pub fn as_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
-        match &self.body.exprs[expr1] {
-            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii), // Int literal
-            _ => None, // not a literal or other literals
-        }
-    }
-
-    // AB: get integer literal with optional negative sign
-    pub fn as_signed_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
-        match &self.body.exprs[expr1] {
-            // Int literal
-            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
-            // Int literal with `-` prefix
-            hir_def::Expr::UnaryOp { expr, op: UnaryOp::Neg } => {
-                self.as_int_literal(expr).map(|ii| -ii)
-            }
-            _ => None,
-        }
-    }
-
-    pub fn into_node(&self, expr: ExprId) -> Node {
-        let id = self.infere.expr_types[expr].unwrap_node();
-        Node { id }
-    }
-
-    pub fn into_branch(&self, expr: ExprId) -> Branch {
-        let id = self.infere.expr_types[expr].unwrap_branch();
-        Branch { id }
-    }
-
-    pub fn into_port_flow(&self, expr: ExprId) -> Node {
-        let id = self.infere.expr_types[expr].unwrap_port_flow();
-        Node { id }
-    }
-
-    pub fn into_parameter(&self, expr: ExprId) -> Parameter {
-        let id = self.infere.expr_types[expr].unwrap_param();
-        Parameter { id }
-    }
-
-    pub fn get_expr(&self, expr: ExprId) -> Expr<'a> {
-        match self.body.exprs[expr] {
-            hir_def::Expr::Path { .. } => Expr::Read(self.resolve_path(expr)),
-            hir_def::Expr::UnaryOp { expr, op } => Expr::UnaryOp { expr, op },
-            hir_def::Expr::BinaryOp { lhs, rhs, op: Some(op) } => Expr::BinaryOp { lhs, rhs, op },
-            hir_def::Expr::Select { cond, then_val, else_val } => {
-                Expr::Select { cond, then_val, else_val }
-            }
-            hir_def::Expr::Call { ref args, .. } => {
-                let fun = match self.infere.resolved_calls[&expr] {
-                    inference::ResolvedFun::User { func, limit } => {
-                        ResolvedFun::User { func: Function { id: func }, limit }
-                    }
-                    inference::ResolvedFun::BuiltIn(builtin) => ResolvedFun::BuiltIn(builtin),
-                    // this is a special case, the VAMS standard allows these parameters
-                    // to be called like functions (but its the same as direct access)
-                    // we hide that detail from downstream users here
-                    inference::ResolvedFun::Param(param) => {
-                        return Expr::Read(Ref::ParamSysFun(param));
-                    }
-                    inference::ResolvedFun::InvalidNatureAccess(_) => {
-                        panic!("invalid HIR: invalid nature access {:?}", self.body.exprs[expr])
-                    }
-                };
-                Expr::Call { fun, args }
-            }
-            hir_def::Expr::Literal(ref literal) => Expr::Literal(literal),
-            hir_def::Expr::Array(ref args) => Expr::Array(args),
-            _ => panic!("invalid HIR: {:?}", self.body.exprs[expr]),
-        }
-    }
-
-    pub fn get_entry_stmt(&self, i: usize) -> Option<Stmt<'a>> {
-        self.get_stmt(self.entry_stmts()[i])
-    }
-
-    pub fn get_entry_expr(&self, i: usize) -> ExprId {
-        self.get_entry_stmt(i).unwrap().unwrap_expr()
-    }
-
-    pub fn get_stmt(&self, stmnt: StmtId) -> Option<Stmt<'a>> {
-        match self.body.stmts[stmnt] {
+    pub fn get_stmt(&self, stmt: StmtId) -> Option<Stmt<'a>> {
+        match self.body.stmts[stmt] {
             hir_def::Stmt::Missing | hir_def::Stmt::Empty => None,
             hir_def::Stmt::Expr(e) => Some(Stmt::Expr(e)),
             hir_def::Stmt::Block { ref body } => Some(Stmt::Block { body }),
             hir_def::Stmt::Assignment { val, .. } => {
-                let stmt = match self.infere.assignment_destination[&stmnt] {
+                let stmt = match self.infere.assignment_destination[&stmt] {
                     inference::AssignDst::Var(id) => {
                         Stmt::Assignment { lhs: AssignmentLhs::Variable(Variable { id }), rhs: val }
                     }
@@ -187,6 +82,115 @@ impl<'a> BodyRef<'a> {
             hir_def::Stmt::EventControl { ref event, body } => {
                 Some(Stmt::EventControl { event, body })
             }
+        }
+    }
+
+    pub fn get_nth_entry_expr(&self, n: usize) -> ExprId {
+        self.get_stmt(self.entry_stmts()[n]).unwrap().unwrap_expr()
+    }
+}
+
+/// Expression
+impl<'a> BodyRef<'a> {
+    /* Inference-related */
+
+    /// Returns the type that was inferred for this expression
+    pub fn expr_type(&self, expr: ExprId) -> Type {
+        self.infere.expr_types[expr].to_value().unwrap()
+    }
+
+    pub fn into_node(&self, expr: ExprId) -> Node {
+        let id = self.infere.expr_types[expr].unwrap_node();
+        Node { id }
+    }
+
+    pub fn into_branch(&self, expr: ExprId) -> Branch {
+        let id = self.infere.expr_types[expr].unwrap_branch();
+        Branch { id }
+    }
+
+    pub fn into_port_flow(&self, expr: ExprId) -> Node {
+        let id = self.infere.expr_types[expr].unwrap_port_flow();
+        Node { id }
+    }
+
+    pub fn into_parameter(&self, expr: ExprId) -> Parameter {
+        let id = self.infere.expr_types[expr].unwrap_param();
+        Parameter { id }
+    }
+
+    /// Returns whether the result of an expression needs to be cast to a
+    /// different type before use.
+    pub fn need_type_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
+        let dst = self.infere.casts.get(&expr)?;
+        let src = self.expr_type(expr);
+        debug_assert_ne!(&src, dst, "cast types must be different");
+        Some((src, dst))
+    }
+
+    pub fn get_call_signature(&self, expr: ExprId) -> Signature {
+        self.infere.resolved_signatures.get(&expr).copied().unwrap_or(Signature(u32::MAX))
+    }
+
+    /* Body-related */
+
+    pub fn as_literal(&self, expr: ExprId) -> Option<&'a Literal> {
+        match &self.body.exprs[expr] {
+            hir_def::Expr::Literal(lit) => Some(lit),
+            _ => None,
+        }
+    }
+
+    // AB: get integer literal
+    pub fn as_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
+        match &self.body.exprs[expr1] {
+            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii), // Int literal
+            _ => None, // not a literal or other literals
+        }
+    }
+
+    // AB: get integer literal with optional negative sign
+    pub fn as_signed_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
+        match &self.body.exprs[expr1] {
+            // Int literal
+            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
+            // Int literal with `-` prefix
+            hir_def::Expr::UnaryOp { expr, op: UnaryOp::Neg } => {
+                self.as_int_literal(expr).map(|ii| -ii)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn get_expr(&self, expr: ExprId) -> Expr<'a> {
+        match self.body.exprs[expr] {
+            hir_def::Expr::Path { .. } => Expr::Read(self.resolve_path(expr)),
+            hir_def::Expr::UnaryOp { expr, op } => Expr::UnaryOp { expr, op },
+            hir_def::Expr::BinaryOp { lhs, rhs, op: Some(op) } => Expr::BinaryOp { lhs, rhs, op },
+            hir_def::Expr::Select { cond, then_val, else_val } => {
+                Expr::Select { cond, then_expr: then_val, else_expr: else_val }
+            }
+            hir_def::Expr::Call { ref args, .. } => {
+                let fun = match self.infere.resolved_calls[&expr] {
+                    inference::ResolvedFun::User { func, limit } => {
+                        ResolvedFun::User { func: Function { id: func }, limit }
+                    }
+                    inference::ResolvedFun::BuiltIn(builtin) => ResolvedFun::BuiltIn(builtin),
+                    // this is a special case, the VAMS standard allows these parameters
+                    // to be called like functions (but its the same as direct access)
+                    // we hide that detail from downstream users here
+                    inference::ResolvedFun::Param(param) => {
+                        return Expr::Read(Ref::ParamSysFun(param));
+                    }
+                    inference::ResolvedFun::InvalidNatureAccess(_) => {
+                        panic!("invalid HIR: invalid nature access {:?}", self.body.exprs[expr])
+                    }
+                };
+                Expr::Call { fun, args }
+            }
+            hir_def::Expr::Literal(ref literal) => Expr::Literal(literal),
+            hir_def::Expr::Array(ref args) => Expr::Array(args),
+            _ => panic!("invalid HIR: {:?}", self.body.exprs[expr]),
         }
     }
 
@@ -230,8 +234,8 @@ pub enum Stmt<'a> {
 impl Stmt<'_> {
     #[inline]
     pub fn unwrap_expr(&self) -> ExprId {
-        let Stmt::Expr(e) = self else { unreachable!("Called unwrap_expr on {:?}", self) };
-        *e
+        let Stmt::Expr(id) = *self else { unreachable!("Called unwrap_expr on {:?}", self) };
+        id
     }
 }
 
@@ -253,13 +257,13 @@ pub enum Expr<'a> {
     Read(Ref),
     UnaryOp { expr: ExprId, op: UnaryOp },
     BinaryOp { lhs: ExprId, rhs: ExprId, op: BinaryOp },
-    Select { cond: ExprId, then_val: ExprId, else_val: ExprId },
+    Select { cond: ExprId, then_expr: ExprId, else_expr: ExprId },
     Call { fun: ResolvedFun, args: &'a [ExprId] },
     Literal(&'a Literal),
     Array(&'a [ExprId]),
 }
 impl Expr<'_> {
-    pub fn is_zero(&self) -> bool {
+    pub fn is_literal_zero(&self) -> bool {
         if let Expr::Literal(lit) = self {
             lit.is_zero()
         } else {
@@ -279,12 +283,12 @@ impl Expr<'_> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ref {
+    NatureAttr(NatureAttr),
     Variable(Variable),
     Parameter(Parameter),
     ParamSysFun(ParamSysFun),
     FunctionArg(FunctionArg),
     FunctionReturn(Function),
-    NatureAttr(NatureAttr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]

@@ -25,19 +25,18 @@ impl<'c1, 'c2> BodyLowerContext<'_, 'c1, 'c2> {
             self.lower_stmt(stmt)
         }
     }
-
     pub fn lower_select(
         &mut self,
         cond: Value,
-        mut lower_then_val: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>) -> Value,
-        mut lower_else_val: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>) -> Value,
+        mut lower_then_expr: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>) -> Value,
+        mut lower_else_expr: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>) -> Value,
     ) -> Value {
         self.ctxt.make_select_expr(cond, |ctxt, br| {
             let body_ctxt = BodyLowerContext { ctxt, body: self.body, path: self.path };
             if br {
-                lower_then_val(body_ctxt)
+                lower_then_expr(body_ctxt)
             } else {
-                lower_else_val(body_ctxt)
+                lower_else_expr(body_ctxt)
             }
         })
     }
@@ -47,9 +46,9 @@ impl<'c1, 'c2> BodyLowerContext<'_, 'c1, 'c2> {
         cond: Value,
         mut lower_body: impl FnMut(BodyLowerContext<'_, 'c1, 'c2>, bool) -> T,
     ) -> ((Block, T), (Block, T)) {
-        self.ctxt.make_if_stmt(cond, |ctx, branch| {
-            let ctx = BodyLowerContext { ctxt: ctx, body: self.body, path: self.path };
-            lower_body(ctx, branch)
+        self.ctxt.make_if_stmt(cond, |ctxt, br| {
+            let body_ctxt = BodyLowerContext { ctxt, body: self.body, path: self.path };
+            lower_body(body_ctxt, br)
         })
     }
 
@@ -68,6 +67,6 @@ impl<'c1, 'c2> BodyLowerContext<'_, 'c1, 'c2> {
 
 impl MainLowerContext<'_, '_> {
     pub fn lower_expr_body(&mut self, body: BodyRef, i: usize) -> Value {
-        BodyLowerContext { ctxt: self, body, path: "" }.lower_expr(body.get_entry_expr(i))
+        BodyLowerContext { ctxt: self, body, path: "" }.lower_expr(body.get_nth_entry_expr(i))
     }
 }

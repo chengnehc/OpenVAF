@@ -34,11 +34,6 @@ macro_rules! match_signature {
 }
 
 impl BodyLowerContext<'_, '_, '_> {
-    fn lower_body(&mut self, body: Body, i: usize) -> Value {
-        let expr = body.borrow().get_entry_expr(i);
-        BodyLowerContext { ctxt: self.ctxt, body: body.borrow(), path: self.path }.lower_expr(expr)
-    }
-
     pub fn lower_expr(&mut self, expr: ExprId) -> Value {
         let old_loc = self.ctxt.get_srcloc();
         self.ctxt.set_srcloc(mir::SourceLoc::new(u32::from(expr) as i32 + 1));
@@ -50,7 +45,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 Ref::ParamSysFun(param) => self.ctxt.use_param(ParamKind::ParamSysFun(param)),
                 Ref::FunctionArg(fun) => self.ctxt.use_place(PlaceKind::FunctionArg(fun)),
                 Ref::FunctionReturn(fun) => self.ctxt.use_place(PlaceKind::FunctionReturn(fun)),
-                Ref::NatureAttr(attr) => self.lower_body(attr.value(self.ctxt.db), 0),
+                Ref::NatureAttr(attr) => self.lower_nth_expr_in_body(attr.value(self.ctxt.db), 0),
             },
             Expr::Literal(lit) => match *lit {
                 Literal::Int(val) => self.ctxt.iconst(val),
@@ -67,13 +62,13 @@ impl BodyLowerContext<'_, '_, '_> {
             },
             Expr::UnaryOp { expr: arg, op } => self.lower_unary_op(expr, arg, op),
             Expr::BinaryOp { lhs, rhs, op } => self.lower_bin_op(expr, lhs, rhs, op),
-            Expr::Select { cond, then_val, else_val } => {
+            Expr::Select { cond, then_expr, else_expr } => {
                 let cond = self.lower_expr(cond);
-                let (then_src, else_src) = self.lower_cond(cond, |mut ctxt, then| {
-                    let expr = if then { then_val } else { else_val };
-                    ctxt.lower_expr(expr)
-                });
-                self.ctxt.ins().phi(&[then_src, else_src])
+                self.lower_select(
+                    cond,
+                    |mut cx| cx.lower_expr(then_expr),
+                    |mut cx| cx.lower_expr(else_expr),
+                )
             }
             Expr::Call { args, fun } => match fun {
                 ResolvedFun::User { func, limit } => self.lower_user_fun(func, limit, args),
@@ -81,12 +76,18 @@ impl BodyLowerContext<'_, '_, '_> {
             },
             Expr::Array(vals) => self.lower_array(expr, vals),
         };
+        // apply type cast if necessary
         if let Some((src_ty, dst_ty)) = self.body.need_type_cast(expr) {
             val = self.ctxt.make_type_cast(val, &src_ty, dst_ty)
         };
         self.ctxt.set_srcloc(old_loc);
 
         val
+    }
+
+    fn lower_nth_expr_in_body(&mut self, body: Body, i: usize) -> Value {
+        let expr = body.borrow().get_nth_entry_expr(i);
+        BodyLowerContext { ctxt: self.ctxt, body: body.borrow(), path: self.path }.lower_expr(expr)
     }
 
     fn lower_unary_op(&mut self, expr: ExprId, arg: ExprId, op: UnaryOp) -> Value {
@@ -99,7 +100,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 if self.body.as_literal(arg) == Some(&Literal::Inf) {
                     // Special case INFINITY
                     match self.body.expr_type(arg) {
-                        Type::Real => self.ctxt.fconst(f64::NEG_INFINITY),
+                        Type::Real => self.ctxt.fconst(f64::NEG_INFINITY.into()),
                         Type::Integer => self.ctxt.iconst(i32::MIN),
                         ty => unreachable!("{ty:?}"),
                     }
@@ -119,14 +120,14 @@ impl BodyLowerContext<'_, '_, '_> {
         let opcode = match op {
             // Short-circuit evaluation
             BinaryOp::BooleanOr => {
-                // lhs || rhs  ->  if lhs { true } else { rhs }
+                // lhs || rhs  <=>  if lhs { true } else { rhs }
                 let lhs = self.lower_expr(lhs);
-                return self.lower_select(lhs, |_| TRUE, |mut s| s.lower_expr(rhs));
+                return self.lower_select(lhs, |_| TRUE, |mut cx| cx.lower_expr(rhs));
             }
             BinaryOp::BooleanAnd => {
-                // lhs && rhs  ->  if lhs { rhs } else { false }
+                // lhs && rhs  <=>  if lhs { rhs } else { false }
                 let lhs = self.lower_expr(lhs);
-                return self.lower_select(lhs, |mut s| s.lower_expr(rhs), |_| FALSE);
+                return self.lower_select(lhs, |mut cx| cx.lower_expr(rhs), |_| FALSE);
             }
 
             BinaryOp::EqualityTest => match_signature! {
@@ -186,9 +187,9 @@ impl BodyLowerContext<'_, '_, '_> {
             }
         };
 
-        let lhs_ = self.lower_expr(lhs);
-        let rhs_ = self.lower_expr(rhs);
-        self.ctxt.ins().binary1(opcode, lhs_, rhs_)
+        let lhs = self.lower_expr(lhs);
+        let rhs = self.lower_expr(rhs);
+        self.ctxt.ins().binary1(opcode, lhs, rhs)
     }
 
     fn lower_user_fun(&mut self, fun: hir::Function, limit: bool, args: &[ExprId]) -> Value {
@@ -275,16 +276,6 @@ impl BodyLowerContext<'_, '_, '_> {
         let signature = self.body.get_call_signature(expr);
         match builtin {
             // Math functions
-            BuiltIn::abs => {
-                let (negate, comparison, zero) = match_signature!(signature:
-                    ABS_REAL => (Opcode::Fneg, Opcode::Flt, F_ZERO),
-                    ABS_INT => (Opcode::Ineg, Opcode::Ilt, ZERO)
-                );
-                // abs(x)  ->  if (x < 0) then { -x } else { x }
-                let val = self.lower_expr(args[0]);
-                let cond = self.ctxt.ins().binary1(comparison, val, zero);
-                self.lower_select(cond, |sel| sel.ctxt.ins().unary1(negate, val), |_| val)
-            }
             BuiltIn::acos => {
                 let arg0 = self.lower_expr(args[0]);
                 self.ctxt.ins().acos(arg0)
@@ -371,8 +362,23 @@ impl BodyLowerContext<'_, '_, '_> {
                 let arg0 = self.lower_expr(args[0]);
                 self.ctxt.ins().ceil(arg0)
             }
+            BuiltIn::pow => {
+                let arg0 = self.lower_expr(args[0]);
+                let arg1 = self.lower_expr(args[1]);
+                self.ctxt.ins().pow(arg0, arg1)
+            }
+            BuiltIn::abs => {
+                let (negate, comparison, zero) = match_signature!(signature:
+                    ABS_REAL => (Opcode::Fneg, Opcode::Flt, F_ZERO),
+                    ABS_INT => (Opcode::Ineg, Opcode::Ilt, ZERO)
+                );
+                // abs(x)  <=>  if (x < 0) then { -x } else { x }
+                let arg0 = self.lower_expr(args[0]);
+                let cond = self.ctxt.ins().binary1(comparison, arg0, zero);
+                self.lower_select(cond, |body| body.ctxt.ins().unary1(negate, arg0), |_| arg0)
+            }
             BuiltIn::max => {
-                // max(x, y)  ->  if (x > y) then { x } else { y }
+                // max(x, y)  <=>  if (x > y) then { x } else { y }
                 let comparison = match_signature!(signature: MAX_REAL => InstBuilder::fgt, MAX_INT => InstBuilder::igt);
                 let arg0 = self.lower_expr(args[0]);
                 let arg1 = self.lower_expr(args[1]);
@@ -380,17 +386,12 @@ impl BodyLowerContext<'_, '_, '_> {
                 self.lower_select(cond, |_| arg0, |_| arg1)
             }
             BuiltIn::min => {
-                // min(x, y)  ->  if (x < y) then { x } else { y }
+                // min(x, y)  <=>  if (x < y) then { x } else { y }
                 let comparison = match_signature!(signature: MAX_REAL => InstBuilder::flt, MAX_INT => InstBuilder::ilt);
                 let arg0 = self.lower_expr(args[0]);
                 let arg1 = self.lower_expr(args[1]);
                 let cond = comparison(self.ctxt.ins(), arg0, arg1);
                 self.lower_select(cond, |_| arg0, |_| arg1)
-            }
-            BuiltIn::pow => {
-                let arg0 = self.lower_expr(args[0]);
-                let arg1 = self.lower_expr(args[1]);
-                self.ctxt.ins().pow(arg0, arg1)
             }
 
             // Signal access functions
@@ -444,12 +445,13 @@ impl BodyLowerContext<'_, '_, '_> {
             BuiltIn::ddx => {
                 let val = self.lower_expr(args[0]);
                 let unknown = self.lower_expr(args[1]);
-                let kind = if signature == DDX_POT {
-                    // TODO how to handle gnd nodes?
-                    let node = self.ctxt.unwrap_pot_node(unknown);
-                    CallBackKind::NodeDerivative(node)
-                } else {
-                    CallBackKind::Derivative(self.ctxt.dfg().value_def(unknown).unwrap_param())
+                let param = self.ctxt.dfg().value_def(unknown).unwrap_param();
+                let kind = match signature {
+                    DDX_POT => {
+                        let node = self.ctxt.get_param_kind(param).unwrap_potential_node();
+                        CallBackKind::NodeDerivative(node)
+                    }
+                    _ => CallBackKind::Derivative(param),
                 };
                 self.ctxt.call1(kind, &[val])
             }
@@ -486,16 +488,16 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             BuiltIn::limexp => {
                 let arg0 = self.lower_expr(args[0]);
-                let cut_off = self.ctxt.fconst(1e30f64.ln());
-                let off = self.ctxt.fconst(1e30f64);
+                let cut_off = self.ctxt.fconst(1e30f64.ln().into());
+                let off = self.ctxt.fconst(1e30f64.into());
                 let linearize = self.ctxt.ins().fgt(arg0, cut_off);
-                self.ctxt.make_select_expr(linearize, |func, linearize| {
+                self.ctxt.make_select_expr(linearize, |ctxt, linearize| {
                     if linearize {
-                        let delta = func.ins().fsub(arg0, cut_off);
-                        let lin = func.ins().fmul(off, delta);
-                        func.ins().fadd(off, lin)
+                        let delta = ctxt.ins().fsub(arg0, cut_off);
+                        let lin = ctxt.ins().fmul(off, delta);
+                        ctxt.ins().fadd(off, lin)
                     } else {
-                        func.ins().exp(arg0)
+                        ctxt.ins().exp(arg0)
                     }
                 })
             }
@@ -605,11 +607,11 @@ impl BodyLowerContext<'_, '_, '_> {
             // Analog kernel parameter system functions
             BuiltIn::temperature => self.ctxt.use_param(ParamKind::Temperature),
             BuiltIn::vt => {
-                // TODO: make this a database input
-                // constants from NIST2010
+                // NIST2010 constants
+                // TODO: make KB and Q a database input
                 const KB: f64 = 1.3806488e-23;
                 const Q: f64 = 1.602176565e-19;
-                let fac = self.ctxt.fconst(KB / Q);
+                let fac = self.ctxt.fconst((KB / Q).into());
                 let temp = match args.first() {
                     Some(temp) => self.lower_expr(*temp),
                     None => self.ctxt.use_param(ParamKind::Temperature),
@@ -712,7 +714,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 self.lower_expr(args[0])
             }
             */
-            _ => unreachable!(),
+            it => unreachable!("Unknown or unsupported builtin function {it:?}"),
         }
     }
 

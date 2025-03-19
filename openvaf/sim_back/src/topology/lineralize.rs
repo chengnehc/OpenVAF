@@ -150,10 +150,10 @@ impl super::Builder<'_> {
         // first iterate all analog operators and determining if they can
         // be lineraized/turned into dimensions. This step does not modify the
         // function yet as otherwise the detection may return incorrect results
-        for (cb, uses) in intern.callback_uses.iter_mut_enumerated() {
+        for (cb, users) in intern.callback_users.iter_mut_enumerated() {
             match intern.callbacks[cb] {
                 CallBackKind::TimeDerivative => {
-                    for inst in mem::take(uses) {
+                    for inst in mem::take(users) {
                         if self.func.layout.inst_block(inst).is_none() {
                             continue;
                         }
@@ -180,7 +180,7 @@ impl super::Builder<'_> {
                 CallBackKind::WhiteNoise { .. }
                 | CallBackKind::FlickerNoise { .. }
                 | CallBackKind::NoiseTable(_) => {
-                    for inst in mem::take(uses) {
+                    for inst in mem::take(users) {
                         analog_operators.push((
                             inst,
                             self.determine_evaluation(
