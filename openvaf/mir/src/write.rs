@@ -58,7 +58,7 @@ pub trait FuncWriter {
             self.write_entity_definition(w, func, sig.into(), &sig_data)?;
         }
 
-        // Write out used constant, literal values.
+        // Write out used constant literals.
         for val in func.dfg.values() {
             match func.dfg.value_def(val) {
                 ValueDef::Const(Const::Float(def)) if func.dfg.uses(val).next().is_some() => {
@@ -100,7 +100,7 @@ pub trait FuncWriter {
         entity: AnyEntity,
         value: &dyn fmt::Display,
     ) -> fmt::Result {
-        writeln!(w, "    {} = {}", entity, value)
+        writeln!(w, "    {entity} = {value}")
     }
 }
 
@@ -184,11 +184,6 @@ pub fn decorate_function<FW: FuncWriter>(
 // Basic blocks
 
 /// Write out the basic block header, outdented:
-///
-///    block1:
-///    block1(v1: i32):
-///    block10(v4: f64, v5: b1):
-///
 pub fn write_block_header(
     w: &mut dyn Write,
     _func: &Function,
@@ -259,6 +254,7 @@ fn write_instruction(w: &mut dyn Write, func: &Function, inst: Inst, indent: usi
         }
         write!(w, " = ")?;
     }
+    // Write instruction opcode and operands.
     write!(w, "{}", func.dfg.insts[inst].opcode())?;
     write_operands(w, &func.dfg, inst)?;
     writeln!(w)?;

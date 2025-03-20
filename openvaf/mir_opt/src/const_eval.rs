@@ -2,7 +2,7 @@ use std::mem::size_of_val;
 
 use mir::{Const, Function, Opcode, Value, FALSE, F_ONE, F_ZERO, ONE, TRUE, ZERO};
 
-pub fn eval_binary(func: &mut Function, op: Opcode, lhs: Const, rhs: Const) -> Value {
+pub fn eval_const_binary(func: &mut Function, op: Opcode, lhs: Const, rhs: Const) -> Value {
     match (lhs, rhs) {
         (Const::Int(lhs), Const::Int(rhs)) => match op {
             Opcode::Iadd => func.dfg.iconst(lhs + rhs),
@@ -24,7 +24,7 @@ pub fn eval_binary(func: &mut Function, op: Opcode, lhs: Const, rhs: Const) -> V
             Opcode::Ieq => (lhs == rhs).into(),
             Opcode::Ine => (lhs != rhs).into(),
 
-            _ => unreachable!("invalid int operation {}", op),
+            _ => unreachable!("invalid int operation {op}"),
         },
 
         (Const::Float(lhs), Const::Float(rhs)) => {
@@ -47,18 +47,20 @@ pub fn eval_binary(func: &mut Function, op: Opcode, lhs: Const, rhs: Const) -> V
                 Opcode::Hypot => func.dfg.f64const(lhs.hypot(rhs)),
                 Opcode::Atan2 => func.dfg.f64const(lhs.atan2(rhs)),
                 Opcode::Pow => func.dfg.f64const(lhs.powf(rhs)),
-                _ => unreachable!("invalid real operation  {}", op,),
+
+                _ => unreachable!("invalid real operation {op}"),
             }
         }
         _ => match op {
             Opcode::Seq | Opcode::Beq => (lhs == rhs).into(),
             Opcode::Sne | Opcode::Bne => (lhs != rhs).into(),
-            _ => unreachable!("invalid operation {} {:?} {:?}", op, lhs, rhs),
+
+            _ => unreachable!("invalid operation {op} {lhs:?} {rhs:?}"),
         },
     }
 }
 
-pub fn eval_unary(func: &mut Function, op: Opcode, val: Const) -> Option<Value> {
+pub fn eval_const_unary(func: &mut Function, op: Opcode, val: Const) -> Option<Value> {
     if op == Opcode::OptBarrier {
         return None;
     }
@@ -87,7 +89,8 @@ pub fn eval_unary(func: &mut Function, op: Opcode, val: Const) -> Option<Value> 
                 Opcode::FIcast => func.dfg.iconst(val.round() as i32),
                 Opcode::FBcast => (val.abs() != 0.0).into(),
                 Opcode::Fneg => func.dfg.f64const(-val),
-                _ => unreachable!("invalid real operation {}", op),
+
+                _ => unreachable!("invalid real operation {op}"),
             }
         }
         mir::Const::Int(val) => match op {
@@ -99,9 +102,9 @@ pub fn eval_unary(func: &mut Function, op: Opcode, val: Const) -> Option<Value> 
                 let val = 8 * size_of_val(&val) as i32 - val.leading_zeros() as i32;
                 func.dfg.iconst(val)
             }
-            _ => unreachable!("invalid int operation {}", op),
+
+            _ => unreachable!("invalid int operation {op}"),
         },
-        mir::Const::Str(_) => unreachable!(),
         mir::Const::Bool(true) => match op {
             Opcode::Bnot => FALSE,
             Opcode::BIcast => ONE,
@@ -114,6 +117,7 @@ pub fn eval_unary(func: &mut Function, op: Opcode, val: Const) -> Option<Value> 
             Opcode::BFcast => F_ZERO,
             _ => unreachable!(),
         },
+        mir::Const::Str(_) => unreachable!(),
     };
     Some(val)
 }

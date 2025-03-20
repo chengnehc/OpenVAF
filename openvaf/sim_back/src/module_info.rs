@@ -55,9 +55,8 @@ impl ModuleInfo {
         all_vars_op: bool,
         sink: &mut ConsoleSink,
     ) -> ModuleInfo {
-        let mut params: IndexMap<Parameter, ParamInfo, RandomState> = IndexMap::default();
-        let mut param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, RandomState> =
-            IndexMap::default();
+        let mut params = IndexMap::default();
+        let mut param_sysfuns: IndexMap<_, Vec<SmolStr>, _> = IndexMap::default();
         let mut op_vars = IndexMap::default();
 
         let mut decls = module.rec_declarations(db);

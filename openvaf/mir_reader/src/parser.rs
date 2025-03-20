@@ -367,7 +367,7 @@ impl<'a> Parser<'a> {
         // function ::= "function" * name signature "{" preamble function-body "}"
         let name = self.parse_external_name()?;
 
-        let mut ctx = Context::new(Function::with_name(name));
+        let mut ctx = Context::new(Function::new().with_name(name));
         self.parse_func_params(&mut ctx)?;
 
         // function ::= "function" name signature * "{" preamble function-body "}"

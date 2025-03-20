@@ -1,11 +1,5 @@
-//! A work queue is a handy data structure for tracking work left to do.
-//! (For example, basic blocks left to process.) It is basically a de-duplicating queue;
-//! so attempting to insert X if X is already enqueued has no effect.
-//!
-//! This implementation assumes that the elements are dense indices, so it
-//! can allocate the queue to size and also use a bit set to track occupancy.
-//!
 //! See Also:
+//!
 //! - https://github.com/rust-lang/rust/blob/master/compiler/rustc_data_structures/src/work_queue.rs
 
 use core::fmt::Formatter;
@@ -14,6 +8,12 @@ use std::fmt::Debug;
 
 use bitset::BitSet;
 
+/// A work queue is a handy data structure for tracking work left to do.
+/// (For example, basic blocks left to process.) It is basically a de-duplicating
+/// queue; so attempting to insert X if X is already enqueued has no effect.
+///
+/// This implementation assumes that the elements are dense indices, so it
+// can allocate the queue to size and also use a bit set to track occupancy.
 pub struct WorkQueue<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> {
     pub deque: VecDeque<T>,
     pub set: BitSet<T>,

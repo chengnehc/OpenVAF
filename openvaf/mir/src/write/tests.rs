@@ -6,7 +6,7 @@ use crate::Function;
 
 #[test]
 fn basic() {
-    let mut func = Function::with_name("foo".to_owned());
+    let mut func = Function::new().with_name("foo".to_owned());
 
     let v1 = func.dfg.make_param(0u32.into());
     let v2 = func.dfg.make_param(1u32.into());

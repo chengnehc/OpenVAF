@@ -137,7 +137,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     }
 
     /// Declare a callback function. If it already exists then simply return
-    /// the function reference.
+    /// the reference to the declared callback.
     pub fn dec_callback(&mut self, kind: CallBackKind) -> FuncRef {
         let data = kind.signature();
         let (func_ref, changed) = self.intern.callbacks.ensure(kind);
@@ -167,7 +167,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         self.dfg().first_result(inst)
     }
 
-    pub fn node(&self, node: Node) -> Option<Node> {
+    pub fn justify_node(&self, node: Node) -> Option<Node> {
         if node.is_gnd(self.db) {
             None
         } else {
@@ -181,8 +181,8 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         lo: Option<Node>,
         kind: impl Fn(Node, Option<Node>) -> ParamKind,
     ) -> Value {
-        let hi = self.node(hi);
-        let lo = lo.and_then(|lo| self.node(lo));
+        let hi = self.justify_node(hi);
+        let lo = lo.and_then(|lo| self.justify_node(lo));
         match (hi, lo) {
             (Some(hi), None) => self.use_param(kind(hi, None)),
             (None, Some(lo)) => {

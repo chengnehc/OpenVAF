@@ -60,12 +60,12 @@ impl<'a> BodyRef<'a> {
                     },
                     inference::AssignDst::Flow(branch) => Stmt::Contribute {
                         kind: ContributeKind::Flow,
-                        branch: branch.into(),
+                        lhs: branch.into(),
                         rhs: val,
                     },
                     inference::AssignDst::Potential(branch) => Stmt::Contribute {
                         kind: ContributeKind::Potential,
-                        branch: branch.into(),
+                        lhs: branch.into(),
                         rhs: val,
                     },
                 };
@@ -76,7 +76,7 @@ impl<'a> BodyRef<'a> {
             }
             hir_def::Stmt::WhileLoop { cond, body } => Some(Stmt::WhileLoop { cond, body }),
             hir_def::Stmt::If { cond, then_branch, else_branch } => {
-                Some(Stmt::If { cond, then_branch, else_branch })
+                Some(Stmt::If { cond, then_stmt: then_branch, else_stmt: else_branch })
             }
             hir_def::Stmt::Case { discr, ref case_arms } => Some(Stmt::Case { discr, case_arms }),
             hir_def::Stmt::EventControl { ref event, body } => {
@@ -224,8 +224,8 @@ pub enum Stmt<'a> {
     Expr(ExprId),
     Block { body: &'a [StmtId] },
     Assignment { lhs: AssignmentLhs, rhs: ExprId },
-    Contribute { kind: ContributeKind, branch: BranchWrite, rhs: ExprId },
-    If { cond: ExprId, then_branch: StmtId, else_branch: StmtId },
+    Contribute { kind: ContributeKind, lhs: BranchWrite, rhs: ExprId },
+    If { cond: ExprId, then_stmt: StmtId, else_stmt: StmtId },
     WhileLoop { cond: ExprId, body: StmtId },
     ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
     Case { discr: ExprId, case_arms: &'a [Case] }, // TODO lint on unreachable

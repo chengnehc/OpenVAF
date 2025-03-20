@@ -32,25 +32,23 @@ pub fn aggressive_dead_code_elimination(
         }
     }
 
-    adce.solve();
+    let (mut live_insts, mut live_blocks) = adce.solve();
 
-    let dead_instructions = {
-        adce.live_insts.inverse();
-        adce.live_insts
+    let dead_insts = {
+        live_insts.inverse();
+        live_insts
     };
-
     let dead_blocks = {
-        adce.live_blocks.inverse();
-        adce.live_blocks
+        live_blocks.inverse();
+        live_blocks
     };
 
-    for inst in dead_instructions.iter() {
+    for inst in dead_insts.iter() {
         func.dfg.zap_inst(inst);
         if func.layout.inst_block(inst).is_some() && !func.dfg.insts[inst].is_terminator() {
             func.layout.remove_inst(inst);
         }
     }
-
     for bb in dead_blocks.iter() {
         if let Some(term) = func.layout.last_inst(bb) {
             if let InstructionData::Branch { else_dst, .. } = func.dfg.insts[term] {
@@ -62,7 +60,6 @@ pub fn aggressive_dead_code_elimination(
 }
 
 struct AggressiveDeadCode<'a> {
-    pdom_frontiers: &'a PostDominanceFrontiers,
     live_insts: BitSet<Inst>,
     live_blocks: BitSet<Block>,
     live_predecessors: BitSet<Block>,
@@ -71,10 +68,11 @@ struct AggressiveDeadCode<'a> {
     bb_work_list: Vec<Block>,
     func: &'a Function,
     cfg: &'a ControlFlowGraph,
+    pdom_frontiers: &'a PostDominanceFrontiers,
 }
 
 impl AggressiveDeadCode<'_> {
-    pub fn solve(&mut self) {
+    pub fn solve(mut self) -> (BitSet<Inst>, BitSet<Block>) {
         loop {
             while let Some(inst) = self.inst_work_list.pop() {
                 for arg in self.func.dfg.instr_args(inst) {
@@ -93,7 +91,7 @@ impl AggressiveDeadCode<'_> {
             }
 
             if self.inst_work_list.is_empty() {
-                break;
+                break (self.live_insts, self.live_blocks);
             }
         }
     }

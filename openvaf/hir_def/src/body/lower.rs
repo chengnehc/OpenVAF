@@ -19,7 +19,7 @@ pub(super) struct Context<'a> {
     pub(super) body: &'a mut Body,
     pub(super) src_map: &'a mut BodySourceMap,
 
-    // for collecting block body statements, as a named block opens up a new scope
+    // for collecting statements defined within a body (e.g. named block, param expression)
     pub(super) curr_scope: (Scope, ErasedAstId),
     pub(super) ast_id_map: &'a AstIdMap,
 

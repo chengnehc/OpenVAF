@@ -582,7 +582,7 @@ impl<'a> Builder<'a> {
     }
 
     fn add_kirchhoff_law(&mut self, contrib: &Contribution, dst: BranchWrite) {
-        let (hi, lo) = dst.nodes(self.db);
+        let (hi, lo) = dst.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
         get_residual!(self, hi).add_contribution(contrib, &mut self.cursor, false);
@@ -600,7 +600,7 @@ impl<'a> Builder<'a> {
         // self.add_noise(contrib, SimUnknownKind::Current(dst.into()), None, false);
         self.add_noise(contrib, SimUnknownKind::Current(dst.into()), None);
 
-        let (hi, lo) = dst.nodes(self.db);
+        let (hi, lo) = dst.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
         get_residual!(self, hi).add(&mut self.cursor, false, eq_val);

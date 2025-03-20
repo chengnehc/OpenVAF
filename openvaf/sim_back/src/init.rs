@@ -74,7 +74,7 @@ impl<'a> Builder<'a> {
     fn new(ctx: &'a mut Context) -> Builder<'a> {
         Builder {
             init: Initialization {
-                func: Function::with_name(format!("{}_init", &ctx.func.name)),
+                func: Function::new().with_name(format!("{}_init", &ctx.func.name)),
                 intern: HirInterner::default(),
                 cache_slots: TiMap::default(),
                 cached_vals: IndexMap::with_capacity_and_hasher(128, RandomState::new()),

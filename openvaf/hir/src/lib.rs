@@ -306,13 +306,14 @@ impl BranchKind {
     }
 }
 
+/// `branch_lvalue`/`branch_probe_function_call` as specified in [LRM 5.6.1]
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum BranchWrite {
     Named(Branch),
     Unnamed { hi: Node, lo: Option<Node> },
 }
 impl BranchWrite {
-    pub fn nodes(self, db: &CompilationDB) -> (Node, Option<Node>) {
+    pub fn node_pair(self, db: &CompilationDB) -> (Node, Option<Node>) {
         match self {
             BranchWrite::Named(branch) => match branch.kind(db) {
                 BranchKind::Nodes(hi, lo) => (hi, Some(lo)),

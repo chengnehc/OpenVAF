@@ -95,7 +95,7 @@ impl Builder<'_> {
         let mut nodes = IndexMap::with_capacity_and_hasher(32, ahash::RandomState::new());
         let mut candidates = Vec::new();
         for (_, (&branch, contributes)) in self.topology.branches() {
-            let (hi, lo) = branch.nodes(self.db);
+            let (hi, lo) = branch.node_pair(self.db);
             let is_current_src = contributes.is_potential == FALSE;
             let potential =
                 contributes.voltage_src.unknown.filter(|&val| !self.func.dfg.value_dead(val));

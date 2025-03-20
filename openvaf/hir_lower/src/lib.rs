@@ -270,14 +270,24 @@ pub enum PlaceKind {
     Var(Variable),
     FunctionReturn(hir::Function),
     FunctionArg(hir::FunctionArg),
-    Param(Parameter), // A parameter during initialization is mutable (write default in case it's not given)
-    ParamMin(Parameter),
-    ParamMax(Parameter),
-    Contribute { dst: BranchWrite, is_reactive: bool, is_potential: bool },
+    /// A contribution statement LHS
+    Contribute {
+        dst: BranchWrite,
+        is_reactive: bool,
+        is_potential: bool,
+    },
+    ///
     IsPotential(BranchWrite),
-    ImplicitResidual { equation: ImplicitEquation, reactive: bool },
+    ImplicitResidual {
+        equation: ImplicitEquation,
+        reactive: bool,
+    },
     CollapseImplicitEquation(ImplicitEquation),
     BoundStep,
+    /// A parameter during initialization is mutable (write default in case not given)
+    Param(Parameter),
+    ParamMin(Parameter),
+    ParamMax(Parameter),
 }
 
 impl From<hir::AssignmentLhs> for PlaceKind {
@@ -298,9 +308,9 @@ impl PlaceKind {
             Var(var) => var.ty(db),
             FunctionReturn(fun) => fun.return_ty(db),
             FunctionArg(arg) => arg.ty(db),
-            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
             IsPotential(_) | CollapseImplicitEquation(_) => Type::Bool,
             Contribute { .. } | ImplicitResidual { .. } | BoundStep => Type::Real,
+            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
         }
     }
 
@@ -314,15 +324,15 @@ pub enum ParamKind {
     Voltage { hi: Node, lo: Option<Node> },
     Current(CurrentKind),
     ImplicitUnknown(ImplicitEquation),
-    PortConnected { port: Node },
     Param(Parameter),
     ParamSysFun(ParamSysFun),
+    PortConnected { port: Node },
     ParamGiven { param: Parameter },
     Temperature,
     Abstime,
     EnableIntegration,
-    HiddenState(Variable),
     EnableLim,
+    HiddenState(Variable),
     PrevState(LimitState),
     NewState(LimitState),
 }
@@ -343,8 +353,8 @@ impl ParamKind {
                 | ParamKind::ImplicitUnknown(_)
                 | ParamKind::Abstime
                 | ParamKind::EnableIntegration
-                | ParamKind::HiddenState(_)
                 | ParamKind::EnableLim
+                | ParamKind::HiddenState(_)
                 | ParamKind::PrevState(_)
                 | ParamKind::NewState(_)
         )
@@ -426,5 +436,5 @@ impl IdtKind {
 pub struct LimitState(u32);
 impl_idx_from!(LimitState(u32));
 impl_debug_display! {
-    match LimitState {LimitState(i) => "lim_state{}", i;}
+    match LimitState {LimitState(i) => "lim_state{i}";}
 }

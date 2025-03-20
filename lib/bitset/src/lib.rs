@@ -5,9 +5,8 @@
 //!
 //! mainly used for MIR data flow analysis and optimization
 
-// TODO(JW): update this crate.
-// BitSet -> DensenBitSet, SparseBitSet -> ChunkedBitSet
-// HybridBitSet -> MixedBitSet
+// TODO(JW): update this crate?
+// BitSet -> DenseBitSet, SparseBitSet -> ChunkedBitSet, HybridBitSet -> MixedBitSet
 
 use std::fmt::{self, Debug, Display, Formatter};
 use std::marker::PhantomData;
@@ -157,6 +156,7 @@ impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> BitSet<T> {
         self.clear_excess_bits();
     }
 
+    /// Set all bits to its inverse value.
     pub fn inverse(&mut self) {
         for word in &mut self.words {
             *word = !*word;

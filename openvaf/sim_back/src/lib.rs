@@ -46,10 +46,10 @@ pub struct CompiledModule<'a> {
     pub dae: DaeSystem,
     pub init: Initialization,
     pub node_collapse: NodeCollapse,
-    pub eval: Function,
-    pub intern: HirInterner,
     pub model_param_setup: Function,
     pub model_param_intern: HirInterner,
+    pub eval: Function,
+    pub intern: HirInterner,
 }
 
 impl<'a> CompiledModule<'a> {
@@ -58,25 +58,25 @@ impl<'a> CompiledModule<'a> {
         info: &'a ModuleInfo,
         literals: &mut Rodeo,
     ) -> CompiledModule<'a> {
-        let mut cxt = Context::new(db, literals, info);
-        cxt.compute_outputs(true);
-        cxt.compute_cfg();
-        cxt.optimize(OptimizationStage::Initial);
-        debug_assert!(cxt.func.validate());
+        let mut ctxt = Context::new(db, literals, info);
+        ctxt.compute_outputs(true);
+        ctxt.compute_cfg();
+        ctxt.optimize(OptimizationStage::Initial);
+        debug_assert!(ctxt.func.validate());
 
-        let topology = Topology::new(&mut cxt);
-        debug_assert!(cxt.func.validate());
-        let mut dae = DaeSystem::new(&mut cxt, topology);
-        debug_assert!(cxt.func.validate());
-        cxt.compute_cfg();
-        let gvn = cxt.optimize(OptimizationStage::PostDerivative);
-        dae.sparsify(&mut cxt);
+        let topology = Topology::new(&mut ctxt);
+        debug_assert!(ctxt.func.validate());
+        let mut dae = DaeSystem::new(&mut ctxt, topology);
+        debug_assert!(ctxt.func.validate());
+        ctxt.compute_cfg();
+        let gvn = ctxt.optimize(OptimizationStage::PostDerivative);
+        dae.sparsify(&mut ctxt);
 
         // For debugging purposes - print parameters
         let debugging = false; //  && cfg!(debug_assertions);
         if debugging {
             println!("Parameters:");
-            cxt.intern.params.iter().for_each(|(p, val)| {
+            ctxt.intern.params.iter().for_each(|(p, val)| {
                 print!("  {:?}", p);
                 match p {
                     ParamKind::Param(param) | ParamKind::ParamGiven { param } => {
@@ -121,7 +121,7 @@ impl<'a> CompiledModule<'a> {
             println!();
 
             println!("Outputs:");
-            cxt.intern.outputs.iter().for_each(|(p, val)| {
+            ctxt.intern.outputs.iter().for_each(|(p, val)| {
                 if val.is_some() {
                     println!("  {:?} -> {:?}", p, val.unwrap());
                 } else {
@@ -131,13 +131,13 @@ impl<'a> CompiledModule<'a> {
             println!();
 
             println!("Tagged reads:");
-            cxt.intern.tagged_reads.iter().for_each(|(val, var)| {
+            ctxt.intern.tagged_reads.iter().for_each(|(val, var)| {
                 println!("  {:?} -> {:?}", val, var);
             });
             println!();
 
             println!("Implicit equations:");
-            for (i, &iek) in cxt.intern.implicit_equations.iter().enumerate() {
+            for (i, &iek) in ctxt.intern.implicit_equations.iter().enumerate() {
                 println!("  {:?} : {:?}", i, iek);
             }
             println!();
@@ -156,16 +156,16 @@ impl<'a> CompiledModule<'a> {
             println!();
 
             println!("CX function");
-            println!("{:?}", cxt.func);
+            println!("{:?}", ctxt.func);
             println!();
         }
 
-        debug_assert!(cxt.func.validate());
+        debug_assert!(ctxt.func.validate());
 
-        cxt.refresh_op_dependent_insts();
-        let mut init = Initialization::new(&mut cxt, gvn);
-        let node_collapse = NodeCollapse::new(&init, &dae, &cxt);
-        debug_assert!(cxt.func.validate());
+        ctxt.refresh_op_dependent_insts();
+        let mut init = Initialization::new(&mut ctxt, gvn);
+        let node_collapse = NodeCollapse::new(&init, &dae, &ctxt);
+        debug_assert!(ctxt.func.validate());
 
         // For debugging purposes - print MIR
         if debugging {
@@ -195,20 +195,20 @@ impl<'a> CompiledModule<'a> {
             true,
             &model_params,
         );
-        cxt.cfg.compute(&model_param_setup);
-        simplify_cfg(&mut model_param_setup, &mut cxt.cfg);
-        sparse_conditional_constant_propagation(&mut model_param_setup, &cxt.cfg);
-        simplify_cfg(&mut model_param_setup, &mut cxt.cfg);
+        ctxt.cfg.compute(&model_param_setup);
+        simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
+        sparse_conditional_constant_propagation(&mut model_param_setup, &ctxt.cfg);
+        simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
 
         CompiledModule {
             info,
             dae,
             init,
             node_collapse,
-            eval: cxt.func,
-            intern: cxt.intern,
             model_param_intern,
             model_param_setup,
+            eval: ctxt.func,
+            intern: ctxt.intern,
         }
     }
 }

@@ -17,13 +17,13 @@ impl BodyLowerContext<'_, '_, '_> {
                 let val = self.lower_expr(rhs);
                 self.ctxt.def_place(lhs.into(), val);
             }
-            Stmt::Contribute { kind, branch, rhs } => {
-                self.lower_contribute(kind == ContributeKind::Potential, branch, rhs)
+            Stmt::Contribute { kind, lhs, rhs } => {
+                self.lower_contribute(kind == ContributeKind::Potential, lhs, rhs)
             }
-            Stmt::If { cond, then_branch, else_branch } => {
+            Stmt::If { cond, then_stmt, else_stmt } => {
                 let cond = self.lower_expr(cond);
                 self.lower_cond(cond, |mut cx, br| {
-                    let stmt = if br { then_branch } else { else_branch };
+                    let stmt = if br { then_stmt } else { else_stmt };
                     cx.lower_stmt(stmt)
                 });
             }
@@ -40,39 +40,40 @@ impl BodyLowerContext<'_, '_, '_> {
         }
     }
 
-    fn lower_contribute(&mut self, is_potential: bool, mut dst: BranchWrite, rhs: ExprId) {
+    fn lower_contribute(&mut self, is_potential: bool, mut lhs: BranchWrite, rhs: ExprId) {
         let mut negate = false;
-        if let BranchWrite::Unnamed { hi, lo } = &mut dst {
-            // dst is mutated here
+        if let BranchWrite::Unnamed { hi, lo } = &mut lhs {
+            // maybe swap hi and lo node here
             self.lower_contribute_node_pair(&mut negate, hi, lo, is_potential)
         }
-        self.ctxt.def_place(PlaceKind::IsPotential(dst), is_potential.into());
+        self.ctxt.def_place(PlaceKind::IsPotential(lhs), is_potential.into());
 
         // Node collapse hint used by most compact models:
         // 1. LHS is potential access
         // 2. RHS is literal zero
         if is_potential && self.body.get_expr(rhs).is_literal_zero() {
-            let (mut hi, mut lo) = dst.nodes(self.ctxt.db);
-            if matches!(dst, BranchWrite::Named(_)) {
+            let (mut hi, mut lo) = lhs.node_pair(self.ctxt.db);
+            if matches!(lhs, BranchWrite::Named(_)) {
                 self.lower_contribute_node_pair(&mut negate, &mut hi, &mut lo, is_potential)
             }
             self.ctxt.call(CallBackKind::CollapseHint(hi, lo), &[]);
         }
 
-        // JW: I guess this is meant to reserve a place for the complement nature
-        // of branch write dst. If it is already declared, then it's a no-op.
+        // JW: I guess this is meant to reserve a place for the complement nature access
+        // of branch write dst. If it is already declared, then this is a no-op.
         self.ctxt.def_place(
-            PlaceKind::Contribute { dst, is_reactive: false, is_potential: !is_potential },
+            PlaceKind::Contribute { dst: lhs, is_reactive: false, is_potential: !is_potential },
             F_ZERO,
         );
 
-        // no need to build instruction if the expression == 0
         let rhs = self.lower_expr(rhs);
+
+        // no need to build instruction if the RHS expression evalutes to 0
         if rhs == F_ZERO {
             return;
         }
 
-        let place = PlaceKind::Contribute { dst, is_reactive: false, is_potential };
+        let place = PlaceKind::Contribute { dst: lhs, is_reactive: false, is_potential };
         let old_val = self.ctxt.use_place(place);
         let new_val = if negate {
             self.ctxt.ins().fsub(old_val, rhs)
@@ -91,8 +92,10 @@ impl BodyLowerContext<'_, '_, '_> {
         lo: &mut Option<Node>,
         is_potential: bool,
     ) {
-        let hi_ = self.ctxt.node(*hi);
-        let lo_ = lo.and_then(|lo| self.ctxt.node(lo));
+        // justify the nodes in case they are global ground
+        let hi_ = self.ctxt.justify_node(*hi);
+        let lo_ = lo.and_then(|lo| self.ctxt.justify_node(lo));
+        // maybe swap the node pair
         (*hi, *lo) = match (hi_, lo_) {
             (Some(hi), None) => (hi, None),
             (None, Some(lo)) => {
@@ -106,7 +109,7 @@ impl BodyLowerContext<'_, '_, '_> {
                     is_potential,
                 };
                 if self.ctxt.places.contains(&negate_place_def) {
-                    // If a negated form of contribute branch was defined early,
+                    // If a negated form of contribute branch was defined earlier,
                     // just make use of it
                     *negate = true;
                     (lo, Some(hi))

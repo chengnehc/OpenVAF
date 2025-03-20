@@ -54,7 +54,8 @@ impl<'a> Context<'a> {
         // TODO hidden state
         intern.insert_var_init(db, &mut func, literals);
 
-        let output_values = BitSet::new_empty(func.dfg.num_values());
+        let num_vals = func.dfg.num_values();
+
         Context {
             db,
             module,
@@ -62,7 +63,7 @@ impl<'a> Context<'a> {
             intern,
             cfg: ControlFlowGraph::default(),
             dom_tree: DominatorTree::default(),
-            output_values,
+            output_values: BitSet::new_empty(num_vals),
             op_dependent_insts: BitSet::default(),
             op_dependent_vals: Vec::new(),
         }

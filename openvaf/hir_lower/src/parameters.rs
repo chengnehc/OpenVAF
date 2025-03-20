@@ -1,4 +1,4 @@
-use std::mem::replace;
+use std::mem;
 use stdx::packed_option::ReservedValue;
 
 use hir::{CompilationDB, ConstraintValue, ParamConstraint, Parameter, Type};
@@ -87,11 +87,11 @@ impl HirInterner {
             let ops = CmpOps::from_ty(&ty);
             let invalid = ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::Invalid, param));
 
-            let (then_src, else_src) = ctxt.make_if_stmt(param_given, |ctx, param_given| {
+            let (then_src, else_src) = ctxt.make_if_stmt(param_given, |ctxt, param_given| {
                 if param_given {
                     if build_stores {
-                        let exit = ctx.create_block();
-                        let mut ctx = BodyLowerContext { ctxt: ctx, body: body.borrow(), path: "" };
+                        let exit = ctxt.create_block();
+                        let mut ctx = BodyLowerContext { ctxt, body: body.borrow(), path: "" };
                         ctx.check_param(
                             param_val,
                             &bounds,
@@ -114,10 +114,10 @@ impl HirInterner {
                     }
                     param_val
                 } else {
-                    let default_val = ctx.lower_expr_body(body.borrow(), 0);
+                    let default_val = ctxt.lower_expr_body(body.borrow(), 0);
                     if build_stores {
-                        let exit = ctx.create_block();
-                        let mut ctx = BodyLowerContext { ctxt: ctx, body: body.borrow(), path: "" };
+                        let exit = ctxt.create_block();
+                        let mut ctx = BodyLowerContext { ctxt, body: body.borrow(), path: "" };
                         ctx.check_param(
                             default_val,
                             &bounds,
@@ -318,8 +318,9 @@ impl HirInterner {
         for (i, param) in params.iter().copied().enumerate() {
             let val = &mut self.params.raw[&ParamKind::Param(param)];
             let output_val = if build_stores { default_vals[i] } else { *val };
-            *val = replace(&mut self.outputs[&PlaceKind::Param(param)], Some(output_val).into())
-                .unwrap_unchecked();
+            *val =
+                mem::replace(&mut self.outputs[&PlaceKind::Param(param)], Some(output_val).into())
+                    .unwrap_unchecked();
         }
     }
 }
@@ -371,7 +372,6 @@ impl BodyLowerContext<'_, '_, '_> {
 
                     let op = ops.in_bound(range.start_inclusive);
                     let is_lo_ok = self.ctxt.ins().binary1(op, start, param_val);
-
                     let is_ok = self.ctxt.make_select_expr(is_lo_ok, |builder, is_ok| {
                         if is_ok {
                             let op = ops.in_bound(range.end_inclusive);
@@ -394,11 +394,9 @@ impl BodyLowerContext<'_, '_, '_> {
                     // error on fallthrough
                     self.ctxt.ins().call(invalid, &[]);
                     self.ctxt.ins().jump(global_exit);
-
                     self.ctxt.switch_to_block(exit);
                 }
             }
-
             ConstraintKind::Exclude => {
                 self.ctxt.ins().jump(global_exit);
 

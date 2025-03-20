@@ -42,7 +42,7 @@ impl NodeCollapse {
         for (unknown, &kind) in dae.unknowns.iter_enumerated() {
             if let SimUnknownKind::Current(kind) = kind {
                 let Ok(branch) = BranchWrite::try_from(kind) else { continue };
-                let (hi, lo) = branch.nodes(ctx.db);
+                let (hi, lo) = branch.node_pair(ctx.db);
                 let hi = dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
                 let lo = lo.map(|lo| dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
                 let source_pair: Option<CollapsePair> = pairs.index(&(hi, lo)).or_else(|| {

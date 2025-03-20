@@ -6,7 +6,7 @@ use mir::{
     F_TWO, F_ZERO, N_ONE, ONE, ZERO,
 };
 
-use crate::const_eval::{eval_binary, eval_unary};
+use crate::const_eval::{eval_const_binary, eval_const_unary};
 
 pub trait Arithmetic {
     const NEG: Opcode;
@@ -73,32 +73,39 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
 
     pub fn simplify_phi(&mut self, phi: PhiNode) -> Option<Value> {
         let mut iter = self.func.dfg.phi_edges(&phi);
-        if let Some((_, all_eq_val)) = iter.next() {
-            let all_eq_val = self.map_val(all_eq_val);
-            if iter.all(|(_, val)| self.map_val(val) == all_eq_val) {
-                return Some(all_eq_val);
-            }
-        }
-        None
+        let (_, all_eq_val) = iter.next()?;
+        let all_eq_val = self.map_val(all_eq_val);
+        iter.all(|(_, val)| self.map_val(val) == all_eq_val).then_some(all_eq_val)
     }
 
-    pub fn simplify_unary_op(&mut self, op: Opcode, arg: Value) -> Option<Value> {
-        if let Some(arg) = self.func.dfg.value_def(arg).as_const() {
-            if let Some(val) = eval_unary(self.func, op, arg) {
+    pub fn simplify_unary_op(&mut self, op: Opcode, val: Value) -> Option<Value> {
+        // Try constant evaluation first
+        if let Some(const_) = self.func.dfg.value_def(val).as_const() {
+            if let Some(val) = eval_const_unary(self.func, op, const_) {
                 return Some(val);
             }
         }
 
+        // Try re-using the argument of a possible inverse(reciprocal) instruction.
+        // We need to evaluate x = f(v). If v = g(u) was evaluated earlier, and (f, g)
+        // is a pair of inverse operations, then we could just make use of u directly,
+        // since x = f(g(u)) = u.
         let inv = match op {
+            // Turn these two into binary op simplification
+            Opcode::Fneg => return self.simplify_sub_inst::<FP>(F_ZERO, val),
+            Opcode::Ineg => return self.simplify_sub_inst::<i32>(ZERO, val),
+
+            // self-reciprocal
             Opcode::Inot => Opcode::Inot,
             Opcode::Bnot => Opcode::Bnot,
-            Opcode::Fneg => return self.simplify_sub_inst::<FP>(F_ZERO, arg),
-            Opcode::Ineg => return self.simplify_sub_inst::<i32>(ZERO, arg),
-            // lossless inverse operation
+
+            // inverse cast is lossless
+            // X = FI/IB/FBcast(V), V = IF/BI/BFcast(U)
             Opcode::FIcast => Opcode::IFcast,
             Opcode::IBcast => Opcode::BIcast,
             Opcode::FBcast => Opcode::BFcast,
-            // lossy inverse operation, no transformation is possible
+
+            // inverse cast is lossy, or no inverse operation available
             Opcode::IFcast
             | Opcode::BIcast
             | Opcode::BFcast
@@ -106,36 +113,38 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             | Opcode::Clog2 => return None,
 
             Opcode::Sqrt => {
-                if let Some([x, y]) = self.as_binary(arg, Opcode::Fmul) {
+                // X = sqrt(V), V = U * U
+                if let Some([x, y]) = self.as_binary(val, Opcode::Fmul) {
                     if x == y {
                         return Some(x);
                     }
                 }
-                if let Some([x, y]) = self.as_binary(arg, Opcode::Pow) {
+                // X = sqrt(V), V = pow(U, 2)
+                if let Some([x, y]) = self.as_binary(val, Opcode::Pow) {
                     if y == F_TWO {
                         return Some(x);
                     }
                 }
-
                 return None;
             }
             Opcode::Exp => Opcode::Ln,
             Opcode::Ln => Opcode::Exp,
             Opcode::Log => {
-                if let Some([x, y]) = self.as_binary(arg, Opcode::Pow) {
+                // X = log(V), V = pow(10, U)
+                if let Some([x, y]) = self.as_binary(val, Opcode::Pow) {
                     if x == F_TEN {
                         return Some(y);
                     }
                 }
-
                 return None;
             }
+            // Idempotent operations
             Opcode::Floor | Opcode::Ceil => {
                 if matches!(
-                    self.as_any_unary(arg),
+                    self.as_any_unary(val),
                     Some((Opcode::IFcast | Opcode::BFcast | Opcode::Ceil | Opcode::Floor, _))
                 ) {
-                    return Some(arg);
+                    return Some(val);
                 } else {
                     return None;
                 }
@@ -155,7 +164,7 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             _ => unreachable!(""),
         };
 
-        if let Some(arg) = self.as_unary(arg, inv) {
+        if let Some(arg) = self.as_unary(val, inv) {
             return Some(arg);
         }
 
@@ -174,12 +183,12 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             Opcode::Fdiv => self.simplify_div_inst::<FP>(lhs, rhs),
             Opcode::Pow => self.simplify_pow_inst(lhs, rhs),
 
-            // we only care about instructions that
+            // We only care about instructions that:
             //
-            // * have a dervative
+            // * have a derivative
             // * are commonly used in compact models
             //
-            // other (more complex) optimizations are better left to LLVM.
+            // Other (more complex) optimizations are better left to LLVM.
             // So we just const eval (if possible)
             Opcode::Irem
             | Opcode::Ilt
@@ -214,6 +223,8 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         (self.map_val_)(val, self.func)
     }
 
+    /// Try resolving `val` as the result of an existing unary instruction with opcode `op`.
+    /// Return the instruction's argument if successful.
     fn as_unary(&self, val: Value, op: Opcode) -> Option<Value> {
         if let ValueDef::Result(inst, _) = self.func.dfg.value_def(val) {
             if let InstructionData::Unary { opcode, arg } = self.func.dfg.insts[inst] {
@@ -227,6 +238,8 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         None
     }
 
+    /// Try resolving `val` as the result of an existing binary instruction with opcode `op`,
+    /// Return the instruction's arguments if successful.
     fn as_binary(&self, val: Value, op: Opcode) -> Option<[Value; 2]> {
         if let ValueDef::Result(inst, _) = self.func.dfg.value_def(val) {
             if let InstructionData::Binary { opcode, mut args } = self.func.dfg.insts[inst] {
@@ -241,6 +254,8 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         None
     }
 
+    /// Try resolving `val` as the result of an existing unary instruction of any kind.
+    /// Return the instruction's opcode and argument if successful.
     fn as_any_unary(&self, val: Value) -> Option<(Opcode, Value)> {
         if let ValueDef::Result(inst, _) = self.func.dfg.value_def(val) {
             if let InstructionData::Unary { opcode, arg } = self.func.dfg.insts[inst] {
@@ -250,20 +265,21 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         None
     }
 
-    fn is_neg(&self, unary_op: Opcode, bin_op: Opcode, lhs: Value, rhs: Value) -> bool {
-        if self.as_unary(lhs, unary_op) == Some(rhs) || self.as_unary(rhs, unary_op) == Some(lhs) {
+    /// Test if `lhs` and `rhs` are opposite numbers, i.e. LHS + RHS = 0
+    fn is_opposite<A: Arithmetic>(&self, lhs: Value, rhs: Value) -> bool {
+        if self.as_unary(lhs, A::NEG) == Some(rhs) || self.as_unary(rhs, A::NEG) == Some(lhs) {
             return true;
         }
-
         if let (Some([x1, y1]), Some([y2, x2])) =
-            (self.as_binary(lhs, bin_op), self.as_binary(rhs, bin_op))
+            (self.as_binary(lhs, A::SUB), self.as_binary(rhs, A::SUB))
         {
             return x1 == x2 && y1 == y2;
         }
-
         false
     }
 
+    /// Const-eval a binary instruction and canonicalize the constant to the RHS if
+    /// this is a commutative operation.
     fn fold_or_commute_consts(
         &mut self,
         op: Opcode,
@@ -272,15 +288,13 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
     ) -> Option<Value> {
         if let ValueDef::Const(lhs_) = self.func.dfg.value_def(*lhs) {
             if let ValueDef::Const(rhs_) = self.func.dfg.value_def(*rhs) {
-                return Some(eval_binary(self.func, op, lhs_, rhs_));
+                return Some(eval_const_binary(self.func, op, lhs_, rhs_));
             }
-
             // Canonicalize the constant to the RHS if this is a commutative operation.
             if op.is_commutative() {
                 swap(lhs, rhs)
             }
         }
-
         None
     }
 
@@ -299,7 +313,7 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             return Some(lhs);
         }
 
-        if self.is_neg(A::NEG, A::SUB, lhs, rhs) {
+        if self.is_opposite::<A>(lhs, rhs) {
             return Some(A::ZERO);
         }
 
@@ -404,23 +418,6 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         None
     }
 
-    /// Try to simplify (a + b) * x -> a*x + b*x if the result is simpler
-    fn expand_add_over_mul<A: Arithmetic>(&mut self, val: Value, other: Value) -> Option<Value> {
-        if let Some([lhs, rhs]) = self.as_binary(val, A::ADD) {
-            // simplify a*x
-            let lhs_ = self.simplify_mul_inst::<A>(lhs, other)?;
-            // simplify b*x
-            let rhs_ = self.simplify_mul_inst::<A>(rhs, other)?;
-            // a*x == a && b*x == b ||  a*x == b && b*x == a => (a + b) * x == a + b
-            if (lhs_ == lhs && rhs_ == rhs) || (lhs_ == rhs && rhs_ == lhs) {
-                return Some(val);
-            }
-            self.simplify_mul_inst::<A>(lhs_, rhs_)
-        } else {
-            None
-        }
-    }
-
     /// Given operands for an `A::MUL` instruction, see if we can fold the result.
     /// If not, this returns None.
     fn simplify_mul_inst<A: Arithmetic>(
@@ -487,6 +484,23 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         })
     }
 
+    /// Try to simplify (a + b) * x -> a*x + b*x if the result is simpler
+    fn expand_add_over_mul<A: Arithmetic>(&mut self, val: Value, other: Value) -> Option<Value> {
+        if let Some([lhs, rhs]) = self.as_binary(val, A::ADD) {
+            // simplify a*x
+            let lhs_ = self.simplify_mul_inst::<A>(lhs, other)?;
+            // simplify b*x
+            let rhs_ = self.simplify_mul_inst::<A>(rhs, other)?;
+            // a*x == a && b*x == b ||  a*x == b && b*x == a => (a + b) * x == a + b
+            if (lhs_ == lhs && rhs_ == rhs) || (lhs_ == rhs && rhs_ == lhs) {
+                return Some(val);
+            }
+            self.simplify_mul_inst::<A>(lhs_, rhs_)
+        } else {
+            None
+        }
+    }
+
     /// Given operands for an `A::DIV` instruction, see if we can fold the result.
     /// If not, this returns None.
     fn simplify_div_inst<A: Arithmetic>(
@@ -506,7 +520,7 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             return Some(lhs);
         }
 
-        if self.is_neg(A::NEG, A::SUB, lhs, rhs) {
+        if self.is_opposite::<A>(lhs, rhs) {
             return Some(A::N_ONE);
         }
 
@@ -532,7 +546,7 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         None
     }
 
-    /// Given operands for an `A::DIV` instruction, see if we can fold the result.
+    /// Given operands for an `Pow` instruction, see if we can fold the result.
     /// If not, this returns None.
     fn simplify_pow_inst(&mut self, mut lhs: Value, mut rhs: Value) -> Option<Value> {
         // before const fold to avoid iconsisten behaviour between rust powf and LLVM pow
@@ -555,8 +569,22 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         None
     }
 
+    fn simplify_assoc_binop(&mut self, op: Opcode, lhs: Value, rhs: Value) -> Option<Value> {
+        self.recurse(move |sel| sel.simplify_assoc_binop_inner(op, lhs, rhs))
+    }
+
+    fn recurse<T>(&mut self, f: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
+        if self.max_recurse == 0 {
+            return None;
+        }
+        self.max_recurse -= 1;
+        let res = f(self);
+        self.max_recurse += 1;
+        res
+    }
+
     fn simplify_assoc_binop_inner(&mut self, op: Opcode, lhs: Value, rhs: Value) -> Option<Value> {
-        let is_communative = op.is_commutative();
+        let is_commutative = op.is_commutative();
 
         // Transform: "(A op B) op C" ==> "A op (B op C)" or "(C op A) op B" if it simplifies completely.
         if let Some([a, b]) = self.as_binary(lhs, op) {
@@ -573,7 +601,7 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
                 }
             }
 
-            if is_communative {
+            if is_commutative {
                 // Does "C op A" simplify?
                 if let Some(val) = self.simplify_binop(op, c, a) {
                     if val == a {
@@ -601,7 +629,7 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
                 }
             }
 
-            if is_communative {
+            if is_commutative {
                 // Does "C op A" simplify?
                 if let Some(val) = self.simplify_binop(op, c, a) {
                     if val == c {
@@ -616,19 +644,5 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         }
 
         None
-    }
-
-    fn simplify_assoc_binop(&mut self, op: Opcode, lhs: Value, rhs: Value) -> Option<Value> {
-        self.recurse(move |sel| sel.simplify_assoc_binop_inner(op, lhs, rhs))
-    }
-
-    fn recurse<T>(&mut self, f: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
-        if self.max_recurse == 0 {
-            return None;
-        }
-        self.max_recurse -= 1;
-        let res = f(self);
-        self.max_recurse += 1;
-        res
     }
 }

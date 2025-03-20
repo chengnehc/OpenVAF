@@ -49,9 +49,10 @@ impl BodyLowerContext<'_, '_, '_> {
             },
             Expr::Literal(lit) => match *lit {
                 Literal::Int(val) => self.ctxt.iconst(val),
-                Literal::Float(val) => self.ctxt.fconst(val.into()),
+                Literal::Float(val) => self.ctxt.fconst(val),
                 Literal::String(ref val) => self.ctxt.sconst(val),
                 Literal::Inf => {
+                    // fast path for `inf` as it does not need type cast
                     self.ctxt.set_srcloc(old_loc);
                     match self.body.expr_type(expr) {
                         Type::Integer => return self.ctxt.iconst(i32::MAX),

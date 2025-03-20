@@ -204,7 +204,7 @@ impl Topology {
                 }
                 PlaceKind::IsPotential(branch) => {
                     let id: BranchId = branches.next_index();
-                    let (hi, lo) = branch.nodes(ctxt.db);
+                    let (hi, lo) = branch.node_pair(ctxt.db);
                     let is_potential = val;
                     let has_voltage_probe =
                         ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Voltage { hi, lo })

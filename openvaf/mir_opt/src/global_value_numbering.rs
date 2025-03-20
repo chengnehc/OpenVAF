@@ -1,3 +1,10 @@
+//! Value numbering is a technique of determining when two computations in a program
+//! are equivalent and eliminating one of them with a semantics-preserving optimization.
+//!
+//! The GVN pass is typically run after other optimization passes, such as instruction
+//! simplification and dead code elimination, to make it more effective. It is also
+//! run in multiple iterations.
+
 use std::cmp::Ordering;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::mem::{swap, ManuallyDrop};
@@ -28,7 +35,7 @@ impl Clone for GVNExpression {
 
 union GVNExprPayLoad {
     default: DefaultExprPayLoad,
-    // this is basically copy but ihat just makes the API of ValueList really akward
+    // this is basically copy but that just makes the API of ValueList really awkward
     phi: ManuallyDrop<PhiExprPayLoad>,
     call: ManuallyDrop<CallExprPayLoad>,
 }

@@ -83,10 +83,9 @@ impl Function {
         Default::default()
     }
 
-    pub fn with_name(name: String) -> Function {
-        let mut func = Function::new();
-        func.name = name;
-        func
+    pub fn with_name(mut self, name: String) -> Function {
+        self.name = name;
+        self
     }
 
     pub fn clear(&mut self) {

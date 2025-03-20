@@ -23,21 +23,18 @@ pub fn sparse_conditional_constant_propagation(func: &mut Function, cfg: &Contro
     let feasible_edges = vec![Successors::default(); func.layout.num_blocks()].into();
     let executable_blocks = BitSet::new_empty(func.layout.num_blocks());
 
-    let mut solver = ConstSolver {
+    let solver = ConstSolver {
         vals,
+        executable_blocks,
+        feasible_edges,
         func,
         cfg,
         overdef_work_list: Vec::with_capacity(64),
         inst_work_list: Vec::with_capacity(64),
         block_work_list: Vec::with_capacity(64),
-        feasible_edges,
-        executable_blocks,
     };
 
-    solver.solve();
-
-    let vals = solver.vals;
-    let executable_blocks = solver.executable_blocks;
+    let (vals, executable_blocks) = solver.solve().unwrap_or_default();
 
     for (val, lattice) in vals.iter_enumerated() {
         if let FlatSet::Elem(const_) = lattice {
@@ -90,18 +87,18 @@ pub enum FlatSet {
 
 pub struct ConstSolver<'a> {
     vals: TiVec<Value, FlatSet>,
+    executable_blocks: BitSet<Block>,
+    feasible_edges: TiVec<Block, Successors>,
     func: &'a mut Function,
     cfg: &'a ControlFlowGraph,
     overdef_work_list: Vec<Inst>,
     inst_work_list: Vec<Inst>,
     block_work_list: Vec<Block>,
-    feasible_edges: TiVec<Block, Successors>,
-    executable_blocks: BitSet<Block>,
 }
 
 impl ConstSolver<'_> {
-    pub fn solve(&mut self) {
-        let Some(entry) = self.func.layout.entry_block() else { return };
+    pub fn solve(mut self) -> Option<(TiVec<Value, FlatSet>, BitSet<Block>)> {
+        let entry = self.func.layout.entry_block()?;
 
         self.executable_blocks.insert(entry);
         self.block_work_list.push(entry);
@@ -118,7 +115,6 @@ impl ConstSolver<'_> {
                     }
                 }
             }
-
             while let Some(inst) = self.inst_work_list.pop() {
                 if let Some(bb) = self.func.layout.inst_block(inst) {
                     if self.executable_blocks.contains(bb) {
@@ -134,6 +130,8 @@ impl ConstSolver<'_> {
                 }
             }
         }
+
+        Some((self.vals, self.executable_blocks))
     }
 
     pub fn eval<const DETERMINE_EVAL_PHI: bool>(

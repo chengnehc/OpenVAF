@@ -195,15 +195,14 @@ impl Body {
     ) -> (Arc<Body>, Arc<BodySourceMap>, ParamExprs) {
         let mut body = Body::default();
         let mut src_map = BodySourceMap::default();
-        let root_file = id.lookup(db).scope.root_file;
-        let ast_id_map = db.ast_id_map(root_file);
 
         let param = id.lookup(db);
+        let ast_id_map = db.ast_id_map(param.scope.root_file);
         let ast_id = param.ast_id(db);
         let ast_node = param.source(db);
         let mut ctxt = lower::Context {
-            src_map: &mut src_map,
             body: &mut body,
+            src_map: &mut src_map,
             ast_id_map: &ast_id_map,
             curr_scope: (param.scope, ast_id.into()),
             db,
