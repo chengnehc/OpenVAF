@@ -196,8 +196,8 @@ impl Layout {
         self.first_block
     }
 
-    /// Get the function's exit block, which is the last block in the layout order.
-    pub fn exit_block(&self) -> Option<Block> {
+    /// Get the function's last block in the layout order.
+    pub fn last_block(&self) -> Option<Block> {
         self.last_block
     }
 
@@ -212,7 +212,7 @@ impl Layout {
     }
 
     /// Return an iterator over all blocks in layout order.
-    pub fn blocks(&self) -> BlockIter {
+    pub fn blocks(&self) -> BlockIter<'_> {
         BlockIter { layout: self, cursor: self.block_cursor() }
     }
 

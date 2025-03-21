@@ -49,14 +49,13 @@ impl SimplifyCfg<'_> {
     /// Call SimplifyCFG on all the blocks in the function,
     fn iteratively_simplify_cfg(&mut self) -> bool {
         let mut changed = false;
-
         loop {
             self.local_changed = false;
             let mut cursor = self.func.layout.block_cursor();
             // Loop over all of the basic blocks and remove them if they are unneeded.
+            // only advance after simplification to avoid visiting dead blocks
             while let Some(bb) = cursor.head.expand() {
                 self.simplify_bb(bb);
-                // only advance after simplification to avoid visiting dead blocks
                 cursor.next(&self.func.layout);
             }
             if !self.local_changed {
@@ -64,38 +63,88 @@ impl SimplifyCfg<'_> {
             }
             changed = true
         }
-
         changed
     }
 
-    fn const_fold_terminator(&mut self, bb: Block) {
-        if let Some(inst) = self.func.layout.last_inst(bb) {
-            if let InstructionData::Branch { cond, then_dst, else_dst, .. } =
-                self.func.dfg.insts[inst]
-            {
-                if then_dst == else_dst {
-                    self.local_changed = true;
-                    self.func.dfg.zap_inst(inst);
-                    self.func.dfg.insts[inst] = InstructionData::Jump { destination: then_dst };
-                    // self.cfg.recompute_block(&self.func, bb);
-                } else {
-                    let (destination, dead_dst) = match cond {
-                        FALSE => (else_dst, then_dst),
-                        TRUE => (then_dst, else_dst),
-                        _ => return,
-                    };
+    fn simplify_bb(&mut self, bb: Block) {
+        // Remove unreachable blocks, i.e. those without predecessors (except
+        // for the entry block) or just have themself as a predecessor.
+        if (self.cfg[bb].predecessors.is_empty() || self.cfg.self_loop(bb))
+            && Some(bb) != self.func.layout.entry_block()
+        {
+            // remove phi phi_edges
+            for succ in self.cfg.succ_iter(bb) {
+                if succ != bb {
+                    self.remove_phi_edges(succ, bb);
+                }
+            }
+            // zap just to be sure
+            for inst in self.func.layout.block_insts(bb) {
+                self.func.dfg.zap_inst(inst)
+            }
 
-                    if let Some(bb) = self.func.layout.inst_block(inst) {
-                        self.func.dfg.detach_operand(inst, 0);
-                        self.func.dfg.insts[inst] = InstructionData::Jump { destination };
-                        self.cfg.recompute_block(self.func, bb);
-                        self.remove_phi_edges(dead_dst, bb);
-                        self.vals_changed.insert(dead_dst);
-                    }
+            self.func.layout.remove_and_clear_block(bb);
+            self.local_changed = true;
+            self.cfg.recompute_block(self.func, bb);
+            return;
+        }
+
+        self.const_fold_terminator(bb);
+        if self.vals_changed.remove(bb) {
+            self.simplify_trivial_phis(bb);
+            self.simplify_duplicates_phis(bb);
+        }
+
+        // Merge basic blocks into their predecessor when:
+        // * there is only one distinct predecessor
+        // * there is only one distinct successor of the predecessor, and
+        // * there are no PHI nodes
+        if self.merge_block_into_predecessor(bb) {
+            // nothing more to do for this block as it's already removed
+            return;
+        }
+
+        // if self.sink_common_code_from_predecessors(bb) {
+        //     self.local_changed = true;
+        //     return;
+        // }
+
+        if self.merge_phis {
+            if let Some(term) = self.func.layout.last_inst(bb) {
+                if let InstructionData::Jump { destination } = self.func.dfg.insts[term] {
+                    self.simplify_unconditional_jmp_term(bb, destination)
                 }
 
-                //self.func.dfg.value_def(v)
+                // TODO merge common code in successor (for branch)
             }
+        }
+    }
+
+    fn const_fold_terminator(&mut self, bb: Block) {
+        let Some(inst) = self.func.layout.last_inst(bb) else { return };
+        if let InstructionData::Branch { cond, then_dst, else_dst, .. } = self.func.dfg.insts[inst]
+        {
+            if then_dst == else_dst {
+                self.local_changed = true;
+                self.func.dfg.zap_inst(inst);
+                self.func.dfg.insts[inst] = InstructionData::Jump { destination: then_dst };
+                // self.cfg.recompute_block(&self.func, bb);
+            } else {
+                let (destination, dead_dst) = match cond {
+                    FALSE => (else_dst, then_dst),
+                    TRUE => (then_dst, else_dst),
+                    _ => return,
+                };
+
+                if let Some(bb) = self.func.layout.inst_block(inst) {
+                    self.func.dfg.detach_operand(inst, 0);
+                    self.func.dfg.insts[inst] = InstructionData::Jump { destination };
+                    self.cfg.recompute_block(self.func, bb);
+                    self.remove_phi_edges(dead_dst, bb);
+                    self.vals_changed.insert(dead_dst);
+                }
+            }
+            //self.func.dfg.value_def(v)
         }
     }
 
@@ -230,17 +279,19 @@ impl SimplifyCfg<'_> {
         // }
     }
 
+    /// Merge basic blocks into their predecessor when:
+    /// * there is only one distinct predecessor
+    /// * there is only one distinct successor of the predecessor, and
+    /// * there are no PHI nodes
     fn merge_block_into_predecessor(&mut self, bb: Block) -> bool {
-        let pred =
-            if let Some(pred) = self.cfg.single_predecessor_of(bb) { pred } else { return false };
+        let Some(pred) = self.cfg.single_predecessor_of(bb) else { return false };
 
         if self.cfg.self_loop(bb)
             || self.cfg.unique_successor_of(pred).is_none()
             || self
                 .func
                 .layout
-                .block_insts(bb)
-                .next()
+                .first_inst(bb)
                 .is_some_and(|inst| self.func.dfg.insts[inst].is_phi())
         {
             return false;
@@ -420,8 +471,8 @@ impl SimplifyCfg<'_> {
     //        res
     //    }
 
-    /// If a block only contains phis and a unconditional jump the used phis can be merged with
-    /// their
+    /// If a block only contains phis and an unconditional jump,
+    /// the used phis can be merged with their
     fn simplify_unconditional_jmp_term(&mut self, src: Block, dst: Block) {
         if self.cfg.single_predecessor_of(dst).is_some() {
             // trivial case let `merge_block_into_predecessor` handle this
@@ -441,10 +492,7 @@ impl SimplifyCfg<'_> {
                 // check that all uses are phi nodes (otherwise we produce invalid code in loops
                 // where we dominate a block with multiple predecessor
                 if self.func.layout.inst_block(inst).is_none() {
-                    unreachable!(
-                        "found use in detachted inst {}",
-                        self.func.dfg.display_inst(inst)
-                    );
+                    unreachable!("found use in detached inst {}", self.func.dfg.display_inst(inst));
                 }
                 if !matches!(self.func.dfg.insts[inst], InstructionData::PhiNode(_))
                     || self.func.layout.inst_block(inst).unwrap() != dst
@@ -510,15 +558,13 @@ impl SimplifyCfg<'_> {
                                 &mut self.func.dfg.phi_forest,
                                 &(),
                                 |old, new| {
-                                    if let Some(old) = old {
-                                        old
-                                    } else {
+                                    old.unwrap_or_else(|| {
                                         let val =
                                             src_phi.args.as_slice(&self.func.dfg.insts.value_lists)
                                                 [new as usize];
                                         phi.args.push(val, &mut self.func.dfg.insts.value_lists)
                                             as u32
-                                    }
+                                    })
                                 },
                             );
 
@@ -534,11 +580,9 @@ impl SimplifyCfg<'_> {
                     &mut self.func.dfg.phi_forest,
                     &(),
                     |old, _| {
-                        if let Some(old) = old {
-                            old
-                        } else {
+                        old.unwrap_or_else(|| {
                             phi.args.push(old_val, &mut self.func.dfg.insts.value_lists) as u32
-                        }
+                        })
                     },
                 );
 
@@ -578,59 +622,6 @@ impl SimplifyCfg<'_> {
 
         // self.cfg.recompute_block(self.func, src);
         self.local_changed = true;
-    }
-
-    fn simplify_bb(&mut self, bb: Block) {
-        // Remove basic blocks that have no predecessors (except the entry block)...
-        // or that just have themself as a predecessor.  These are unreachable.
-        if (self.cfg[bb].predecessors.is_empty() || self.cfg.self_loop(bb))
-            && Some(bb) != self.func.layout.entry_block()
-        {
-            // remove phi phi_edges
-            for succ in self.cfg.succ_iter(bb) {
-                if succ != bb {
-                    self.remove_phi_edges(succ, bb);
-                }
-            }
-            // zap just to be sure
-            for inst in self.func.layout.block_insts(bb) {
-                self.func.dfg.zap_inst(inst)
-            }
-
-            self.func.layout.remove_and_clear_block(bb);
-            self.local_changed = true;
-            self.cfg.recompute_block(self.func, bb);
-            return;
-        }
-
-        self.const_fold_terminator(bb);
-        if self.vals_changed.remove(bb) {
-            self.simplify_trivial_phis(bb);
-            self.simplify_duplicates_phis(bb);
-        }
-
-        // Merge basic blocks into their predecessor if there is only one distinct
-        // pred, and if there is only one distinct successor of the predecessor, and
-        // if there are no PHI nodes.
-        if self.merge_block_into_predecessor(bb) {
-            // nothing to do for this blog anymore its removed
-            return;
-        }
-
-        // if self.sink_common_code_from_predecessors(bb) {
-        //     self.local_changed = true;
-        //     return;
-        // }
-
-        if self.merge_phis {
-            if let Some(term) = self.func.layout.last_inst(bb) {
-                if let InstructionData::Jump { destination } = self.func.dfg.insts[term] {
-                    self.simplify_unconditional_jmp_term(bb, destination)
-                }
-
-                // TODO merge common code in successor (for branch)
-            }
-        }
     }
 }
 

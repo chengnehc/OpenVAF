@@ -14,7 +14,7 @@ fn check_simple(src: &str, data_flow_result: Expect) {
     let mut cfg = ControlFlowGraph::new();
     cfg.compute(&func);
     let mut dom_tree = DominatorTree::default();
-    dom_tree.compute(&func, &cfg, true, false, true);
+    dom_tree.compute::<true, false>(&func, &cfg);
 
     let unknowns = [10u32.into(), 11u32.into(), 12u32.into()].into_iter().collect();
 
@@ -59,7 +59,7 @@ fn check_num(src: &str, data_flow_result: Expect, args: &[f64], num: f64) {
     let unknowns = KnownDerivatives { unknowns, ddx_calls };
 
     let mut dom_tree = DominatorTree::default();
-    dom_tree.compute(&func, &cfg, true, false, true);
+    dom_tree.compute::<true, false>(&func, &cfg);
     auto_diff(&mut func, &dom_tree, &unknowns, &[]);
     let mut interpret = Interpreter::new(
         &func,

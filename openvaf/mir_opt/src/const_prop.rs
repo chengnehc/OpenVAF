@@ -80,8 +80,11 @@ pub fn sparse_conditional_constant_propagation(func: &mut Function, cfg: &Contro
 /// [Hasse diagram]: https://en.wikipedia.org/wiki/Hasse_diagram
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlatSet {
+    /// Value is a function parameter or invalid
     Top,
+    /// Value is a constant
     Elem(Value),
+    /// Value is an instruction result
     Bottom,
 }
 
@@ -107,26 +110,30 @@ impl ConstSolver<'_> {
             || !self.inst_work_list.is_empty()
             || !self.overdef_work_list.is_empty()
         {
+            // Super-extra-high-degree PHI nodes are unlikely to ever be marked constant,
+            // and slow us down a lot. Just mark them overdefined.
+            let should_eval_phis = |block| self.cfg.pred_iter(block).count() <= 64;
+
             // separate overdef worklist to drive the solver to termination faster
             while let Some(inst) = self.overdef_work_list.pop() {
                 if let Some(bb) = self.func.layout.inst_block(inst) {
                     if self.executable_blocks.contains(bb) {
-                        self.eval::<true>(bb, inst, false);
+                        self.eval(bb, inst, should_eval_phis);
                     }
                 }
             }
             while let Some(inst) = self.inst_work_list.pop() {
                 if let Some(bb) = self.func.layout.inst_block(inst) {
                     if self.executable_blocks.contains(bb) {
-                        self.eval::<true>(bb, inst, false);
+                        self.eval(bb, inst, should_eval_phis);
                     }
                 }
             }
             while let Some(bb) = self.block_work_list.pop() {
-                let eval_phis = self.should_eval_phis(bb);
+                let eval_phis = should_eval_phis(bb);
                 let mut cursor = self.func.layout.block_inst_cursor(bb);
                 while let Some(inst) = cursor.next(&self.func.layout) {
-                    self.eval::<false>(bb, inst, eval_phis);
+                    self.eval(bb, inst, |_| eval_phis);
                 }
             }
         }
@@ -134,12 +141,7 @@ impl ConstSolver<'_> {
         Some((self.vals, self.executable_blocks))
     }
 
-    pub fn eval<const DETERMINE_EVAL_PHI: bool>(
-        &mut self,
-        bb: Block,
-        inst: Inst,
-        mut eval_phi: bool,
-    ) {
+    pub fn eval(&mut self, bb: Block, inst: Inst, should_eval_phis: impl FnOnce(Block) -> bool) {
         match self.func.dfg.insts[inst].clone() {
             InstructionData::Unary { opcode, arg } => self.eval_unary(opcode, arg, inst),
             InstructionData::Binary { opcode, args } => {
@@ -154,9 +156,7 @@ impl ConstSolver<'_> {
                 }
             },
             InstructionData::PhiNode(phi) => {
-                if DETERMINE_EVAL_PHI {
-                    eval_phi = self.should_eval_phis(bb)
-                }
+                let eval_phi = should_eval_phis(bb);
                 self.eval_phi(phi, bb, inst, eval_phi)
             }
             InstructionData::Jump { destination } => {
@@ -226,14 +226,14 @@ impl ConstSolver<'_> {
         match lattice {
             FlatSet::Bottom => (),
             FlatSet::Elem(arg) => {
-                let mut simplify = SimplifyCtx::<f64, _>::new(self.func, |val, _| {
+                let mut simplify_ctx = SimplifyCtx::<f64, _>::new(self.func, |val, _| {
                     if let FlatSet::Elem(const_val) = self.vals[val] {
                         const_val
                     } else {
                         val
                     }
                 });
-                if let Some(val) = simplify.simplify_unary_op(op, arg) {
+                if let Some(val) = simplify_ctx.simplify_unary_op(op, arg) {
                     self.mark_inst_const(inst, val)
                 } else {
                     self.mark_inst_overdefined(inst)
@@ -258,7 +258,7 @@ impl ConstSolver<'_> {
             (FlatSet::Bottom, FlatSet::Bottom) => (lhs, rhs, false),
         };
 
-        let mut simplify = SimplifyCtx::<f64, _>::new(self.func, |val, _| {
+        let mut simplify_ctx = SimplifyCtx::<f64, _>::new(self.func, |val, _| {
             if let FlatSet::Elem(const_val) = self.vals[val] {
                 const_val
             } else {
@@ -266,7 +266,7 @@ impl ConstSolver<'_> {
             }
         });
 
-        if let Some(val) = simplify.simplify_binop(op, lhs, rhs) {
+        if let Some(val) = simplify_ctx.simplify_binop(op, lhs, rhs) {
             if self.func.dfg.value_def(val).as_const().is_some() {
                 self.mark_inst_const(inst, val);
                 return;
@@ -281,6 +281,16 @@ impl ConstSolver<'_> {
     fn mark_inst_const(&mut self, inst: Inst, val: Value) {
         let res = self.func.dfg.first_result(inst);
         self.mark_const(res, val);
+    }
+
+    fn mark_const(&mut self, dst: Value, val: Value) {
+        if !matches!(self.vals[dst], FlatSet::Elem(_)) {
+            self.vals[dst] = FlatSet::Elem(val);
+            for use_ in self.func.dfg.uses(dst) {
+                let inst = self.func.dfg.use_to_user(use_);
+                self.inst_work_list.push(inst);
+            }
+        }
     }
 
     fn mark_inst_overdefined(&mut self, inst: Inst) {
@@ -298,16 +308,6 @@ impl ConstSolver<'_> {
         }
     }
 
-    fn mark_const(&mut self, dst: Value, val: Value) {
-        if !matches!(self.vals[dst], FlatSet::Elem(_)) {
-            self.vals[dst] = FlatSet::Elem(val);
-            for use_ in self.func.dfg.uses(dst) {
-                let inst = self.func.dfg.use_to_user(use_);
-                self.inst_work_list.push(inst);
-            }
-        }
-    }
-
     fn mark_edge_feasible(&mut self, src: Block, dst: Block) {
         if !self.feasible_edges[src].insert(dst) {
             return;
@@ -318,7 +318,7 @@ impl ConstSolver<'_> {
         } else {
             // block is already executable but we added a new edge (predecessor) so we need to
             // revisit phis (and dependent values)
-            let eval_phis = self.should_eval_phis(dst);
+            let eval_phis = self.cfg.pred_iter(dst).count() <= 64;
             let mut cursor = self.func.layout.block_inst_cursor(dst);
             while let Some(inst) = cursor.next(&self.func.layout) {
                 if let InstructionData::PhiNode(phi) = self.func.dfg.insts[inst].clone() {
@@ -328,11 +328,5 @@ impl ConstSolver<'_> {
                 }
             }
         }
-    }
-
-    fn should_eval_phis(&self, bb: Block) -> bool {
-        // Super-extra-high-degree PHI nodes are unlikely to ever be marked constant,
-        // and slow us down a lot.  Just mark them overdefined.
-        self.cfg.pred_iter(bb).count() <= 64
     }
 }

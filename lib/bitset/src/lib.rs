@@ -156,7 +156,7 @@ impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> BitSet<T> {
         self.clear_excess_bits();
     }
 
-    /// Set all bits to its inverse value.
+    /// Set all bits to its inverse.
     pub fn inverse(&mut self) {
         for word in &mut self.words {
             *word = !*word;
@@ -164,7 +164,7 @@ impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> BitSet<T> {
         self.clear_excess_bits();
     }
 
-    /// Returns `true` if the set has changed.
+    /// Remove `elem` from bit set. Return `true` if the set has changed.
     #[inline]
     pub fn remove(&mut self, elem: T) -> bool {
         let (word_index, mask) = word_index_and_mask(elem);

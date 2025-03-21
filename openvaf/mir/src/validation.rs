@@ -5,7 +5,7 @@ impl Function {
         let mut valid = true;
         let cfg = ControlFlowGraph::with_function(self);
         let mut dom_tree = DominatorTree::default();
-        dom_tree.compute(self, &cfg, true, false, true);
+        dom_tree.compute::<true, false>(self, &cfg);
 
         for &bb in dom_tree.cfg_postorder() {
             for (seq_num, inst) in self.layout.block_insts(bb).enumerate() {

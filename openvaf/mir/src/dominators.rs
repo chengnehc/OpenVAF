@@ -7,7 +7,7 @@
 
 //! A node d strictly dominates a node n if d dominates n and d does not equal n.
 //!
-//! The *immediate dominator* or 'idom' of a node n is the unique node that strictly
+//! The *immediate dominator* of a node n is the unique node that strictly
 //! dominates n but does not strictly dominate any other node that strictly dominates n.
 //!
 //! See Also:
@@ -48,7 +48,9 @@ const SEEN: u32 = 2;
 
 #[derive(Default)]
 pub struct DominatorTree {
+    ///
     nodes: TiVec<Block, DomTreeNode>,
+    /// post dominator tree
     reverse_nodes: TiVec<Block, DomTreeNode>,
     /// CFG post-order of all reachable blocks.
     postorder: Vec<Block>,
@@ -86,11 +88,8 @@ impl DominatorTree {
 
     fn dominates_(nodes: &TiSlice<Block, DomTreeNode>, mut block: Block, dominator: Block) -> bool {
         while nodes[block].rpo_number > nodes[dominator].rpo_number {
-            if let Some(parent) = nodes[block].idom.expand() {
-                block = parent;
-            } else {
-                return false;
-            }
+            let Some(parent) = nodes[block].idom.expand() else { return false };
+            block = parent;
         }
         block == dominator
     }
@@ -116,8 +115,9 @@ impl DominatorTree {
 }
 
 impl DominatorTree {
-    /// Allocate a new blank dominator tree. Use `compute` to compute the dominator tree for a
-    /// function.
+    /// Allocate a new blank dominator tree.
+    ///
+    /// Use `compute` to compute the dominator tree for a function.
     pub fn new() -> Self {
         Default::default()
     }
@@ -144,26 +144,24 @@ impl DominatorTree {
         debug_assert!(self.stack.is_empty());
     }
 
-    /// Reset and compute a CFG post-order and dominator tree.
-    pub fn compute(
+    /// Compute a CFG post-order traversal and dominator tree, or reverse post-order
+    /// traversal and post-dominator tree.
+    ///
+    /// This operation will clear and reset the internal data structures.
+    pub fn compute<const DOM: bool, const PDOM: bool>(
         &mut self,
         func: &Function,
         cfg: &ControlFlowGraph,
-        dom: bool,
-        pdom: bool,
-        postorder: bool,
     ) {
         debug_assert!(cfg.is_valid());
         self.clear();
-        if pdom {
+        if PDOM {
             self.compute_reverse_postorder(func, cfg);
             self.compute_domtree::<true>(cfg);
-            self.postorder.clear();
+            self.postorder.clear(); // leave space for dominator computation
         }
-        if dom || postorder {
+        if DOM {
             self.compute_postorder(func, cfg);
-        }
-        if dom {
             self.compute_domtree::<false>(cfg);
         }
     }
@@ -176,12 +174,12 @@ impl DominatorTree {
     ///   SEEN: block has been pushed on the stack but successors not yet pushed.
     ///   DONE: Successors pushed.
     ///
+    /// # Note: the result is saved in `postorder`
     fn compute_reverse_postorder(&mut self, func: &Function, cfg: &ControlFlowGraph) {
-        // self.compute_reverse_cfg_postorder(func, cfg);
         self.reverse_nodes
             .resize(func.layout.num_blocks(), DomTreeNode { rpo_number: UNDEF, idom: None.into() });
 
-        let Some(block) = func.layout.exit_block() else { return };
+        let Some(block) = func.layout.last_block() else { return };
         self.stack.push((block, Successors::default()));
         self.reverse_nodes[block].rpo_number = SEEN;
 
@@ -209,7 +207,7 @@ impl DominatorTree {
             }
         }
 
-        debug_assert_eq!(self.postorder.last().copied(), func.layout.exit_block());
+        debug_assert_eq!(self.postorder.last().copied(), func.layout.last_block());
     }
 
     /// Reset all internal data structures and compute a post-order of the control flow graph.
@@ -327,6 +325,7 @@ impl DominatorTree {
     //     debug_assert!(self.config.has_dom_frontiers, "dominance frontiers were not calculated");
     //     &self.nodes[block].dom_frontiers
     // }
+
     pub fn compute_dom_frontiers(
         &self,
         cfg: &ControlFlowGraph,

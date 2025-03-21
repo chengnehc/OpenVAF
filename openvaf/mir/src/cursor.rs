@@ -320,7 +320,7 @@ pub trait Cursor {
     /// Go to the bottom of the exit `block`.
     /// At this position, inserted instructions will be appended to `block`.
     fn goto_exit(&mut self) {
-        self.goto_bottom(self.layout().exit_block().unwrap());
+        self.goto_bottom(self.layout().last_block().unwrap());
     }
 
     /// Go to the top of the next block in layout order and return it.
@@ -380,7 +380,7 @@ pub trait Cursor {
         let prev = if let Some(block) = self.current_block() {
             self.layout().prev_block(block)
         } else {
-            self.layout().exit_block()
+            self.layout().last_block()
         };
         self.set_position(match prev {
             Some(block) => CursorPosition::After(block),

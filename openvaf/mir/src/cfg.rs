@@ -230,7 +230,7 @@ impl ControlFlowGraph {
         self.data[block].predecessors.iter_rev(&self.pred_forest)
     }
 
-    /// Get an iterator over the CFG successors to `block`.
+    /// Get an iterator over the successors to `block`.
     pub fn succ_iter(&self, block: Block) -> SuccIter {
         debug_assert!(self.is_valid());
         self.data[block].successors.iter()
@@ -261,6 +261,7 @@ impl ControlFlowGraph {
         iter.next().is_none().then_some(res)
     }
 
+    /// Test if there is a self loop, i.e. `block` only has itself as predecessor.
     #[inline]
     pub fn self_loop(&self, block: Block) -> bool {
         let mut iter = self.pred_iter(block);

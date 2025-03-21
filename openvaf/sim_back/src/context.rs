@@ -80,7 +80,8 @@ impl<'a> Context<'a> {
         } else {
             simplify_cfg_no_phi_merge(&mut self.func, &mut self.cfg);
         }
-        self.compute_domtree(true, true, false);
+
+        self.dom_tree.compute::<true, true>(&self.func, &self.cfg);
 
         let mut gvn = GVN::default();
         gvn.init(&self.func, &self.dom_tree, self.intern.params.len() as u32);
@@ -104,10 +105,6 @@ impl<'a> Context<'a> {
 
     pub fn compute_cfg(&mut self) {
         self.cfg.compute(&self.func);
-    }
-
-    pub fn compute_domtree(&mut self, dom: bool, pdom: bool, postorder: bool) {
-        self.dom_tree.compute(&self.func, &self.cfg, dom, pdom, postorder);
     }
 
     pub fn compute_outputs(&mut self, contributes: bool) {

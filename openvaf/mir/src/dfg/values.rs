@@ -79,7 +79,7 @@ impl ValueDef {
     }
     #[inline]
     pub fn unwrap_result(&self) -> (Inst, usize) {
-        self.result().expect("Value is not an instruction result")
+        self.as_result().expect("Value is not an instruction result")
     }
     #[inline]
     pub fn unwrap_const(&self) -> Const {
@@ -90,7 +90,7 @@ impl ValueDef {
         self.as_param().expect("Value is not a parameter")
     }
 
-    /// Get the instruction where the value was defined, if any.
+    /// Get the instruction where the value is defined, if any.
     #[inline]
     pub fn inst(&self) -> Option<Inst> {
         match *self {
@@ -98,9 +98,9 @@ impl ValueDef {
             _ => None,
         }
     }
-    /// Get the instruction and its index where the value was defined, if any.
+    /// Use the value as the n'th result of instruction.
     #[inline]
-    pub fn result(&self) -> Option<(Inst, usize)> {
+    pub fn as_result(&self) -> Option<(Inst, usize)> {
         match *self {
             Self::Result(inst, i) => Some((inst, i)),
             _ => None,

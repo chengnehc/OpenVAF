@@ -5,6 +5,8 @@
 use std::hash::Hash;
 use std::{fmt, slice};
 
+use list_pool::{ListHandle, ListPool};
+
 use crate::entities::{Block, FuncRef, Use, Value};
 
 #[rustfmt::skip]
@@ -13,12 +15,12 @@ pub use generated::*;
 
 /// Some instructions use an external list of argument values to fit in the very
 /// compact 16-byte structure `InstructionData`.
-pub type ValueList = list_pool::ListHandle<Value>;
-pub type UseList = list_pool::ListHandle<Use>;
+pub type ValueList = ListHandle<Value>;
+pub type UseList = ListHandle<Use>;
 
 /// Memory pool
-pub type ValueListPool = list_pool::ListPool<Value>;
-pub type UseListPool = list_pool::ListPool<Use>;
+pub type ValueListPool = ListPool<Value>;
+pub type UseListPool = ListPool<Use>;
 
 #[derive(Clone, Debug)]
 pub enum InstructionData {

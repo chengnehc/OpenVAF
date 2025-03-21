@@ -67,7 +67,7 @@ fn check(src: &str, data_flow_result: Expect) {
     let mut cfg = ControlFlowGraph::new();
     cfg.compute(&func);
     let mut dom_tree = DominatorTree::default();
-    dom_tree.compute(&func, &cfg, true, false, true);
+    dom_tree.compute::<true, false>(&func, &cfg);
 
     let res = LiveDerivatives::build(&func, &mut unknowns, &[], &dom_tree);
     let printer = DerivativeFmt { func: &func, derivatives: &res.mat };

@@ -101,7 +101,7 @@ impl<'a> Builder<'a> {
         let extra_derivatives = self
             .jacobian_derivatives(sim_unknown_reads.iter().map(|&(_, val)| val), &derivative_info);
         // TODO(perf): incrementally update dom_tree (for switch branches) instead
-        self.dom_tree.compute(self.cursor.func, self.cfg, true, false, true);
+        self.dom_tree.compute::<true, false>(self.cursor.func, self.cfg);
         let derivatives =
             auto_diff(&mut *self.cursor.func, self.dom_tree, &derivative_info, &extra_derivatives);
         drop(extra_derivatives);

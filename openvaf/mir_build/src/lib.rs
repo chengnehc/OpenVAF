@@ -149,7 +149,7 @@ pub trait RetBuilder {
 
 impl<'short> RetBuilder for InsertBuilder<'short, FuncInstBuilder<'short, '_>> {
     fn ret(self) -> Inst {
-        let exit = self.inserter.builder.func.layout.exit_block().unwrap();
+        let exit = self.inserter.builder.func.layout.last_block().unwrap();
         self.jump(exit)
     }
 }
@@ -228,7 +228,7 @@ impl<'a> FunctionBuilder<'a> {
             return (builder, term);
         };
 
-        let mut exit = func.layout.exit_block().unwrap();
+        let mut exit = func.layout.last_block().unwrap();
         if exit == entry {
             exit = func.layout.append_new_block();
             FuncCursor::new(func).at_bottom(entry).ins().jump(exit);
@@ -527,7 +527,7 @@ impl<'a> SSAVariableBuilder<'a> {
         self.def_var(init, func.layout.entry_block().unwrap());
         let bb = func.layout.inst_block(inst).unwrap();
         self.def_var(val, bb);
-        let exit = func.layout.exit_block().unwrap();
+        let exit = func.layout.last_block().unwrap();
         val = self.use_var(func, exit);
         let res = FuncCursor::new(func).at_bottom(exit).ins().ensure_optbarrier(val);
         func.dfg.strip_alias_after(finished_vals);
