@@ -1,3 +1,9 @@
+//! See Also:
+//! - https://doc.rust-lang.org/beta/nightly-rustc/rustc_mir_transform/gvn/index.html
+//!
+//! MIR may contain repeated and/or redundant computations. The objective of this pass
+//! is to detect such redundancies and re-use the already-computed result when possible.
+//!
 //! Value numbering is a technique of determining when two computations in a program
 //! are equivalent and eliminating one of them with a semantics-preserving optimization.
 //!
@@ -6,8 +12,6 @@
 //! run in multiple iterations.
 
 use std::cmp::Ordering;
-use std::hash::{BuildHasher, Hash, Hasher};
-use std::mem::{swap, ManuallyDrop};
 use std::ops::{Index, IndexMut};
 use stdx::packed_option::PackedOption;
 use stdx::{impl_idx_from, impl_idx_math};
@@ -15,429 +19,16 @@ use stdx::{impl_idx_from, impl_idx_math};
 use ahash::RandomState;
 use bitset::{BitSet, HybridBitSet};
 use hashbrown::raw::RawTable;
-use mir::DominatorTree;
-use mir::{Block, FuncRef, Function, Inst, InstructionData, Opcode, Value, ValueDef, ValueList};
+use mir::{Block, DominatorTree, Function, Inst, Opcode, Value, ValueDef};
 use typed_index_collections::TiVec;
 
 use crate::simplify::SimplifyCtx;
 
-struct GVNExpression {
-    opcode: Opcode,
-    payload: GVNExprPayLoad,
-}
+mod expression;
+#[cfg(test)]
+mod tests;
 
-impl Clone for GVNExpression {
-    fn clone(&self) -> Self {
-        let payload = unsafe { std::ptr::read(&self.payload) };
-        Self { opcode: self.opcode, payload }
-    }
-}
-
-union GVNExprPayLoad {
-    default: DefaultExprPayLoad,
-    // this is basically copy but that just makes the API of ValueList really awkward
-    phi: ManuallyDrop<PhiExprPayLoad>,
-    call: ManuallyDrop<CallExprPayLoad>,
-}
-
-impl GVNExprPayLoad {
-    fn default(&self) -> DefaultExprPayLoad {
-        unsafe { self.default }
-    }
-
-    fn phi(&self) -> &PhiExprPayLoad {
-        unsafe { &self.phi }
-    }
-
-    fn phi_mut(&mut self) -> &mut PhiExprPayLoad {
-        unsafe { &mut self.phi }
-    }
-
-    fn call(&self) -> &CallExprPayLoad {
-        unsafe { &self.call }
-    }
-
-    fn call_mut(&mut self) -> &mut CallExprPayLoad {
-        unsafe { &mut self.call }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct DefaultExprPayLoad {
-    val1: Value,
-    val2: PackedOption<Value>,
-}
-
-#[derive(Clone, Debug)]
-struct PhiExprPayLoad {
-    bb: Block,
-    args: ValueList,
-}
-
-#[derive(Clone, Debug)]
-struct CallExprPayLoad {
-    func_ref: FuncRef,
-    args: ValueList,
-}
-
-enum ExprResult {
-    Expr(GVNExpression),
-    Simplified(ClassId),
-}
-
-impl ExprResult {
-    fn into_class(self, inst: Inst, gvn: &mut GVN, func: &mut Function) -> ClassId {
-        match self {
-            ExprResult::Expr(expr) => gvn.class_map.insert_expr(inst, expr, func),
-            ExprResult::Simplified(class) => class,
-        }
-    }
-}
-
-impl GVNExpression {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(gvn: &mut GVN, func: &mut Function, inst: Inst) -> Option<ExprResult> {
-        let (opcode, val1, val2) = match func.dfg.insts[inst].clone() {
-            InstructionData::Unary { opcode, mut arg } if opcode != Opcode::OptBarrier => {
-                arg = gvn.get_lead_val(arg, func);
-
-                let simplified_val = gvn.simplify_ctx(func).simplify_unary_op(opcode, arg);
-                if let Some(val) = simplified_val {
-                    if let Some(expr) = gvn.check_simplified(val, func) {
-                        return Some(expr);
-                    }
-                }
-
-                (opcode, arg, None.into())
-            }
-            InstructionData::Binary { opcode, args: [mut val1, mut val2] } => {
-                val1 = gvn.get_lead_val(val1, func);
-                val2 = gvn.get_lead_val(val2, func);
-                if opcode.is_commutative() && gvn.should_swap_operands(val1, val2, func) {
-                    swap(&mut val1, &mut val2);
-                }
-
-                let simplified_val = gvn.simplify_ctx(func).simplify_binop(opcode, val1, val2);
-                if let Some(val) = simplified_val {
-                    if let Some(expr) = gvn.check_simplified(val, func) {
-                        return Some(expr);
-                    }
-                }
-
-                (opcode, val1, val2.into())
-            }
-
-            InstructionData::PhiNode(phi) => {
-                let simplified_val = gvn.simplify_ctx(func).simplify_phi(phi.clone());
-                if let Some(val) = simplified_val {
-                    if let Some(expr) = gvn.check_simplified(val, func) {
-                        return Some(expr);
-                    }
-                }
-
-                let bb = func.layout.inst_block(inst).unwrap();
-                let mut vals = ValueList::new();
-
-                for (_, i) in phi.blocks.iter(&func.dfg.phi_forest) {
-                    let pool = &mut func.dfg.insts.value_lists;
-                    let mut val = phi.args.get(i as usize, pool).unwrap();
-                    val = gvn.class_map.get_lead_val(val, func);
-                    let pool = &mut func.dfg.insts.value_lists;
-                    vals.push(val, pool);
-                }
-
-                return Some(ExprResult::Expr(GVNExpression {
-                    opcode: Opcode::Phi,
-                    payload: GVNExprPayLoad {
-                        phi: ManuallyDrop::new(PhiExprPayLoad { bb, args: vals }),
-                    },
-                }));
-            }
-
-            InstructionData::Call { func_ref, args }
-                if !func.dfg.signatures[func_ref].has_side_effects =>
-            {
-                let mut args = args.deep_clone(&mut func.dfg.insts.value_lists);
-                for i in 0..args.len(&func.dfg.insts.value_lists) {
-                    let arg =
-                        unsafe { args.get(i, &func.dfg.insts.value_lists).unwrap_unchecked() };
-                    let arg = gvn.class_map.get_lead_val(arg, func);
-                    unsafe {
-                        *args.get_mut(i, &mut func.dfg.insts.value_lists).unwrap_unchecked() = arg;
-                    };
-                }
-
-                return Some(ExprResult::Expr(GVNExpression {
-                    opcode: Opcode::Call,
-                    payload: GVNExprPayLoad {
-                        call: ManuallyDrop::new(CallExprPayLoad { func_ref, args }),
-                    },
-                }));
-            }
-
-            _ => return None,
-        };
-
-        Some(ExprResult::Expr(GVNExpression {
-            opcode,
-            payload: GVNExprPayLoad { default: DefaultExprPayLoad { val1, val2 } },
-        }))
-    }
-
-    pub fn new_const(val: Value) -> GVNExpression {
-        GVNExpression {
-            // we don't value number optbarrier instructions so this is a nice niece optimization
-            opcode: Opcode::OptBarrier,
-            payload: GVNExprPayLoad {
-                default: DefaultExprPayLoad { val1: val, val2: None.into() },
-            },
-        }
-    }
-
-    fn hash(&self, state: &RandomState, func: &Function) -> u64 {
-        let mut hasher = state.build_hasher();
-        self.opcode.hash(&mut hasher);
-        match self.opcode {
-            Opcode::Phi => {
-                let PhiExprPayLoad { bb, args } = self.payload.phi();
-                bb.hash(&mut hasher);
-                let args = args.as_slice(&func.dfg.insts.value_lists);
-                for arg in args {
-                    arg.hash(&mut hasher)
-                }
-            }
-
-            Opcode::Call => {
-                let CallExprPayLoad { func_ref, args } = self.payload.call();
-                func_ref.hash(&mut hasher);
-                let args = args.as_slice(&func.dfg.insts.value_lists);
-                for arg in args {
-                    arg.hash(&mut hasher)
-                }
-            }
-
-            _ => {
-                let DefaultExprPayLoad { val1, val2 } = self.payload.default();
-                val1.hash(&mut hasher);
-                val2.hash(&mut hasher);
-            }
-        }
-        hasher.finish()
-    }
-
-    fn eq(&self, other: &Self, func: &Function) -> bool {
-        if self.opcode != other.opcode {
-            return false;
-        }
-
-        match self.opcode {
-            Opcode::Phi => {
-                let PhiExprPayLoad { bb: bb1, args: args1 } = self.payload.phi();
-                let PhiExprPayLoad { bb: bb2, args: args2 } = other.payload.phi();
-                if bb1 != bb2 {
-                    return false;
-                }
-                let arg1 = args1.as_slice(&func.dfg.insts.value_lists);
-                let arg2 = args2.as_slice(&func.dfg.insts.value_lists);
-                arg1.iter().eq(arg2)
-            }
-            Opcode::Call => {
-                let CallExprPayLoad { func_ref: func_ref_1, args: args1 } = self.payload.call();
-                let CallExprPayLoad { func_ref: func_ref_2, args: args2 } = self.payload.call();
-                if func_ref_1 != func_ref_2 {
-                    return false;
-                }
-                let vals1 = args1.as_slice(&func.dfg.insts.value_lists);
-                let vals2 = args2.as_slice(&func.dfg.insts.value_lists);
-                vals1.iter().eq(vals2)
-            }
-            _ => {
-                let payload1 = self.payload.default();
-                let payload2 = other.payload.default();
-                payload1 == payload2
-            }
-        }
-    }
-
-    fn destroy(&mut self, func: &mut Function) {
-        match self.opcode {
-            Opcode::Phi => {
-                self.payload.phi_mut().args.clear(&mut func.dfg.insts.value_lists);
-            }
-            Opcode::Call => {
-                self.payload.call_mut().args.clear(&mut func.dfg.insts.value_lists);
-            }
-            _ => (),
-        }
-    }
-}
-
-struct EquivalenceClass {
-    leader: PackedOption<Inst>,
-    expr: GVNExpression,
-    next_leader: (PackedOption<Inst>, DFSId),
-    // insts: IndexSet<Inst, ahash::RandomState>,
-    insts: HybridBitSet<DFSId>,
-}
-
-impl EquivalenceClass {
-    pub fn reset_next_leader(&mut self) {
-        self.next_leader = (None.into(), u32::MAX.into())
-    }
-
-    pub fn add_possible_next_leader(&mut self, inst: Inst, dfs_num: DFSId) {
-        if dfs_num < self.next_leader.1 {
-            self.next_leader = (inst.into(), dfs_num);
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord, Debug)]
-struct DFSId(u32);
-impl_idx_from!(DFSId(u32));
-impl_idx_math!(DFSId(u32));
-
-#[derive(PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord, Debug)]
-pub struct ClassId(u32);
-impl_idx_from!(ClassId(u32));
-impl_idx_math!(ClassId(u32));
-
-#[derive(Default)]
-struct DFSMapping {
-    inst_to_dfs: TiVec<Inst, PackedOption<DFSId>>,
-    dfs_to_inst: TiVec<DFSId, Inst>,
-    param_off: u32,
-}
-
-impl DFSMapping {
-    fn populate(&mut self, func: &Function, dom_tree: &DominatorTree, num_params: u32) {
-        self.param_off = num_params + 1;
-        self.inst_to_dfs.resize(func.dfg.num_insts(), None.into());
-        for bb in dom_tree.cfg_postorder().iter().rev() {
-            self.map_block(*bb, func)
-        }
-    }
-    fn map_block(&mut self, bb: Block, func: &Function) {
-        for inst in func.layout.block_insts(bb) {
-            let dfs_id = self.dfs_to_inst.push_and_get_key(inst);
-            // if !func.dfg.inst_dead(inst, true) {
-            self.inst_to_dfs[inst] = dfs_id.into();
-            // }
-        }
-    }
-
-    fn get_rank(&self, val: Value, func: &Function) -> u32 {
-        let inst = match func.dfg.value_def(val) {
-            ValueDef::Result(inst, _) => inst,
-            ValueDef::Param(param) => return 1 + u32::from(param),
-            ValueDef::Const(_) | ValueDef::Invalid => return 0,
-        };
-
-        match self.inst_to_dfs[inst].expand() {
-            Some(val) => u32::from(val) + self.param_off,
-            None => u32::MAX,
-        }
-    }
-
-    fn should_swap(&self, val1: Value, val2: Value, func: &Function) -> bool {
-        let rank1 = self.get_rank(val1, func);
-        let rank2 = self.get_rank(val2, func);
-        match rank1.cmp(&rank2) {
-            Ordering::Equal => val1 > val2,
-            Ordering::Less => false,
-            Ordering::Greater => true,
-        }
-    }
-
-    fn clear(&mut self) {
-        self.inst_to_dfs.clear();
-        self.dfs_to_inst.clear();
-    }
-}
-
-#[derive(Default)]
-struct ClassMap {
-    inst_class: TiVec<Inst, PackedOption<ClassId>>,
-    expr_class: RawTable<ClassId>,
-    classes: TiVec<ClassId, EquivalenceClass>,
-    state: RandomState,
-}
-
-impl ClassMap {
-    fn init(&mut self, func: &Function) {
-        self.inst_class.resize(func.dfg.num_insts(), None.into());
-        self.expr_class.reserve(func.dfg.num_insts(), |_| unreachable!());
-    }
-
-    fn remove_expr_class(&mut self, func: &mut Function, class: ClassId) {
-        self.classes[class].insts = HybridBitSet::new_empty();
-        let hash = self.classes[class].expr.hash(&self.state, func);
-        self.expr_class.remove_entry(hash, |it| *it == class);
-        self.classes[class].expr.destroy(func)
-    }
-
-    fn insert_expr(&mut self, inst: Inst, mut expr: GVNExpression, func: &mut Function) -> ClassId {
-        let hash = expr.hash(&self.state, func);
-        if let Some(class) =
-            self.expr_class.get(hash, |class| self.classes[*class].expr.eq(&expr, func))
-        {
-            expr.destroy(func);
-            *class
-        } else {
-            let new_class = EquivalenceClass {
-                leader: inst.into(),
-                expr,
-                next_leader: (None.into(), u32::MAX.into()),
-                insts: HybridBitSet::new_empty(),
-            };
-            let new_class = self.classes.push_and_get_key(new_class);
-            unsafe {
-                self.expr_class.insert_no_grow(hash, new_class);
-            }
-
-            new_class
-        }
-    }
-
-    fn get_lead_val(&self, val: Value, func: &Function) -> Value {
-        if let ValueDef::Result(inst, _) = func.dfg.value_def(val) {
-            if let Some(class) = self.inst_class[inst].expand() {
-                let class = &self.classes[class];
-                if class.expr.opcode == Opcode::OptBarrier {
-                    return class.expr.payload.default().val1;
-                } else {
-                    return func.dfg.first_result(class.leader.unwrap_unchecked());
-                }
-            }
-        }
-
-        val
-    }
-
-    fn clear(&mut self, func: &mut Function) {
-        for class in self.classes.iter_mut() {
-            class.expr.destroy(func)
-        }
-
-        self.inst_class.clear();
-        self.expr_class.clear_no_drop();
-        self.classes.clear();
-    }
-}
-
-impl Index<ClassId> for ClassMap {
-    type Output = EquivalenceClass;
-
-    fn index(&self, index: ClassId) -> &Self::Output {
-        &self.classes[index]
-    }
-}
-
-impl IndexMut<ClassId> for ClassMap {
-    fn index_mut(&mut self, index: ClassId) -> &mut Self::Output {
-        &mut self.classes[index]
-    }
-}
+use expression::{ExprResult, GVNExpression};
 
 #[derive(Default)]
 pub struct GVN {
@@ -638,5 +229,173 @@ impl GVN {
                 self.leader_changes.union(&old_class_.insts, func.dfg.num_insts());
             }
         }
+    }
+}
+
+struct EquivalenceClass {
+    expr: GVNExpression,
+    leader: PackedOption<Inst>,
+    next_leader: (PackedOption<Inst>, DFSId),
+    // insts: IndexSet<Inst, ahash::RandomState>,
+    insts: HybridBitSet<DFSId>,
+}
+
+impl EquivalenceClass {
+    pub fn reset_next_leader(&mut self) {
+        self.next_leader = (None.into(), u32::MAX.into())
+    }
+
+    pub fn add_possible_next_leader(&mut self, inst: Inst, dfs_num: DFSId) {
+        if dfs_num < self.next_leader.1 {
+            self.next_leader = (inst.into(), dfs_num);
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord, Debug)]
+struct DFSId(u32);
+impl_idx_from!(DFSId(u32));
+impl_idx_math!(DFSId(u32));
+
+#[derive(Default)]
+struct DFSMapping {
+    inst_to_dfs: TiVec<Inst, PackedOption<DFSId>>,
+    dfs_to_inst: TiVec<DFSId, Inst>,
+    param_off: u32,
+}
+
+impl DFSMapping {
+    fn populate(&mut self, func: &Function, dom_tree: &DominatorTree, num_params: u32) {
+        self.param_off = num_params + 1;
+        self.inst_to_dfs.resize(func.dfg.num_insts(), None.into());
+        for bb in dom_tree.cfg_postorder().iter().rev() {
+            self.map_block(*bb, func)
+        }
+    }
+
+    fn map_block(&mut self, bb: Block, func: &Function) {
+        for inst in func.layout.block_insts(bb) {
+            let dfs_id = self.dfs_to_inst.push_and_get_key(inst);
+            // if !func.dfg.inst_dead(inst, true) {
+            self.inst_to_dfs[inst] = dfs_id.into();
+            // }
+        }
+    }
+
+    fn get_rank(&self, val: Value, func: &Function) -> u32 {
+        let inst = match func.dfg.value_def(val) {
+            ValueDef::Result(inst, _) => inst,
+            ValueDef::Param(param) => return 1 + u32::from(param),
+            ValueDef::Const(_) | ValueDef::Invalid => return 0,
+        };
+
+        match self.inst_to_dfs[inst].expand() {
+            Some(val) => u32::from(val) + self.param_off,
+            None => u32::MAX,
+        }
+    }
+
+    fn should_swap(&self, val1: Value, val2: Value, func: &Function) -> bool {
+        let rank1 = self.get_rank(val1, func);
+        let rank2 = self.get_rank(val2, func);
+        match rank1.cmp(&rank2) {
+            Ordering::Equal => val1 > val2,
+            Ordering::Less => false,
+            Ordering::Greater => true,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.inst_to_dfs.clear();
+        self.dfs_to_inst.clear();
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord, Debug)]
+pub struct ClassId(u32);
+impl_idx_from!(ClassId(u32));
+impl_idx_math!(ClassId(u32));
+
+#[derive(Default)]
+struct ClassMap {
+    inst_class: TiVec<Inst, PackedOption<ClassId>>,
+    expr_class: RawTable<ClassId>,
+    classes: TiVec<ClassId, EquivalenceClass>,
+    state: RandomState,
+}
+
+impl ClassMap {
+    fn init(&mut self, func: &Function) {
+        self.inst_class.resize(func.dfg.num_insts(), None.into());
+        self.expr_class.reserve(func.dfg.num_insts(), |_| unreachable!());
+    }
+
+    fn remove_expr_class(&mut self, func: &mut Function, class: ClassId) {
+        self.classes[class].insts = HybridBitSet::new_empty();
+        let hash = self.classes[class].expr.hash(&self.state, func);
+        self.expr_class.remove_entry(hash, |it| *it == class);
+        self.classes[class].expr.destroy(func)
+    }
+
+    fn insert_expr(&mut self, inst: Inst, mut expr: GVNExpression, func: &mut Function) -> ClassId {
+        let hash = expr.hash(&self.state, func);
+        if let Some(class) =
+            self.expr_class.get(hash, |class| self.classes[*class].expr.eq(&expr, func))
+        {
+            expr.destroy(func);
+            *class
+        } else {
+            let new_class = EquivalenceClass {
+                leader: inst.into(),
+                expr,
+                next_leader: (None.into(), u32::MAX.into()),
+                insts: HybridBitSet::new_empty(),
+            };
+            let new_class = self.classes.push_and_get_key(new_class);
+            unsafe {
+                self.expr_class.insert_no_grow(hash, new_class);
+            }
+
+            new_class
+        }
+    }
+
+    fn get_lead_val(&self, val: Value, func: &Function) -> Value {
+        if let ValueDef::Result(inst, _) = func.dfg.value_def(val) {
+            if let Some(class) = self.inst_class[inst].expand() {
+                let class = &self.classes[class];
+                if class.expr.opcode == Opcode::OptBarrier {
+                    return class.expr.payload.default().val1;
+                } else {
+                    return func.dfg.first_result(class.leader.unwrap_unchecked());
+                }
+            }
+        }
+
+        val
+    }
+
+    fn clear(&mut self, func: &mut Function) {
+        for class in self.classes.iter_mut() {
+            class.expr.destroy(func)
+        }
+
+        self.inst_class.clear();
+        self.expr_class.clear_no_drop();
+        self.classes.clear();
+    }
+}
+
+impl Index<ClassId> for ClassMap {
+    type Output = EquivalenceClass;
+
+    fn index(&self, index: ClassId) -> &Self::Output {
+        &self.classes[index]
+    }
+}
+
+impl IndexMut<ClassId> for ClassMap {
+    fn index_mut(&mut self, index: ClassId) -> &mut Self::Output {
+        &mut self.classes[index]
     }
 }

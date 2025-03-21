@@ -7,7 +7,7 @@ fn check(src: &str, data_flow_result: Expect) {
     let mut cfg = ControlFlowGraph::new();
     cfg.compute(&func);
     let mut dom_tree = DominatorTree::default();
-    dom_tree.compute(&func, &cfg, true, true, false);
+    dom_tree.compute::<true, true>(&func, &cfg);
     crate::inst_combine(&mut func);
     let mut gvn = super::GVN::default();
     gvn.init(&func, &dom_tree, 3);

@@ -11,10 +11,8 @@ use crate::auto_diff;
 
 fn check_simple(src: &str, data_flow_result: Expect) {
     let (mut func, _) = parse_function(src).unwrap();
-    let mut cfg = ControlFlowGraph::new();
-    cfg.compute(&func);
-    let mut dom_tree = DominatorTree::default();
-    dom_tree.compute::<true, false>(&func, &cfg);
+    let cfg = ControlFlowGraph::with_function(&func);
+    let dom_tree = DominatorTree::with_func_and_cfg::<true, false>(&func, &cfg);
 
     let unknowns = [10u32.into(), 11u32.into(), 12u32.into()].into_iter().collect();
 
@@ -40,8 +38,7 @@ fn check_simple(src: &str, data_flow_result: Expect) {
 
 fn check_num(src: &str, data_flow_result: Expect, args: &[f64], num: f64) {
     let (mut func, _) = parse_function(src).unwrap();
-    let mut cfg = ControlFlowGraph::new();
-    cfg.compute(&func);
+    let cfg = ControlFlowGraph::with_function(&func);
 
     let unknowns = [10u32.into(), 11u32.into()].into_iter().collect();
 
@@ -60,24 +57,26 @@ fn check_num(src: &str, data_flow_result: Expect, args: &[f64], num: f64) {
 
     let mut dom_tree = DominatorTree::default();
     dom_tree.compute::<true, false>(&func, &cfg);
+
     auto_diff(&mut func, &dom_tree, &unknowns, &[]);
+
     let mut interpret = Interpreter::new(
         &func,
         TiSlice::from_ref(&[]),
         TiSlice::from_ref(Data::from_f64_slice(args)),
     );
     interpret.run();
+
     let val: f64 = interpret.state.read(100u32.into());
-    // we use mathematically simplified formulations which can round quite differently so use a more
-    // generate epsilon (relative error of 1.6e-15 is fine)
+    // we use mathematically simplified formulations which can round quite differently,
+    // so use a more generate epsilon (relative error of 1.6e-15 is fine)
     let margin = F64Margin::default().epsilon(10f64 * f64::EPSILON);
     if !val.approx_eq(num, margin) {
         eprintln!(
-            "\x1b[31;1merror\x1b: auto_diff result {} does not match expected value {}",
-            val, num
+            "\x1b[31;1merror\x1b: auto_diff result {val} does not match expected value {num}",
         );
         data_flow_result.assert_eq(&func.to_debug_string());
-        unreachable!("invalid value produced by autodiff")
+        panic!("invalid value produced by autodiff")
     } else {
         data_flow_result.assert_eq(&func.to_debug_string());
     }

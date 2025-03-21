@@ -99,7 +99,7 @@ fn phi() {
         &[(b0, F_ZERO), (b1, v4)]
     );
     assert_eq!(
-        dfg.insts[inst].unwrap_phi().edge_val(b0, &dfg.insts.value_lists, &dfg.phi_forest),
+        dfg.insts[inst].unwrap_phi().edge_val_of(b0, &dfg.insts.value_lists, &dfg.phi_forest),
         Some(F_ZERO)
     );
     assert!(dfg.try_remove_phi_edge_at(inst, b0).is_some());

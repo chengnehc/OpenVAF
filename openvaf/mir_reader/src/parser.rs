@@ -1,5 +1,3 @@
-//! Parser for .clif files.
-
 use std::fmt::{self, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 

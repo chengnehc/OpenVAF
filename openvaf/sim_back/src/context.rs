@@ -73,15 +73,17 @@ impl<'a> Context<'a> {
         if stage == OptimizationStage::Initial {
             dead_code_elimination(&mut self.func, &self.output_values);
         }
+
         sparse_conditional_constant_propagation(&mut self.func, &self.cfg);
         inst_combine(&mut self.func);
+
         if stage == OptimizationStage::Final {
             simplify_cfg(&mut self.func, &mut self.cfg);
         } else {
             simplify_cfg_no_phi_merge(&mut self.func, &mut self.cfg);
         }
 
-        self.dom_tree.compute::<true, true>(&self.func, &self.cfg);
+        self.compute_domtree();
 
         let mut gvn = GVN::default();
         gvn.init(&self.func, &self.dom_tree, self.intern.params.len() as u32);
@@ -105,6 +107,10 @@ impl<'a> Context<'a> {
 
     pub fn compute_cfg(&mut self) {
         self.cfg.compute(&self.func);
+    }
+
+    pub fn compute_domtree(&mut self) {
+        self.dom_tree.compute::<true, true>(&self.func, &self.cfg);
     }
 
     pub fn compute_outputs(&mut self, contributes: bool) {

@@ -289,17 +289,27 @@ impl OpcodeConstraints {
     }
 }
 
-// PHI (Φ) nodes are required when a variable can be assigned a different value based on the path of control flow.
-
 /// Mapping from incoming blocks to related value positions in `ValueList`
 pub type PhiMap = bforest::Map<Block, u32>;
 /// Memory pool for `PhiMap`s
 pub type PhiForest = bforest::MapForest<Block, u32>;
 
-/// A PHI instruction, for instance:
-/// ```mir
-/// phi [v4, block5], [v5, block6]
+/// PHI (Φ) nodes are required when a variable can be assigned a different value based on
+/// the path of control flow, for instance:
+///
+/// ```text
+/// v6 = phi [v4, block5], [v5, block6]
 /// ```
+///
+/// If a basic block contains phi instruction(s), it/they should precede(s) other ordinary
+/// instructions in this block, just like a terminator must be the last instruction in the
+/// basic block.
+///
+/// Phi node appears when there are at least two predecessors and a new value can result
+/// from different predecessors.
+///
+/// A `PhiNode` is represented by a list of values and a mapping from basic block to the
+/// position of value in the list.
 #[derive(Clone, Debug)]
 pub struct PhiNode {
     pub args: ValueList,
@@ -322,6 +332,7 @@ impl Iterator for PhiEdges<'_> {
 }
 
 impl PhiNode {
+    /// Return an iterator over all phi edges.
     #[inline]
     pub fn edges<'a>(
         &self,
@@ -334,18 +345,18 @@ impl PhiNode {
 
     /// The corresponding value of `block` in the phi instruction
     #[inline]
-    pub fn edge_val(
+    pub fn edge_val_of(
         &self,
         block: Block,
         val_pool: &ValueListPool,
         phi_forest: &PhiForest,
     ) -> Option<Value> {
-        let pos = self.edge_operand(block, phi_forest)?;
+        let pos = self.edge_operand_of(block, phi_forest)?;
         Some(self.args.as_slice(val_pool)[pos as usize])
     }
 
     #[inline]
-    fn edge_operand(&self, block: Block, phi_forest: &PhiForest) -> Option<u32> {
+    fn edge_operand_of(&self, block: Block, phi_forest: &PhiForest) -> Option<u32> {
         self.blocks.get(block, phi_forest, &())
     }
 

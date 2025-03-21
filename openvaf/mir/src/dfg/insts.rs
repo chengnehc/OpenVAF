@@ -17,13 +17,13 @@ pub struct DfgInsts {
     /// with the block containing each instruction.
     pub(super) decls: TiVec<Inst, InstructionData>,
 
-    /// List (handle) of result values for each instruction.
+    /// Mapping from each instruction to a list of its result values.
     ///
     /// This map gets resized automatically by `make_inst()` so it is always in sync with the
     /// primary `insts` map.
     pub(super) results: TiVec<Inst, ValueList>,
 
-    /// List (handle) of uses (operands) for each instruction.
+    /// Mapping from each instruction to a list of its uses(operands).
     ///
     /// This map gets resized automatically by `make_inst()` so it is always in sync with the
     /// primary `insts` map.

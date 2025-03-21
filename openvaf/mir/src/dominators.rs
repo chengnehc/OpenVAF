@@ -1,18 +1,29 @@
-//! A Dominator Tree represented as mappings of Blocks to their immediate dominator
-//! (which is also a Block).
+//! # Dominators and immediate dominators
 //!
-//! A node d of a control-flow graph dominates a node n if every path from the entry
-//! node to n must go through d. By definition, every node, except the entry node,
-//! has an immediate dominator.
-
-//! A node d strictly dominates a node n if d dominates n and d does not equal n.
+//! - A block `d` is said to dominate/post-dominate block `n` if every path from the
+//!   entry/exit block to `n` must go through `d`.
+//! - A block `d` is said to strictly (post-)dominates block `n` if `d` (post-)dominates
+//!   `n` and `d` does not equal `n`.
 //!
-//! The *immediate dominator* of a node n is the unique node that strictly
-//! dominates n but does not strictly dominate any other node that strictly dominates n.
+//! The immediate dominator(idom) of a block `n` is the *unique* block that strictly
+//! dominates `n` but does not strictly dominate any other block that strictly dominates
+//! `n`. By definition, every block, except for the entry block and unreachable blocks,
+//! has a unique immediate dominator.
+//!
+//! Given a basic block, dominators and post-dominators tell us which block(s) must be
+//! executed prior to, or after this block.
+//!
+//! # Dominance frontiers
+//!
+//! Think of (post-)dominance frontiers as blocks that are “just before” or “just after”
+//! the blocks we’re dominated by, or blocks we dominate.
+//!
+//! By definition The dominance frontier of a basic block N, DF(N), is the set of all
+//! blocks that are immediate successors to blocks dominated by N, but which aren’t
+//! themselves strictly dominated by N.
 //!
 //! See Also:
-//!
-//! https://docs.rs/crate/cranelift-codegen/latest/source/src/dominator_tree.rs
+//! - https://docs.rs/crate/cranelift-codegen/latest/source/src/dominator_tree.rs
 
 use std::cmp::Ordering;
 use stdx::packed_option::PackedOption;
@@ -46,13 +57,14 @@ const UNDEF: u32 = 0;
 const DONE: u32 = 1;
 const SEEN: u32 = 2;
 
+/// A Dominator Tree represented as mappings of `Block`s to their immediate dominator.
 #[derive(Default)]
 pub struct DominatorTree {
-    ///
+    /// Mapping from a block to its possible dominator.
     nodes: TiVec<Block, DomTreeNode>,
-    /// post dominator tree
+    /// Mapping from a block to its possible post-dominator.
     reverse_nodes: TiVec<Block, DomTreeNode>,
-    /// CFG post-order of all reachable blocks.
+    /// Post-order traversal of all reachable blocks.
     postorder: Vec<Block>,
     // Scratch memory used by `compute_postorder()`.
     stack: Vec<(Block, Successors)>,
@@ -62,8 +74,8 @@ pub struct DominatorTree {
 impl DominatorTree {
     /// Get the CFG post-order of blocks that was used to compute the dominator tree.
     ///
-    /// Note that this post-order is not updated automatically when the CFG is modified. It is
-    /// computed from scratch and cached by `compute()`.
+    /// Note that this post-order is not updated automatically when the CFG is modified.
+    /// It is computed from scratch and cached by `compute()`.
     pub fn cfg_postorder(&self) -> &[Block] {
         &self.postorder
     }
@@ -116,24 +128,18 @@ impl DominatorTree {
 
 impl DominatorTree {
     /// Allocate a new blank dominator tree.
-    ///
-    /// Use `compute` to compute the dominator tree for a function.
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// Allocate and compute a dominator tree.
-    pub fn with_func_and_cfg(_func: &Function, _cfg: &ControlFlowGraph) -> Self {
-        // let block_capacity = func.layout.block_capacity();
-        // let mut domtree = Self {
-        //     nodes: TiVec::with_capacity(block_capacity),
-        //     postorder: Vec::with_capacity(block_capacity),
-        //     stack: Vec::new(),
-        // };
-        //let domtree = DominatorTree::new();
-        //domtree.compute(func, cfg);
-        //domtree
-        todo!()
+    /// Allocate and compute a (post-)dominator tree using given `func` and `cfg`.
+    pub fn with_func_and_cfg<const DOM: bool, const PDOM: bool>(
+        func: &Function,
+        cfg: &ControlFlowGraph,
+    ) -> Self {
+        let mut dom_tree = Self::new();
+        dom_tree.compute::<DOM, PDOM>(func, cfg);
+        dom_tree
     }
 
     /// Clear the data structures used to represent the dominator tree.
@@ -326,6 +332,8 @@ impl DominatorTree {
     //     &self.nodes[block].dom_frontiers
     // }
 
+    /// Compute the dominance frontiers of each block in the CFG. The result is
+    /// represented as a sparse square bitset and returned via `dst`.
     pub fn compute_dom_frontiers(
         &self,
         cfg: &ControlFlowGraph,

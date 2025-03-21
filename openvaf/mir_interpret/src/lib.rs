@@ -1,3 +1,6 @@
+//! See also the `cranelift_interpreter` crate
+//! - https://docs.rs/cranelift-interpreter/latest/cranelift_interpreter/interpreter/index.html
+
 use std::ffi::c_void;
 use std::mem::size_of_val;
 use std::slice;
@@ -16,12 +19,13 @@ pub struct InterpreterState {
 }
 
 impl InterpreterState {
+    /// Write a value's data by its index
     pub fn write(&mut self, dst: Value, val: impl Into<Data>) {
         self.vals[dst] = val.into()
     }
-
-    pub fn read<T: From<Data>>(&self, val: Value) -> T {
-        self.vals[val].into()
+    /// Read a value's data by its index
+    pub fn read<T: From<Data>>(&self, id: Value) -> T {
+        self.vals[id].into()
     }
 }
 
@@ -68,11 +72,6 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn jmp(&mut self, src: Inst, dst: Block) {
-        self.state.prev_bb = self.func.layout.inst_block(src).unwrap();
-        self.state.next_inst = self.func.layout.first_inst(dst);
-    }
-
     pub fn eval(&mut self, inst: Inst) {
         let inst_data = &self.func.dfg.insts[inst];
         let (opcode, args) = match *inst_data {
@@ -83,15 +82,15 @@ impl<'a> Interpreter<'a> {
                 self.jmp(inst, dst);
                 return;
             }
+            mir::InstructionData::Jump { destination } => {
+                self.jmp(inst, destination);
+                return;
+            }
             mir::InstructionData::PhiNode(ref phi) => {
                 let val = self.func.dfg.phi_edge_val(phi, self.state.prev_bb).unwrap();
                 let res = self.func.dfg.first_result(inst);
                 self.state.vals[res] = self.state.vals[val];
                 (Opcode::Phi, [].as_slice())
-            }
-            mir::InstructionData::Jump { destination } => {
-                self.jmp(inst, destination);
-                return;
             }
             mir::InstructionData::Call { func_ref, ref args } => {
                 let (fun, data) = self.calls[func_ref];
@@ -183,5 +182,10 @@ impl<'a> Interpreter<'a> {
             mir::Opcode::Call | mir::Opcode::Phi => return,
         };
         self.state.vals[res] = val;
+    }
+
+    fn jmp(&mut self, src: Inst, dst: Block) {
+        self.state.prev_bb = self.func.layout.inst_block(src).unwrap();
+        self.state.next_inst = self.func.layout.first_inst(dst);
     }
 }

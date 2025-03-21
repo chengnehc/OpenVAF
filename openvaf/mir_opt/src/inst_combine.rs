@@ -2,6 +2,9 @@ use mir::{Function, Inst, Value};
 
 use crate::simplify::SimplifyCtx;
 
+#[cfg(test)]
+mod tests;
+
 pub fn inst_combine(func: &mut Function) {
     let mut work_list = Vec::new();
     let mut ctx = SimplifyCtx::<f64, _>::new(func, |val, _| val);

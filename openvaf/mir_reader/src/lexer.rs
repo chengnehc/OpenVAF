@@ -1,5 +1,3 @@
-//! Lexical analysis for .clif files.
-
 use std::str::CharIndices;
 
 use mir::{Block, Value};

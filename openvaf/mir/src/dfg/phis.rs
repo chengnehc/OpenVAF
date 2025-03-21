@@ -9,7 +9,7 @@ impl DataFlowGraph {
     }
 
     pub fn phi_edge_val(&self, phi: &PhiNode, pred: Block) -> Option<Value> {
-        phi.edge_val(pred, &self.insts.value_lists, &self.phi_forest)
+        phi.edge_val_of(pred, &self.insts.value_lists, &self.phi_forest)
     }
 
     pub fn phi_eq(&self, phi1: &PhiNode, phi2: &PhiNode) -> bool {

@@ -1,6 +1,7 @@
 use bitset::{BitSet, HybridBitSet, SparseBitMatrix};
 use mir::{Block, ControlFlowGraph, DominatorTree, Function, Inst, InstructionData, Value};
 
+// The result is returned through `tainted_insts` by reference.
 pub fn propagate_taint(
     func: &Function,
     dom_tree: &DominatorTree,
@@ -12,11 +13,11 @@ pub fn propagate_taint(
     let mut solver = TaintSolver {
         dom_tree,
         func,
-        inst_queue: Vec::new(),
+        inst_work_stack: Vec::new(),
         tainted_blocks: BitSet::new_empty(func.layout.num_blocks()),
         tainted_insts,
         cfg,
-        bb_queue: Vec::new(),
+        block_work_stack: Vec::new(),
     };
 
     for val in tainted {
@@ -30,20 +31,22 @@ pub fn propagate_taint(
 }
 
 struct TaintSolver<'a> {
-    dom_tree: &'a DominatorTree,
-    cfg: &'a ControlFlowGraph,
     func: &'a Function,
-    tainted_insts: &'a mut BitSet<Inst>,
-
-    inst_queue: Vec<Inst>,
-    bb_queue: Vec<Block>,
+    cfg: &'a ControlFlowGraph,
+    dom_tree: &'a DominatorTree,
+    // Work stack used during solving taint propagation
+    inst_work_stack: Vec<Inst>,
+    block_work_stack: Vec<Block>,
+    // Used in `taint_block` to keep a record of tainted blocks
     tainted_blocks: BitSet<Block>,
+    // Oputput
+    tainted_insts: &'a mut BitSet<Inst>,
 }
 
 impl TaintSolver<'_> {
     fn taint_inst(&mut self, inst: Inst) {
         if self.tainted_insts.insert(inst) {
-            self.inst_queue.push(inst);
+            self.inst_work_stack.push(inst);
         }
     }
 
@@ -51,10 +54,7 @@ impl TaintSolver<'_> {
         // TODO: benchmark whether permanent hashmap is faster?
         let mut visited = HybridBitSet::new_empty();
         loop {
-            loop {
-                if Some(bb) == end {
-                    break;
-                }
+            while Some(bb) != end {
                 if self.tainted_blocks.insert(bb) {
                     for inst in self.func.layout.block_insts(bb) {
                         self.taint_inst(inst);
@@ -71,20 +71,17 @@ impl TaintSolver<'_> {
                 }
                 for succ in successors {
                     if visited.insert(succ, self.func.layout.num_blocks()) {
-                        self.bb_queue.push(succ);
+                        self.block_work_stack.push(succ);
                     }
                 }
             }
-            if let Some(next) = self.bb_queue.pop() {
-                bb = next
-            } else {
-                break;
-            }
+            let Some(next) = self.block_work_stack.pop() else { break };
+            bb = next;
         }
     }
 
     fn solve(&mut self) {
-        while let Some(inst) = self.inst_queue.pop() {
+        while let Some(inst) = self.inst_work_stack.pop() {
             match self.func.dfg.insts[inst] {
                 InstructionData::Branch { then_dst, else_dst, .. } => {
                     let bb = self.func.layout.inst_block(inst).unwrap();
@@ -114,6 +111,7 @@ impl TaintSolver<'_> {
     }
 }
 
+// The result is returned through `tainted_insts` by reference.
 pub fn propagate_direct_taint(
     func: &Function,
     dom_frontiers: &SparseBitMatrix<Block, Block>,
@@ -122,7 +120,7 @@ pub fn propagate_direct_taint(
 ) {
     tainted_insts.ensure(func.dfg.num_insts());
     let mut solver =
-        DirectTaintSolver { func, inst_queue: Vec::new(), tainted_insts, dom_frontiers };
+        DirectTaintSolver { func, inst_work_stack: Vec::new(), tainted_insts, dom_frontiers };
 
     for val in tainted {
         for use_ in func.dfg.uses(val) {
@@ -135,18 +133,21 @@ pub fn propagate_direct_taint(
 }
 
 struct DirectTaintSolver<'a> {
-    dom_frontiers: &'a SparseBitMatrix<Block, Block>,
     func: &'a Function,
+    dom_frontiers: &'a SparseBitMatrix<Block, Block>,
+    // Work stack used during solving taint propagation
+    inst_work_stack: Vec<Inst>,
+    // Output
     tainted_insts: &'a mut BitSet<Inst>,
-    inst_queue: Vec<Inst>,
 }
 
 impl DirectTaintSolver<'_> {
     fn taint_inst(&mut self, inst: Inst) {
         if self.tainted_insts.insert(inst) {
-            self.inst_queue.push(inst);
+            self.inst_work_stack.push(inst);
         }
     }
+
     fn taint_dom_frontier_phis(&mut self, frontiers: impl Iterator<Item = Block>) {
         for dom_frontier in frontiers {
             for inst in self.func.layout.block_insts(dom_frontier) {
@@ -160,7 +161,7 @@ impl DirectTaintSolver<'_> {
     }
 
     fn solve(&mut self) {
-        while let Some(inst) = self.inst_queue.pop() {
+        while let Some(inst) = self.inst_work_stack.pop() {
             if let InstructionData::Branch { then_dst, else_dst, .. } = self.func.dfg.insts[inst] {
                 if let Some(frontiers) = self.dom_frontiers.row(then_dst) {
                     self.taint_dom_frontier_phis(frontiers.iter());
