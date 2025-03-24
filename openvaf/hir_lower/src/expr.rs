@@ -709,13 +709,11 @@ impl BodyLowerContext<'_, '_, '_> {
 
                 res
             }*/
-
-            /*
             BuiltIn::slew | BuiltIn::transition | BuiltIn::limit | BuiltIn::absdelay => {
                 self.lower_expr(args[0])
             }
-            */
-            it => unreachable!("Unknown or unsupported builtin function {it:?}"),
+
+            it => unreachable!("Unknown or unsupported builtin function \"{it:?}\""),
         }
     }
 

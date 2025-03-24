@@ -348,6 +348,7 @@ impl Topology {
                 ContributeKind::ImplicitEquation { equation, is_reactive: true },
             );
         }
-        debug_assert_eq!(self.implicit_equations.push_and_get_key(contributes), equation);
+        let eq = self.implicit_equations.push_and_get_key(contributes);
+        debug_assert_eq!(eq, equation);
     }
 }
