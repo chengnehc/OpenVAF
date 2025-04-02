@@ -55,6 +55,7 @@ impl Layout {
         self.last_block = None;
     }
 
+    /// The capacity of basic blocks, not the actual number of blocks after MIR optimization
     pub fn num_blocks(&self) -> usize {
         self.blocks.len()
     }

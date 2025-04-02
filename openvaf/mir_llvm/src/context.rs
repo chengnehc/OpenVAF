@@ -84,12 +84,12 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
     }
 
     pub fn const_str(&self, lit: Spur) -> &'ll Value {
-        // check if string literal is cached
+        // fast path: check if string literal is cached
         if let Some(val) = self.str_lit_cache.borrow().get(&lit) {
             return val;
         }
 
-        let val = self.literals.resolve(&lit).as_bytes().to_owned();
+        let val = self.literals.resolve(&lit).as_bytes();
         let val = unsafe {
             llvm::LLVMConstStringInContext(
                 self.llcx,
@@ -108,7 +108,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
             llvm::LLVMSetGlobalConstant(global, llvm::True);
             llvm::LLVMSetLinkage(global, llvm::Linkage::Internal);
         }
-        // cache the string literal
+        // cache the string literal global value
         self.str_lit_cache.borrow_mut().insert(lit, global);
 
         global

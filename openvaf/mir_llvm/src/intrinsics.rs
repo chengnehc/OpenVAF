@@ -9,6 +9,7 @@ impl<'ll> crate::CodegenCx<'_, 'll> {
             return Some(*res);
         }
 
+        /// Insert intrinsic function
         macro_rules! ifn {
             ($name:expr, fn($($arg:expr),* ;...) -> $ret:expr) => (
                 if name == $name {
@@ -41,10 +42,13 @@ impl<'ll> crate::CodegenCx<'_, 'll> {
         ifn!("llvm.ctlz", fn(t_i32, t_bool) -> t_i32);
         ifn!("llvm.lround.i32.f64", fn(t_f64) -> t_i32);
 
-        // not technically intrinsics but part of the C standard library
-        // TODO link custom mathematical functions
+        // TODO link custom mathematical libraries
 
-        // TODO(JW) what's the difference between these and, e.g. `llvm.tan.*`?
+        // # Note
+        // Declare instrinsics like `llvm.tan.f64` could cause LLVM to use TAN instruction of
+        // specific CPU target for better performance, but imprecision could also occur.
+        //
+        // not technically intrinsics but part of the C standard library(libm)
         ifn!("tan", fn(t_f64) -> t_f64);
         ifn!("acos", fn(t_f64) -> t_f64);
         ifn!("asin", fn(t_f64) -> t_f64);
@@ -94,16 +98,16 @@ impl<'ll> crate::CodegenCx<'_, 'll> {
     fn insert_intrinsic(
         &self,
         name: &'static str,
-        args: &[&'ll llvm::Type],
-        ret: &'ll llvm::Type,
+        args: &[&'ll Type],
+        ret: &'ll Type,
         variadic: bool,
-    ) -> (&'ll llvm::Type, &'ll llvm::Value) {
-        let fn_ty =
+    ) -> (&'ll Type, &'ll Value) {
+        let fun_ty =
             if variadic { self.ty_variadic_func(&[], ret) } else { self.ty_func(args, ret) };
-        let f =
-            self.get_func_by_name(name).unwrap_or_else(|| self.declare_external_fn(name, fn_ty));
-        self.intrinsics.borrow_mut().insert(name, (fn_ty, f));
+        let fun =
+            self.get_func_by_name(name).unwrap_or_else(|| self.declare_external_fn(name, fun_ty));
+        self.intrinsics.borrow_mut().insert(name, (fun_ty, fun));
 
-        (fn_ty, f)
+        (fun_ty, fun)
     }
 }

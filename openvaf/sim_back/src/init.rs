@@ -26,12 +26,12 @@ pub struct CacheSlot(pub u32);
 impl_idx_from!(CacheSlot(u32));
 impl_debug_display! {match CacheSlot{CacheSlot(id) => "cslot{id}";}}
 
-/// The part of the model that is operating point independent and can be
-/// computed at the start of the simulation and cached afterwards
 #[derive(Debug)]
 pub struct Initialization {
     pub func: Function,
     pub intern: HirInterner,
+    /// The part of the model that is operating point independent and can be
+    /// computed at the start of the simulation and cached afterwards
     pub cached_vals: IndexMap<Value, CacheSlot, RandomState>,
     pub cache_slots: TiMap<CacheSlot, (PackedOption<ClassId>, u32), hir::Type>,
 }

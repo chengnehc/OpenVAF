@@ -22,16 +22,18 @@ extern "C" {
     pub fn LLVMABIAlignmentOfType(data: &TargetData, ty: &Type) -> c_uint;
     /// Computes the byte offset of the indexed struct element for a target.
     pub fn LLVMOffsetOfElement(data: &TargetData, struct_ty: &Type, elem: c_uint) -> c_ulonglong;
-    // Finds the target corresponding to the given triple and stores it in T.
+    /// Finds the target corresponding to the given triple and stores it in T.
+    /// Returns 0 on success. Optionally returns any error in ErrorMessage.
+    /// Use LLVMDisposeMessage to dispose the message.
     fn LLVMGetTargetFromTriple(
-        Triple: *const c_char,
-        T: &mut Option<&'static Target>,
-        ErrorMessage: *mut *mut c_char,
+        triple: *const c_char,
+        target: &mut Option<&'static Target>,
+        err_msg: *mut *mut c_char,
     ) -> Bool;
     /// Creates a new llvm::TargetMachine.
     fn LLVMCreateTargetMachine(
         target: &Target,
-        tripe: *const c_char,
+        triple: *const c_char,
         cpu: *const c_char,
         features: *const c_char,
         level: OptLevel,
@@ -48,7 +50,7 @@ extern "C" {
         codegen: CodeGenFileType,
         err_msg: *mut *mut c_char,
     ) -> Bool;
-    /// Compile the LLVM IR stored in M and store the result in OutMemBuf.
+    // /// Compile the LLVM IR stored in M and store the result in OutMemBuf.
     // pub fn LLVMTargetMachineEmitToMemoryBuffer(
     //     T: LLVMTargetMachineRef,
     //     M: LLVMModuleRef,
@@ -56,7 +58,8 @@ extern "C" {
     //     ErrorMessage: *mut *mut ::libc::c_char,
     //     OutMemBuf: *mut LLVMMemoryBufferRef,
     // ) -> LLVMBool;
-    /// Normalize a target triple. The result needs to be disposed with LLVMDisposeMessage.
+    /// Normalize a target triple.
+    /// The result needs to be disposed with LLVMDisposeMessage.
     fn LLVMNormalizeTargetTriple(triple: *const c_char) -> *mut c_char;
     pub fn LLVMGetHostCPUName() -> *const c_char;
     pub fn LLVMGetHostCPUFeatures() -> *const c_char;
@@ -67,15 +70,18 @@ extern "C" {
 ///
 /// Specifically, this function is not thread safe!
 pub unsafe fn create_target_machine(
+    module: &Module,
     triple: &str,
     cpu: &str,
     features: &str,
-    level: OptLevel,
+    opt_level: OptLevel,
     reloc_mode: RelocMode,
     code_model: CodeModel,
 ) -> Result<&'static mut TargetMachine, LLVMString> {
     let triple_ = LLVMString::from_str(triple);
     let triple_ = LLVMString::new(LLVMNormalizeTargetTriple(triple_.as_ptr()));
+    LLVMSetTarget(module, triple_.as_ptr());
+
     let mut target = None;
     let mut err_string = MaybeUninit::uninit();
     if LLVMGetTargetFromTriple(triple_.as_ptr(), &mut target, err_string.as_mut_ptr()) == 1 {
@@ -89,7 +95,7 @@ pub unsafe fn create_target_machine(
         triple_.as_ptr(),
         cpu.as_ptr(),
         features.as_ptr(),
-        level,
+        opt_level,
         reloc_mode,
         code_model,
     );
@@ -98,12 +104,4 @@ pub unsafe fn create_target_machine(
         let msg = format!("error: codegen not available for target \"{triple}\"");
         LLVMString::from_str(&msg)
     })
-}
-
-/// # Safety
-/// This function calls LLVM raw ffi which is implemented in C and may be unsound
-pub unsafe fn set_normalized_target(module: &Module, triple: &str) {
-    let triple = LLVMString::from_str(triple);
-    let triple = LLVMString::new(LLVMNormalizeTargetTriple(triple.as_ptr()));
-    LLVMSetTarget(module, triple.as_ptr())
 }

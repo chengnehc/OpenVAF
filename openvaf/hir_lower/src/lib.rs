@@ -276,7 +276,7 @@ pub enum PlaceKind {
         is_reactive: bool,
         is_potential: bool,
     },
-    ///
+    /// A bool flag indicating whether a contribution is potential
     IsPotential(BranchWrite),
     ImplicitResidual {
         equation: ImplicitEquation,

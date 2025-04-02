@@ -17,8 +17,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let cx = self.cx;
         let name = &format!("setup_model_{}", &self.module.sym);
 
-        let fun_ty =
-            cx.ty_func(&[cx.ty_ptr(), cx.ty_ptr(), cx.ty_ptr(), cx.ty_ptr()], cx.ty_void());
+        let fun_ty = cx.ty_func(&[cx.ty_ptr(); 4], cx.ty_void());
         cx.declare_external_fn(name, fun_ty)
     }
 
@@ -30,6 +29,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let intern = self.module.model_param_intern;
 
         let mut builder = Builder::new(cx, func, llfunc);
+
         let handle = unsafe { LLVMGetParam(llfunc, 0) };
         let model = unsafe { LLVMGetParam(llfunc, 1) };
         let simparam = unsafe { LLVMGetParam(llfunc, 2) };
@@ -150,18 +150,9 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     pub fn setup_instance_fn_prototype(&self) -> &'ll llvm::Value {
         let cx = self.cx;
         let name = &format!("setup_instance_{}", &self.module.sym);
-        let void_ptr_ty = cx.ty_ptr();
-        let simparam_ptr_ty = cx.ty_ptr();
+        let ty_ptr = cx.ty_ptr();
         let fun_ty = cx.ty_func(
-            &[
-                void_ptr_ty,
-                void_ptr_ty,
-                void_ptr_ty,
-                cx.ty_double(),
-                cx.ty_int(),
-                simparam_ptr_ty,
-                cx.ty_ptr(),
-            ],
+            &[ty_ptr, ty_ptr, ty_ptr, cx.ty_double(), cx.ty_int(), ty_ptr, ty_ptr],
             cx.ty_void(),
         );
 
@@ -371,7 +362,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     LLVMPositionBuilderAtEnd(llbuilder, then_bb);
                     module.node_collapse.hint(eq, None, |pair| {
                         let idx = cx.const_unsigned_int(pair.into());
-                        inst_data.store_is_collapsible(cx, builder.llbuilder, instance, idx);
+                        inst_data.store_collapsed(cx, builder.llbuilder, instance, idx);
                     });
                     LLVMBuildBr(llbuilder, else_bb);
                     LLVMPositionBuilderAtEnd(llbuilder, else_bb);
@@ -397,6 +388,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         llfunc
     }
 
+    /// Define an internal function to mark a node pair should be collapsed
     fn mark_collapsed_fn(&self) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let OsdiCompilationUnit { inst_data, cx, .. } = self;
         let name = &format!("collapse_{}", &self.module.sym);
@@ -409,8 +401,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             LLVMPositionBuilderAtEnd(llbuilder, entry);
 
             let inst = LLVMGetParam(llfunc, 0);
-            let idx = LLVMGetParam(llfunc, 1);
-            inst_data.store_is_collapsible(cx, llbuilder, inst, idx);
+            let pair = LLVMGetParam(llfunc, 1);
+            inst_data.store_collapsed(cx, llbuilder, inst, pair);
 
             LLVMBuildRetVoid(llbuilder);
             LLVMDisposeBuilder(llbuilder);

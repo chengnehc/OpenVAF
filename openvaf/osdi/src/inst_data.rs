@@ -205,13 +205,14 @@ pub struct OsdiInstanceData<'ll> {
 
     // llvm types for dynamic instance data struct fields
     pub params: IndexMap<OsdiInstanceParam, &'ll llvm::Type, RandomState>,
-    pub eval_outputs: TiMap<EvalOutputSlot, mir::Value, &'ll llvm::Type>,
     pub cache_slots: TiVec<CacheSlot, &'ll llvm::Type>,
+    pub eval_outputs: TiMap<EvalOutputSlot, mir::Value, &'ll llvm::Type>,
 
+    pub opvars: IndexMap<Variable, EvalOutput, RandomState>,
     pub residual: TiVec<SimUnknown, Residual>,
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,
-    pub opvars: IndexMap<Variable, EvalOutput, RandomState>,
     pub noise: Vec<NoiseSource>,
+
     pub bound_step: Option<EvalOutputSlot>,
 }
 
@@ -241,6 +242,9 @@ impl<'ll> OsdiInstanceData<'ll> {
             .map(|(param, _info)| (OsdiInstanceParam::User(*param), lltype(&param.ty(db), cx)));
         let params: IndexMap<_, _, _> =
             builtin_inst_params.chain(alias_inst_params).chain(user_inst_params).collect();
+
+        let cache_slots: TiVec<_, _> =
+            module.init.cache_slots.raw.values().map(|ty| lltype(ty, cx)).collect();
 
         let mut eval_outputs = TiMap::default();
         let opvars = module
@@ -273,6 +277,7 @@ impl<'ll> OsdiInstanceData<'ll> {
             .iter()
             .map(|source| NoiseSource::new(source, module, &mut eval_outputs, ty_f64))
             .collect();
+
         let bound_step = module.intern.outputs.get(&PlaceKind::BoundStep).and_then(|val| {
             let mut val = val.expand()?;
             val = strip_optbarrier(module.eval, val);
@@ -280,18 +285,16 @@ impl<'ll> OsdiInstanceData<'ll> {
             Some(slot)
         });
 
-        let param_given = bitfield::arr_ty(params.len() as u32, cx);
+        /* Static fields */
+        let param_given = bitfield::ty(cx, params.len() as u32);
         let jacobian_ptr = cx.ty_array(cx.ty_ptr(), module.dae.jacobian.len() as u32);
         let jacobian_ptr_react = cx.ty_array(cx.ty_ptr(), num_react);
         let node_mapping = cx.ty_array(ty_u32, module.dae.unknowns.len() as u32);
         let collapsed = cx.ty_array(cx.ty_c_bool(), module.node_collapse.num_pairs());
+        let state_idx = cx.ty_array(cx.ty_int(), module.intern.lim_state.len() as u32);
         let temperature = cx.ty_double();
         let connected_ports = cx.ty_int();
 
-        let cache_slots: TiVec<_, _> =
-            module.init.cache_slots.raw.values().map(|ty| lltype(ty, cx)).collect();
-
-        let state_idx = cx.ty_array(cx.ty_int(), module.intern.lim_state.len() as u32);
         let static_fields: [_; NUM_CONST_FIELDS as usize] = [
             param_given,
             jacobian_ptr,
@@ -303,6 +306,8 @@ impl<'ll> OsdiInstanceData<'ll> {
             state_idx,
         ];
 
+        /* Define struct type OsdiInstanceData */
+        let name = format!("osdi_inst_data_{}", &module.sym);
         let fields: Vec<_> = static_fields
             .into_iter()
             .chain(params.values().copied())
@@ -310,8 +315,6 @@ impl<'ll> OsdiInstanceData<'ll> {
             .chain(eval_outputs.raw.values().copied())
             .collect();
 
-        let name = &module.sym;
-        let name = format!("osdi_inst_data_{name}");
         let ty = cx.ty_struct(&name, &fields);
 
         OsdiInstanceData {
@@ -323,8 +326,8 @@ impl<'ll> OsdiInstanceData<'ll> {
             state_idx,
             collapsed,
             params,
-            eval_outputs,
             cache_slots,
+            eval_outputs,
             residual,
             jacobian,
             opvars,
@@ -333,29 +336,54 @@ impl<'ll> OsdiInstanceData<'ll> {
         }
     }
 
-    pub unsafe fn param_ptr(
+    pub unsafe fn is_param_given(
         &self,
+        cx: &CodegenCx<'_, 'll>,
         param: OsdiInstanceParam,
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
-    ) -> Option<(&'ll llvm::Value, &'ll llvm::Type)> {
-        let (pos, _, ty) = self.params.get_full(&param)?;
-        let elem = NUM_CONST_FIELDS + pos as u32;
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
-        Some((ptr, ty))
+    ) -> Option<&'ll llvm::Value> {
+        let idx = self.params.get_index_of(&param)?;
+        let res = self.is_nth_param_given(cx, idx as u32, ptr, llbuilder);
+        Some(res)
     }
 
-    pub unsafe fn nth_param_ptr(
+    pub unsafe fn is_nth_param_given(
         &self,
-        pos: u32,
+        cx: &CodegenCx<'_, 'll>,
+        idx: u32,
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
-    ) -> (&'ll llvm::Value, &'ll llvm::Type) {
-        let ty = self.params.get_index(pos as usize).unwrap().1;
-        let elem = NUM_CONST_FIELDS + pos;
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
-        (ptr, ty)
+    ) -> &'ll llvm::Value {
+        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
+        bitfield::is_set(cx, idx, arr_ptr, self.param_given, llbuilder)
     }
+
+    pub unsafe fn set_nth_param_given(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        idx: u32,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) {
+        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
+        bitfield::set_bit(cx, idx, arr_ptr, self.param_given, llbuilder)
+    }
+
+    // pub unsafe fn set_param_given(
+    //     &self,
+    //     cx: &CodegenCx<'_, 'll>,
+    //     param: OsdiInstanceParam,
+    //     ptr: &'ll llvm::Value,
+    //     llbuilder: &llvm::Builder<'ll>,
+    // ) -> bool {
+    //     if let Some(pos) = self.params.get_index_of(&param) {
+    //         self.set_nth_param_given(cx, pos as u32, ptr, llbuilder);
+    //         true
+    //     } else {
+    //         false
+    //     }
+    // }
 
     pub fn param_loc(
         &self,
@@ -363,20 +391,43 @@ impl<'ll> OsdiInstanceData<'ll> {
         param: OsdiInstanceParam,
         ptr: &'ll llvm::Value,
     ) -> Option<MemLoc<'ll>> {
-        let pos = self.params.get_index_of(&param)? as u32;
-        let loc = self.nth_param_loc(cx, pos, ptr);
+        let idx = self.params.get_index_of(&param)? as u32;
+        let loc = self.nth_param_loc(cx, idx, ptr);
         Some(loc)
     }
 
-    pub fn nth_param_loc(
+    fn nth_param_loc(
         &self,
         cx: &CodegenCx<'_, 'll>,
-        pos: u32,
+        idx: u32,
         ptr: &'ll llvm::Value,
     ) -> MemLoc<'ll> {
-        let ty = self.params.get_index(pos as usize).unwrap().1;
-        let elem = NUM_CONST_FIELDS + pos;
-        MemLoc::struct_gep(ptr, self.ty, ty, elem, cx)
+        let ty = self.params.get_index(idx as usize).unwrap().1;
+        let idx = NUM_CONST_FIELDS + idx;
+        MemLoc::struct_gep(ptr, self.ty, ty, idx, cx)
+    }
+
+    pub unsafe fn param_ptr(
+        &self,
+        param: OsdiInstanceParam,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) -> Option<(&'ll llvm::Value, &'ll llvm::Type)> {
+        let idx = self.params.get_index_of(&param)? as u32;
+        let (ptr, ty) = self.nth_param_ptr(idx, ptr, llbuilder);
+        Some((ptr, ty))
+    }
+
+    pub unsafe fn nth_param_ptr(
+        &self,
+        idx: u32,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) -> (&'ll llvm::Value, &'ll llvm::Type) {
+        let (_, ty) = self.params.get_index(idx as usize).unwrap();
+        let idx = NUM_CONST_FIELDS + idx;
+        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, idx, UNNAMED);
+        (ptr, ty)
     }
 
     pub unsafe fn read_param(
@@ -390,25 +441,25 @@ impl<'ll> OsdiInstanceData<'ll> {
         Some(val)
     }
 
+    pub unsafe fn read_nth_param(
+        &self,
+        idx: u32,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) -> &'ll llvm::Value {
+        let (ptr, ty) = self.nth_param_ptr(idx, ptr, llbuilder);
+        LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
+    }
+
     pub unsafe fn store_nth_param(
         &self,
-        pos: u32,
+        idx: u32,
         ptr: &'ll llvm::Value,
         val: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let (ptr, _) = self.nth_param_ptr(pos, ptr, llbuilder);
+        let (ptr, _) = self.nth_param_ptr(idx, ptr, llbuilder);
         LLVMBuildStore(llbuilder, val, ptr)
-    }
-
-    pub unsafe fn read_nth_param(
-        &self,
-        pos: u32,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) -> &'ll llvm::Value {
-        let (ptr, ty) = self.nth_param_ptr(pos, ptr, llbuilder);
-        LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
     }
 
     // pub unsafe fn opvar_ptr(
@@ -422,6 +473,109 @@ impl<'ll> OsdiInstanceData<'ll> {
     //     let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
     //     Some((ptr, ty))
     // }
+
+    fn cache_slot_elem(&self, slot: CacheSlot) -> u32 {
+        NUM_CONST_FIELDS + self.params.len() as u32 + u32::from(slot)
+    }
+
+    fn cache_slot_ptr(
+        &self,
+        llbuilder: &llvm::Builder<'ll>,
+        slot: CacheSlot,
+        ptr: &'ll llvm::Value,
+    ) -> (&'ll llvm::Value, &'ll llvm::Type) {
+        let elem = self.cache_slot_elem(slot);
+        let ptr = unsafe { LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED) };
+        let ty = self.cache_slots[slot];
+        (ptr, ty)
+    }
+
+    pub unsafe fn load_cache_slot(
+        &self,
+        module: &OsdiModule,
+        llbuilder: &llvm::Builder<'ll>,
+        slot: CacheSlot,
+        ptr: &'ll llvm::Value,
+    ) -> &'ll llvm::Value {
+        let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, ptr);
+        let mut val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
+
+        if module.init.cache_slots[slot] == hir::Type::Bool {
+            val = LLVMBuildICmp(
+                llbuilder,
+                IntPredicate::IntNE,
+                val,
+                LLVMConstInt(ty, 0, llvm::False),
+                UNNAMED,
+            );
+        }
+        val
+    }
+
+    pub unsafe fn store_cache_slot(
+        &self,
+        module: &OsdiModule,
+        llbuilder: &llvm::Builder<'ll>,
+        slot: CacheSlot,
+        ptr: &'ll llvm::Value,
+        mut val: &'ll llvm::Value,
+    ) {
+        let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, ptr);
+        if module.init.cache_slots[slot] == hir::Type::Bool {
+            val = LLVMBuildIntCast2(llbuilder, val, ty, llvm::False, UNNAMED);
+        }
+        LLVMBuildStore(llbuilder, val, ptr);
+    }
+
+    pub unsafe fn store_collapsed(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        llbuilder: &llvm::Builder<'ll>,
+        ptr: &'ll llvm::Value,
+        pair: &'ll llvm::Value,
+    ) {
+        let mut ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, COLLAPSED, UNNAMED);
+        let zero = cx.const_unsigned_int(0);
+        ptr = LLVMBuildGEP2(llbuilder, self.collapsed, ptr, [zero, pair].as_ptr(), 2, UNNAMED);
+        LLVMBuildStore(llbuilder, cx.const_c_bool(true), ptr);
+    }
+
+    pub unsafe fn temperature_loc(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        ptr: &'ll llvm::Value,
+    ) -> MemLoc<'ll> {
+        MemLoc::struct_gep(ptr, self.ty, cx.ty_double(), TEMPERATURE, cx)
+    }
+
+    pub unsafe fn store_temperature(
+        &self,
+        builder: &mir_llvm::Builder<'_, '_, 'll>,
+        ptr: &'ll llvm::Value,
+        val: &'ll llvm::Value,
+    ) {
+        let ptr = builder.struct_gep(self.ty, ptr, TEMPERATURE);
+        builder.store(ptr, val)
+    }
+
+    pub unsafe fn load_connected_ports(
+        &self,
+        builder: &mir_llvm::Builder<'_, '_, 'll>,
+        ptr: &'ll llvm::Value,
+    ) -> &'ll llvm::Value {
+        let ptr = builder.struct_gep(self.ty, ptr, CONNECTED);
+        builder.load(builder.cx.ty_int(), ptr)
+    }
+
+    pub unsafe fn store_connected_ports(
+        &self,
+        builder: &mir_llvm::Builder<'_, '_, 'll>,
+        ptr: &'ll llvm::Value,
+        val: &'ll llvm::Value,
+    ) {
+        let ptr = builder.struct_gep(self.ty, ptr, CONNECTED);
+        builder.store(ptr, val)
+    }
 
     pub fn residual_off(
         &self,
@@ -506,77 +660,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         }
     }
 
-    // pub unsafe fn param_given_pointer_and_mask(
-    //     &self,
-    //     cx: &CodegenCx<'_, 'll>,
-    //     param: OsdiInstanceParam,
-    //     ptr: &'ll llvm::Value,
-    //     llbuilder: &llvm::Builder<'ll>,
-    // ) -> Option<(&'ll llvm::Value, &'ll llvm::Value)> {
-    //     let pos = self.params.get_index_of(&param)?;
-    //     Some(self.nth_param_given_pointer_and_mask(cx, pos as u32, ptr, llbuilder))
-    // }
-
-    // pub unsafe fn nth_param_given_pointer_and_mask(
-    //     &self,
-    //     cx: &CodegenCx<'_, 'll>,
-    //     pos: u32,
-    //     ptr: &'ll llvm::Value,
-    //     llbuilder: &llvm::Builder<'ll>,
-    // ) -> (&'ll llvm::Value, &'ll llvm::Value) {
-    //     let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
-    //     bitfield::word_ptr_and_mask(cx, pos, arr_ptr, self.param_given, llbuilder)
-    // }
-
-    pub unsafe fn is_param_given(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        param: OsdiInstanceParam,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) -> Option<&'ll llvm::Value> {
-        let pos = self.params.get_index_of(&param)?;
-        let res = self.is_nth_param_given(cx, pos as u32, ptr, llbuilder);
-        Some(res)
-    }
-
-    pub unsafe fn is_nth_param_given(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        pos: u32,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) -> &'ll llvm::Value {
-        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
-        bitfield::is_set(cx, pos, arr_ptr, self.param_given, llbuilder)
-    }
-
-    pub unsafe fn set_nth_param_given(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        pos: u32,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) {
-        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
-        bitfield::set_bit(cx, pos, arr_ptr, self.param_given, llbuilder)
-    }
-
-    // pub unsafe fn set_param_given(
-    //     &self,
-    //     cx: &CodegenCx<'_, 'll>,
-    //     param: OsdiInstanceParam,
-    //     ptr: &'ll llvm::Value,
-    //     llbuilder: &llvm::Builder<'ll>,
-    // ) -> bool {
-    //     if let Some(pos) = self.params.get_index_of(&param) {
-    //         self.set_nth_param_given(cx, pos as u32, ptr, llbuilder);
-    //         true
-    //     } else {
-    //         false
-    //     }
-    // }
-
+    /// Read node offset defined by node mapping
     pub unsafe fn read_node_off(
         &self,
         cx: &CodegenCx<'_, 'll>,
@@ -592,30 +676,18 @@ impl<'ll> OsdiInstanceData<'ll> {
         LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
     }
 
-    pub unsafe fn read_state_idx(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        idx: LimitState,
-        ptr: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) -> &'ll llvm::Value {
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, STATE_IDX, UNNAMED);
-        let zero = cx.const_int(0);
-        let state = cx.const_unsigned_int(idx.into());
-        let ptr = LLVMBuildGEP2(llbuilder, self.state_idx, ptr, [zero, state].as_ptr(), 2, UNNAMED);
-        LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
-    }
-
+    /// Read the node offset first, and then read node voltage at this
+    /// offset in the solution vector
     pub unsafe fn read_node_voltage(
         &self,
         cx: &CodegenCx<'_, 'll>,
         node: SimUnknown,
         ptr: &'ll llvm::Value,
-        prev_result: &'ll llvm::Value,
+        prev_solve: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
         let off = self.read_node_off(cx, node, ptr, llbuilder);
-        let ptr = LLVMBuildGEP2(llbuilder, cx.ty_double(), prev_result, [off].as_ptr(), 1, UNNAMED);
+        let ptr = LLVMBuildGEP2(llbuilder, cx.ty_double(), prev_solve, [off].as_ptr(), 1, UNNAMED);
         LLVMBuildLoad2(llbuilder, cx.ty_double(), ptr, UNNAMED)
     }
 
@@ -632,23 +704,6 @@ impl<'ll> OsdiInstanceData<'ll> {
         Some(val)
     }
 
-    pub unsafe fn store_lim_rhs(
-        &self,
-        node: SimUnknown,
-        ptr: &'ll llvm::Value,
-        builder: &mir_llvm::Builder<'_, '_, 'll>,
-        reactive: bool,
-    ) -> bool {
-        let dst = &self.residual[node];
-        let slot = if reactive { dst.react_lim_rhs } else { dst.resist_lim_rhs };
-        if let Some(slot) = slot.expand() {
-            self.store_eval_output_slot(slot, ptr, builder);
-            true
-        } else {
-            false
-        }
-    }
-
     pub unsafe fn read_lim_rhs(
         &self,
         node: SimUnknown,
@@ -660,6 +715,20 @@ impl<'ll> OsdiInstanceData<'ll> {
         let lim_rhs = if reactive { &residual.react_lim_rhs } else { &residual.resist_lim_rhs };
         let val = self.load_eval_output_slot(llbuilder, ptr, lim_rhs.expand()?);
         Some(val)
+    }
+
+    pub unsafe fn read_state_idx(
+        &self,
+        cx: &CodegenCx<'_, 'll>,
+        idx: LimitState,
+        ptr: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) -> &'ll llvm::Value {
+        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, STATE_IDX, UNNAMED);
+        let zero = cx.const_int(0);
+        let state = cx.const_unsigned_int(idx.into());
+        let ptr = LLVMBuildGEP2(llbuilder, self.state_idx, ptr, [zero, state].as_ptr(), 2, UNNAMED);
+        LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
     }
 
     pub unsafe fn store_residual(
@@ -702,6 +771,23 @@ impl<'ll> OsdiInstanceData<'ll> {
         LLVMBuildStore(llbuilder, val, dst);
     }
 
+    pub unsafe fn store_lim_rhs(
+        &self,
+        node: SimUnknown,
+        ptr: &'ll llvm::Value,
+        builder: &mir_llvm::Builder<'_, '_, 'll>,
+        reactive: bool,
+    ) -> bool {
+        let dst = &self.residual[node];
+        let slot = if reactive { dst.react_lim_rhs } else { dst.resist_lim_rhs };
+        if let Some(slot) = slot.expand() {
+            self.store_eval_output_slot(slot, ptr, builder);
+            true
+        } else {
+            false
+        }
+    }
+
     pub unsafe fn store_jacobian(
         &self,
         entry: MatrixEntryId,
@@ -741,115 +827,6 @@ impl<'ll> OsdiInstanceData<'ll> {
         let val = LLVMBuildFAdd(llbuilder, old, val, UNNAMED);
         LLVMSetFastMath(val);
         LLVMBuildStore(llbuilder, val, dst);
-    }
-
-    pub fn cache_slot_elem(&self, slot: CacheSlot) -> u32 {
-        NUM_CONST_FIELDS + self.params.len() as u32 + u32::from(slot)
-    }
-
-    fn cache_slot_ptr(
-        &self,
-        llbuilder: &llvm::Builder<'ll>,
-        slot: CacheSlot,
-        ptr: &'ll llvm::Value,
-    ) -> (&'ll llvm::Value, &'ll llvm::Type) {
-        let elem = self.cache_slot_elem(slot);
-        let ptr = unsafe { LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED) };
-        let ty = self.cache_slots[slot];
-        (ptr, ty)
-    }
-
-    pub unsafe fn load_cache_slot(
-        &self,
-        module: &OsdiModule,
-        llbuilder: &llvm::Builder<'ll>,
-        slot: CacheSlot,
-        ptr: &'ll llvm::Value,
-    ) -> &'ll llvm::Value {
-        let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, ptr);
-        let mut val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
-
-        if module.init.cache_slots[slot] == hir::Type::Bool {
-            val = LLVMBuildICmp(
-                llbuilder,
-                IntPredicate::IntNE,
-                val,
-                LLVMConstInt(ty, 0, llvm::False),
-                UNNAMED,
-            );
-        }
-        val
-    }
-
-    pub unsafe fn store_cache_slot(
-        &self,
-        module: &OsdiModule,
-        llbuilder: &llvm::Builder<'ll>,
-        slot: CacheSlot,
-        ptr: &'ll llvm::Value,
-        mut val: &'ll llvm::Value,
-    ) {
-        let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, ptr);
-        if module.init.cache_slots[slot] == hir::Type::Bool {
-            val = LLVMBuildIntCast2(llbuilder, val, ty, llvm::False, UNNAMED);
-        }
-        LLVMBuildStore(llbuilder, val, ptr);
-    }
-
-    pub unsafe fn store_is_collapsible(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        llbuilder: &llvm::Builder<'ll>,
-        ptr: &'ll llvm::Value,
-        idx: &'ll llvm::Value,
-    ) {
-        let mut ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, COLLAPSED, UNNAMED);
-        ptr = LLVMBuildGEP2(
-            llbuilder,
-            self.collapsed,
-            ptr,
-            [cx.const_unsigned_int(0), idx].as_ptr(),
-            2,
-            UNNAMED,
-        );
-        LLVMBuildStore(llbuilder, cx.const_c_bool(true), ptr);
-    }
-
-    pub unsafe fn temperature_loc(
-        &self,
-        cx: &CodegenCx<'_, 'll>,
-        ptr: &'ll llvm::Value,
-    ) -> MemLoc<'ll> {
-        MemLoc::struct_gep(ptr, self.ty, cx.ty_double(), TEMPERATURE, cx)
-    }
-
-    pub unsafe fn store_temperature(
-        &self,
-        builder: &mir_llvm::Builder<'_, '_, 'll>,
-        ptr: &'ll llvm::Value,
-        val: &'ll llvm::Value,
-    ) {
-        let ptr = builder.struct_gep(self.ty, ptr, TEMPERATURE);
-        builder.store(ptr, val)
-    }
-
-    pub unsafe fn load_connected_ports(
-        &self,
-        builder: &mir_llvm::Builder<'_, '_, 'll>,
-        ptr: &'ll llvm::Value,
-    ) -> &'ll llvm::Value {
-        let ptr = builder.struct_gep(self.ty, ptr, CONNECTED);
-        builder.load(builder.cx.ty_int(), ptr)
-    }
-
-    pub unsafe fn store_connected_ports(
-        &self,
-        builder: &mir_llvm::Builder<'_, '_, 'll>,
-        ptr: &'ll llvm::Value,
-        val: &'ll llvm::Value,
-    ) {
-        let ptr = builder.struct_gep(self.ty, ptr, CONNECTED);
-        builder.store(ptr, val)
     }
 
     pub unsafe fn store_bound_step(

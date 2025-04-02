@@ -94,12 +94,12 @@ pub fn compile(
             let _db = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("access_{}", &module.sym);
-                let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
+                let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
+                let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
-                cguint.access_fn();
+                cu.access_fn();
                 debug_assert!(llmod.verify_and_print());
 
                 if emit {
@@ -112,12 +112,14 @@ pub fn compile(
             let _db = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("setup_model_{}", &module.sym);
-                let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
+                let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
+                let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
-                cguint.setup_model_fn();
+                cu.setup_model_fn();
+                std::fs::write(dst.with_extension("setup_model.ll"), llmod.print().to_string())
+                    .ok();
                 debug_assert!(llmod.verify_and_print());
 
                 if emit {
@@ -130,12 +132,13 @@ pub fn compile(
             let _db = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("setup_instance_{}", &module.sym);
-                let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
+                let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let mut cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
+                let mut cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
-                cguint.setup_instance_fn();
+                cu.setup_instance_fn();
+                std::fs::write(dst.with_extension("setup_inst.ll"), llmod.print().to_string()).ok();
                 debug_assert!(llmod.verify_and_print());
 
                 if emit {
@@ -148,13 +151,15 @@ pub fn compile(
             let _db = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("eval_{}", &module.sym);
-                let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
+                let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let cguint = OsdiCompilationUnit::new(&_db, module, &cx, &tys, true);
+                let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, true);
 
+                std::fs::write(dst.with_extension("eval.mir"), module.eval.to_debug_string()).ok();
                 // println!("{:?}", module.eval);
-                cguint.eval_fn();
+                cu.eval_fn();
+                std::fs::write(dst.with_extension("eval.ll"), llmod.print().to_string()).ok();
                 // println!("{}", llmod.to_str());
                 debug_assert!(llmod.verify_and_print());
 
@@ -166,14 +171,14 @@ pub fn compile(
             });
         }
 
-        let llmod = unsafe { back.new_module(&name, opt_lvl).unwrap() };
+        let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
         let cx = new_codegen(back, &llmod, &literals);
         let tys = OsdiTys::new(&cx, target_data);
         let descriptors: Vec<_> = modules
             .iter()
             .map(|module| {
-                let cguint = OsdiCompilationUnit::new(&db, module, &cx, &tys, false);
-                let descriptor = cguint.descriptor(target_data, &db);
+                let cu = OsdiCompilationUnit::new(&db, module, &cx, &tys, false);
+                let descriptor = cu.descriptor(target_data, &db);
                 descriptor.to_ll_val(&cx, &tys)
             })
             .collect();
@@ -219,6 +224,7 @@ pub fn compile(
             llvm::LLVMSetDLLStorageClass(osdi_log, llvm::DLLStorageClass::Export);
         }
 
+        std::fs::write(dst.with_extension("ll"), llmod.print().to_string()).ok();
         debug_assert!(llmod.verify_and_print());
 
         if emit {

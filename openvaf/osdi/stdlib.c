@@ -27,6 +27,9 @@ extern int strcmp(const char*, const char*);
 #endif
 
 
+typedef void (*osdi_log_ptr)(void *handle, char *msg, uint32_t lvl);
+extern osdi_log_ptr osdi_log;
+
 char *concat(const char *s1, const char *s2) {
   const size_t len1 = strlen(s1);
   const size_t len2 = strlen(s2);
@@ -39,9 +42,6 @@ char *concat(const char *s1, const char *s2) {
   return result;
 }
 
-typedef void (*osdi_log_ptr)(void *handle, char *msg, uint32_t lvl);
-extern osdi_log_ptr osdi_log;
-
 double simparam(void *params_, void *handle, uint32_t *flags, char *name) {
   OsdiSimParas *params = params_;
   for (int i = 0; params->names[i]; i++) {
@@ -52,7 +52,7 @@ double simparam(void *params_, void *handle, uint32_t *flags, char *name) {
   *flags |= EVAL_RET_FLAG_FATAL;
   char *msg = concat("unknown $simparam", name);
   if (msg == NULL) {
-    osdi_log(handle, "unknown $simparam %s", LOG_LVL_FATAL | LOG_FMT_ERR);
+    osdi_log(handle, "unknown $simparam", LOG_LVL_FATAL | LOG_FMT_ERR);
   } else {
     osdi_log(handle, msg, LOG_LVL_FATAL);
   }
@@ -69,7 +69,7 @@ double simparam_opt(void *params_, char *name, double default_val) {
   return default_val;
 }
 
-extern int strcmp(const char *__s1, const char *__s2);
+// extern int strcmp(const char *__s1, const char *__s2);
 
 char *simparam_str(void *params_, void *handle, uint32_t *flags, char *name) {
   OsdiSimParas *params = params_;
@@ -79,14 +79,12 @@ char *simparam_str(void *params_, void *handle, uint32_t *flags, char *name) {
     }
   }
   *flags |= EVAL_RET_FLAG_FATAL;
-
-  char *msg = concat("unknown $simparam_str", name);
+  char *msg = concat("unknown $simparam$str", name);
   if (msg == NULL) {
-    osdi_log(handle, "unknown $simparam_str %s", LOG_LVL_FATAL | LOG_FMT_ERR);
+    osdi_log(handle, "unknown $simparam$str", LOG_LVL_FATAL | LOG_FMT_ERR);
   } else {
     osdi_log(handle, msg, LOG_LVL_FATAL);
   }
-
   return "�";
 }
 
@@ -127,7 +125,7 @@ const double EXP[NUM_FMT] = {1e18, 1e15, 1e12, 1e9,  1e6,  1e3,
                              1,    1e-3, 1e-6, 1e-9, 1e-12};
 int fmt_char_idx(double val) {
   int exp = ((int)log(val)) / 3;
-  int pos = exp + NUM_FMT;
+  int pos = exp + FMT_OFF;  // JW: fixed bug, should be FMT_OFF, not NUM_FMT
 
   if (pos < 0) {
     return 0;

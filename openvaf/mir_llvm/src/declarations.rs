@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use llvm::{False, LLVMTypeOf, Type, Value};
+use llvm::{False, Type, Value};
 
 use crate::CodegenCx;
 
@@ -33,47 +33,39 @@ impl<'ll> CodegenCx<'_, 'll> {
     ///
     /// If there’s a value with the same name already declared, the function will
     /// update the declaration and return existing Value instead.
-    pub fn declare_external_fn(
-        &self,
-        name: &str,
-        // unnamed: llvm::UnnamedAddr,
-        fn_type: &'ll Type,
-    ) -> &'ll Value {
+    pub fn declare_external_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
         declare_raw_fn(self, name, llvm::CallConv::CCallConv, llvm::UnnamedAddr::No, fn_type)
     }
 
     /// Declare a internal function.
     pub fn declare_internal_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
-        // Function addresses are never significant, allowing functions to be merged.
         let fun = declare_raw_fn(
             self,
             name,
             llvm::CallConv::FastCallConv,
-            llvm::UnnamedAddr::Global,
+            llvm::UnnamedAddr::Global, // Function addresses are never significant, allow functions to be merged
             fn_type,
         );
         unsafe { llvm::LLVMSetLinkage(fun, llvm::Linkage::Internal) }
         fun
     }
 
-    /// Declare a internal function with ccc (C call convention).
+    /// Declare a internal function with C call convention (ccc).
     pub fn declare_internal_c_fn(&self, name: &str, fn_type: &'ll Type) -> &'ll Value {
-        // Function addresses are never significant, allowing functions to be merged.
         let fun = declare_raw_fn(
             self,
             name,
             llvm::CallConv::CCallConv,
-            llvm::UnnamedAddr::Global,
+            llvm::UnnamedAddr::Global, // Function addresses are never significant, allow functions to be merged
             fn_type,
         );
         unsafe { llvm::LLVMSetLinkage(fun, llvm::Linkage::Internal) }
         fun
     }
 
-    /// Declare a global with an intention to define it.
+    /// Define a a global variable.
     ///
-    /// Use this function when you intend to define a global. This function will
-    /// return `None` if the name already has a definition associated with it.
+    /// This function returns `None` if the name already has a definition associated with it.
     pub fn define_global(&self, name: &str, ty: &'ll Type) -> Option<&'ll Value> {
         if self.get_defined_value(name).is_some() {
             None
@@ -84,9 +76,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         }
     }
 
-    /// Declare a private global
-    ///
-    /// Use this function when you intend to define a global without a name.
+    /// Declare a private global variable without a name.
     pub fn define_private_global(&self, ty: &'ll Type) -> &'ll Value {
         unsafe {
             let global = llvm::LLVMAddGlobal(self.llmod, ty, llvm::UNNAMED);
@@ -95,7 +85,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         }
     }
 
-    /// Gets declared value by name.
+    /// Gets declared global value by name.
     pub fn get_declared_value(&self, name: &str) -> Option<&'ll Value> {
         let name = CString::new(name).unwrap();
         unsafe { llvm::LLVMGetNamedGlobal(self.llmod, name.as_ptr()) }
@@ -111,6 +101,43 @@ impl<'ll> CodegenCx<'_, 'll> {
                 None
             }
         })
+    }
+
+    // JW: not used
+    pub fn global_const(&self, ty: &'ll Type, val: &'ll Value) -> &'ll Value {
+        unsafe {
+            let res = self.define_private_global(ty);
+            llvm::LLVMSetInitializer(res, val);
+            llvm::LLVMSetUnnamedAddress(res, llvm::UnnamedAddr::No);
+            llvm::LLVMSetGlobalConstant(res, llvm::True);
+
+            res
+        }
+    }
+
+    pub fn const_arr_ptr(&self, elem_ty: &'ll Type, vals: &[&'ll Value]) -> &'ll Value {
+        for (i, val) in vals.iter().enumerate() {
+            assert_eq!(
+                unsafe { llvm::LLVMTypeOf(val) } as *const Type,
+                elem_ty as *const Type,
+                "val {i} has mismatched type"
+            )
+        }
+
+        let val = self.const_arr(elem_ty, vals);
+        let ty = self.ty_array(elem_ty, vals.len() as u32);
+
+        let name = self.generate_local_symbol_name("arr");
+        let global = self
+            .define_global(&name, ty)
+            .unwrap_or_else(|| unreachable!("symbol {name} already defined"));
+
+        unsafe {
+            llvm::LLVMSetInitializer(global, val);
+            llvm::LLVMSetGlobalConstant(global, llvm::True);
+            llvm::LLVMSetLinkage(global, llvm::Linkage::Internal);
+        }
+        global
     }
 
     pub fn export_val(
@@ -137,42 +164,6 @@ impl<'ll> CodegenCx<'_, 'll> {
         }
     }
 
-    pub fn global_const(&self, ty: &'ll Type, val: &'ll Value) -> &'ll Value {
-        unsafe {
-            let res = self.define_private_global(ty);
-            llvm::LLVMSetInitializer(res, val);
-            llvm::LLVMSetUnnamedAddress(res, llvm::UnnamedAddr::No);
-            llvm::LLVMSetGlobalConstant(res, llvm::True);
-
-            res
-        }
-    }
-
-    pub fn const_arr_ptr(&self, elem_ty: &'ll Type, vals: &[&'ll Value]) -> &'ll Value {
-        for (i, val) in vals.iter().enumerate() {
-            assert_eq!(
-                unsafe { LLVMTypeOf(val) } as *const Type,
-                elem_ty as *const Type,
-                "val {i} not eq"
-            )
-        }
-
-        let val = self.const_arr(elem_ty, vals);
-        let ty = self.ty_array(elem_ty, vals.len() as u32);
-
-        let sym = self.generate_local_symbol_name("arr");
-        let global = self
-            .define_global(&sym, ty)
-            .unwrap_or_else(|| unreachable!("symbol {} already defined", sym));
-
-        unsafe {
-            llvm::LLVMSetInitializer(global, val);
-            llvm::LLVMSetGlobalConstant(global, llvm::True);
-            llvm::LLVMSetLinkage(global, llvm::Linkage::Internal);
-        }
-        global
-    }
-
     pub fn export_array(
         &self,
         name: &str,
@@ -189,7 +180,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         );
 
         if add_cnt {
-            let name = format!("{}.cnt", name);
+            let name = format!("{name}.cnt");
             self.export_val(&name, self.ty_size(), self.const_usize(vals.len()), true);
         }
 

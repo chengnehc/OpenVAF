@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use libc::c_uint;
-use llvm::{False, LLVMInt8TypeInContext, True, Type, Value};
+use llvm::{False, True, Type, Value};
 use mir::Const;
 
 use crate::CodegenCx;
@@ -15,13 +15,13 @@ pub struct Types<'ll> {
     pub double: &'ll Type,
     pub ptr: &'ll Type,
     pub fat_ptr: &'ll Type,
-    pub null_ptr_val: &'ll llvm::Value,
+    pub null_ptr_val: &'ll Value,
 }
 
 impl<'ll> Types<'ll> {
     pub fn new(llcx: &'ll llvm::Context, pointer_width: u32) -> Types<'ll> {
         unsafe {
-            let char = LLVMInt8TypeInContext(llcx);
+            let char = llvm::LLVMInt8TypeInContext(llcx);
             // we are using opaque pointers, with old llvm version that plain
             // means always using char pointers, with newer llvm version the
             // type is ignored anyway
@@ -44,28 +44,16 @@ impl<'ll> Types<'ll> {
 fn ty_struct<'ll>(llcx: &'ll llvm::Context, name: &str, elements: &[&'ll Type]) -> &'ll Type {
     let name = CString::new(name).unwrap();
     unsafe {
-        let ty = llvm::LLVMStructCreateNamed(llcx, name.as_ptr());
-        llvm::LLVMStructSetBody(ty, elements.as_ptr(), elements.len() as u32, False);
-        ty
+        let struct_ty = llvm::LLVMStructCreateNamed(llcx, name.as_ptr());
+        llvm::LLVMStructSetBody(struct_ty, elements.as_ptr(), elements.len() as u32, False);
+        struct_ty
     }
 }
 
 impl<'ll> CodegenCx<'_, 'll> {
     #[inline(always)]
-    pub fn ty_double(&self) -> &'ll Type {
-        self.tys.double
-    }
-    #[inline(always)]
-    pub fn ty_int(&self) -> &'ll Type {
-        self.tys.int
-    }
-    #[inline(always)]
-    pub fn ty_char(&self) -> &'ll Type {
-        self.tys.char
-    }
-    #[inline(always)]
-    pub fn ty_size(&self) -> &'ll Type {
-        self.tys.size
+    pub fn ty_void(&self) -> &'ll Type {
+        self.tys.void
     }
     #[inline(always)]
     pub fn ty_bool(&self) -> &'ll Type {
@@ -76,12 +64,24 @@ impl<'ll> CodegenCx<'_, 'll> {
         self.tys.char
     }
     #[inline(always)]
-    pub fn ty_ptr(&self) -> &'ll Type {
-        self.tys.ptr
+    pub fn ty_char(&self) -> &'ll Type {
+        self.tys.char
     }
     #[inline(always)]
-    pub fn ty_void(&self) -> &'ll Type {
-        self.tys.void
+    pub fn ty_int(&self) -> &'ll Type {
+        self.tys.int
+    }
+    #[inline(always)]
+    pub fn ty_size(&self) -> &'ll Type {
+        self.tys.size
+    }
+    #[inline(always)]
+    pub fn ty_double(&self) -> &'ll Type {
+        self.tys.double
+    }
+    #[inline(always)]
+    pub fn ty_ptr(&self) -> &'ll Type {
+        self.tys.ptr
     }
     #[inline(always)]
     pub fn ty_fat_ptr(&self) -> &'ll Type {
@@ -90,6 +90,10 @@ impl<'ll> CodegenCx<'_, 'll> {
 
     pub fn ty_aint(&self, bits: u32) -> &'ll Type {
         unsafe { llvm::LLVMIntTypeInContext(self.llcx, bits) }
+    }
+
+    pub fn ty_array(&self, ty: &'ll Type, len: u32) -> &'ll Type {
+        unsafe { llvm::LLVMArrayType(ty, len) }
     }
 
     pub fn ty_struct(&self, name: &str, elements: &[&'ll Type]) -> &'ll Type {
@@ -102,10 +106,6 @@ impl<'ll> CodegenCx<'_, 'll> {
 
     pub fn ty_variadic_func(&self, args: &[&'ll Type], ret: &'ll Type) -> &'ll Type {
         unsafe { llvm::LLVMFunctionType(ret, args.as_ptr(), args.len() as c_uint, True) }
-    }
-
-    pub fn ty_array(&self, ty: &'ll Type, len: u32) -> &'ll Type {
-        unsafe { llvm::LLVMArrayType(ty, len) }
     }
 
     pub fn ty_of(&self, v: &'ll Value) -> &'ll Type {
@@ -122,18 +122,6 @@ impl<'ll> CodegenCx<'_, 'll> {
             Const::Str(val) => self.const_str(val),
             // Const::Complex(ref val) => self.const_cmplx(val),
         }
-    }
-
-    /// # Safety
-    /// * Indices must be valid and inbounds for the provided ptr.
-    /// * The pointer must be a constant address.
-    pub unsafe fn const_gep(
-        &self,
-        elem_ty: &'ll llvm::Type,
-        ptr: &'ll llvm::Value,
-        indices: &[&'ll llvm::Value],
-    ) -> &'ll llvm::Value {
-        llvm::LLVMConstInBoundsGEP2(elem_ty, ptr, indices.as_ptr(), indices.len() as u32)
     }
 
     pub fn const_int(&self, val: i32) -> &'ll Value {
@@ -186,5 +174,17 @@ impl<'ll> CodegenCx<'_, 'll> {
 
     pub fn const_undef(&self, t: &'ll Type) -> &'ll Value {
         unsafe { llvm::LLVMGetUndef(t) }
+    }
+
+    /// # Safety
+    /// * Indices must be valid and inbounds for the provided ptr.
+    /// * The pointer must be a constant address.
+    pub unsafe fn const_gep(
+        &self,
+        elem_ty: &'ll Type,
+        ptr: &'ll Value,
+        indices: &[&'ll Value],
+    ) -> &'ll Value {
+        llvm::LLVMConstInBoundsGEP2(elem_ty, ptr, indices.as_ptr(), indices.len() as u32)
     }
 }

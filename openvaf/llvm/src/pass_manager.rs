@@ -48,7 +48,7 @@ extern "C" {
         RunInliner: Bool,
     );
     fn LLVMPassManagerBuilderSetOptLevel(PMB: &PassManagerBuilder, OptLevel: c_uint);
-    // This is defined in the OpenVafWrapper.cpp and not intrinsic to API
+    // Defined in the OpenVafWrapper.cpp , not intrinsic to C API
     fn LLVMPassManagerBuilderSLPVectorize(PMB: &PassManagerBuilder);
 }
 

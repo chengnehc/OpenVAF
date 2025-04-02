@@ -1,7 +1,7 @@
 use ahash::RandomState;
 use hir::{CompilationDB, Parameter};
 use indexmap::IndexMap;
-use llvm::{LLVMBuildLoad2, LLVMBuildStore, LLVMBuildStructGEP2, Value, UNNAMED};
+use llvm::{LLVMBuildLoad2, LLVMBuildStore, LLVMBuildStructGEP2, UNNAMED};
 use mir_llvm::{CodegenCx, MemLoc};
 
 use crate::compilation_unit::OsdiModule;
@@ -34,7 +34,7 @@ impl<'ll> OsdiModelData<'ll> {
             .filter(|&param| !inst_params.contains_key(&OsdiInstanceParam::User(*param)))
             .map(|param| (*param, lltype(&param.ty(db), cx)))
             .collect();
-        let param_given = bitfield::arr_ty((inst_params.len() + params.len()) as u32, cx);
+        let param_given = bitfield::ty(cx, (inst_params.len() + params.len()) as u32);
 
         let mut fields = vec![param_given];
         fields.extend(params.values().copied());
@@ -63,11 +63,10 @@ impl<'ll> OsdiModelData<'ll> {
         pos: u32,
         ptr: &'ll llvm::Value,
     ) -> MemLoc<'ll> {
-        let ty = self.params.get_index(pos as usize).unwrap().1;
+        let (_, ty) = self.params.get_index(pos as usize).unwrap();
         let elem = NUM_CONST_FIELDS + pos;
-        let indices =
-            vec![cx.const_unsigned_int(0), cx.const_unsigned_int(elem)].into_boxed_slice();
-        MemLoc { ptr, ptr_ty: self.ty, ty, indices }
+        let indices = Box::new([cx.const_unsigned_int(0), cx.const_unsigned_int(elem)]);
+        MemLoc { ptr, ptr_ty: self.ty, elem_ty: ty, indices }
     }
 
     pub unsafe fn param_ptr(
@@ -88,7 +87,7 @@ impl<'ll> OsdiModelData<'ll> {
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
-        let ty = self.params.get_index(pos as usize).unwrap().1;
+        let (_, ty) = self.params.get_index(pos as usize).unwrap();
         let elem = NUM_CONST_FIELDS + pos;
         let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
         (ptr, ty)
@@ -101,10 +100,21 @@ impl<'ll> OsdiModelData<'ll> {
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
-        let ty = inst_data.params.get_index(pos as usize).unwrap().1;
+        let (_, ty) = inst_data.params.get_index(pos as usize).unwrap();
         let elem = NUM_CONST_FIELDS + self.params.len() as u32 + pos;
         let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
         (ptr, ty)
+    }
+
+    pub unsafe fn store_nth_param(
+        &self,
+        param: u32,
+        ptr: &'ll llvm::Value,
+        val: &'ll llvm::Value,
+        llbuilder: &llvm::Builder<'ll>,
+    ) {
+        let (ptr, _) = self.nth_param_ptr(param, ptr, llbuilder);
+        LLVMBuildStore(llbuilder, val, ptr);
     }
 
     // pub unsafe fn read_param(
@@ -117,17 +127,6 @@ impl<'ll> OsdiModelData<'ll> {
     //     let val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
     //     Some(val)
     // }
-
-    pub unsafe fn store_nth_param(
-        &self,
-        param: u32,
-        ptr: &'ll Value,
-        val: &'ll llvm::Value,
-        llbuilder: &llvm::Builder<'ll>,
-    ) {
-        let (ptr, _) = self.nth_param_ptr(param, ptr, llbuilder);
-        LLVMBuildStore(llbuilder, val, ptr);
-    }
 
     // pub unsafe fn read_nth_param(
     //     &self,

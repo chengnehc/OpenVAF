@@ -367,11 +367,11 @@ extern "C" {
     pub fn LLVMBuildPhi<'a>(builder: &Builder<'a>, ty: &'a Type, Name: *const c_char) -> &'a Value;
     pub fn LLVMBuildCall2<'a>(
         builder: &Builder<'a>,
-        ty: &'a Type,
-        Fn: &'a Value,
-        Args: *const &'a Value,
-        NumArgs: c_uint,
-        Name: *const c_char,
+        fun_ty: &'a Type,
+        fun: &'a Value,
+        args: *const &'a Value,
+        num_args: c_uint,
+        name: *const c_char,
     ) -> &'a Value;
     pub fn LLVMBuildSelect<'a>(
         builder: &Builder<'a>,

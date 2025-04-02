@@ -60,9 +60,9 @@ extern "C" {
     /// Set the contents of a structure type.
     pub fn LLVMStructSetBody<'a>(
         struct_ty: &'a Type,
-        ElementTypes: *const &'a Type,
-        ElementCount: c_uint,
-        Packed: Bool,
+        elem_types: *const &'a Type,
+        elem_count: c_uint,
+        packed: Bool,
     );
     pub fn LLVMCountStructElementTypes(struct_ty: &Type) -> c_uint;
     fn LLVMGetStructElementTypes<'a>(struct_ty: &'a Type, dst: *mut &'a Type);

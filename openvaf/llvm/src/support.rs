@@ -25,6 +25,17 @@ impl LLVMString {
         LLVMString { ptr }
     }
 
+    /// This method allocates a C string through LLVM using Rust borrowed string
+    pub(crate) fn from_str(string: &str) -> LLVMString {
+        let msg = CString::new(string).unwrap();
+        unsafe { LLVMString::new(LLVMCreateMessage(msg.as_ptr() as *const _)) }
+    }
+
+    /// This method allocates a C string through LLVM using Rust borrowed C string
+    pub fn from_c_str(string: &CStr) -> LLVMString {
+        unsafe { LLVMString::new(LLVMCreateMessage(string.as_ptr() as *const _)) }
+    }
+
     // /// This is a convenience method for creating a Rust `String`,
     // /// however; it *will* reallocate. `LLVMString` should be used
     // /// as much as possible to save memory since it is allocated by
@@ -33,17 +44,6 @@ impl LLVMString {
     // pub fn to_string(&self) -> String {
     //     (*self).to_string_lossy().into_owned()
     // }
-
-    /// This method will allocate a c string through LLVM
-    pub(crate) fn from_str(string: &str) -> LLVMString {
-        let msg = CString::new(string).unwrap();
-        unsafe { LLVMString::new(LLVMCreateMessage(msg.as_ptr() as *const _)) }
-    }
-
-    /// This method will allocate a c string through LLVM
-    pub fn from_c_str(string: &CStr) -> LLVMString {
-        unsafe { LLVMString::new(LLVMCreateMessage(string.as_ptr() as *const _)) }
-    }
 }
 
 impl Deref for LLVMString {

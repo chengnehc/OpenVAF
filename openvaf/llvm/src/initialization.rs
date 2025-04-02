@@ -8,7 +8,8 @@ use libc::{c_char, c_int};
 
 use crate::{Bool, LLVMParseCommandLineOptions, PassRegistry};
 
-// TODO(JW) remove dependencies on the following unnecessary functions
+// TODO(JW) remove dependencies on the following unnecessary routines
+//
 // Since LLVM 17, all functions below for initializing legacy passes have been removed.
 // `LLVMPassRegistryRef` and `LLVMGetGlobalPassRegistry`, which were only useful
 // in conjunction with initialization functions, have been removed.
@@ -25,7 +26,7 @@ extern "C" {
     fn LLVMInitializeTarget(R: *mut PassRegistry);
     fn LLVMGetGlobalPassRegistry() -> *mut PassRegistry;
 
-    // Threading
+    /* Threading */
     // Check whether LLVM is executing in thread-safe mode or not
     fn LLVMIsMultithreaded() -> Bool;
 }

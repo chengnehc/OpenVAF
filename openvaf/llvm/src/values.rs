@@ -88,10 +88,10 @@ extern "C" {
 
     /// Create a ConstantDataSequential and initialize it with a string.
     pub fn LLVMConstStringInContext(
-        C: &Context,
-        Str: *const c_char,
-        Length: c_uint,
-        DontNullTerminate: Bool,
+        ctx: &Context,
+        str: *const c_char,
+        len: c_uint,
+        dont_null_terminate: Bool,
     ) -> &Value;
     // pub fn LLVMConstString(
     //     Str: *const ::libc::c_char,
@@ -166,12 +166,11 @@ extern "C" {
     // pub fn LLVMConstLShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
     // pub fn LLVMConstAShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
 
-    /// 'GEP' stands for 'Get Element Pointer' (in a struct)
     pub fn LLVMConstInBoundsGEP2<'a>(
         elem_ty: &'a Type,
-        ConstantVal: &'a Value,
-        ConstantIndices: *const &'a Value,
-        NumIndices: c_uint,
+        const_val: &'a Value,
+        const_indices: *const &'a Value,
+        num_indices: c_uint,
     ) -> &'a Value;
     // pub fn LLVMConstGEP2<'a>(
     //     ty: &'a Type,
@@ -382,7 +381,7 @@ extern "C" {
     //) -> *const ::libc::c_char;
     //pub fn LLVMIntrinsicIsOverloaded(ID: ::libc::c_uint) -> LLVMBool;
 
-    /// Obtain the calling function of a function.
+    /// Obtain the calling convention of a function.
     pub fn LLVMGetFunctionCallConv(fun: &Value) -> CallConv;
     /// Set the calling convention of a function.
     pub fn LLVMSetFunctionCallConv(fun: &Value, cc: CallConv);
@@ -446,9 +445,9 @@ extern "C" {
 
     /// Add an incoming value to the end of a PHI list.
     pub fn LLVMAddIncoming<'a>(
-        PhiNode: &'a Value,
-        IncomingValues: *const &'a Value,
-        IncomingBlocks: *const &'a BasicBlock,
-        Count: c_uint,
+        phi_node: &'a Value,
+        incoming_values: *const &'a Value,
+        incoming_blocks: *const &'a BasicBlock,
+        count: c_uint,
     );
 }

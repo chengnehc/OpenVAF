@@ -4,14 +4,8 @@ use std::slice;
 
 use arrayvec::ArrayVec;
 use libc::c_uint;
-use llvm::{
-    LLVMBuildExtractValue, LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildStore, LLVMGetReturnType,
-    UNNAMED,
-};
-use mir::{
-    Block, ControlFlowGraph, FuncRef, Function, Inst, Opcode, Param, PhiNode, Value, ValueDef,
-    F_ZERO, ZERO,
-};
+use llvm::UNNAMED;
+use mir::{ControlFlowGraph, Opcode, ValueDef, F_ZERO, ZERO};
 use typed_index_collections::TiVec;
 
 use crate::callbacks::CallbackFun;
@@ -21,7 +15,7 @@ use crate::CodegenCx;
 pub struct MemLoc<'ll> {
     pub ptr: &'ll llvm::Value,
     pub ptr_ty: &'ll llvm::Type,
-    pub ty: &'ll llvm::Type,
+    pub elem_ty: &'ll llvm::Type,
     pub indices: Box<[&'ll llvm::Value]>,
 }
 
@@ -29,15 +23,15 @@ impl<'ll> MemLoc<'ll> {
     pub fn struct_gep(
         ptr: &'ll llvm::Value,
         ptr_ty: &'ll llvm::Type,
-        ty: &'ll llvm::Type,
+        elem_ty: &'ll llvm::Type,
         idx: u32,
         cx: &CodegenCx<'_, 'll>,
     ) -> MemLoc<'ll> {
         MemLoc {
             ptr,
             ptr_ty,
-            ty,
-            indices: vec![cx.const_unsigned_int(0), cx.const_unsigned_int(idx)].into_boxed_slice(),
+            elem_ty,
+            indices: Box::new([cx.const_unsigned_int(0), cx.const_unsigned_int(idx)]),
         }
     }
 
@@ -57,20 +51,10 @@ impl<'ll> MemLoc<'ll> {
         ptr: &'ll llvm::Value,
     ) -> &'ll llvm::Value {
         let ptr = self.to_ptr_from(llbuilder, ptr);
-        LLVMBuildLoad2(llbuilder, self.ty, ptr, UNNAMED)
+        llvm::LLVMBuildLoad2(llbuilder, self.elem_ty, ptr, UNNAMED)
     }
 
-    /// # Safety
-    ///
-    /// ptr_ty and indices must be valid for ptr
-    pub unsafe fn to_ptr(&self, llbuilder: &llvm::Builder<'ll>) -> &'ll llvm::Value {
-        self.to_ptr_from(llbuilder, self.ptr)
-    }
-
-    /// # Safety
-    ///
-    /// ptr_ty and indices must be valid for ptr
-    pub unsafe fn to_ptr_from(
+    unsafe fn to_ptr_from(
         &self,
         llbuilder: &llvm::Builder<'ll>,
         mut ptr: &'ll llvm::Value,
@@ -110,8 +94,9 @@ impl<'ll> From<&'ll llvm::Value> for BuilderVal<'ll> {
 }
 
 impl<'ll> BuilderVal<'ll> {
-    /// # Safety
+    /// Get the underlying LLVM value
     ///
+    /// # Safety
     /// For Self::Load and Self::Call, the values must be valid
     pub unsafe fn get(&self, builder: &Builder<'_, '_, 'll>) -> &'ll llvm::Value {
         match self {
@@ -122,15 +107,16 @@ impl<'ll> BuilderVal<'ll> {
         }
     }
 
-    /// # Safety
+    /// Get the type of the underlying LLVM value
     ///
+    /// # Safety
     /// For Self::Load and Self::Call, the values must be valid
     pub unsafe fn get_ty(&self, builder: &Builder<'_, '_, 'll>) -> Option<&'ll llvm::Type> {
         let ty = match self {
             BuilderVal::Undef => return None,
             BuilderVal::Eager(val) => builder.cx.ty_of(val),
-            BuilderVal::Load(loc) => loc.ty,
-            BuilderVal::Call(call) => LLVMGetReturnType(call.fun_ty),
+            BuilderVal::Load(loc) => loc.elem_ty,
+            BuilderVal::Call(call) => llvm::LLVMGetReturnType(call.fun_ty),
         };
         Some(ty)
     }
@@ -139,16 +125,16 @@ impl<'ll> BuilderVal<'ll> {
 // A `mir_llvm::Builder` must have an associative `llfunc`
 #[must_use]
 pub struct Builder<'a, 'cx, 'll> {
+    pub cx: &'a CodegenCx<'cx, 'll>,
     pub llbuilder: &'a mut llvm::Builder<'ll>,
     pub llfunc: &'ll llvm::Value,
-    pub cx: &'a CodegenCx<'cx, 'll>,
-    pub mir: &'a Function,
-    pub blocks: TiVec<Block, Option<&'ll llvm::BasicBlock>>,
-    pub prepend_pos: &'ll llvm::BasicBlock,
-    pub values: TiVec<Value, BuilderVal<'ll>>,
-    pub params: TiVec<Param, BuilderVal<'ll>>,
-    pub callbacks: TiVec<FuncRef, Option<CallbackFun<'ll>>>,
-    pub unfinished_phis: Vec<(PhiNode, &'ll llvm::Value)>,
+    pub mir: &'a mir::Function,
+    pub blocks: TiVec<mir::Block, Option<&'ll llvm::BasicBlock>>,
+    pub values: TiVec<mir::Value, BuilderVal<'ll>>,
+    pub params: TiVec<mir::Param, BuilderVal<'ll>>,
+    pub callbacks: TiVec<mir::FuncRef, Option<CallbackFun<'ll>>>,
+    pub unfinished_phis: Vec<(mir::PhiNode, &'ll llvm::Value)>,
+    // pub prepend_pos: &'ll llvm::BasicBlock,
 }
 
 impl Drop for Builder<'_, '_, '_> {
@@ -166,181 +152,34 @@ pub enum FastMathMode {
 impl<'a, 'cx, 'll> Builder<'a, 'cx, 'll> {
     pub fn new(
         cx: &'a CodegenCx<'cx, 'll>,
-        mirfun: &'a Function,
+        mir: &'a mir::Function,
         llfunc: &'ll llvm::Value,
     ) -> Self {
         let entry = unsafe { llvm::LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED) };
         let llbuilder = unsafe { llvm::LLVMCreateBuilderInContext(cx.llcx) };
-        let mut blocks: TiVec<_, _> = vec![None; mirfun.layout.num_blocks()].into();
-        for blk in mirfun.layout.blocks() {
+        let mut blocks: TiVec<_, _> = vec![None; mir.layout.num_blocks()].into();
+        for blk in mir.layout.blocks() {
             blocks[blk] =
                 unsafe { Some(llvm::LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED)) };
         }
-        // JW:
-        // let blocks: TiVec<_, _> = mir_func
-        //     .layout
-        //     .blocks()
-        //     .map(|_| unsafe {
-        //         Some(llvm::LLVMAppendBasicBlockInContext(cx.llcx, ll_func, UNNAMED))
-        //     })
-        //     .collect();
-
         unsafe { llvm::LLVMPositionBuilderAtEnd(llbuilder, entry) };
 
         Builder {
             llbuilder,
             llfunc,
             cx,
-            mir: mirfun,
+            mir,
             blocks,
-            prepend_pos: entry,
-            values: vec![BuilderVal::Undef; mirfun.dfg.num_values()].into(),
+            values: vec![BuilderVal::Undef; mir.dfg.num_values()].into(),
             params: Default::default(),
             callbacks: Default::default(),
             unfinished_phis: Vec::new(),
+            // prepend_pos: entry,
         }
     }
 }
 
 impl<'ll> Builder<'_, '_, 'll> {
-    /// # Safety
-    /// * Must not be called when a block that already contains a terminator is selected.
-    /// * Must be called in the entry block of the function
-    pub unsafe fn alloca(&self, ty: &'ll llvm::Type) -> &'ll llvm::Value {
-        llvm::LLVMBuildAlloca(self.llbuilder, ty, UNNAMED)
-    }
-
-    /// # Safety
-    /// * Only correct llvm api calls must be performed within build_then and build_else
-    /// * Their return types must match and cond must be a bool
-    pub unsafe fn add_branching_select(
-        &mut self,
-        cond: &'ll llvm::Value,
-        build_then: impl FnOnce(&mut Self) -> &'ll llvm::Value,
-        build_else: impl FnOnce(&mut Self) -> &'ll llvm::Value,
-    ) -> &'ll llvm::Value {
-        let start = self.prepend_pos;
-        let exit = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
-        let then_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
-        llvm::LLVMPositionBuilderAtEnd(self.llbuilder, then_bb);
-        self.prepend_pos = then_bb;
-        let then_val = build_then(self);
-        llvm::LLVMBuildBr(self.llbuilder, exit);
-
-        let else_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
-        llvm::LLVMPositionBuilderAtEnd(self.llbuilder, else_bb);
-        self.prepend_pos = else_bb;
-        let else_val = build_else(self);
-        llvm::LLVMBuildBr(self.llbuilder, exit);
-
-        llvm::LLVMPositionBuilderAtEnd(self.llbuilder, start);
-        llvm::LLVMBuildCondBr(self.llbuilder, cond, then_bb, else_bb);
-
-        self.prepend_pos = exit;
-        llvm::LLVMPositionBuilderAtEnd(self.llbuilder, self.prepend_pos);
-        let phi = llvm::LLVMBuildPhi(self.llbuilder, llvm::LLVMTypeOf(then_val), UNNAMED);
-        llvm::LLVMAddIncoming(phi, [then_val, else_val].as_ptr(), [then_bb, else_bb].as_ptr(), 2);
-
-        phi
-    }
-
-    /// # Safety
-    /// Only correct llvm api calls must be performed within build_then and build_else.
-    /// Their return types must match and cond must be a bool.
-    pub unsafe fn select(
-        &self,
-        cond: &'ll llvm::Value,
-        then_val: &'ll llvm::Value,
-        else_val: &'ll llvm::Value,
-    ) -> &'ll llvm::Value {
-        llvm::LLVMBuildSelect(self.llbuilder, cond, then_val, else_val, UNNAMED)
-    }
-
-    /// # Safety
-    /// Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn typed_gep(
-        &self,
-        arr_ty: &'ll llvm::Type,
-        ptr: &'ll llvm::Value,
-        indices: &[&'ll llvm::Value],
-    ) -> &'ll llvm::Value {
-        llvm::LLVMBuildGEP2(
-            self.llbuilder,
-            arr_ty,
-            ptr,
-            indices.as_ptr(),
-            indices.len() as u32,
-            UNNAMED,
-        )
-    }
-
-    /// # Safety
-    /// Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn gep(
-        &self,
-        elem_ty: &'ll llvm::Type,
-        ptr: &'ll llvm::Value,
-        indices: &[&'ll llvm::Value],
-    ) -> &'ll llvm::Value {
-        self.typed_gep(elem_ty, ptr, indices)
-    }
-
-    /// # Safety
-    /// * Must not be called when a block that already contains a terminator is selected
-    /// * struct_ty must be a valid struct type for this pointer and idx must be in bounds
-    pub unsafe fn struct_gep(
-        &self,
-        struct_ty: &'ll llvm::Type,
-        ptr: &'ll llvm::Value,
-        idx: u32,
-    ) -> &'ll llvm::Value {
-        llvm::LLVMBuildStructGEP2(self.llbuilder, struct_ty, ptr, idx, UNNAMED)
-    }
-
-    /// # Safety
-    /// Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn fat_ptr_get_ptr(&self, ptr: &'ll llvm::Value) -> &'ll llvm::Value {
-        self.struct_gep(self.cx.ty_fat_ptr(), ptr, 0)
-    }
-
-    /// # Safety
-    /// Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn fat_ptr_get_meta(&self, ptr: &'ll llvm::Value) -> &'ll llvm::Value {
-        self.struct_gep(self.cx.ty_fat_ptr(), ptr, 1)
-    }
-
-    /// # Safety
-    /// Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn fat_ptr_to_parts(
-        &self,
-        ptr: &'ll llvm::Value,
-    ) -> (&'ll llvm::Value, &'ll llvm::Value) {
-        (self.fat_ptr_get_ptr(ptr), self.fat_ptr_get_meta(ptr))
-    }
-
-    /// # Safety
-    /// * Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn call(
-        &self,
-        fun_ty: &'ll llvm::Type,
-        fun: &'ll llvm::Value,
-        operands: &[&'ll llvm::Value],
-    ) -> &'ll llvm::Value {
-        let res = llvm::LLVMBuildCall2(
-            self.llbuilder,
-            fun_ty,
-            fun,
-            operands.as_ptr(),
-            operands.len() as u32,
-            UNNAMED,
-        );
-
-        // forgett this is a real footgun
-        let cconv = llvm::LLVMGetFunctionCallConv(fun);
-        llvm::LLVMSetInstructionCallConv(res, cconv);
-        res
-    }
-
     pub fn build_consts(&mut self) {
         for val in self.mir.dfg.values() {
             match self.mir.dfg.value_def(val) {
@@ -383,12 +222,12 @@ impl<'ll> Builder<'_, '_, 'll> {
         self.unfinished_phis.clear();
     }
 
-    pub fn select_bb(&self, bb: Block) {
+    pub fn select_bb(&self, bb: mir::Block) {
         unsafe { llvm::LLVMPositionBuilderAtEnd(self.llbuilder, self.blocks[bb].unwrap()) }
     }
 
     /// Position the builder before the terminator instruction of specified block.
-    pub fn select_bb_before_terminator(&self, bb: Block) {
+    pub fn select_bb_before_terminator(&self, bb: mir::Block) {
         let bb = self.blocks[bb].unwrap();
         unsafe {
             let inst = llvm::LLVMGetLastInstruction(bb);
@@ -399,11 +238,10 @@ impl<'ll> Builder<'_, '_, 'll> {
     /// # Safety
     /// * Must not be called if any non phi instruction has already been build for `bb`.
     /// * Must not be called twice for the same block.
-    pub unsafe fn build_bb(&mut self, bb: Block) {
+    pub unsafe fn build_bb(&mut self, bb: mir::Block) {
         self.select_bb(bb);
         for inst in self.mir.layout.block_insts(bb) {
-            // TODO(JW): negative srcloc (i32) is used here to indicate
-            // fast math mode, which is quite magical
+            // TODO(JW): why using inversed srcloc (i32) to indicate fast math mode?
             let fast_math = self.mir.srclocs.get(inst).is_some_and(|loc| loc.bits() < 0);
             self.build_inst(
                 inst,
@@ -413,24 +251,10 @@ impl<'ll> Builder<'_, '_, 'll> {
     }
 
     /// # Safety
-    /// * Must not be called multiple times.
-    /// * A terminator must not be built for the exit block through other means.
-    pub unsafe fn ret(&mut self, val: &'ll llvm::Value) {
-        llvm::LLVMBuildRet(self.llbuilder, val);
-    }
-
-    /// # Safety
-    /// * Must not be called multiple times.
-    /// * A terminator must not be built for the exit block through other means.
-    pub unsafe fn ret_void(&mut self) {
-        llvm::LLVMBuildRetVoid(self.llbuilder);
-    }
-
-    /// # Safety
     /// * Must only be called when after the builder has been positioned.
     /// * Not Phis may be constructed for the current block after this function has been called.
     /// * Must not be called when the builder has selected a block that already contains a terminator.
-    pub unsafe fn build_inst(&mut self, inst: Inst, fast_math_mode: FastMathMode) {
+    pub unsafe fn build_inst(&mut self, inst: mir::Inst, fast_math_mode: FastMathMode) {
         let (opcode, args) = match self.mir.dfg.insts[inst] {
             mir::InstructionData::Unary { opcode, ref arg } => (opcode, slice::from_ref(arg)),
             mir::InstructionData::Binary { opcode, ref args } => (opcode, args.as_slice()),
@@ -462,9 +286,7 @@ impl<'ll> Builder<'_, '_, 'll> {
                 return;
             }
             mir::InstructionData::Call { func_ref, ref args } => {
-                let Some(callback) = self.callbacks[func_ref].as_ref() else {
-                    return; // assume noop
-                };
+                let Some(callback) = self.callbacks[func_ref].as_ref() else { return }; // assume noop
 
                 let args = args.as_slice(&self.mir.dfg.insts.value_lists);
                 let args = args.iter().map(|operand| self.values[*operand].get(self));
@@ -493,8 +315,12 @@ impl<'ll> Builder<'_, '_, 'll> {
                         [val] => self.values[*val] = res.into(),
                         vals => {
                             for (i, val) in vals.iter().enumerate() {
-                                let res =
-                                    LLVMBuildExtractValue(self.llbuilder, res, i as u32, UNNAMED);
+                                let res = llvm::LLVMBuildExtractValue(
+                                    self.llbuilder,
+                                    res,
+                                    i as u32,
+                                    UNNAMED,
+                                );
                                 self.values[*val] = res.into();
                             }
                         }
@@ -706,24 +532,95 @@ impl<'ll> Builder<'_, '_, 'll> {
         }
     }
 
-    unsafe fn strcmp(&mut self, args: &[Value], invert: bool) -> &'ll llvm::Value {
-        let res = self.intrinsic(args, "strcmp");
-        let predicate = if invert { llvm::IntPredicate::IntNE } else { llvm::IntPredicate::IntEQ };
+    /* Terminator Instructions */
 
-        LLVMBuildICmp(self.llbuilder, predicate, res, self.cx.const_int(0), UNNAMED)
+    /// # Safety
+    /// * Must not be called multiple times.
+    /// * A terminator must not be built for the exit block through other means.
+    pub unsafe fn ret(&mut self, val: &'ll llvm::Value) {
+        llvm::LLVMBuildRet(self.llbuilder, val);
+    }
+
+    /// # Safety
+    /// * Must not be called multiple times.
+    /// * A terminator must not be built for the exit block through other means.
+    pub unsafe fn ret_void(&mut self) {
+        llvm::LLVMBuildRetVoid(self.llbuilder);
+    }
+
+    /* Memory Access and Addressing Operations */
+
+    /// # Safety
+    /// * Must not be called when a block that already contains a terminator is selected.
+    /// * Must be called in the entry block of the function
+    pub unsafe fn alloca(&self, ty: &'ll llvm::Type) -> &'ll llvm::Value {
+        llvm::LLVMBuildAlloca(self.llbuilder, ty, UNNAMED)
     }
 
     /// # Safety
     /// Must not be called when a block that already contains a terminator is selected
     pub unsafe fn store(&self, ptr: &'ll llvm::Value, val: &'ll llvm::Value) {
-        LLVMBuildStore(self.llbuilder, val, ptr);
+        llvm::LLVMBuildStore(self.llbuilder, val, ptr);
     }
 
     /// # Safety
     /// Must not be called when a block that already contains a terminator is selected
     pub unsafe fn load(&self, ty: &'ll llvm::Type, ptr: &'ll llvm::Value) -> &'ll llvm::Value {
-        LLVMBuildLoad2(self.llbuilder, ty, ptr, UNNAMED)
+        llvm::LLVMBuildLoad2(self.llbuilder, ty, ptr, UNNAMED)
     }
+
+    /// # Safety
+    /// Must not be called when a block that already contains a terminator is selected
+    pub unsafe fn gep(
+        &self,
+        elem_ty: &'ll llvm::Type,
+        ptr: &'ll llvm::Value,
+        indices: &[&'ll llvm::Value],
+    ) -> &'ll llvm::Value {
+        llvm::LLVMBuildGEP2(
+            self.llbuilder,
+            elem_ty,
+            ptr,
+            indices.as_ptr(),
+            indices.len() as u32,
+            UNNAMED,
+        )
+    }
+
+    /// # Safety
+    /// * Must not be called when a block that already contains a terminator is selected
+    /// * struct_ty must be a valid struct type for this pointer and idx must be in bounds
+    pub unsafe fn struct_gep(
+        &self,
+        struct_ty: &'ll llvm::Type,
+        ptr: &'ll llvm::Value,
+        idx: u32,
+    ) -> &'ll llvm::Value {
+        llvm::LLVMBuildStructGEP2(self.llbuilder, struct_ty, ptr, idx, UNNAMED)
+    }
+
+    /// # Safety
+    /// Must not be called when a block that already contains a terminator is selected
+    pub unsafe fn fat_ptr_get_ptr(&self, ptr: &'ll llvm::Value) -> &'ll llvm::Value {
+        self.struct_gep(self.cx.ty_fat_ptr(), ptr, 0)
+    }
+
+    /// # Safety
+    /// Must not be called when a block that already contains a terminator is selected
+    pub unsafe fn fat_ptr_get_meta(&self, ptr: &'ll llvm::Value) -> &'ll llvm::Value {
+        self.struct_gep(self.cx.ty_fat_ptr(), ptr, 1)
+    }
+
+    /// # Safety
+    /// Must not be called when a block that already contains a terminator is selected
+    pub unsafe fn fat_ptr_to_parts(
+        &self,
+        ptr: &'ll llvm::Value,
+    ) -> (&'ll llvm::Value, &'ll llvm::Value) {
+        (self.fat_ptr_get_ptr(ptr), self.fat_ptr_get_meta(ptr))
+    }
+
+    /* Binary Operations */
 
     /// # Safety
     /// Must not be called when a block that already contains a terminator is selected
@@ -731,10 +628,13 @@ impl<'ll> Builder<'_, '_, 'll> {
         llvm::LLVMBuildMul(self.llbuilder, val1, val2, UNNAMED)
     }
 
+    /* Other Operations */
+
     /// # Safety
     /// Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn iadd(&self, val1: &'ll llvm::Value, val2: &'ll llvm::Value) -> &'ll llvm::Value {
-        llvm::LLVMBuildAdd(self.llbuilder, val1, val2, UNNAMED)
+    pub unsafe fn is_null_ptr(&self, ptr: &'ll llvm::Value) -> &'ll llvm::Value {
+        let null_ptr = self.cx.const_null_ptr();
+        llvm::LLVMBuildICmp(self.llbuilder, llvm::IntPredicate::IntEQ, null_ptr, ptr, UNNAMED)
     }
 
     /// # Safety
@@ -750,16 +650,9 @@ impl<'ll> Builder<'_, '_, 'll> {
 
     /// # Safety
     /// Must not be called when a block that already contains a terminator is selected
-    pub unsafe fn is_null_ptr(&self, ptr: &'ll llvm::Value) -> &'ll llvm::Value {
-        let null_ptr = self.cx.const_null_ptr();
-        LLVMBuildICmp(self.llbuilder, llvm::IntPredicate::IntEQ, null_ptr, ptr, UNNAMED)
-    }
-
-    /// # Safety
-    /// Must not be called when a block that already contains a terminator is selected
     unsafe fn build_int_cmp(
         &mut self,
-        args: &[Value],
+        args: &[mir::Value],
         predicate: llvm::IntPredicate,
     ) -> &'ll llvm::Value {
         let lhs = self.values[args[0]].get(self);
@@ -775,14 +668,14 @@ impl<'ll> Builder<'_, '_, 'll> {
         rhs: &'ll llvm::Value,
         predicate: llvm::IntPredicate,
     ) -> &'ll llvm::Value {
-        LLVMBuildICmp(self.llbuilder, predicate, lhs, rhs, UNNAMED)
+        llvm::LLVMBuildICmp(self.llbuilder, predicate, lhs, rhs, UNNAMED)
     }
 
     /// # Safety
     /// Must not be called when a block that already contains a terminator is selected
     unsafe fn build_real_cmp(
         &mut self,
-        args: &[Value],
+        args: &[mir::Value],
         predicate: llvm::RealPredicate,
     ) -> &'ll llvm::Value {
         let lhs = self.values[args[0]].get(self);
@@ -801,11 +694,88 @@ impl<'ll> Builder<'_, '_, 'll> {
         llvm::LLVMBuildFCmp(self.llbuilder, predicate, lhs, rhs, UNNAMED)
     }
 
-    unsafe fn intrinsic(&mut self, args: &[Value], name: &'static str) -> &'ll llvm::Value {
-        let (ty, fun) =
-            self.cx.intrinsic(name).unwrap_or_else(|| unreachable!("intrinsic {name} not found"));
+    unsafe fn strcmp(&mut self, args: &[mir::Value], invert: bool) -> &'ll llvm::Value {
+        let res = self.intrinsic(args, "strcmp");
+        let predicate = if invert { llvm::IntPredicate::IntNE } else { llvm::IntPredicate::IntEQ };
+
+        llvm::LLVMBuildICmp(self.llbuilder, predicate, res, self.cx.const_int(0), UNNAMED)
+    }
+
+    /// # Safety
+    /// Only correct llvm api calls must be performed within build_then and build_else.
+    /// Their return types must match and cond must be a bool.
+    pub unsafe fn select(
+        &self,
+        cond: &'ll llvm::Value,
+        then_val: &'ll llvm::Value,
+        else_val: &'ll llvm::Value,
+    ) -> &'ll llvm::Value {
+        llvm::LLVMBuildSelect(self.llbuilder, cond, then_val, else_val, UNNAMED)
+    }
+
+    // JW: not used
+    // /// # Safety
+    // /// * Only correct llvm api calls must be performed within build_then and build_else
+    // /// * Their return types must match and cond must be a bool
+    // pub unsafe fn add_branching_select(
+    //     &mut self,
+    //     cond: &'ll llvm::Value,
+    //     build_then: impl FnOnce(&mut Self) -> &'ll llvm::Value,
+    //     build_else: impl FnOnce(&mut Self) -> &'ll llvm::Value,
+    // ) -> &'ll llvm::Value {
+    //     let start = self.prepend_pos;
+    //     let exit = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
+    //     let then_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
+    //     llvm::LLVMPositionBuilderAtEnd(self.llbuilder, then_bb);
+    //     self.prepend_pos = then_bb;
+    //     let then_val = build_then(self);
+    //     llvm::LLVMBuildBr(self.llbuilder, exit);
+
+    //     let else_bb = llvm::LLVMAppendBasicBlockInContext(self.cx.llcx, self.llfunc, UNNAMED);
+    //     llvm::LLVMPositionBuilderAtEnd(self.llbuilder, else_bb);
+    //     self.prepend_pos = else_bb;
+    //     let else_val = build_else(self);
+    //     llvm::LLVMBuildBr(self.llbuilder, exit);
+
+    //     llvm::LLVMPositionBuilderAtEnd(self.llbuilder, start);
+    //     llvm::LLVMBuildCondBr(self.llbuilder, cond, then_bb, else_bb);
+
+    //     self.prepend_pos = exit;
+    //     llvm::LLVMPositionBuilderAtEnd(self.llbuilder, self.prepend_pos);
+    //     let phi = llvm::LLVMBuildPhi(self.llbuilder, llvm::LLVMTypeOf(then_val), UNNAMED);
+    //     llvm::LLVMAddIncoming(phi, [then_val, else_val].as_ptr(), [then_bb, else_bb].as_ptr(), 2);
+
+    //     phi
+    // }
+
+    /// # Safety
+    /// * Must not be called when a block that already contains a terminator is selected
+    pub unsafe fn call(
+        &self,
+        fun_ty: &'ll llvm::Type,
+        fun: &'ll llvm::Value,
+        operands: &[&'ll llvm::Value],
+    ) -> &'ll llvm::Value {
+        let res = llvm::LLVMBuildCall2(
+            self.llbuilder,
+            fun_ty,
+            fun,
+            operands.as_ptr(),
+            operands.len() as u32,
+            UNNAMED,
+        );
+
+        // forgett this is a real footgun
+        let cconv = llvm::LLVMGetFunctionCallConv(fun);
+        llvm::LLVMSetInstructionCallConv(res, cconv);
+        res
+    }
+
+    unsafe fn intrinsic(&mut self, args: &[mir::Value], name: &'static str) -> &'ll llvm::Value {
+        let (fun_ty, fun) =
+            self.cx.intrinsic(name).unwrap_or_else(|| panic!("intrinsic {name} not found"));
         let args: ArrayVec<_, 2> = args.iter().map(|arg| self.values[*arg].get(self)).collect();
 
-        llvm::LLVMBuildCall2(self.llbuilder, ty, fun, args.as_ptr(), args.len() as u32, UNNAMED)
+        llvm::LLVMBuildCall2(self.llbuilder, fun_ty, fun, args.as_ptr(), args.len() as u32, UNNAMED)
     }
 }

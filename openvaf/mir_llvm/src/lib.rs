@@ -35,6 +35,8 @@ pub use builder::{Builder, BuilderVal, MemLoc};
 pub use callbacks::CallbackFun;
 pub use context::CodegenCx;
 
+/// The LLVM backend is a factory of LLVM modules and codegen contexts.
+/// These two are created based on the target information of stored in the LLVM backend
 pub struct LLVMBackend<'t> {
     target: &'t Target,
     target_cpu: String,
@@ -43,63 +45,47 @@ pub struct LLVMBackend<'t> {
 
 impl<'t> LLVMBackend<'t> {
     pub fn new(
-        cg_opts: &[String],
+        codegen_opts: &[String],
         target: &'t Target,
         mut target_cpu: String,
         target_features: &[String],
     ) -> LLVMBackend<'t> {
+        let cstr_to_string = |ptr: *const c_char| {
+            let string = if ptr.is_null() {
+                panic!("could not allocate host CPU features, LLVM returned a `null` string");
+            } else {
+                unsafe {
+                    CStr::from_ptr(ptr)
+                        .to_str()
+                        .unwrap_or_else(|err| {
+                            unreachable!("LLVM returned a non-utf8 features string: {err}");
+                        })
+                        .to_owned()
+                }
+            };
+            unsafe { LLVMDisposeMessage(ptr as *mut c_char) };
+            string
+        };
+
+        let mut features = vec![];
+
         if target_cpu == "generic" {
             target_cpu = target.options.cpu.clone();
         }
-
-        let mut features = vec![];
         if target_cpu == "native" {
-            let features_string = unsafe {
-                let ptr = LLVMGetHostCPUFeatures();
-                let features_string = if !ptr.is_null() {
-                    CStr::from_ptr(ptr)
-                        .to_str()
-                        .unwrap_or_else(|e| {
-                            unreachable!("LLVM returned a non-utf8 features string: {}", e);
-                        })
-                        .to_owned()
-                } else {
-                    unreachable!(
-                        "could not allocate host CPU features, LLVM returned a `null` string"
-                    );
-                };
-                LLVMDisposeMessage(ptr as *mut c_char);
+            let ptr = unsafe { LLVMGetHostCPUName() };
+            target_cpu = cstr_to_string(ptr);
 
-                features_string
-            };
-            features.extend(features_string.split(',').map(String::from));
-
-            target_cpu = unsafe {
-                let ptr = LLVMGetHostCPUName();
-                let cpu = if !ptr.is_null() {
-                    CStr::from_ptr(ptr)
-                        .to_str()
-                        .unwrap_or_else(|e| {
-                            unreachable!("LLVM returned a non-utf8 features string: {}", e);
-                        })
-                        .to_owned()
-                } else {
-                    unreachable!(
-                        "could not allocate host CPU features, LLVM returned a `null` string"
-                    );
-                };
-                LLVMDisposeMessage(ptr as *mut c_char);
-
-                cpu
-            };
+            let ptr = unsafe { LLVMGetHostCPUFeatures() };
+            let cpu_features = cstr_to_string(ptr);
+            features.extend(cpu_features.split(',').map(String::from));
         }
 
         features
             .extend(target.options.features.split(',').filter(|v| !v.is_empty()).map(String::from));
         features.extend(target_features.iter().cloned());
 
-        // TODO add target options here if we ever have any
-        llvm::init(cg_opts, &[]);
+        llvm::init(codegen_opts, &[]); // TODO add target options here if we ever have any
 
         LLVMBackend { target, target_cpu, features: features.join(",") }
     }
@@ -108,7 +94,7 @@ impl<'t> LLVMBackend<'t> {
     ///
     /// This function calls the LLVM-C Api which may not be entirely safe.
     /// Exercise caution!
-    pub unsafe fn new_module(
+    pub unsafe fn new_llvm_module(
         &self,
         name: &str,
         opt_lvl: OptLevel,
@@ -120,7 +106,7 @@ impl<'t> LLVMBackend<'t> {
     ///
     /// This function calls the LLVM-C Api which may not be entirely safe.
     /// Exercise caution!
-    pub unsafe fn new_ctx<'a, 'll>(
+    pub unsafe fn new_codegen_context<'a, 'll>(
         &'a self,
         literals: &'a Rodeo,
         module: &'ll ModuleLlvm,
@@ -133,10 +119,14 @@ impl<'t> LLVMBackend<'t> {
     }
 }
 
+/*
 impl Drop for LLVMBackend<'_> {
     fn drop(&mut self) {}
 }
+*/
 
+// The extern "C" attribute means that some extern C library will call this Rust function
+#[no_mangle]
 extern "C" fn diagnostic_handler(info: &llvm::DiagnosticInfo, _: *mut c_void) {
     let severity = unsafe { LLVMGetDiagInfoSeverity(info) };
     let msg = unsafe { LLVMString::new(LLVMGetDiagInfoDescription(info)) };
@@ -148,10 +138,15 @@ extern "C" fn diagnostic_handler(info: &llvm::DiagnosticInfo, _: *mut c_void) {
     }
 }
 
+/// A LLVM module associated with its LLVM context
+///
+/// LLVM programs are composed of Module’s, each of which is a translation unit of the input programs.
+/// Each module consists of functions, global variables, and symbol table entries. Modules may be
+/// combined together with the LLVM linker, which merges function (and global variable) definitions,
+/// resolves forward declarations, and merges symbol table entries.
 pub struct ModuleLlvm {
     llcx: &'static mut llvm::Context,
-    // TODO(JW) why? must be a raw pointer because the reference must not outlive self/the context
-    llmod_raw: *const llvm::Module,
+    llmod_raw: *const llvm::Module, // must be a raw pointer because the reference must not outlive self/the context
     tm: &'static mut llvm::TargetMachine,
     opt_lvl: OptLevel,
 }
@@ -170,12 +165,13 @@ impl ModuleLlvm {
         let name = CString::new(name).unwrap();
         let llmod = llvm::LLVMModuleCreateWithNameInContext(name.as_ptr(), llcx);
 
-        let data_layout = CString::new(&*target.data_layout).unwrap();
+        let data_layout = CString::new(target.data_layout.as_str()).unwrap();
+        let target_triple = &target.llvm_target;
         llvm::LLVMSetDataLayout(llmod, data_layout.as_ptr());
-        llvm::set_normalized_target(llmod, &target.llvm_target);
 
         let tm = llvm::create_target_machine(
-            &target.llvm_target,
+            llmod,
+            target_triple,
             target_cpu,
             features,
             opt_lvl,
@@ -192,10 +188,12 @@ impl ModuleLlvm {
         unsafe { &*self.llmod_raw }
     }
 
-    pub fn to_str(&self) -> LLVMString {
+    /// Print the LLVM module to string
+    pub fn print(&self) -> LLVMString {
         unsafe { LLVMString::new(llvm::LLVMPrintModuleToString(self.llmod())) }
     }
 
+    /// Set up LLVM pass manager and run optimizations
     pub fn optimize(&self) {
         let llmod = self.llmod();
 
@@ -254,7 +252,6 @@ impl ModuleLlvm {
         let path = CString::new(dst.to_str().unwrap()).unwrap();
         let mut err_msg = MaybeUninit::uninit();
         let return_code = unsafe {
-            // REVIEW: Why does LLVM need a mutable ptr to path...?
             llvm::LLVMTargetMachineEmitToFile(
                 self.tm,
                 self.llmod(),

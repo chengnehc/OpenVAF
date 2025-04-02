@@ -7,7 +7,7 @@ use xshell::{cmd, Shell};
 
 fn main() {
     println!("cargo:rustc-env=CFG_COMPILER_HOST_TRIPLE={}", std::env::var("TARGET").unwrap());
-    // If we're just running `check`, there's no need to actually compute the stdlib just popualte dummys
+    // If we're just running `check`, there's no need to actually compute the stdlib just populate dummys
     let check = tracked_env_var_os("RUST_CHECK").is_some();
     let sh = Shell::new().unwrap();
     gen_msvcrt_importlib(&sh, "x64", "x86_64", check);

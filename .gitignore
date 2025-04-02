@@ -33,3 +33,4 @@ markus_notes
 .clangd
 *.bak
 *.dbg
+*.ll

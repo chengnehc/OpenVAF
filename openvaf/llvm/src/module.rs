@@ -141,8 +141,8 @@ extern "C" {
     /// which must be disposed with `LLVMDisposeMessage`.
     pub fn LLVMVerifyModule(
         module: &Module,
-        Action: VerifierFailureAction,
-        OutMessage: Option<&mut MaybeUninit<LLVMString>>,
+        action: VerifierFailureAction,
+        out_msg: Option<&mut MaybeUninit<LLVMString>>,
     ) -> Bool;
 }
 

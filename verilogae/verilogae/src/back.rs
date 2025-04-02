@@ -295,8 +295,8 @@ impl CodegenCtx<'_, '_> {
         dst: &Utf8Path,
     ) {
         let module =
-            unsafe { self.llbackend.new_module(&spec.var.name(db), self.opt_lvl).unwrap() };
-        let cx = unsafe { self.llbackend.new_ctx(self.literals, &module) };
+            unsafe { self.llbackend.new_llvm_module(&spec.var.name(db), self.opt_lvl).unwrap() };
+        let cx = unsafe { self.llbackend.new_codegen_context(self.literals, &module) };
 
         let ret_ty = lltype(&spec.var.ty(db), &cx);
 
@@ -618,8 +618,9 @@ impl CodegenCtx<'_, '_> {
         param_init_func: Function,
         param_init_intern: HirInterner,
     ) {
-        let module = unsafe { self.llbackend.new_module("model_info", OptLevel::None).unwrap() };
-        let cx = unsafe { self.llbackend.new_ctx(self.literals, &module) };
+        let module =
+            unsafe { self.llbackend.new_llvm_module("model_info", OptLevel::None).unwrap() };
+        let cx = unsafe { self.llbackend.new_codegen_context(self.literals, &module) };
 
         let (fun_names, fun_symbols) = interned_model.functions(&cx);
         cx.export_array("functions", cx.ty_ptr(), &fun_names, true, true);

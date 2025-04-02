@@ -218,16 +218,16 @@ pub enum TypeKind {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Linkage {
-    ExternalLinkage = 0,
-    AvailableExternallyLinkage = 1,
-    LinkOnceAnyLinkage = 2,
-    LinkOnceODRLinkage = 3,
-    LinkOnceODRAutoHideLinkage = 4,
-    WeakAnyLinkage = 5,
-    WeakODRLinkage = 6,
-    AppendingLinkage = 7,
-    Internal = 8,
-    PrivateLinkage = 9,
+    ExternalLinkage = 0,            // Externally visible （default）
+    AvailableExternallyLinkage = 1, //
+    LinkOnceAnyLinkage = 2,         // Keep one copy of function when linking (inline)
+    LinkOnceODRLinkage = 3,         // Same, but only replaced by something equivalent
+    LinkOnceODRAutoHideLinkage = 4, //
+    WeakAnyLinkage = 5,             // Keep one copy of function when linking (weak)
+    WeakODRLinkage = 6,             //
+    AppendingLinkage = 7,           //
+    Internal = 8,                   // Rename collisions when linking (static functions)
+    PrivateLinkage = 9,             // Like Internal, but omit from symbol table
     DLLImportLinkage = 10,
     DLLExportLinkage = 11,
     ExternalWeakLinkage = 12,
@@ -337,7 +337,10 @@ pub const LLVMAttributeFunctionIndex: ::libc::c_uint = !0; // -1
 /// number from 1 to N.
 pub type LLVMAttributeIndex = ::libc::c_uint;
 
+// typedef void(* LLVMDiagnosticHandler) (LLVMDiagnosticInfoRef, void *)
 pub type DiagnosticHandler = Option<extern "C" fn(diag: &DiagnosticInfo, ctx: *mut c_void)>;
+
+// typedef void(* LLVMYieldCallback) (LLVMContextRef, void *)
 pub type LLVMYieldCallback = Option<extern "C" fn(arg1: &Context, ctx: *mut c_void)>;
 
 pub fn get_version() -> (u32, u32, u32) {

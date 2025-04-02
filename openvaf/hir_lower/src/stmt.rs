@@ -43,9 +43,11 @@ impl BodyLowerContext<'_, '_, '_> {
     fn lower_contribute(&mut self, is_potential: bool, mut lhs: BranchWrite, rhs: ExprId) {
         let mut negate = false;
         if let BranchWrite::Unnamed { hi, lo } = &mut lhs {
-            // maybe swap hi and lo node here
+            // If the branch is unnamed, maybe swap the hi and lo node pair
+            // since the negated form could already be defined and used.
             self.lower_contribute_node_pair(&mut negate, hi, lo, is_potential)
         }
+        // define a supportive variable, indicating a potential access
         self.ctxt.def_place(PlaceKind::IsPotential(lhs), is_potential.into());
 
         // Node collapse hint used by most compact models:
@@ -60,26 +62,35 @@ impl BodyLowerContext<'_, '_, '_> {
         }
 
         // JW: I guess this is meant to reserve a place for the complement nature access
-        // of branch write dst. If it is already declared, then this is a no-op.
+        // of branch write dst. If it is already defined, then this is a no-op.
         self.ctxt.def_place(
             PlaceKind::Contribute { dst: lhs, is_reactive: false, is_potential: !is_potential },
             F_ZERO,
         );
 
+        // Then lower the RHS expression
         let rhs = self.lower_expr(rhs);
-
-        // no need to build instruction if the RHS expression evalutes to 0
         if rhs == F_ZERO {
+            // if the RHS expression evalutes to 0 (literal zero has been considered above)
+            // then this is a useless contribution, there's no need to build instruction.
             return;
         }
 
+        // Start to lower named branches
         let place = PlaceKind::Contribute { dst: lhs, is_reactive: false, is_potential };
         let old_val = self.ctxt.use_place(place);
+
         let new_val = if negate {
+            // If a negated branch was defined earlier, then just make use
+            // of it and *substract* the rhs.
             self.ctxt.ins().fsub(old_val, rhs)
         } else if old_val == F_ZERO {
+            // If the branch has never received any contribution before,
+            // then no need to add any additional instructions
             rhs
         } else {
+            // The most common case: the branch has received some contribution
+            // before. Just add the rhs to the old value.
             self.ctxt.ins().fadd(old_val, rhs)
         };
         self.ctxt.def_place(place, new_val);

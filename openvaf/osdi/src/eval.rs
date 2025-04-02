@@ -22,13 +22,18 @@ use crate::metadata::osdi_0_3::{
 use crate::metadata::OsdiLimFunction;
 use crate::OsdiLimId;
 
+const SIMPARAM: u32 = 0;
+const ABSTIME_OFFSET: u32 = 1;
+const PREV_SOLVE: u32 = 2;
+const PREV_STATE: u32 = 3;
+const NEXT_STATE: u32 = 4;
+const FLAGS: u32 = 5;
+
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     pub fn eval_fn_prototype(&self) -> &'ll llvm::Value {
         let cx = self.cx;
-
         let name = &format!("eval_{}", &self.module.sym);
-        let ty_ptr = cx.ty_ptr();
-        let fun_ty = cx.ty_func(&[ty_ptr; 4], cx.ty_int());
+        let fun_ty = cx.ty_func(&[cx.ty_ptr(); 4], cx.ty_int());
 
         cx.declare_external_fn(name, fun_ty)
     }
@@ -42,28 +47,26 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
         let mut builder = Builder::new(cx, func, llfunc);
 
-        let handle = unsafe { llvm::LLVMGetParam(llfunc, 0) };
-        let instance = unsafe { llvm::LLVMGetParam(llfunc, 1) };
-        let model = unsafe { llvm::LLVMGetParam(llfunc, 2) };
-        let sim_info = unsafe { llvm::LLVMGetParam(llfunc, 3) };
+        let handle = unsafe { LLVMGetParam(llfunc, 0) };
+        let instance = unsafe { LLVMGetParam(llfunc, 1) };
+        let model = unsafe { LLVMGetParam(llfunc, 2) };
+        let sim_info = unsafe { LLVMGetParam(llfunc, 3) };
+
         let sim_info_ty = self.tys.osdi_sim_info;
-        let simparam = unsafe { builder.struct_gep(sim_info_ty, sim_info, 0) };
-
-        const ABSTIME_OFFSET: u32 = 1;
-
+        let simparam = unsafe { builder.struct_gep(sim_info_ty, sim_info, SIMPARAM) };
         let prev_solve = unsafe {
-            let ptr = builder.struct_gep(sim_info_ty, sim_info, 2);
+            let ptr = builder.struct_gep(sim_info_ty, sim_info, PREV_SOLVE);
             builder.load(cx.ty_ptr(), ptr)
         };
         let prev_state = unsafe {
-            let ptr = builder.struct_gep(sim_info_ty, sim_info, 3);
+            let ptr = builder.struct_gep(sim_info_ty, sim_info, PREV_STATE);
             builder.load(cx.ty_ptr(), ptr)
         };
         let next_state = unsafe {
-            let ptr = builder.struct_gep(sim_info_ty, sim_info, 4);
+            let ptr = builder.struct_gep(sim_info_ty, sim_info, NEXT_STATE);
             builder.load(cx.ty_ptr(), ptr)
         };
-        let flags = MemLoc::struct_gep(sim_info, sim_info_ty, cx.ty_int(), 5, cx);
+        let flags = MemLoc::struct_gep(sim_info, sim_info_ty, cx.ty_int(), FLAGS, cx);
 
         let ret_flags = unsafe { builder.alloca(cx.ty_int()) };
         unsafe { builder.store(ret_flags, cx.const_int(0)) };
@@ -111,28 +114,25 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                         }
                         ParamKind::Voltage { hi, lo } => {
                             let hi = get_prev_solve(SimUnknownKind::KirchhoffLaw(hi));
-                            if let Some(lo) = lo {
+                            lo.map_or(hi, |lo| {
                                 let lo = get_prev_solve(SimUnknownKind::KirchhoffLaw(lo));
                                 llvm::LLVMBuildFSub(builder.llbuilder, hi, lo, UNNAMED)
-                            } else {
-                                hi
-                            }
+                            })
                         }
                         ParamKind::Current(CurrentKind::Port(_)) => cx.const_real(0.0),
+                        ParamKind::Current(kind) => get_prev_solve(SimUnknownKind::Current(kind)),
+                        ParamKind::ImplicitUnknown(equation) => {
+                            get_prev_solve(SimUnknownKind::Implicit(equation))
+                        }
                         ParamKind::Abstime => {
-                            let loc = MemLoc::struct_gep(
+                            return MemLoc::struct_gep(
                                 sim_info,
                                 sim_info_ty,
                                 cx.ty_double(),
                                 ABSTIME_OFFSET,
                                 cx,
-                            );
-                            return loc.into();
-                        }
-
-                        ParamKind::Current(kind) => get_prev_solve(SimUnknownKind::Current(kind)),
-                        ParamKind::ImplicitUnknown(equation) => {
-                            get_prev_solve(SimUnknownKind::Implicit(equation))
+                            )
+                            .into();
                         }
                         ParamKind::Temperature => {
                             return inst_data.temperature_loc(cx, instance).into()
@@ -176,7 +176,29 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                                 builder.llbuilder,
                             )
                             .unwrap(),
-                        ParamKind::HiddenState(_) => unreachable!(), // TODO  hidden state
+                        ParamKind::HiddenState(_) => todo!("hidden state"),
+                        ParamKind::PrevState(state) => {
+                            let idx =
+                                inst_data.read_state_idx(cx, state, instance, builder.llbuilder);
+                            return MemLoc {
+                                ptr: prev_state,
+                                ptr_ty: cx.ty_double(),
+                                elem_ty: cx.ty_double(),
+                                indices: Box::new([idx]),
+                            }
+                            .into();
+                        }
+                        ParamKind::NewState(state) => {
+                            let idx =
+                                inst_data.read_state_idx(cx, state, instance, builder.llbuilder);
+                            return MemLoc {
+                                ptr: next_state,
+                                ptr_ty: cx.ty_double(),
+                                elem_ty: cx.ty_double(),
+                                indices: Box::new([idx]),
+                            }
+                            .into();
+                        }
                         ParamKind::EnableIntegration => {
                             let flags = flags.read(builder.llbuilder);
                             let is_not_dc =
@@ -184,29 +206,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                             let is_not_ic =
                                 is_flag_unset(cx, ANALYSIS_IC, flags, builder.llbuilder);
                             LLVMBuildAnd(builder.llbuilder, is_not_dc, is_not_ic, UNNAMED)
-                        }
-                        ParamKind::PrevState(state) => {
-                            let idx =
-                                inst_data.read_state_idx(cx, state, instance, builder.llbuilder);
-                            return MemLoc {
-                                ptr: prev_state,
-                                ptr_ty: cx.ty_double(),
-                                ty: cx.ty_double(),
-                                indices: vec![idx].into_boxed_slice(),
-                            }
-                            .into();
-                        }
-                        ParamKind::NewState(state) => {
-                            let idx =
-                                inst_data.read_state_idx(cx, state, instance, builder.llbuilder);
-
-                            return MemLoc {
-                                ptr: next_state,
-                                ptr_ty: cx.ty_double(),
-                                ty: cx.ty_double(),
-                                indices: vec![idx].into_boxed_slice(),
-                            }
-                            .into();
                         }
                         ParamKind::EnableLim => {
                             is_flag_set_mem(cx, ENABLE_LIM, &flags, builder.llbuilder)
@@ -217,17 +216,18 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             })
             .collect();
 
+        /* Load cached values of op-independent evaluation as parameters*/
         let cache_vals = (0..module.init.cache_slots.len()).map(|i| unsafe {
             let slot = i.into();
             let val = inst_data.load_cache_slot(module, builder.llbuilder, slot, instance);
             BuilderVal::Eager(val)
         });
-
         params.extend(cache_vals);
+
         builder.params = params;
 
+        /* Declare callbacks */
         builder.callbacks = general_callbacks(intern, &mut builder, ret_flags, handle, simparam);
-
         for (func, kind) in intern.callbacks.iter_enumerated() {
             let cb = match *kind {
                 CallBackKind::BuiltinLimit { name, num_args } => {
@@ -271,13 +271,14 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             builder.callbacks[func] = Some(cb);
         }
 
+        /* Build the eval() function body */
         unsafe {
             builder.build_consts();
             builder.build_func();
         }
-        let exit_bb = func.layout.last_block().unwrap();
 
-        // store parameters
+        /* Store evaluation results */
+        let exit_bb = func.layout.last_block().unwrap();
         builder.select_bb(exit_bb);
         unsafe {
             for reactive in [false, true] {

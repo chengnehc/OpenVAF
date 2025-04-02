@@ -2,13 +2,12 @@ use hir::CompilationDB;
 use hir_lower::fmt::{DisplayKind, FmtArg, FmtArgKind};
 use hir_lower::{CallBackKind, HirInterner};
 use lasso::Rodeo;
-use llvm::Linkage;
 use llvm::{
     IntPredicate, LLVMAddIncoming, LLVMAppendBasicBlockInContext, LLVMBuildAdd,
     LLVMBuildArrayMalloc, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildFMul,
     LLVMBuildFree, LLVMBuildICmp, LLVMBuildInBoundsGEP2, LLVMBuildLoad2, LLVMBuildPhi,
     LLVMGetParam, LLVMIsDeclaration, LLVMPositionBuilderAtEnd, LLVMSetLinkage,
-    LLVMSetUnnamedAddress, UnnamedAddr, UNNAMED,
+    LLVMSetUnnamedAddress, Linkage, UnnamedAddr, UNNAMED,
 };
 use mir::{FuncRef, Function};
 use mir_llvm::{CallbackFun, CodegenCx, LLVMBackend, ModuleLlvm};
@@ -29,12 +28,12 @@ use crate::model_data::OsdiModelData;
 use crate::{lltype, OsdiLimId};
 
 pub fn new_codegen<'a, 'll>(
-    back: &'a LLVMBackend,
+    backend: &'a LLVMBackend,
     llmod: &'ll ModuleLlvm,
     literals: &'a Rodeo,
 ) -> CodegenCx<'a, 'll> {
-    let cxt = unsafe { back.new_ctx(literals, llmod) };
-    cxt.include_bitcode(stdlib_bitcode(back.target()));
+    let cx = unsafe { backend.new_codegen_context(literals, llmod) };
+    cx.include_bitcode(stdlib_bitcode(backend.target()));
 
     for fun in llvm::function_iter(llmod.llmod()) {
         unsafe {
@@ -46,23 +45,23 @@ pub fn new_codegen<'a, 'll>(
             LLVMSetUnnamedAddress(fun, UnnamedAddr::Global);
         }
     }
-    let exp_table = cxt.get_declared_value("EXP").expect("constant EXP missing from stdlib");
+    let exp_table = cx.get_declared_value("EXP").expect("constant EXP missing from stdlib");
     let char_table =
-        cxt.get_declared_value("FMT_CHARS").expect("constant FMT_CHARS missing from stdlib");
+        cx.get_declared_value("FMT_CHARS").expect("constant FMT_CHARS missing from stdlib");
     unsafe {
         LLVMSetLinkage(exp_table, Linkage::Internal);
         LLVMSetLinkage(char_table, Linkage::Internal);
     }
-    cxt
+    cx
 }
 
 pub struct OsdiCompilationUnit<'a, 'b, 'll> {
     pub db: &'a CompilationDB,
+    pub cx: &'a CodegenCx<'b, 'll>,
+    pub tys: &'a OsdiTys<'ll>,
+    pub module: &'a OsdiModule<'b>,
     pub inst_data: OsdiInstanceData<'ll>,
     pub model_data: OsdiModelData<'ll>,
-    pub tys: &'a OsdiTys<'ll>,
-    pub cx: &'a CodegenCx<'b, 'll>,
-    pub module: &'a OsdiModule<'b>,
     pub lim_dispatch_table: Option<&'ll llvm::Value>,
 }
 
@@ -91,9 +90,10 @@ impl<'a, 'b, 'll> OsdiCompilationUnit<'a, 'b, 'll> {
             } else {
                 None
             };
-        OsdiCompilationUnit { db, inst_data, model_data, tys, cx, module, lim_dispatch_table }
+        OsdiCompilationUnit { db, tys, cx, module, inst_data, model_data, lim_dispatch_table }
     }
 
+    #[inline]
     pub fn lim_dispatch_table(&self) -> &'ll llvm::Value {
         self.lim_dispatch_table.unwrap()
     }
@@ -144,6 +144,7 @@ impl<'a> OsdiModule<'a> {
     }
 }
 
+/// Common callbacks shared among functions
 pub fn general_callbacks<'ll>(
     intern: &HirInterner,
     builder: &mut mir_llvm::Builder<'_, '_, 'll>,
@@ -152,6 +153,7 @@ pub fn general_callbacks<'ll>(
     simparam: &'ll llvm::Value,
 ) -> TiVec<FuncRef, Option<CallbackFun<'ll>>> {
     let ptr_ty = builder.cx.ty_ptr();
+    let double_ty = builder.cx.ty_double();
     intern
         .callbacks
         .raw
@@ -163,14 +165,11 @@ pub fn general_callbacks<'ll>(
                         .cx
                         .get_func_by_name("simparam")
                         .expect("stdlib function simparam is missing");
-                    let fun_ty = builder.cx.ty_func(
-                        &[ptr_ty, ptr_ty, ptr_ty, builder.cx.ty_ptr()],
-                        builder.cx.ty_double(),
-                    );
+                    let fun_ty = builder.cx.ty_func(&[ptr_ty; 4], double_ty);
                     CallbackFun {
                         fun_ty,
                         fun,
-                        state: vec![simparam, handle, ret_flags].into_boxed_slice(),
+                        state: Box::new([simparam, handle, ret_flags]),
                         num_state: 0,
                     }
                 }
@@ -179,37 +178,30 @@ pub fn general_callbacks<'ll>(
                         .cx
                         .get_func_by_name("simparam_opt")
                         .expect("stdlib function simparam_opt is missing");
-                    let fun_ty = builder.cx.ty_func(
-                        &[ptr_ty, builder.cx.ty_ptr(), builder.cx.ty_double()],
-                        builder.cx.ty_double(),
-                    );
-                    CallbackFun {
-                        fun_ty,
-                        fun,
-                        state: vec![simparam].into_boxed_slice(),
-                        num_state: 0,
-                    }
+                    let fun_ty = builder.cx.ty_func(&[ptr_ty, ptr_ty, double_ty], double_ty);
+                    CallbackFun { fun_ty, fun, state: Box::new([simparam]), num_state: 0 }
                 }
                 CallBackKind::SimParamStr => {
                     let fun = builder
                         .cx
                         .get_func_by_name("simparam_str")
                         .expect("stdlib function simparam_str is missing");
-                    let fun_ty = builder.cx.ty_func(
-                        &[ptr_ty, ptr_ty, ptr_ty, builder.cx.ty_ptr()],
-                        builder.cx.ty_ptr(),
-                    );
+                    let fun_ty = builder.cx.ty_func(&[ptr_ty; 4], ptr_ty);
                     CallbackFun {
                         fun_ty,
                         fun,
-                        state: vec![simparam, handle, ret_flags].into_boxed_slice(),
+                        state: Box::new([simparam, handle, ret_flags]),
                         num_state: 0,
                     }
                 }
-                // If these derivative were non zero they would have been removed
+                CallBackKind::Print { kind, arg_tys } => {
+                    let (fun, fun_ty) = print_callback(builder.cx, *kind, arg_tys);
+                    CallbackFun { fun_ty, fun, state: Box::new([handle]), num_state: 0 }
+                }
+                // If these derivative were non-zero, they would have been removed
                 CallBackKind::Derivative(_) | CallBackKind::NodeDerivative(_) => {
                     let zero = builder.cx.const_real(0.0);
-                    builder.cx.const_callback(&[builder.cx.ty_double()], zero)
+                    builder.cx.const_callback(&[double_ty], zero)
                 }
                 CallBackKind::ParamInfo(_, _)
                 | CallBackKind::CollapseHint(_, _)
@@ -221,11 +213,6 @@ pub fn general_callbacks<'ll>(
                 | CallBackKind::WhiteNoise { .. }
                 | CallBackKind::FlickerNoise { .. }
                 | CallBackKind::TimeDerivative => return None,
-
-                CallBackKind::Print { kind, arg_tys } => {
-                    let (fun, fun_ty) = print_callback(builder.cx, *kind, arg_tys);
-                    CallbackFun { fun_ty, fun, state: Box::new([handle]), num_state: 0 }
-                }
             };
             Some(cb)
         })
