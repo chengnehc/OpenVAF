@@ -5,7 +5,7 @@
 //! https://github.com/rust-lang/rust-analyzer/tree/master/crates/base-db
 
 use std::fs;
-use std::intrinsics::transmute;
+use std::mem::transmute;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
