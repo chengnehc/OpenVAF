@@ -15,6 +15,8 @@ extern "C" {
         val_len: u32,
     ) -> &Attribute;
 
+    /// Purge all the attributes of a llvm::function
+    ///
     /// Defined in OpenVafWrapper.cpp
     pub fn LLVMPurgeAttrs(val: &Value);
 }

@@ -20,7 +20,8 @@ extern "C" {
     // pub fn LLVMGetInsertBlock<'a>(builder: &Builder<'a>) -> &'a BasicBlock;
     pub fn LLVMDisposeBuilder<'a>(builder: &'a mut Builder<'a>);
 
-    // Terminators
+    /* Terminators */
+
     pub fn LLVMBuildRetVoid<'a>(builder: &Builder<'a>) -> &'a Value;
     pub fn LLVMBuildRet<'a>(builder: &Builder<'a>, val: &'a Value) -> &'a Value;
     // pub fn LLVMBuildAggregateRet(
@@ -43,7 +44,8 @@ extern "C" {
     ) -> &'a Value;
     pub fn LLVMAddCase<'a>(switch: &'a Value, val: &'a Value, bb: &'a BasicBlock);
 
-    // Arithmetic
+    /* Arithmetic */
+
     pub fn LLVMBuildAdd<'a>(
         arg1: &Builder<'a>,
         LHS: &'a Value,
@@ -152,7 +154,8 @@ extern "C" {
         -> &'a Value;
     pub fn LLVMBuildNot<'a>(builder: &Builder<'a>, V: &'a Value, Name: *const c_char) -> &'a Value;
 
-    // Memory
+    /* Memory */
+
     pub fn LLVMBuildMalloc<'a>(
         builder: &Builder<'a>,
         ty: &'a Type,
@@ -229,7 +232,8 @@ extern "C" {
     //     Name: *const c_char,
     // ) -> &'a Value;
 
-    // Casts
+    /* Casts */
+
     // pub fn LLVMBuildTrunc(
     //     builder: &Builder<'a>,
     //     Val: &'a Value,
@@ -347,7 +351,8 @@ extern "C" {
         Name: *const c_char,
     ) -> &'a Value;
 
-    // Comparisons
+    /* Comparisons */
+
     pub fn LLVMBuildICmp<'a>(
         builder: &Builder<'a>,
         op: IntPredicate,
@@ -363,7 +368,8 @@ extern "C" {
         name: *const c_char,
     ) -> &'a Value;
 
-    // Miscellaneous instructions
+    /* Miscellaneous instructions */
+
     pub fn LLVMBuildPhi<'a>(builder: &Builder<'a>, ty: &'a Type, Name: *const c_char) -> &'a Value;
     pub fn LLVMBuildCall2<'a>(
         builder: &Builder<'a>,

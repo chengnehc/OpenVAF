@@ -15,7 +15,7 @@
 //! Furthermore, the types/functions exported here are reduced to only those actually used in OpenVAF to
 //! further improve compile times
 
-use std::fmt;
+use std::marker::{PhantomData, PhantomPinned};
 
 use libc::{c_char, c_uint, c_void};
 
@@ -32,7 +32,6 @@ mod module;
 mod pass_manager;
 mod targets;
 mod types;
-mod util;
 mod values;
 
 pub use attributes::*;
@@ -45,108 +44,98 @@ pub use module::*;
 pub use pass_manager::*;
 pub use targets::*;
 pub use types::*;
-pub(crate) use util::InvariantOpaque;
 pub use values::*;
 
 pub type Bool = c_uint;
 pub const True: Bool = 1;
 pub const False: Bool = 0;
 
-// Opaque pointer types
-// TODO move to opaqute times when stabilized
-// BLOCK https://github.com/rust-lang/rust/issues/43467
+// Opaque structure types
+//
+// TODO move to "extern types" when stabilized:
+// - RFC: https://rust-lang.github.io/rfcs/1861-extern-types.html
+// - Tracking issues: https://github.com/rust-lang/rust/issues/43467
+//
+// See also the FFI chapter of the "Nomicon" book:
+// https://doc.rust-lang.org/nomicon/ffi.html#representing-opaque-structs
 
-// JW: Why impl Debug trait for these opaque types?
-pub enum MemoryBuffer {}
-
-impl fmt::Debug for MemoryBuffer {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct Builder<'a> {
+    _data: (),
+    _marker: PhantomData<&'a mut &'a ()>,
 }
-
-pub enum Context {}
-
-impl fmt::Debug for Context {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct PassManager<'a> {
+    _data: (),
+    _marker: PhantomData<&'a mut &'a ()>,
 }
 
 #[repr(C)]
-pub struct Builder<'a>(InvariantOpaque<'a>);
-
+pub struct Context {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
+}
 #[repr(C)]
-pub struct PassManager<'a>(InvariantOpaque<'a>);
-
-pub enum Type {}
-
-impl fmt::Debug for Type {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+pub struct DiagnosticInfo {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-
-pub enum Value {}
-
-impl fmt::Debug for Value {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct Module {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-
-pub enum Attribute {}
-
-impl fmt::Debug for Attribute {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct MemoryBuffer {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-
-pub enum BasicBlock {}
-
-impl fmt::Debug for BasicBlock {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct BasicBlock {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-
-pub enum Module {}
-
-impl fmt::Debug for Module {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct Type {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-
-pub enum PassRegistry {}
-
-impl fmt::Debug for PassRegistry {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct Value {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-
-pub enum Target {}
-
-impl fmt::Debug for Target {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct Attribute {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-pub enum DiagnosticInfo {}
-
-impl fmt::Debug for DiagnosticInfo {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
+#[repr(C)]
+pub struct PassRegistry {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
-
-#[derive(Debug)]
-pub enum TargetData {}
-
-#[derive(Debug)]
-pub enum TargetMachine {}
+#[repr(C)]
+pub struct PassManagerBuilder {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
+}
+#[repr(C)]
+pub struct Target {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
+}
+#[repr(C)]
+pub struct TargetData {
+    _data: (),
+    // JW: target data should be marked with Send, as it is shared among threads.
+    _marker: PhantomData<PhantomPinned>,
+}
+#[repr(C)]
+pub struct TargetMachine {
+    _data: (),
+    _marker: PhantomData<(*mut u8, PhantomPinned)>,
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

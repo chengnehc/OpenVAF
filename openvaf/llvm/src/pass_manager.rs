@@ -1,28 +1,19 @@
 //! Pass Managers
 
 use libc::c_uint;
-use std::fmt;
 
 use crate::module::function_iter;
-use crate::util::InvariantOpaque;
-use crate::{Bool, Module, OptLevel, PassManager, Value};
+use crate::{Bool, Module, OptLevel, PassManager, PassManagerBuilder, Value};
 
-pub enum PassManagerBuilder {}
-impl fmt::Debug for PassManagerBuilder {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
-    }
-}
+// TODO LLVMPassManagerBuilderRef (&PassManagerBuilder) and functions that
+// interact with it have been removed since LLVM 17, as the legacy pass manager
+// will no longer be supported. Migrate to `Core::New Pass Manager` instead.
+//
+// See Also:
+// - https://llvm.org/docs/NewPassManager.html
 
-#[repr(C)]
-pub struct FunctionPassManager<'a>(InvariantOpaque<'a>);
-
+/* Transforms::Pass Manager Builder */
 extern "C" {
-    // TODO(JW) LLVMPassManagerBuilderRef (&PassManagerBuilder) and functions that
-    // interacts with it have been removed since LLVM 17, as the legacy pass manager
-    // will no longer be supported. Move to `Core::New Pass Manager` instead.
-
-    // Transforms::Pass Manager Builder
     pub fn LLVMPassManagerBuilderCreate() -> &'static mut PassManagerBuilder;
     pub fn LLVMPassManagerBuilderDispose(PMB: &'static mut PassManagerBuilder);
     pub fn LLVMPassManagerBuilderSetSizeLevel(PMB: &PassManagerBuilder, SizeLevel: c_uint);
@@ -48,6 +39,7 @@ extern "C" {
         RunInliner: Bool,
     );
     fn LLVMPassManagerBuilderSetOptLevel(PMB: &PassManagerBuilder, OptLevel: c_uint);
+
     // Defined in the OpenVafWrapper.cpp , not intrinsic to C API
     fn LLVMPassManagerBuilderSLPVectorize(PMB: &PassManagerBuilder);
 }

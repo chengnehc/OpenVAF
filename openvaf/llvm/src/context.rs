@@ -7,6 +7,8 @@ use libc::{c_char, c_int, c_void};
 use crate::{Context, DiagnosticHandler, DiagnosticInfo, DiagnosticSeverity};
 
 extern "C" {
+    /* Core */
+
     // pub fn LLVMShutdown();
     pub fn LLVMCreateMessage(Message: *const c_char) -> *mut c_char;
     pub fn LLVMDisposeMessage(Message: *mut c_char);
@@ -17,6 +19,7 @@ extern "C" {
     );
 
     /* Core::Contexts */
+
     pub fn LLVMContextCreate() -> &'static mut Context;
     pub fn LLVMContextDispose(ctx: &'static mut Context);
     pub fn LLVMContextSetDiagnosticHandler(

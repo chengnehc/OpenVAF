@@ -108,7 +108,7 @@ extern "C" {
     pub fn LLVMAddFunction<'a>(
         module: &'a Module,
         name: *const c_char,
-        FunctionTy: &'a Type,
+        func_ty: &'a Type,
     ) -> &'a Value;
     /// Obtain a Function value from a Module by its name.
     pub fn LLVMGetNamedFunction<'a>(module: &'a Module, name: *const c_char) -> Option<&'a Value>;
