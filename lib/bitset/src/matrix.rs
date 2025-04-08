@@ -75,7 +75,7 @@ impl<
         BitMatrix {
             num_rows,
             num_columns,
-            words: iter::repeat(row.words()).take(num_rows).flatten().copied().collect(),
+            words: iter::repeat_n(row.words(), num_rows).flatten().copied().collect(),
             marker: PhantomData,
         }
     }

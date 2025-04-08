@@ -95,8 +95,8 @@ where
     }
 
     pub fn insert_full(&mut self, key: K, val: V) -> (I, Option<V>) {
-        let (pos, old) = self.raw.insert_full(key, val);
-        (pos.into(), old)
+        let (idx, old) = self.raw.insert_full(key, val);
+        (idx.into(), old)
     }
 }
 
