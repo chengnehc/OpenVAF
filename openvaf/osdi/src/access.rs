@@ -11,9 +11,9 @@ use crate::metadata::osdi_0_3::{ACCESS_FLAG_INSTANCE, ACCESS_FLAG_SET};
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     pub fn access_fn_prototype(&self) -> &'ll llvm::Value {
         let cx = self.cx;
-        let void_ptr = cx.ty_ptr();
+        let ptr_t = cx.ty_ptr();
         let uint32_t = cx.ty_int();
-        let fun_ty = cx.ty_func(&[void_ptr, void_ptr, uint32_t, uint32_t], void_ptr);
+        let fun_ty = cx.ty_func(&[ptr_t, ptr_t, uint32_t, uint32_t], ptr_t);
         let name = format!("access_{}", &self.module.sym);
         cx.declare_external_fn(&name, fun_ty)
     }
@@ -32,13 +32,13 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let llbuilder = LLVMCreateBuilderInContext(cx.llcx);
             LLVMPositionBuilderAtEnd(llbuilder, entry);
 
-            // get params
+            /* get params */
             let inst = LLVMGetParam(llfunc, 0);
             let model = LLVMGetParam(llfunc, 1);
             let param_id = LLVMGetParam(llfunc, 2);
             let flags = LLVMGetParam(llfunc, 3);
 
-            // check various flags
+            /* check various flags */
             let access_flag_instance = cx.const_unsigned_int(ACCESS_FLAG_INSTANCE);
             let access_flag_set = cx.const_unsigned_int(ACCESS_FLAG_SET);
             let zero = cx.const_unsigned_int(0);
@@ -51,7 +51,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let write_flag_set = LLVMBuildICmp(llbuilder, IntNE, flags_and_set, zero, UNNAMED);
             LLVMBuildCondBr(llbuilder, instance_flag_set, inst_bb, model_bb);
 
-            // inst params
+            /* inst params (including both-inst-and-model params) */
             LLVMPositionBuilderAtEnd(llbuilder, inst_bb);
             let switch_inst =
                 LLVMBuildSwitch(llbuilder, param_id, opvar_bb, inst_data.params.len() as u32);
@@ -77,11 +77,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 LLVMBuildRet(llbuilder, ptr);
             }
 
+            /* model params */
             LLVMPositionBuilderAtEnd(llbuilder, model_bb);
             let switch_model =
                 LLVMBuildSwitch(llbuilder, param_id, opvar_bb, model_data.params.len() as u32);
 
-            // inst param model default values
+            // both-inst-and-model param
             for param_idx in 0..inst_data.params.len() {
                 let bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
                 LLVMPositionBuilderAtEnd(llbuilder, bb);
@@ -104,7 +105,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 LLVMBuildRet(llbuilder, ptr);
             }
 
-            // model params
+            // pure model params
             for param_idx in 0..model_data.params.len() {
                 let bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
                 LLVMPositionBuilderAtEnd(llbuilder, bb);
@@ -126,7 +127,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 LLVMBuildRet(llbuilder, ptr);
             }
 
-            // opvars
+            /* opvars */
             LLVMPositionBuilderAtEnd(llbuilder, opvar_bb);
             let switch_opvar =
                 LLVMBuildSwitch(llbuilder, param_id, err_exit, inst_data.opvars.len() as u32);
@@ -143,7 +144,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 LLVMBuildRet(llbuilder, ptr);
             }
 
-            //return NULL on unknown id
+            // return NULL on unknown id
             let null_ptr = cx.const_null_ptr();
             LLVMPositionBuilderAtEnd(llbuilder, err_exit);
             LLVMBuildRet(llbuilder, null_ptr);

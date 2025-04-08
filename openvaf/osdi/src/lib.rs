@@ -290,6 +290,7 @@ pub struct OsdiLimId(u32);
 impl_idx_from!(OsdiLimId(u32));
 impl_debug_display! {match OsdiLimId{OsdiLimId(id) => "lim{id}";}}
 
+/// Get the length of an HIR array type
 fn ty_len(ty: &Type) -> Option<u32> {
     match ty {
         Type::Array { ty, len } => Some(len * ty_len(ty).unwrap_or(1)),
@@ -298,6 +299,7 @@ fn ty_len(ty: &Type) -> Option<u32> {
     }
 }
 
+/// Get the corresponding LLVM type of an HIR type
 fn lltype<'ll>(ty: &Type, cx: &CodegenCx<'_, 'll>) -> &'ll llvm::Type {
     let llty = match ty.base_type() {
         Type::Void => cx.ty_void(),

@@ -22,9 +22,8 @@ impl<'ll> Types<'ll> {
     pub fn new(llcx: &'ll llvm::Context, pointer_width: u32) -> Types<'ll> {
         unsafe {
             let char = llvm::LLVMInt8TypeInContext(llcx);
-            // we are using opaque pointers, with old llvm version that plain
-            // means always using char pointers, with newer llvm version the
-            // type is ignored anyway
+            // With old llvm versions, the pointer points to type `char`.
+            // With newer llvm versions (15+), the type is ignored anyway via opaque pointer feature.
             let ptr = llvm::LLVMPointerType(char, llvm::AddressSpace::DATA);
             Types {
                 void: llvm::LLVMVoidTypeInContext(llcx),
@@ -170,10 +169,6 @@ impl<'ll> CodegenCx<'_, 'll> {
 
     pub fn const_null_ptr(&self) -> &'ll Value {
         self.tys.null_ptr_val
-    }
-
-    pub fn const_undef(&self, t: &'ll Type) -> &'ll Value {
-        unsafe { llvm::LLVMGetUndef(t) }
     }
 
     /// # Safety

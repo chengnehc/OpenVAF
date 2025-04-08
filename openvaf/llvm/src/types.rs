@@ -35,10 +35,10 @@ extern "C" {
     /* Function Types */
 
     pub fn LLVMFunctionType<'a>(
-        ReturnType: &'a Type,
-        ParamTypes: *const &'a Type,
-        ParamCount: c_uint,
-        IsVarArg: Bool,
+        return_ty: &'a Type,
+        param_tys: *const &'a Type,
+        param_cnt: c_uint,
+        is_vararg: Bool,
     ) -> &'a Type;
     // pub fn LLVMIsFunctionVarArg<'a>(fun_ty: &'a Type) -> Bool;
     pub fn LLVMGetReturnType<'a>(fun_ty: &'a Type) -> &'a Type;
@@ -47,15 +47,15 @@ extern "C" {
 
     /* Structure Types */
 
-    /// Create a new structure type in a context.
-    pub fn LLVMStructTypeInContext<'a>(
-        ctx: &'a Context,
-        ElementTypes: *const &'a Type,
-        ElementCount: c_uint,
-        Packed: Bool,
-    ) -> &'a Type;
+    // /// Create a new structure type in a context.
+    // pub fn LLVMStructTypeInContext<'a>(
+    //     ctx: &'a Context,
+    //     elem_tys: *const &'a Type,
+    //     elem_cnt: c_uint,
+    //     packed: Bool,
+    // ) -> &'a Type;
     /// Create an empty structure in a context having a specified name.
-    pub fn LLVMStructCreateNamed<'a>(ctx: &'a Context, Name: *const c_char) -> &'a Type;
+    pub fn LLVMStructCreateNamed<'a>(ctx: &'a Context, name: *const c_char) -> &'a Type;
     pub fn LLVMGetStructName<'a>(ty: &'a Type) -> *const c_char;
     /// Set the contents of a structure type.
     pub fn LLVMStructSetBody<'a>(
@@ -64,7 +64,7 @@ extern "C" {
         elem_count: c_uint,
         packed: Bool,
     );
-    pub fn LLVMCountStructElementTypes(struct_ty: &Type) -> c_uint;
+    fn LLVMCountStructElementTypes(struct_ty: &Type) -> c_uint;
     fn LLVMGetStructElementTypes<'a>(struct_ty: &'a Type, dst: *mut &'a Type);
     pub fn LLVMStructGetTypeAtIndex<'a>(struct_ty: &'a Type, i: c_uint) -> &'a Type;
     //pub fn LLVMIsPackedStruct(struct_ty: &Type) -> Bool;
@@ -78,9 +78,11 @@ extern "C" {
     //pub fn LLVMGetSubtypes<'a>(ty: &'a Type, arr: *mut &'a Type);
     ///// Return the number of types in the derived type.
     //pub fn LLVMGetNumContainedTypes<'a>(ty: &'a Type) -> c_uint;
-    pub fn LLVMArrayType<'a>(elem: &'a Type, elem_cnt: c_uint) -> &'a Type;
+    /// Create a fixed size array type that refers to a specific type.
+    pub fn LLVMArrayType<'a>(elem_ty: &'a Type, elem_cnt: c_uint) -> &'a Type;
     // pub fn LLVMGetArrayLength(ArrayTy: &'a Type) -> c_uint;
-    pub fn LLVMPointerType<'a>(elem: &'a Type, address_space: AddressSpace) -> &'a Type;
+    /// Create a pointer type that points to a defined type.
+    pub fn LLVMPointerType<'a>(elem_ty: &'a Type, address_space: AddressSpace) -> &'a Type;
     // pub fn LLVMGetPointerAddressSpace(PointerTy: &'a Type) -> c_uint;
     // pub fn LLVMVectorType(ElementType: &'a Type, ElementCount: c_uint) -> &'a Type;
     // pub fn LLVMScalableVectorType(ElementType: &'a Type, ElementCount: c_uint) -> &'a Type;

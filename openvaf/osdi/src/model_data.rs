@@ -36,6 +36,9 @@ impl<'ll> OsdiModelData<'ll> {
             .collect();
         let param_given = bitfield::ty(cx, (inst_params.len() + params.len()) as u32);
 
+        // # Notes
+        // The OsdiModelData struct *type* contains all inst/model params,
+        // but only model param data is actually stored.
         let mut fields = vec![param_given];
         fields.extend(params.values().copied());
         fields.extend(inst_params.values());
@@ -60,13 +63,13 @@ impl<'ll> OsdiModelData<'ll> {
     pub fn nth_param_loc(
         &self,
         cx: &CodegenCx<'_, 'll>,
-        pos: u32,
+        idx: u32,
         ptr: &'ll llvm::Value,
     ) -> MemLoc<'ll> {
-        let (_, ty) = self.params.get_index(pos as usize).unwrap();
-        let elem = NUM_CONST_FIELDS + pos;
+        let (_, ty) = self.params.get_index(idx as usize).unwrap();
+        let elem = NUM_CONST_FIELDS + idx;
         let indices = Box::new([cx.const_unsigned_int(0), cx.const_unsigned_int(elem)]);
-        MemLoc { ptr, ptr_ty: self.ty, elem_ty: ty, indices }
+        MemLoc { base_ptr: ptr, ty: self.ty, elem_ty: ty, indices }
     }
 
     pub unsafe fn param_ptr(
@@ -83,12 +86,12 @@ impl<'ll> OsdiModelData<'ll> {
 
     pub unsafe fn nth_param_ptr(
         &self,
-        pos: u32,
+        idx: u32,
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
-        let (_, ty) = self.params.get_index(pos as usize).unwrap();
-        let elem = NUM_CONST_FIELDS + pos;
+        let (_, ty) = self.params.get_index(idx as usize).unwrap();
+        let elem = NUM_CONST_FIELDS + idx;
         let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
         (ptr, ty)
     }
@@ -96,12 +99,12 @@ impl<'ll> OsdiModelData<'ll> {
     pub unsafe fn nth_inst_param_ptr(
         &self,
         inst_data: &OsdiInstanceData<'ll>,
-        pos: u32,
+        idx: u32,
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
-        let (_, ty) = inst_data.params.get_index(pos as usize).unwrap();
-        let elem = NUM_CONST_FIELDS + self.params.len() as u32 + pos;
+        let (_, ty) = inst_data.params.get_index(idx as usize).unwrap();
+        let elem = NUM_CONST_FIELDS + self.params.len() as u32 + idx;
         let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
         (ptr, ty)
     }

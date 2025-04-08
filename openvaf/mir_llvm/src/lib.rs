@@ -36,7 +36,7 @@ pub use callbacks::CallbackFun;
 pub use context::CodegenCx;
 
 /// The LLVM backend is a factory of LLVM modules and codegen contexts.
-/// These two are created based on the target information of stored in the LLVM backend
+/// These two are created based on the target information stored in the LLVM backend
 pub struct LLVMBackend<'t> {
     target: &'t Target,
     target_cpu: String,

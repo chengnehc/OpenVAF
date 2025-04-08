@@ -13,38 +13,36 @@ use crate::CodegenCx;
 
 #[derive(Clone)]
 pub struct MemLoc<'ll> {
-    pub ptr: &'ll llvm::Value,
-    pub ptr_ty: &'ll llvm::Type,
+    /// The base pointer of the aggregate type
+    pub base_ptr: &'ll llvm::Value,
+    /// The aggregate type (array/struct) in which the MemLoc resides
+    pub ty: &'ll llvm::Type,
+    /// The type of this MemLoc element
     pub elem_ty: &'ll llvm::Type,
+    /// Each layer of indirection requires an index
     pub indices: Box<[&'ll llvm::Value]>,
 }
 
 impl<'ll> MemLoc<'ll> {
     pub fn struct_gep(
-        ptr: &'ll llvm::Value,
-        ptr_ty: &'ll llvm::Type,
+        struct_ptr: &'ll llvm::Value,
+        ty: &'ll llvm::Type,
         elem_ty: &'ll llvm::Type,
         idx: u32,
         cx: &CodegenCx<'_, 'll>,
     ) -> MemLoc<'ll> {
         MemLoc {
-            ptr,
-            ptr_ty,
+            base_ptr: struct_ptr,
+            ty,
             elem_ty,
             indices: Box::new([cx.const_unsigned_int(0), cx.const_unsigned_int(idx)]),
         }
     }
 
-    /// # Safety
-    ///
-    /// ptr_ty, ty and indices must be valid for ptr
     pub unsafe fn read(&self, llbuilder: &llvm::Builder<'ll>) -> &'ll llvm::Value {
-        self.read_with_ptr(llbuilder, self.ptr)
+        self.read_with_ptr(llbuilder, self.base_ptr)
     }
 
-    /// # Safety
-    ///
-    /// ptr_ty, ty and indices must be valid for ptr
     pub unsafe fn read_with_ptr(
         &self,
         llbuilder: &llvm::Builder<'ll>,
@@ -57,19 +55,20 @@ impl<'ll> MemLoc<'ll> {
     unsafe fn to_ptr_from(
         &self,
         llbuilder: &llvm::Builder<'ll>,
-        mut ptr: &'ll llvm::Value,
+        base_ptr: &'ll llvm::Value,
     ) -> &'ll llvm::Value {
         if !self.indices.is_empty() {
-            ptr = llvm::LLVMBuildGEP2(
+            llvm::LLVMBuildGEP2(
                 llbuilder,
-                self.ptr_ty,
-                ptr,
+                self.ty,
+                base_ptr,
                 self.indices.as_ptr(),
                 self.indices.len() as u32,
                 UNNAMED,
-            );
+            )
+        } else {
+            base_ptr
         }
-        ptr
     }
 }
 

@@ -150,9 +150,9 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     pub fn setup_instance_fn_prototype(&self) -> &'ll llvm::Value {
         let cx = self.cx;
         let name = &format!("setup_instance_{}", &self.module.sym);
-        let ty_ptr = cx.ty_ptr();
+        let ptr_t = cx.ty_ptr();
         let fun_ty = cx.ty_func(
-            &[ty_ptr, ty_ptr, ty_ptr, cx.ty_double(), cx.ty_int(), ty_ptr, ty_ptr],
+            &[ptr_t, ptr_t, ptr_t, cx.ty_double(), cx.ty_int(), ptr_t, ptr_t],
             cx.ty_void(),
         );
 
@@ -362,7 +362,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     LLVMPositionBuilderAtEnd(llbuilder, then_bb);
                     module.node_collapse.hint(eq, None, |pair| {
                         let idx = cx.const_unsigned_int(pair.into());
-                        inst_data.store_collapsed(cx, builder.llbuilder, instance, idx);
+                        inst_data.store_collapsed_node_pair(cx, builder.llbuilder, instance, idx);
                     });
                     LLVMBuildBr(llbuilder, else_bb);
                     LLVMPositionBuilderAtEnd(llbuilder, else_bb);
@@ -402,7 +402,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
             let inst = LLVMGetParam(llfunc, 0);
             let pair = LLVMGetParam(llfunc, 1);
-            inst_data.store_collapsed(cx, llbuilder, inst, pair);
+            inst_data.store_collapsed_node_pair(cx, llbuilder, inst, pair);
 
             LLVMBuildRetVoid(llbuilder);
             LLVMDisposeBuilder(llbuilder);

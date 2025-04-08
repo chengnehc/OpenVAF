@@ -33,19 +33,18 @@ impl JacobianLoadType {
 
     const fn name(self) -> &'static str {
         match self {
-            JacobianLoadType::Tran => "tran",
-            JacobianLoadType::Resist => "resist",
-            JacobianLoadType::React => "react",
+            Self::Tran => "tran",
+            Self::Resist => "resist",
+            Self::React => "react",
         }
     }
 }
 
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
-    pub fn load_noise(&self) -> &'ll llvm::Value {
+    pub fn load_noise_fn(&self) -> &'ll llvm::Value {
         let OsdiCompilationUnit { cx, module, .. } = self;
-        let void_ptr = cx.ty_ptr();
-        let f64_ptr_ty = cx.ty_ptr();
-        let fun_ty = cx.ty_func(&[void_ptr, void_ptr, cx.ty_double(), f64_ptr_ty], cx.ty_void());
+        let ptr_t = cx.ty_ptr();
+        let fun_ty = cx.ty_func(&[ptr_t, ptr_t, cx.ty_double(), ptr_t], cx.ty_void());
         let name = &format!("load_noise_{}", module.sym);
         let llfunc = cx.declare_internal_c_fn(name, fun_ty);
 
@@ -109,10 +108,10 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         llfunc
     }
 
-    pub fn load_residual(&self, reactive: bool) -> &'ll llvm::Value {
+    pub fn load_residual_fn(&self, reactive: bool) -> &'ll llvm::Value {
         let OsdiCompilationUnit { inst_data, cx, module, .. } = self;
         let ptr_ty = cx.ty_ptr();
-        let fun_ty = cx.ty_func(&[ptr_ty, ptr_ty, ptr_ty], cx.ty_void());
+        let fun_ty = cx.ty_func(&[ptr_ty; 3], cx.ty_void());
         let name =
             &format!("load_residual_{}_{}", if reactive { "react" } else { "resist" }, module.sym);
         let llfunc = cx.declare_internal_c_fn(name, fun_ty);
@@ -126,8 +125,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let dst = LLVMGetParam(llfunc, 2);
 
             for node in module.dae.unknowns.indices() {
-                if let Some(contrib) = inst_data.read_residual(node, inst, llbuilder, reactive) {
-                    inst_data.store_contrib(cx, node, inst, dst, contrib, llbuilder, false);
+                if let Some(contrib) = inst_data.load_residual(node, inst, llbuilder, reactive) {
+                    inst_data.store_contrib::<false>(cx, node, inst, dst, contrib, llbuilder);
                 }
             }
 
@@ -138,11 +137,10 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         llfunc
     }
 
-    pub fn load_lim_rhs(&self, reactive: bool) -> &'ll llvm::Value {
+    pub fn load_lim_rhs_fn(&self, reactive: bool) -> &'ll llvm::Value {
         let OsdiCompilationUnit { inst_data, cx, module, .. } = self;
-        let void_ptr = cx.ty_ptr();
-        let f64_ptr_ty = cx.ty_ptr();
-        let fun_ty = cx.ty_func(&[void_ptr, void_ptr, f64_ptr_ty], cx.ty_void());
+        let ptr_t = cx.ty_ptr();
+        let fun_ty = cx.ty_func(&[ptr_t; 3], cx.ty_void());
         let name =
             &format!("load_lim_rhs_{}_{}", if reactive { "react" } else { "resist" }, module.sym);
         let llfunc = cx.declare_internal_c_fn(name, fun_ty);
@@ -156,8 +154,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let dst = LLVMGetParam(llfunc, 2);
 
             for node in module.dae.unknowns.indices() {
-                if let Some(contrib) = inst_data.read_lim_rhs(node, inst, llbuilder, reactive) {
-                    inst_data.store_contrib(cx, node, inst, dst, contrib, llbuilder, true);
+                if let Some(contrib) = inst_data.load_lim_rhs(node, inst, llbuilder, reactive) {
+                    inst_data.store_contrib::<true>(cx, node, inst, dst, contrib, llbuilder);
                 }
             }
 
@@ -168,10 +166,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         llfunc
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn load_spice_rhs_(
+    pub fn load_spice_rhs_<const TRAN: bool>(
         &self,
-        tran: bool,
         llbuilder: &llvm::Builder<'ll>,
         inst: &'ll llvm::Value,
         model: &'ll llvm::Value,
@@ -190,7 +186,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 let mut res = None;
                 for &entry in &node_derivatives[node] {
                     let node_deriv = dae_system.jacobian[entry].col;
-                    let Some(ddx) = self.load_jacobian_entry(entry, inst, model, llbuilder, tran)
+                    let Some(ddx) = self.load_jacobian_entry::<TRAN>(entry, inst, model, llbuilder)
                     else {
                         continue;
                     };
@@ -210,8 +206,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 }
 
                 let OsdiCompilationUnit { inst_data, cx, .. } = self;
-                if !tran {
-                    if let Some(contrib) = inst_data.read_residual(node, inst, llbuilder, false) {
+                if !TRAN {
+                    if let Some(contrib) = inst_data.load_residual(node, inst, llbuilder, false) {
                         let val = LLVMBuildFSub(
                             llbuilder,
                             res.unwrap_or_else(|| cx.const_real(0.0)),
@@ -223,24 +219,24 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     }
                 }
                 if let Some(mut res) = res {
-                    if let Some(lim_rhs) = inst_data.read_lim_rhs(node, inst, llbuilder, tran) {
+                    if let Some(lim_rhs) = inst_data.load_lim_rhs(node, inst, llbuilder, TRAN) {
                         res = LLVMBuildFAdd(llbuilder, res, lim_rhs, UNNAMED);
                     }
-                    if tran {
+                    if TRAN {
                         res = LLVMBuildFMul(llbuilder, res, alpha, UNNAMED);
                         LLVMSetFastMath(res);
                     }
-                    inst_data.store_contrib(cx, node, inst, dst, res, llbuilder, false);
+                    inst_data.store_contrib::<false>(cx, node, inst, dst, res, llbuilder);
                 }
             }
         }
     }
 
-    pub fn load_spice_rhs(&self, tran: bool) -> &'ll llvm::Value {
+    pub fn load_spice_rhs_fn(&self, tran: bool) -> &'ll llvm::Value {
         let OsdiCompilationUnit { cx, module, .. } = self;
         let f64_ty = cx.ty_double();
         let ptr_ty = cx.ty_ptr();
-        let mut args = vec![ptr_ty, ptr_ty, ptr_ty, ptr_ty];
+        let mut args = vec![ptr_ty; 4];
         if tran {
             args.push(f64_ty);
         }
@@ -259,9 +255,9 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let prev_solve = LLVMGetParam(llfunc, 3);
             let alpha = if tran { LLVMGetParam(llfunc, 4) } else { prev_solve };
 
-            self.load_spice_rhs_(false, llbuilder, inst, model, dst, prev_solve, alpha);
+            self.load_spice_rhs_::<false>(llbuilder, inst, model, dst, prev_solve, alpha);
             if tran {
-                self.load_spice_rhs_(true, llbuilder, inst, model, dst, prev_solve, alpha);
+                self.load_spice_rhs_::<true>(llbuilder, inst, model, dst, prev_solve, alpha);
             }
 
             LLVMBuildRetVoid(llbuilder);
@@ -271,7 +267,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         llfunc
     }
 
-    pub fn load_jacobian(&self, kind: JacobianLoadType) -> &'ll llvm::Value {
+    pub fn load_jacobian_fn(&self, kind: JacobianLoadType) -> &'ll llvm::Value {
         let OsdiCompilationUnit { cx, module, .. } = *self;
         let args_ = [cx.ty_ptr(), cx.ty_ptr(), cx.ty_double()];
         let args = if kind.read_reactive() { &args_ } else { &args_[0..2] };
@@ -292,12 +288,11 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             for entry in module.dae.jacobian.keys() {
                 let mut res = None;
                 if kind.read_resistive() {
-                    res = self.load_jacobian_entry(entry, inst, model, llbuilder, false);
+                    res = self.load_jacobian_entry::<false>(entry, inst, model, llbuilder);
                 }
-
                 if kind.read_reactive() {
                     if let Some(mut val) =
-                        self.load_jacobian_entry(entry, inst, model, llbuilder, true)
+                        self.load_jacobian_entry::<true>(entry, inst, model, llbuilder)
                     {
                         val = LLVMBuildFMul(llbuilder, val, alpha, UNNAMED);
                         LLVMSetFastMath(val);

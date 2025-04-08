@@ -197,6 +197,7 @@ impl Function {
     */
 }
 
+/// Trace back to the original Value along the optbarrier instruction use-def chain
 pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
     let func = func.as_ref();
     while let Some(inst) = func.dfg.value_def(val).inst() {

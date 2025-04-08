@@ -93,6 +93,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 jacobian_ptr_resist_offset,
                 collapsed_offset,
                 bound_step_offset,
+
+                num_states: self.module.intern.lim_state.len() as u32,
                 state_idx_off,
 
                 instance_size,
@@ -102,17 +104,17 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 setup_model: self.setup_model_fn_prototype(),
                 setup_instance: self.setup_instance_fn_prototype(),
                 eval: self.eval_fn_prototype(),
-                load_noise: self.load_noise(),
-                load_residual_resist: self.load_residual(false),
-                load_residual_react: self.load_residual(true),
-                load_spice_rhs_dc: self.load_spice_rhs(false),
-                load_spice_rhs_tran: self.load_spice_rhs(true),
-                load_jacobian_resist: self.load_jacobian(JacobianLoadType::Resist),
-                load_jacobian_react: self.load_jacobian(JacobianLoadType::React),
-                load_jacobian_tran: self.load_jacobian(JacobianLoadType::Tran),
-                num_states: self.module.intern.lim_state.len() as u32,
-                load_limit_rhs_resist: self.load_lim_rhs(false),
-                load_limit_rhs_react: self.load_lim_rhs(true),
+
+                load_noise: self.load_noise_fn(),
+                load_residual_resist: self.load_residual_fn(false),
+                load_residual_react: self.load_residual_fn(true),
+                load_limit_rhs_resist: self.load_lim_rhs_fn(false),
+                load_limit_rhs_react: self.load_lim_rhs_fn(true),
+                load_spice_rhs_dc: self.load_spice_rhs_fn(false),
+                load_spice_rhs_tran: self.load_spice_rhs_fn(true),
+                load_jacobian_resist: self.load_jacobian_fn(JacobianLoadType::Resist),
+                load_jacobian_react: self.load_jacobian_fn(JacobianLoadType::React),
+                load_jacobian_tran: self.load_jacobian_fn(JacobianLoadType::Tran),
             }
         }
     }
@@ -154,14 +156,14 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         fn is_const(module: &OsdiModule, entry: &MatrixEntry, reactive: bool) -> bool {
             let entry = if reactive { entry.react } else { entry.resist };
             match module.eval.dfg.value_def(entry) {
+                ValueDef::Invalid => unreachable!(),
+                ValueDef::Const(_) => true,
                 ValueDef::Result(_, _) => false,
                 ValueDef::Param(param) => module
                     .intern
                     .params
                     .get_index(param)
                     .is_none_or(|(kind, _)| !kind.is_op_dependent()),
-                ValueDef::Const(_) => true,
-                ValueDef::Invalid => unreachable!(),
             }
         }
 
@@ -187,8 +189,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 if entry.react != F_ZERO {
                     flags |= JACOBIAN_ENTRY_REACT;
                     react_ptr_off = jacobian_ptr_react_offset;
-                    // TODO(JW): do not use magic number 8
-                    jacobian_ptr_react_offset += 8;
+                    jacobian_ptr_react_offset += 8; // TODO(JW): consider target pointer width
                 }
                 OsdiJacobianEntry {
                     nodes: OsdiNodePair { node_1: entry.row.into(), node_2: entry.col.into() },

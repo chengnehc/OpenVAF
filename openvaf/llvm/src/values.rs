@@ -15,8 +15,8 @@ extern "C" {
     // pub fn LLVMGetValueName2(val: &'a Value, Length: *mut ::libc::size_t) -> *const ::libc::c_char;
     // pub fn LLVMSetValueName2(val: &'a Value, Name: *const ::libc::c_char, NameLen: ::libc::size_t);
     // pub fn LLVMDumpValue(Val: &'a Value);
-    pub fn LLVMPrintValueToString(val: &Value) -> *mut c_char;
-    pub fn LLVMReplaceAllUsesWith<'a>(old_val: &'a Value, new_val: &'a Value);
+    // pub fn LLVMPrintValueToString(val: &Value) -> *mut c_char;
+    // pub fn LLVMReplaceAllUsesWith<'a>(old_val: &'a Value, new_val: &'a Value);
     // pub fn LLVMIsConstant(Val: &'a Value) -> LLVMBool;
     // pub fn LLVMIsUndef(Val: &'a Value) -> LLVMBool;
     // pub fn LLVMIsPoison(Val: &'a Value) -> LLVMBool;
@@ -42,12 +42,9 @@ extern "C" {
     /// Obtain a constant value referring to the null instance of a type.
     pub fn LLVMConstNull(ty: &Type) -> &Value;
     // pub fn LLVMConstAllOnes(ty: &Type) -> &Value;
-
-    /// Obtain a constant value referring to an undefined value of a type.
-    pub fn LLVMGetUndef(ty: &Type) -> &Value;
+    // pub fn LLVMGetUndef(ty: &Type) -> &Value;
     // pub fn LLVMGetPoison(Ty: TypeRef) -> &'a Value;
     // pub fn LLVMIsNull(Val: &'a Value) -> LLVMBool;
-
     /// Obtain a constant that is a constant pointer pointing to NULL for a specified type.
     pub fn LLVMConstPointerNull(ty: &Type) -> &Value;
 
@@ -100,23 +97,23 @@ extern "C" {
     // ) -> &'a Value;
     // pub fn LLVMIsConstantString(c: &'a Value) -> LLVMBool;
     // pub fn LLVMGetAsString(C: &'a Value, Length: *mut ::libc::size_t) -> *const ::libc::c_char;
-    pub fn LLVMConstStructInContext<'a>(
-        C: &'a Context,
-        ConstantVals: *const &'a Value,
-        Count: c_uint,
-        Packed: Bool,
-    ) -> &'a Value;
+    // pub fn LLVMConstStructInContext<'a>(
+    //     C: &'a Context,
+    //     ConstantVals: *const &'a Value,
+    //     Count: c_uint,
+    //     Packed: Bool,
+    // ) -> &'a Value;
     pub fn LLVMConstArray<'a>(
         element_ty: &'a Type,
         vals: *const &'a Value,
         len: c_uint,
     ) -> &'a Value;
     pub fn LLVMConstNamedStruct<'a>(
-        ty: &'a Type,
-        ConstantVals: *const &'a Value,
-        Count: c_uint,
+        struct_ty: &'a Type,
+        constant_vals: *const &'a Value,
+        count: c_uint,
     ) -> &'a Value;
-    // pub fn LLVMGetElementAsConstant(C: &'a Value, idx: ::libc::c_uint) -> &'a Value;
+    // pub fn LLVMGetAggregateElement(C: &'a Value, idx: ::libc::c_uint) -> &'a Value;
     // pub fn LLVMConstVector(ScalarConstantVals: *mut &'a Value, Size: ::libc::c_uint) -> &'a Value;
 
     /* Constants::Constant expressions */
@@ -165,7 +162,6 @@ extern "C" {
     // pub fn LLVMConstShl(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
     // pub fn LLVMConstLShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
     // pub fn LLVMConstAShr(LHSConstant: &'a Value, RHSConstant: &'a Value) -> &'a Value;
-
     pub fn LLVMConstInBoundsGEP2<'a>(
         elem_ty: &'a Type,
         const_val: &'a Value,

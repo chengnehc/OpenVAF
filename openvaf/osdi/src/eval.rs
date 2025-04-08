@@ -181,8 +181,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                             let idx =
                                 inst_data.read_state_idx(cx, state, instance, builder.llbuilder);
                             return MemLoc {
-                                ptr: prev_state,
-                                ptr_ty: cx.ty_double(),
+                                base_ptr: prev_state,
+                                ty: cx.ty_double(),
                                 elem_ty: cx.ty_double(),
                                 indices: Box::new([idx]),
                             }
@@ -192,8 +192,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                             let idx =
                                 inst_data.read_state_idx(cx, state, instance, builder.llbuilder);
                             return MemLoc {
-                                ptr: next_state,
-                                ptr_ty: cx.ty_double(),
+                                base_ptr: next_state,
+                                ty: cx.ty_double(),
                                 elem_ty: cx.ty_double(),
                                 indices: Box::new([idx]),
                             }
@@ -216,7 +216,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             })
             .collect();
 
-        /* Load cached values of op-independent evaluation as parameters*/
+        // Load values cached in op-independent evaluation routines (setup_xxx),
+        // and use them as the parameters of op-dependent eval() function
         let cache_vals = (0..module.init.cache_slots.len()).map(|i| unsafe {
             let slot = i.into();
             let val = inst_data.load_cache_slot(module, builder.llbuilder, slot, instance);
@@ -365,13 +366,13 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let OsdiCompilationUnit { cx, tys, .. } = self;
         let table = self.lim_dispatch_table();
 
-        let double = cx.ty_double();
-        let c_bool = cx.ty_c_bool();
-        let int = cx.ty_int();
+        let f64_t = cx.ty_double();
+        let c_bool_t = cx.ty_c_bool();
+        let u32_t = cx.ty_int();
 
-        let mut args = vec![cx.ty_ptr(), cx.ty_ptr(), double, double];
-        args.resize(num_args as usize + 4, double);
-        let fun_ty = cx.ty_func(&args, double);
+        let mut args = vec![cx.ty_ptr(), cx.ty_ptr(), f64_t, f64_t];
+        args.resize(num_args as usize + 4, f64_t);
+        let fun_ty = cx.ty_func(&args, f64_t);
         let name = &format!("lim_{}_{id}", &self.module.sym);
         let llfunc = cx.declare_internal_fn(name, fun_ty);
 
@@ -385,9 +386,9 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let mut flags = LLVMGetParam(llfunc, 0);
             flags = flags_loc.read_with_ptr(llbuilder, flags);
             let mut init = is_flag_set(cx, INIT_LIM, flags, llbuilder);
-            init = LLVMBuildIntCast2(llbuilder, init, c_bool, llvm::False, UNNAMED);
+            init = LLVMBuildIntCast2(llbuilder, init, c_bool_t, llvm::False, UNNAMED);
 
-            let mut val_changed = LLVMBuildAlloca(llbuilder, c_bool, UNNAMED);
+            let mut val_changed = LLVMBuildAlloca(llbuilder, c_bool_t, UNNAMED);
             LLVMBuildStore(llbuilder, cx.const_c_bool(false), val_changed);
 
             let func_ptr_ptr = LLVMBuildInBoundsGEP2(
@@ -400,9 +401,9 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             );
 
             let func_ptr = LLVMBuildLoad2(llbuilder, cx.ty_ptr(), func_ptr_ptr, UNNAMED);
-            let mut lim_fn_args = vec![c_bool, cx.ty_ptr(), double, double];
-            lim_fn_args.extend((0..num_args).map(|_| double));
-            let lim_fn_ty = cx.ty_func(&lim_fn_args, double);
+            let mut lim_fn_args = vec![c_bool_t, cx.ty_ptr(), f64_t, f64_t];
+            lim_fn_args.extend((0..num_args).map(|_| f64_t));
+            let lim_fn_ty = cx.ty_func(&lim_fn_args, f64_t);
             let mut args = vec![init, val_changed];
             args.extend((2..4 + num_args).map(|i| LLVMGetParam(llfunc, i)));
             let res = LLVMBuildCall2(
@@ -414,14 +415,14 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 UNNAMED,
             );
 
-            val_changed = LLVMBuildLoad2(llbuilder, c_bool, val_changed, UNNAMED);
+            val_changed = LLVMBuildLoad2(llbuilder, c_bool_t, val_changed, UNNAMED);
             val_changed =
                 LLVMBuildICmp(llbuilder, IntNE, val_changed, cx.const_c_bool(false), UNNAMED);
             LLVMBuildCondBr(llbuilder, val_changed, val_changed_bb, exit);
 
             LLVMPositionBuilderAtEnd(llbuilder, val_changed_bb);
             let ret_flags_ptr = LLVMGetParam(llfunc, 1);
-            let mut ret_flags = LLVMBuildLoad2(llbuilder, int, ret_flags_ptr, UNNAMED);
+            let mut ret_flags = LLVMBuildLoad2(llbuilder, u32_t, ret_flags_ptr, UNNAMED);
             ret_flags = LLVMBuildOr(
                 llbuilder,
                 ret_flags,
@@ -440,7 +441,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         CallbackFun {
             fun_ty,
             fun: llfunc,
-            state: Box::new([flags_loc.ptr, ret_flags_ptr]),
+            state: Box::new([flags_loc.base_ptr, ret_flags_ptr]),
             num_state: 0,
         }
     }

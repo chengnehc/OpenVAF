@@ -27,6 +27,7 @@ extern "C" {
     fn LLVMGetGlobalPassRegistry() -> *mut PassRegistry;
 
     /* Threading */
+
     // Check whether LLVM is executing in thread-safe mode or not
     fn LLVMIsMultithreaded() -> Bool;
 }
@@ -36,6 +37,7 @@ extern "C" {
 
 static INIT: Once = Once::new();
 
+/// Initialize and configure the LLVM backend once and for all
 pub fn init(cg_opts: &[String], tg_opts: &[String]) {
     unsafe {
         // Before we touch LLVM, make sure that multithreading is enabled.
@@ -59,6 +61,9 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
     let mut llvm_c_strs = Vec::with_capacity(n_args + 1);
     let mut llvm_args = Vec::with_capacity(n_args + 1);
 
+    // TODO(JW): rustc uses suffix 'llvm-args=' to indicate that the argument is passed directly to LLVM
+    // This function is meant to strip the 'llvm-arg=', but it is broken here and needs to be fixed at the
+    // command line argument parser level.
     fn llvm_arg_to_arg_name(full_arg: &str) -> &str {
         full_arg.trim().split(|c: char| c == '=' || c.is_whitespace()).next().unwrap_or("")
     }
@@ -79,8 +84,8 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
             }
         };
 
-        // Set the llvm "program name" to make usage and invalid argument messages more clear.
-        add(concat!(env!("COMPILER_NAME"), " -Cllvm-args=\"...\" with"), true);
+        // Set the llvm "program name" to make usage and invalid argument messages clearer.
+        add(concat!(env!("COMPILER_NAME"), " -C\"...\" with"), true);
         add("-time-passes", false);
         for arg in args {
             add(arg, true);
@@ -116,7 +121,6 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
 
 // https://github.com/rust-lang/rust/blob/master/compiler/rustc_llvm/src/lib.rs
 /// Initialize targets enabled by the build script via `cfg(llvm_component = "...")`.
-/// N.B., this function can't be moved to `rustc_codegen_llvm` because of the `cfg`s.
 pub fn initialize_available_targets() {
     macro_rules! init_target(
         ($cfg:meta, $($method:ident),*) => { {

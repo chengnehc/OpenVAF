@@ -26,7 +26,7 @@ pub enum OsdiInstanceParam {
     User(Parameter),
 }
 
-/// offset of element/field in instance data struct
+/// Offset of field in OsdiInstanceData struct
 pub const NUM_CONST_FIELDS: u32 = 8;
 pub const PARAM_GIVEN: u32 = 0;
 pub const JACOBIAN_PTR_RESIST: u32 = 1;
@@ -39,11 +39,20 @@ pub const STATE_IDX: u32 = 7;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum EvalOutput {
+    /// This eval output is calculated
     Calculated(EvalOutputSlot),
+    /// constant opvar
     Const(Const, PackedOption<EvalOutputSlot>),
+    /// model/instance parameter
     Param(Param),
+    /// ?
     Cache(CacheSlot),
 }
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct EvalOutputSlot(u32);
+impl_idx_from!(EvalOutputSlot(u32));
+impl_debug_display!(match EvalOutputSlot{EvalOutputSlot(id) => "out{id}";});
 
 impl EvalOutput {
     const NONE: EvalOutput = EvalOutput::Cache(CacheSlot(u32::MAX));
@@ -51,20 +60,20 @@ impl EvalOutput {
     fn new<'ll>(
         module: &OsdiModule<'_>,
         val: mir::Value,
-        eval_outputs: &mut TiMap<EvalOutputSlot, mir::Value, &'ll llvm::Type>,
-        requires_slot: bool,
         ty: &'ll llvm::Type,
+        eval_outputs: &mut TiMap<EvalOutputSlot, mir::Value, &'ll llvm::Type>,
+        requires_slot: bool, // for const opvars
     ) -> EvalOutput {
         match module.eval.dfg.value_def(val) {
             ValueDef::Result(_, _) => (),
             ValueDef::Param(param) => {
-                // parameters are already stored in the model anyway so no need to create a slot
                 if let Some((&kind, _)) = module.intern.params.get_index(param) {
+                    // parameters are already stored in the model anyway, so no need to create a slot
                     if matches!(
                         kind,
                         ParamKind::Param { .. }
                             | ParamKind::ParamSysFun { .. }
-                            | ParamKind::Temperature { .. }
+                            | ParamKind::Temperature
                     ) {
                         return EvalOutput::Param(param);
                     }
@@ -83,11 +92,6 @@ impl EvalOutput {
         EvalOutput::Calculated(eval_outputs.insert_full(val, ty).0)
     }
 }
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct EvalOutputSlot(u32);
-impl_idx_from!(EvalOutputSlot(u32));
-impl_debug_display! {match EvalOutputSlot{EvalOutputSlot(id) => "out{id}";}}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Residual {
@@ -141,7 +145,7 @@ impl MatrixEntry {
             if val == F_ZERO {
                 None
             } else {
-                Some(EvalOutput::new(module, val, slots, false, ty_real))
+                Some(EvalOutput::new(module, val, ty_real, slots, false))
             }
         };
         let react_off = if entry.react == F_ZERO {
@@ -175,7 +179,7 @@ impl NoiseSource {
     ) -> NoiseSource {
         let mut get_output = |mut val| {
             val = strip_optbarrier(module.eval, val);
-            EvalOutput::new(module, val, slots, false, ty_real)
+            EvalOutput::new(module, val, ty_real, slots, false)
         };
         let args = match source.kind {
             dae::NoiseSourceKind::WhiteNoise { pwr } => [get_output(pwr), EvalOutput::NONE],
@@ -200,26 +204,33 @@ pub struct OsdiInstanceData<'ll> {
     pub jacobian_ptr: &'ll llvm::Type,
     pub jacobian_ptr_react: &'ll llvm::Type,
     pub node_mapping: &'ll llvm::Type,
-    pub state_idx: &'ll llvm::Type,
     pub collapsed: &'ll llvm::Type,
+    pub state_idx: &'ll llvm::Type,
 
     // llvm types for dynamic instance data struct fields
     pub params: IndexMap<OsdiInstanceParam, &'ll llvm::Type, RandomState>,
+    // For passing cached op-dependent evaluation results
     pub cache_slots: TiVec<CacheSlot, &'ll llvm::Type>,
+    // TODO(JW): what if we combine the store eval_output and load_xxx() these
+    // two separate processors into one?
+    // i.e., the pointers are passed into the eval() function, after evaluation,
+    // eval() will load the results directly to the provided address. After all,
+    // when calling eval(), a user implicitly wants the results to be loaded.
+    // Then this eval_outputs field is (at least partially) no longer required.
     pub eval_outputs: TiMap<EvalOutputSlot, mir::Value, &'ll llvm::Type>,
 
-    pub opvars: IndexMap<Variable, EvalOutput, RandomState>,
+    // Not related to any struct fields, but these are all `eval_outputs`
     pub residual: TiVec<SimUnknown, Residual>,
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,
+    pub opvars: IndexMap<Variable, EvalOutput, RandomState>,
     pub noise: Vec<NoiseSource>,
-
     pub bound_step: Option<EvalOutputSlot>,
 }
 
 impl<'ll> OsdiInstanceData<'ll> {
     pub fn new(db: &CompilationDB, module: &OsdiModule<'_>, cx: &CodegenCx<'_, 'll>) -> Self {
-        let ty_f64 = cx.ty_double();
-        let ty_u32 = cx.ty_int();
+        let f64_t = cx.ty_double();
+        let u32_t = cx.ty_int();
 
         let builtin_inst_params = ParamSysFun::iter().filter_map(|param| {
             let is_live = |intern: &HirInterner, func| {
@@ -227,13 +238,13 @@ impl<'ll> OsdiInstanceData<'ll> {
             };
             let is_live = is_live(module.intern, module.eval)
                 || is_live(&module.init.intern, &module.init.func);
-            is_live.then_some((OsdiInstanceParam::Builtin(param), ty_f64))
+            is_live.then_some((OsdiInstanceParam::Builtin(param), f64_t))
         });
         let alias_inst_params = module
             .info
             .param_sysfuns
             .keys()
-            .map(|param| (OsdiInstanceParam::Builtin(*param), ty_f64));
+            .map(|param| (OsdiInstanceParam::Builtin(*param), f64_t));
         let user_inst_params = module
             .info
             .params
@@ -254,7 +265,7 @@ impl<'ll> OsdiInstanceData<'ll> {
             .map(|var| {
                 let val = module.intern.outputs[&PlaceKind::Var(*var)].unwrap_unchecked();
                 let ty = lltype(&var.ty(db), cx);
-                let pos = EvalOutput::new(module, val, &mut eval_outputs, true, ty);
+                let pos = EvalOutput::new(module, val, ty, &mut eval_outputs, true);
                 (*var, pos)
             })
             .collect();
@@ -262,26 +273,26 @@ impl<'ll> OsdiInstanceData<'ll> {
             .dae
             .residual
             .iter()
-            .map(|residual| Residual::new(residual, &mut eval_outputs, ty_f64, module.eval))
+            .map(|residual| Residual::new(residual, &mut eval_outputs, f64_t, module.eval))
             .collect();
         let mut num_react = 0;
         let jacobian = module
             .dae
             .jacobian
             .iter()
-            .map(|entry| MatrixEntry::new(entry, module, &mut eval_outputs, ty_f64, &mut num_react))
+            .map(|entry| MatrixEntry::new(entry, module, &mut eval_outputs, f64_t, &mut num_react))
             .collect();
         let noise = module
             .dae
             .noise_sources
             .iter()
-            .map(|source| NoiseSource::new(source, module, &mut eval_outputs, ty_f64))
+            .map(|source| NoiseSource::new(source, module, &mut eval_outputs, f64_t))
             .collect();
 
         let bound_step = module.intern.outputs.get(&PlaceKind::BoundStep).and_then(|val| {
             let mut val = val.expand()?;
             val = strip_optbarrier(module.eval, val);
-            let slot = eval_outputs.insert_full(val, ty_f64).0;
+            let slot = eval_outputs.insert_full(val, f64_t).0;
             Some(slot)
         });
 
@@ -289,11 +300,11 @@ impl<'ll> OsdiInstanceData<'ll> {
         let param_given = bitfield::ty(cx, params.len() as u32);
         let jacobian_ptr = cx.ty_array(cx.ty_ptr(), module.dae.jacobian.len() as u32);
         let jacobian_ptr_react = cx.ty_array(cx.ty_ptr(), num_react);
-        let node_mapping = cx.ty_array(ty_u32, module.dae.unknowns.len() as u32);
+        let node_mapping = cx.ty_array(u32_t, module.dae.unknowns.len() as u32);
         let collapsed = cx.ty_array(cx.ty_c_bool(), module.node_collapse.num_pairs());
-        let state_idx = cx.ty_array(cx.ty_int(), module.intern.lim_state.len() as u32);
         let temperature = cx.ty_double();
         let connected_ports = cx.ty_int();
+        let state_idx = cx.ty_array(cx.ty_int(), module.intern.lim_state.len() as u32);
 
         let static_fields: [_; NUM_CONST_FIELDS as usize] = [
             param_given,
@@ -314,7 +325,6 @@ impl<'ll> OsdiInstanceData<'ll> {
             .chain(cache_slots.iter().copied())
             .chain(eval_outputs.raw.values().copied())
             .collect();
-
         let ty = cx.ty_struct(&name, &fields);
 
         OsdiInstanceData {
@@ -400,43 +410,43 @@ impl<'ll> OsdiInstanceData<'ll> {
         &self,
         cx: &CodegenCx<'_, 'll>,
         idx: u32,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
     ) -> MemLoc<'ll> {
         let ty = self.params.get_index(idx as usize).unwrap().1;
         let idx = NUM_CONST_FIELDS + idx;
-        MemLoc::struct_gep(ptr, self.ty, ty, idx, cx)
+        MemLoc::struct_gep(struct_ptr, self.ty, ty, idx, cx)
     }
 
     pub unsafe fn param_ptr(
         &self,
         param: OsdiInstanceParam,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> Option<(&'ll llvm::Value, &'ll llvm::Type)> {
         let idx = self.params.get_index_of(&param)? as u32;
-        let (ptr, ty) = self.nth_param_ptr(idx, ptr, llbuilder);
+        let (ptr, ty) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
         Some((ptr, ty))
     }
 
     pub unsafe fn nth_param_ptr(
         &self,
         idx: u32,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let (_, ty) = self.params.get_index(idx as usize).unwrap();
         let idx = NUM_CONST_FIELDS + idx;
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, idx, UNNAMED);
+        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, idx, UNNAMED);
         (ptr, ty)
     }
 
     pub unsafe fn read_param(
         &self,
         param: OsdiInstanceParam,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> Option<&'ll llvm::Value> {
-        let (ptr, ty) = self.param_ptr(param, ptr, llbuilder)?;
+        let (ptr, ty) = self.param_ptr(param, struct_ptr, llbuilder)?;
         let val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
         Some(val)
     }
@@ -444,21 +454,21 @@ impl<'ll> OsdiInstanceData<'ll> {
     pub unsafe fn read_nth_param(
         &self,
         idx: u32,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let (ptr, ty) = self.nth_param_ptr(idx, ptr, llbuilder);
+        let (ptr, ty) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
         LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
     }
 
     pub unsafe fn store_nth_param(
         &self,
         idx: u32,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         val: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let (ptr, _) = self.nth_param_ptr(idx, ptr, llbuilder);
+        let (ptr, _) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
         LLVMBuildStore(llbuilder, val, ptr)
     }
 
@@ -474,6 +484,7 @@ impl<'ll> OsdiInstanceData<'ll> {
     //     Some((ptr, ty))
     // }
 
+    #[inline]
     fn cache_slot_elem(&self, slot: CacheSlot) -> u32 {
         NUM_CONST_FIELDS + self.params.len() as u32 + u32::from(slot)
     }
@@ -482,24 +493,26 @@ impl<'ll> OsdiInstanceData<'ll> {
         &self,
         llbuilder: &llvm::Builder<'ll>,
         slot: CacheSlot,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let elem = self.cache_slot_elem(slot);
-        let ptr = unsafe { LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED) };
+        let ptr = unsafe { LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, elem, UNNAMED) };
         let ty = self.cache_slots[slot];
         (ptr, ty)
     }
 
+    /// Used by eval() to load values cached in op-independent evaluation routines (setup_xxx).
     pub unsafe fn load_cache_slot(
         &self,
         module: &OsdiModule,
         llbuilder: &llvm::Builder<'ll>,
         slot: CacheSlot,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
     ) -> &'ll llvm::Value {
-        let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, ptr);
+        let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, struct_ptr);
         let mut val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
 
+        // specifal treatment for bool value
         if module.init.cache_slots[slot] == hir::Type::Bool {
             val = LLVMBuildICmp(
                 llbuilder,
@@ -512,6 +525,8 @@ impl<'ll> OsdiInstanceData<'ll> {
         val
     }
 
+    /// Used by op-independent evaluation routines (setup_xxx) to cache results,
+    /// so that they can be used by op-dependent routines later as parameters.
     pub unsafe fn store_cache_slot(
         &self,
         module: &OsdiModule,
@@ -527,14 +542,14 @@ impl<'ll> OsdiInstanceData<'ll> {
         LLVMBuildStore(llbuilder, val, ptr);
     }
 
-    pub unsafe fn store_collapsed(
+    pub unsafe fn store_collapsed_node_pair(
         &self,
         cx: &CodegenCx<'_, 'll>,
         llbuilder: &llvm::Builder<'ll>,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         pair: &'ll llvm::Value,
     ) {
-        let mut ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, COLLAPSED, UNNAMED);
+        let mut ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, COLLAPSED, UNNAMED);
         let zero = cx.const_unsigned_int(0);
         ptr = LLVMBuildGEP2(llbuilder, self.collapsed, ptr, [zero, pair].as_ptr(), 2, UNNAMED);
         LLVMBuildStore(llbuilder, cx.const_c_bool(true), ptr);
@@ -551,29 +566,29 @@ impl<'ll> OsdiInstanceData<'ll> {
     pub unsafe fn store_temperature(
         &self,
         builder: &mir_llvm::Builder<'_, '_, 'll>,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         val: &'ll llvm::Value,
     ) {
-        let ptr = builder.struct_gep(self.ty, ptr, TEMPERATURE);
+        let ptr = builder.struct_gep(self.ty, struct_ptr, TEMPERATURE);
         builder.store(ptr, val)
     }
 
     pub unsafe fn load_connected_ports(
         &self,
         builder: &mir_llvm::Builder<'_, '_, 'll>,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
     ) -> &'ll llvm::Value {
-        let ptr = builder.struct_gep(self.ty, ptr, CONNECTED);
+        let ptr = builder.struct_gep(self.ty, struct_ptr, CONNECTED);
         builder.load(builder.cx.ty_int(), ptr)
     }
 
     pub unsafe fn store_connected_ports(
         &self,
         builder: &mir_llvm::Builder<'_, '_, 'll>,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         val: &'ll llvm::Value,
     ) {
-        let ptr = builder.struct_gep(self.ty, ptr, CONNECTED);
+        let ptr = builder.struct_gep(self.ty, struct_ptr, CONNECTED);
         builder.store(ptr, val)
     }
 
@@ -584,11 +599,11 @@ impl<'ll> OsdiInstanceData<'ll> {
         target_data: &TargetData,
     ) -> Option<u32> {
         let residual = &self.residual[node];
-        let slot = if reactive { &residual.react } else { &residual.resist };
+        let output_slot = if reactive { &residual.react } else { &residual.resist };
         let elem = NUM_CONST_FIELDS
             + self.params.len() as u32
             + self.cache_slots.len() as u32
-            + u32::from(slot.expand()?);
+            + u32::from(output_slot.expand()?);
 
         let off = unsafe { LLVMOffsetOfElement(target_data, self.ty, elem) } as u32;
         Some(off)
@@ -611,15 +626,16 @@ impl<'ll> OsdiInstanceData<'ll> {
     unsafe fn eval_output_slot_ptr(
         &self,
         llbuilder: &llvm::Builder<'ll>,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         slot: EvalOutputSlot,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let elem = self.eval_output_slot_elem(slot);
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, elem, UNNAMED);
+        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, elem, UNNAMED);
         let ty = self.eval_outputs.get_index(slot).unwrap().1;
         (ptr, ty)
     }
 
+    #[inline]
     fn eval_output_slot_elem(&self, slot: EvalOutputSlot) -> u32 {
         NUM_CONST_FIELDS
             + self.params.len() as u32
@@ -630,14 +646,14 @@ impl<'ll> OsdiInstanceData<'ll> {
     unsafe fn load_eval_output_slot(
         &self,
         llbuilder: &llvm::Builder<'ll>,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         slot: EvalOutputSlot,
     ) -> &'ll llvm::Value {
-        let (ptr, ty) = self.eval_output_slot_ptr(llbuilder, ptr, slot);
+        let (ptr, ty) = self.eval_output_slot_ptr(llbuilder, struct_ptr, slot);
         LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
     }
 
-    pub unsafe fn store_eval_output_slot(
+    unsafe fn store_eval_output_slot(
         &self,
         slot: EvalOutputSlot,
         inst_ptr: &'ll llvm::Value,
@@ -649,6 +665,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         builder.store(ptr, val)
     }
 
+    /// Used by eval() to store its output
     pub unsafe fn store_eval_output(
         &self,
         output: EvalOutput,
@@ -660,15 +677,15 @@ impl<'ll> OsdiInstanceData<'ll> {
         }
     }
 
-    /// Read node offset defined by node mapping
-    pub unsafe fn read_node_off(
+    /// Get node offset defined by node mapping
+    pub unsafe fn node_off(
         &self,
         cx: &CodegenCx<'_, 'll>,
         node: SimUnknown,
-        ptr: &'ll llvm::Value,
+        struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, NODE_MAPPING, UNNAMED);
+        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, NODE_MAPPING, UNNAMED);
         let zero = cx.const_int(0);
         let node = cx.const_unsigned_int(node.into());
         let ptr =
@@ -686,12 +703,13 @@ impl<'ll> OsdiInstanceData<'ll> {
         prev_solve: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let off = self.read_node_off(cx, node, ptr, llbuilder);
+        let off = self.node_off(cx, node, ptr, llbuilder);
         let ptr = LLVMBuildGEP2(llbuilder, cx.ty_double(), prev_solve, [off].as_ptr(), 1, UNNAMED);
         LLVMBuildLoad2(llbuilder, cx.ty_double(), ptr, UNNAMED)
     }
 
-    pub unsafe fn read_residual(
+    /// Used by load_xxx()
+    pub unsafe fn load_residual(
         &self,
         node: SimUnknown,
         ptr: &'ll llvm::Value,
@@ -704,7 +722,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         Some(val)
     }
 
-    pub unsafe fn read_lim_rhs(
+    pub unsafe fn load_lim_rhs(
         &self,
         node: SimUnknown,
         ptr: &'ll llvm::Value,
@@ -717,6 +735,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         Some(val)
     }
 
+    /// Used by eval()
     pub unsafe fn read_state_idx(
         &self,
         cx: &CodegenCx<'_, 'll>,
@@ -731,6 +750,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
     }
 
+    /// Used by eval()
     pub unsafe fn store_residual(
         &self,
         node: SimUnknown,
@@ -748,8 +768,8 @@ impl<'ll> OsdiInstanceData<'ll> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub unsafe fn store_contrib(
+    /// Used by load_xxx() to store residual to dst
+    pub unsafe fn store_contrib<const NEG: bool>(
         &self,
         cx: &CodegenCx<'_, 'll>,
         node: SimUnknown,
@@ -757,12 +777,11 @@ impl<'ll> OsdiInstanceData<'ll> {
         dst: &'ll llvm::Value,
         contrib: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
-        negate: bool,
     ) {
-        let off = self.read_node_off(cx, node, ptr, llbuilder);
+        let off = self.node_off(cx, node, ptr, llbuilder);
         let dst = LLVMBuildGEP2(llbuilder, cx.ty_double(), dst, [off].as_ptr(), 1, UNNAMED);
         let old = LLVMBuildLoad2(llbuilder, cx.ty_double(), dst, UNNAMED);
-        let val = if negate {
+        let val = if NEG {
             LLVMBuildFSub(llbuilder, old, contrib, UNNAMED)
         } else {
             LLVMBuildFAdd(llbuilder, old, contrib, UNNAMED)
@@ -788,6 +807,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         }
     }
 
+    /// Used by eval() to store its output Jacobian entry
     pub unsafe fn store_jacobian(
         &self,
         entry: MatrixEntryId,
@@ -802,6 +822,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         }
     }
 
+    /// Used by load_xxx()
     pub unsafe fn store_jacobian_contrib(
         &self,
         cx: &CodegenCx<'_, 'll>,
@@ -811,16 +832,16 @@ impl<'ll> OsdiInstanceData<'ll> {
         reactive: bool,
         val: &'ll llvm::Value,
     ) {
-        let field = if reactive { JACOBIAN_PTR_REACT } else { JACOBIAN_PTR_RESIST };
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, field, UNNAMED);
         let zero = cx.const_int(0);
+        let field = if reactive { JACOBIAN_PTR_REACT } else { JACOBIAN_PTR_RESIST };
+        let ty = if reactive { self.jacobian_ptr_react } else { self.jacobian_ptr };
+        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, field, UNNAMED);
         let entry = if reactive {
             self.jacobian[entry].react_off.unwrap_unchecked().into()
         } else {
             entry.into()
         };
         let entry = cx.const_unsigned_int(entry);
-        let ty = if reactive { self.jacobian_ptr_react } else { self.jacobian_ptr };
         let ptr = LLVMBuildGEP2(llbuilder, ty, ptr, [zero, entry].as_ptr(), 2, UNNAMED);
         let dst = LLVMBuildLoad2(llbuilder, cx.ty_ptr(), ptr, UNNAMED);
         let old = LLVMBuildLoad2(llbuilder, cx.ty_double(), dst, UNNAMED);
@@ -904,29 +925,28 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
     }
 
-    pub unsafe fn load_jacobian_entry(
+    pub unsafe fn load_jacobian_entry<const REACTIVE: bool>(
         &self,
         entry: MatrixEntryId,
         inst_ptr: &'ll llvm::Value,
         model_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
-        reactive: bool,
     ) -> Option<&'ll llvm::Value> {
         let entry = &self.inst_data.jacobian[entry];
-        let entry = if reactive { entry.react } else { entry.resist };
+        let entry = if REACTIVE { entry.react } else { entry.resist };
         let val = self.load_eval_output(entry?, inst_ptr, model_ptr, llbuilder);
         Some(val)
     }
 
     pub unsafe fn nth_opvar_ptr(
         &self,
-        pos: u32,
+        idx: u32,
         inst_ptr: &'ll llvm::Value,
         model_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let OsdiCompilationUnit { inst_data, model_data, cx, module, .. } = self;
-        match *inst_data.opvars.get_index(pos as usize).unwrap().1 {
+        match *inst_data.opvars.get_index(idx as usize).unwrap().1 {
             EvalOutput::Calculated(slot) => {
                 inst_data.eval_output_slot_ptr(llbuilder, inst_ptr, slot)
             }
@@ -964,7 +984,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     | ParamKind::Current(_)
                     | ParamKind::PortConnected { .. }
                     | ParamKind::ParamGiven { .. }
-                    | ParamKind::EnableIntegration { .. }
+                    | ParamKind::EnableIntegration
                     | ParamKind::Abstime
                     | ParamKind::EnableLim
                     | ParamKind::PrevState(_)
