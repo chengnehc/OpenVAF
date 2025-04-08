@@ -22,8 +22,10 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 pub fn main() {
     let matches = main_command().get_matches();
-    crash_report::install_panic_handler();
-    let input: Utf8PathBuf = matches.get_one(INPUT).cloned().unwrap_or_else(Utf8PathBuf::new);
+    let input = matches.get_one(INPUT).cloned().unwrap_or_else(Utf8PathBuf::new);
+
+    crash_report::setup_panic_handler();
+
     let env = env_logger::Env::default().filter("OPENVAF_LOG").write_style("OPENVAF_LOG_STYLE");
     env_logger::Builder::new()
         .format_timestamp(None)
@@ -31,6 +33,7 @@ pub fn main() {
         .filter_level(log::LevelFilter::Off)
         .parse_env(env)
         .init();
+
     match wrapped_main(matches) {
         Ok(err_code) => exit(err_code),
         Err(err) => {
@@ -60,7 +63,7 @@ pub const NORMAL_EXIT: i32 = 0;
 
 fn wrapped_main(matches: ArgMatches) -> Result<i32> {
     let print_expansion = matches.get_flag(PRINT_EXPANSION);
-    let dump_json_ = matches.get_flag(DUMP_JSON);
+    let dump_json = matches.get_flag(DUMP_JSON);
     let opts = matches_to_opts(matches)?;
     *ARGS.lock().unwrap() = Some(opts.clone());
 
@@ -72,7 +75,7 @@ fn wrapped_main(matches: ArgMatches) -> Result<i32> {
         return Ok(res);
     }
 
-    if dump_json_ {
+    if dump_json {
         bail!("currently unimplemented");
         // let res = match dump_json(&opts)? {
         //     CompilationTermination::Compiled { .. } => 0,

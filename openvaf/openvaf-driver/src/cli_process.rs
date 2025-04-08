@@ -23,8 +23,6 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
         exit(0)
     }
 
-    let input: Utf8PathBuf = matches.get_one::<Utf8PathBuf>(INPUT).unwrap().clone();
-
     let mut lints = Vec::new();
 
     if let Some(allow) = matches.get_many::<String>(ALLOW) {
@@ -36,6 +34,8 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
     if let Some(deny) = matches.get_many::<String>(DENY) {
         lints.extend(deny.map(|lint| (lint.to_owned(), LintLevel::Deny)));
     }
+
+    let input: Utf8PathBuf = matches.get_one::<Utf8PathBuf>(INPUT).unwrap().clone();
 
     let output = if matches.get_flag(BATCHMODE) {
         let cache_dir = if let Some(val) = matches.get_one::<Utf8PathBuf>(CACHE_DIR) {
@@ -65,10 +65,6 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
         CompilationDestination::Path { lib_file }
     };
 
-    let codegen_opts = matches
-        .get_many::<String>(CODEGEN)
-        .map_or_else(Vec::new, |values| values.cloned().collect());
-
     let defines = matches
         .get_many::<String>(DEFINE)
         .map_or_else(Vec::new, |values| values.cloned().collect());
@@ -77,8 +73,11 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
         || Ok(Vec::new()),
         |include| include.map(|path| Ok(AbsPathBuf::assert(path.canonicalize()?))).collect(),
     );
-
     let include = include?;
+
+    let codegen_opts = matches
+        .get_many::<String>(CODEGEN)
+        .map_or_else(Vec::new, |values| values.cloned().collect());
 
     let opt_lvl = match &**matches.get_one::<String>(OPT_LVL).unwrap() {
         "0" => OptLevel::None,
@@ -96,21 +95,19 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
         // should never happened but helpful to provide support just in case
         bail!("The target {target} is not supported by this binary")
     };
-
-    let target_cpu: String =
-        matches.get_one(TARGET_CPU).cloned().unwrap_or_else(|| default_cpu.to_owned());
+    let target_cpu = matches.get_one(TARGET_CPU).cloned().unwrap_or_else(|| default_cpu.to_owned());
 
     Ok(Opts {
         input,
-        lints,
-        codegen_opts,
+        output,
         defines,
         include,
-        output,
-        opt_lvl,
+        lints,
+        dry_run: matches.get_flag(DRYRUN),
+        codegen_opts,
         target,
         target_cpu,
-        dry_run: matches.get_flag(DRYRUN),
+        opt_lvl,
     })
 }
 

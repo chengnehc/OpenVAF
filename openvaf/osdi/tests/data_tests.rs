@@ -18,8 +18,8 @@ fn test_compile(root_file: &Path) {
     let modules = collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
     let target = Target::host_target().unwrap();
     let back = LLVMBackend::new(&[], &target, "native".to_owned(), &[]);
-    let emit = !stdx::IS_CI;
-    osdi::compile(&db, &modules, Utf8Path::new("foo.o"), &target, &back, emit, OptLevel::None);
+    const EMIT: bool = !stdx::IS_CI;
+    osdi::compile::<EMIT>(&db, &modules, Utf8Path::new("foo.o"), &back, OptLevel::None);
 }
 
 fn integration_test(dir: &Path) -> Result {

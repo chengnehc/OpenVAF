@@ -14,12 +14,10 @@ fn hash(db: &CompilationDB, defines: &[String]) -> md5::Digest {
 
     // hash settings
     hash_builder.consume(cu.root_file().0.to_ne_bytes());
-
     hash_builder.consume(defines.len().to_ne_bytes());
     for def in defines {
         hash_builder.consume(def)
     }
-
     hash_builder.consume(env!("CARGO_PKG_VERSION"));
     let lints = db.global_lint_overwrites(cu.root_file());
     if cfg!(debug_assertions) && !lints.is_empty() {
@@ -51,5 +49,5 @@ fn hash(db: &CompilationDB, defines: &[String]) -> md5::Digest {
 pub fn file_name(db: &CompilationDB, opts: &Opts) -> String {
     let hash = u128::from_ne_bytes(*hash(db, &opts.defines));
     let hash = base_n::encode(hash, base_n::CASE_INSENSITIVE);
-    format!("{}.osdi", hash)
+    format!("{hash}.osdi")
 }

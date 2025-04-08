@@ -2,16 +2,15 @@ use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
-use anyhow::Context;
-use anyhow::Result;
+use anyhow::{Context, Result};
+use camino::Utf8PathBuf;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+
 use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
 use basedb::BaseDB;
-use camino::Utf8PathBuf;
 use hir::CompilationDB;
 use linker::link;
 use mir_llvm::LLVMBackend;
-use sim_back::collect_modules;
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 pub use basedb::lints::builtin as builtin_lints;
 pub use basedb::lints::LintLevel;
@@ -35,16 +34,18 @@ pub enum CompilationTermination {
 
 #[derive(Debug, Clone)]
 pub struct Opts {
-    pub dry_run: bool,
-    pub defines: Vec<String>,
-    pub codegen_opts: Vec<String>,
-    pub lints: Vec<(String, LintLevel)>,
+    // Frontend
     pub input: Utf8PathBuf,
     pub output: CompilationDestination,
+    pub defines: Vec<String>,
     pub include: Vec<AbsPathBuf>,
-    pub opt_lvl: OptLevel,
+    pub lints: Vec<(String, LintLevel)>,
+    // Backend
+    pub dry_run: bool,
+    pub codegen_opts: Vec<String>,
     pub target: Target,
     pub target_cpu: String,
+    pub opt_lvl: OptLevel,
 }
 
 // JW: Not implemented: dump serialized MIR as json file
@@ -157,13 +158,26 @@ pub fn expand(opts: &Opts) -> Result<CompilationTermination> {
 }
 
 pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
+    let Opts {
+        lints,
+        input,
+        output,
+        defines,
+        include,
+        dry_run,
+        codegen_opts,
+        target,
+        target_cpu,
+        opt_lvl,
+    } = opts;
+
     let start = Instant::now();
 
-    let input =
-        opts.input.canonicalize().with_context(|| format!("failed to resolve {}", opts.input))?;
+    /* Frontend */
+    let input = input.canonicalize().with_context(|| format!("failed to resolve {}", input))?;
     let input = AbsPathBuf::assert(input);
-    let db = CompilationDB::new_from_fs(input, &opts.include, &opts.defines, &opts.lints)?;
-    let lib_file = match &opts.output {
+    let db = CompilationDB::new_from_fs(input, include, defines, lints)?;
+    let lib_file = match output {
         CompilationDestination::Cache { cache_dir } => {
             let file_name = cache::file_name(&db, opts);
             let lib_file = cache_dir.join(file_name);
@@ -175,17 +189,20 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
         }
         CompilationDestination::Path { lib_file } => lib_file.clone(),
     };
-    let Some(modules) = collect_modules(&db, false, &mut ConsoleSink::new(&db)) else {
+    let Some(modules) = sim_back::collect_modules(&db, false, &mut ConsoleSink::new(&db)) else {
         return Ok(CompilationTermination::FatalDiagnostic);
     };
-    let back = LLVMBackend::new(&opts.codegen_opts, &opts.target, opts.target_cpu.clone(), &[]);
-    if opts.dry_run {
+    if *dry_run {
+        // dry-run means only run the frontend
         return Ok(CompilationTermination::Compiled { lib_file });
     }
-    let objects = osdi::compile(&db, &modules, &lib_file, &opts.target, &back, true, opts.opt_lvl);
+
+    /* Backend */
+    let back = LLVMBackend::new(codegen_opts, target, target_cpu.clone(), &[]);
+    let objects = osdi::compile::<true>(&db, &modules, &lib_file, &back, *opt_lvl);
 
     // TODO support linker configuration
-    link(None, &opts.target, lib_file.as_ref(), |linker| {
+    link(None, target, lib_file.as_ref(), |linker| {
         for obj in &objects {
             linker.add_object(obj);
         }

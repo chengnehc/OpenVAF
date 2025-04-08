@@ -33,6 +33,7 @@ fn smoke_test(args: &str) -> Result {
     sh.change_dir(project_root());
     let openvaf = cargo_bin("openvaf");
     xshell::cmd!(sh, "{openvaf} --dry-run {args...} integration_tests/DIODE/diode.va").run()?;
+
     Ok(())
 }
 
@@ -42,6 +43,7 @@ fn link_diode() -> Result {
     let openvaf = cargo_bin("openvaf");
     xshell::cmd!(sh, "{openvaf} -O 0 integration_tests/DIODE/diode.va").run()?;
     sh.remove_path("integration_tests/DIODE/diode.osdi").unwrap();
+
     Ok(())
 }
 
@@ -52,8 +54,8 @@ harness! {
          &smoke_test,
          &ignore_never,
          &[
-            "--target_cpu generic",
-            "--target_cpu skylake",
+            "--target-cpu generic",
+            "--target-cpu skylake",
              "--dump-json",
              "--supported-targets",
              "--batch",

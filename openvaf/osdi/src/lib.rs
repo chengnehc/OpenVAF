@@ -14,7 +14,7 @@ use hir_lower::{CallBackKind, HirInterner, ParamKind};
 use llvm::{LLVMDisposeTargetData, OptLevel};
 use mir_llvm::{CodegenCx, LLVMBackend};
 use sim_back::{CompiledModule, ModuleInfo};
-use target::spec::Target;
+// use target::spec::Target;
 
 mod bitfield;
 mod compilation_unit;
@@ -34,13 +34,11 @@ use metadata::OsdiLimFunction;
 
 const OSDI_VERSION: (u32, u32) = (0, 3);
 
-pub fn compile(
+pub fn compile<const EMIT: bool>(
     db: &CompilationDB,
     modules: &[ModuleInfo],
     dst: &Utf8Path,
-    target: &Target,
     back: &LLVMBackend,
-    emit: bool,
     opt_lvl: OptLevel,
 ) -> Vec<Utf8PathBuf> {
     let mut literals = Rodeo::new();
@@ -67,7 +65,7 @@ pub fn compile(
         .collect();
 
     let target_data = unsafe {
-        let src = CString::new(target.data_layout.clone()).unwrap();
+        let src = CString::new(back.target().data_layout.clone()).unwrap();
         llvm::LLVMCreateTargetData(src.as_ptr())
     };
 
@@ -102,7 +100,7 @@ pub fn compile(
                 cu.access_fn();
                 debug_assert!(llmod.verify_and_print());
 
-                if emit {
+                if EMIT {
                     let path = &paths[i * 4];
                     llmod.optimize();
                     assert_eq!(llmod.emit_object(path.as_ref()), Ok(()))
@@ -122,7 +120,7 @@ pub fn compile(
                     .ok();
                 debug_assert!(llmod.verify_and_print());
 
-                if emit {
+                if EMIT {
                     let path = &paths[i * 4 + 1];
                     // llmod.optimize();
                     assert_eq!(llmod.emit_object(path.as_ref()), Ok(()))
@@ -141,7 +139,7 @@ pub fn compile(
                 std::fs::write(dst.with_extension("setup_inst.ll"), llmod.print().to_string()).ok();
                 debug_assert!(llmod.verify_and_print());
 
-                if emit {
+                if EMIT {
                     let path = &paths[i * 4 + 2];
                     llmod.optimize();
                     assert_eq!(llmod.emit_object(path.as_ref()), Ok(()))
@@ -163,7 +161,7 @@ pub fn compile(
                 // println!("{}", llmod.to_str());
                 debug_assert!(llmod.verify_and_print());
 
-                if emit {
+                if EMIT {
                     let path = &paths[i * 4 + 3];
                     llmod.optimize();
                     assert_eq!(llmod.emit_object(path.as_ref()), Ok(()))
@@ -227,7 +225,7 @@ pub fn compile(
         std::fs::write(dst.with_extension("ll"), llmod.print().to_string()).ok();
         debug_assert!(llmod.verify_and_print());
 
-        if emit {
+        if EMIT {
             // println!("{}", llmod.to_str());
             llmod.optimize();
             // println!("{}", llmod.to_str());

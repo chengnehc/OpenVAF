@@ -2,22 +2,37 @@
 //! Adapted from https://github.com/rust-cli/human-panic/blob/0ebcb91b29e3f23b3559ea49d931a493ed7c8139
 //! under MIT license
 
+use std::env;
 use std::error::Error;
 use std::fmt::Write as FmtWrite;
+use std::fs::File;
+use std::io::{self, Write};
+use std::mem;
 use std::panic::PanicHookInfo;
-use std::{env, fs::File, io::Write, path::Path, path::PathBuf};
-use std::{io, mem, panic};
+use std::path::{Path, PathBuf};
 
 use backtrace::Backtrace;
 use backtrace_ext::short_frames_strict;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
+pub fn setup_panic_handler() {
+    if cfg!(debug_assertions) {
+        // we want the normal panic handler for debugging
+        return;
+    }
+
+    std::panic::set_hook(Box::new(move |info: &PanicHookInfo| {
+        let file_path = handle_dump(info);
+        print_msg(file_path).expect("printing error message to console failed");
+    }));
+}
+
 // Utility function which will handle dumping information to disk
-pub fn handle_dump(panic_info: &PanicHookInfo) -> Option<PathBuf> {
+fn handle_dump(panic_info: &PanicHookInfo) -> Option<PathBuf> {
     let mut expl = String::new();
 
     #[cfg(feature = "nightly")]
-    let message = panic_info.message().map(|m| format!("{}", m));
+    let message = panic_info.payload_as_str().map(|m| m.to_owned());
 
     #[cfg(not(feature = "nightly"))]
     let message = match (
@@ -29,10 +44,7 @@ pub fn handle_dump(panic_info: &PanicHookInfo) -> Option<PathBuf> {
         (None, None) => None,
     };
 
-    let cause = match message {
-        Some(m) => m,
-        None => "Unknown".into(),
-    };
+    let cause = message.unwrap_or("Unknown".into());
 
     match panic_info.location() {
         Some(location) => expl.push_str(&format!(
@@ -46,7 +58,7 @@ pub fn handle_dump(panic_info: &PanicHookInfo) -> Option<PathBuf> {
     let report = Report::new(expl, cause);
 
     match report.persist() {
-        Ok(f) => Some(f),
+        Ok(fp) => Some(fp),
         Err(_) => {
             eprintln!("{}", report.0);
             None
@@ -54,21 +66,7 @@ pub fn handle_dump(panic_info: &PanicHookInfo) -> Option<PathBuf> {
     }
 }
 
-pub fn install_panic_handler() {
-    // we want the normal panic handler for debugging
-    if cfg!(debug_assertions) {
-        return;
-    }
-
-    panic::set_hook(Box::new(move |info: &PanicHookInfo| {
-        let file_path = handle_dump(info);
-        print_msg(file_path).expect("printing error message to console failed");
-    }));
-}
-
-pub fn print_msg<P: AsRef<Path>>(file_path: Option<P>) -> io::Result<()> {
-    use std::io::Write as _;
-
+fn print_msg<P: AsRef<Path>>(file_path: Option<P>) -> io::Result<()> {
     let mut stderr = StandardStream::stderr(ColorChoice::Auto);
     stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true))?;
     writeln!(stderr, "OpenVAF encountered a problem and has crashed!")?;
@@ -96,7 +94,7 @@ struct Report(String);
 
 impl Report {
     /// Create a new instance.
-    pub fn new(explanation: String, cause: String) -> Self {
+    fn new(explanation: String, cause: String) -> Self {
         let mut dst = String::new();
         let _ = writeln!(dst, "OpenVAF {}", env!("CARGO_PKG_VERSION"));
         if let Ok(args) = super::ARGS.lock() {
@@ -105,10 +103,9 @@ impl Report {
             }
         }
         let _ = write!(dst, "{explanation}{cause}");
-        //We take padding for address and extra two letters
-        //to padd after index.
+        // We take padding for address and extra two letters to pad after index.
         const HEX_WIDTH: usize = mem::size_of::<usize>() + 2;
-        //Padding for next lines after frame's address
+        // Padding for next lines after frame's address
         const NEXT_SYMBOL_PADDING: usize = HEX_WIDTH + 6;
 
         for (frame, idx) in short_frames_strict(&Backtrace::new()) {
@@ -157,7 +154,7 @@ impl Report {
     }
 
     /// Write a file to disk.
-    pub fn persist(&self) -> Result<PathBuf, Box<dyn Error + 'static>> {
+    fn persist(&self) -> Result<PathBuf, Box<dyn Error + 'static>> {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
