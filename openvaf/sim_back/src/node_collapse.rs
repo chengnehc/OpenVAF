@@ -7,9 +7,9 @@ use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
 use crate::context::Context;
-use crate::dae::{DaeSystem, SimUnknown};
+use crate::dae::DaeSystem;
 use crate::init::Initialization;
-use crate::SimUnknownKind;
+use crate::{SimUnknown, SimUnknownKind};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct CollapsePair(u32);

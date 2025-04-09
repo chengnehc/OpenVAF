@@ -2,7 +2,7 @@ use lasso::Spur;
 use mir::Value;
 use stdx::Ieee64;
 
-use crate::dae::SimUnknown;
+use crate::SimUnknown;
 
 #[derive(Debug, Clone)]
 pub enum NoiseSourceKind {

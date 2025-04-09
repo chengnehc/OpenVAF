@@ -1,13 +1,13 @@
-use stdx::{impl_debug_display, impl_idx_from};
-
 use indexmap::IndexSet;
 use mir::{Value, F_ZERO};
+use stdx::{impl_debug_display, impl_idx_from};
 use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
 use crate::context::Context;
+use crate::topology::Topology;
 use crate::util::strip_optbarrier;
-use crate::{topology, SimUnknownKind};
+use crate::{SimUnknown, SimUnknownKind};
 
 pub use crate::noise::{NoiseSource, NoiseSourceKind};
 
@@ -16,12 +16,6 @@ mod builder;
 mod tests;
 
 use builder::Builder;
-
-/// An unknown in the system of DAE equations
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct SimUnknown(u32);
-impl_idx_from!(SimUnknown(u32));
-impl_debug_display! {match SimUnknown{SimUnknown(id) => "sim_node{id}";}}
 
 /// Represents the topology of Verliog-A (top level) module as a set
 /// of DAE equations.
@@ -44,20 +38,19 @@ pub struct DaeSystem {
     /// list of parameters which are known to be small signal values (always zero during
     /// large signal simulation).
     pub small_signal_params: IndexSet<Value, ahash::RandomState>,
-    /// noise
+
     pub noise_sources: Vec<NoiseSource>,
 }
 
 impl DaeSystem {
-    pub(crate) fn new(ctx: &mut Context, contributions: topology::Topology) -> DaeSystem {
-        let mut builder =
-            Builder::new(ctx).with_small_signal_network(contributions.small_signal_vals);
+    pub(crate) fn new(ctx: &mut Context, topo: Topology) -> DaeSystem {
+        let mut builder = Builder::new(ctx).with_small_signal_network(topo.small_signal_vals);
 
-        for (branch, contributions) in contributions.branches.raw {
-            builder.build_branch(branch, &contributions)
+        for (branch, contribs) in topo.branches.raw {
+            builder.build_branch(branch, &contribs)
         }
-        for (eq, contribution) in contributions.implicit_equations.iter_enumerated() {
-            builder.build_implicit_equation(eq, contribution)
+        for (eq, contrib) in topo.implicit_equations.iter_enumerated() {
+            builder.build_implicit_equation(eq, contrib)
         }
 
         builder.finish()

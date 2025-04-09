@@ -503,7 +503,7 @@ impl FunctionBuilder<'_> {
     }
 }
 
-/// Add (potentially mutable) values to an already finished MIR function.
+/// Add (potentially mutable) values to an *already finished* MIR function.
 /// It will be available at the end of the function just like a place during building.
 pub struct SSAVariableBuilder<'a> {
     ssa: SSABuilder<&'a ssa::CompleteCfg>,

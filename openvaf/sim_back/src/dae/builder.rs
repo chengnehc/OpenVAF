@@ -15,24 +15,27 @@ use typed_index_collections::TiVec;
 
 use crate::context::Context;
 use crate::noise::NoiseSource;
-use crate::topology::{BranchInfo, Contribution};
+use crate::topology::{BranchInfo, Contribution, Noise};
 use crate::util::{self, add, is_op_dependent, strip_optbarrier, update_optbarrier};
 use crate::SimUnknownKind;
 
 use super::{DaeSystem, MatrixEntry, Residual, SimUnknown};
 
+const POS: bool = false;
+const NEG: bool = true;
+
 impl Residual {
-    /// Add/subtract val to/from resistive residual value, replace resistive value by result
-    fn add(&mut self, mut val: Value, cursor: &mut FuncCursor, negate: bool) {
+    /// Add/subtract `val` to/from the resistive value of this residual
+    fn add_unknown<const NEGATE: bool>(&mut self, mut val: Value, cursor: &mut FuncCursor) {
         val = strip_optbarrier(&cursor, val);
-        util::add(cursor, &mut self.resist, val, negate);
+        util::add(cursor, &mut self.resist, val, NEGATE);
     }
 
-    /// Add/subtract contrib to/from residual, replace residual with result
-    fn add_contribution(&mut self, contrib: &Contribution, cursor: &mut FuncCursor, negate: bool) {
-        let mut add = |residual: &mut Value, contrib| {
+    /// Add/subtract `contrib` to/from this residual
+    fn add_contrib<const NEGATE: bool>(&mut self, contrib: &Contribution, cursor: &mut FuncCursor) {
+        let mut add = |residual: &mut Value, contrib: Value| {
             let contrib = strip_optbarrier(&mut *cursor, contrib);
-            util::add(cursor, residual, contrib, negate)
+            util::add(cursor, residual, contrib, NEGATE)
         };
         add(&mut self.resist, contrib.resist);
         add(&mut self.react, contrib.react);
@@ -128,25 +131,25 @@ impl Builder<'_> {
 
     pub(super) fn build_branch(&mut self, dst: BranchWrite, contribs: &BranchInfo) {
         match contribs.is_potential {
-            // flow branch
+            // I(br) <+ ...
             mir::FALSE => {
-                // if the flow of the branch is probed, we need an extra unknown
+                let contrib = self.flow_contribution(contribs);
+                // If I(br) is used (appears at RHS), we need an extra sim_unknown
                 let requires_unknown =
                     self.intern.is_param_live(&self.cursor, &ParamKind::Flow(dst.into()));
-                let contrib = self.flow_contribution(contribs);
                 if requires_unknown {
                     self.add_source_equation(&contrib, contribs.flow.unknown.unwrap(), dst);
                 } else {
                     self.add_kirchhoff_law(&contrib, dst);
-                    // self.add_kirchoff_law(&contributions.current_src, branch);
                 }
             }
-            // potential branch
+            // V(br) <+ ...
             mir::TRUE => {
-                // branches only used for node collapse look like pure current
-                // sources, make sure to ignore these branches
+                // If I(br) is used (appears at RHS), we need an extra sim_unknown
                 let requires_unknown =
                     self.intern.is_param_live(&self.cursor, &ParamKind::Flow(dst.into()));
+                // branches only used for node collapse look like pure current
+                // sources, make sure to ignore these branches
                 if requires_unknown || !contribs.potential.is_trivial() {
                     let contrib = self.potential_contribution(contribs);
                     self.add_source_equation(&contrib, contribs.flow.unknown.unwrap(), dst);
@@ -156,45 +159,43 @@ impl Builder<'_> {
             _ => {
                 // In most cases, what looks like a switch branch is just node collapse hint.
                 // Make sure we don't create switch branches when they aren't needed.
-                let requires_current_unknown =
-                    !self.cursor.as_ref().dfg.value_dead(contribs.flow.unknown.unwrap());
-                let op_dependent = is_op_dependent(
-                    &self.cursor,
+                let is_op_dependent = is_op_dependent(
                     contribs.is_potential,
-                    self.op_dependent_insts,
+                    &self.cursor,
                     self.intern,
+                    self.op_dependent_insts,
                 );
+                let requires_flow_branch_unknown =
+                    !self.cursor.as_ref().dfg.value_dead(contribs.flow.unknown.unwrap());
 
-                if op_dependent || requires_current_unknown || !contribs.potential.is_trivial() {
+                if is_op_dependent
+                    || requires_flow_branch_unknown
+                    || !contribs.potential.is_trivial()
+                {
                     // An actual switch branch
                     let start_bb = self.cursor.current_block().unwrap();
-                    let voltage_src_bb = self.cursor.layout_mut().append_new_block();
+                    let potential_bb = self.cursor.layout_mut().append_new_block();
                     let next_block = self.cursor.layout_mut().append_new_block();
                     self.cfg.ensure_block(next_block);
-                    self.cfg.add_edge(start_bb, voltage_src_bb);
+                    self.cfg.add_edge(start_bb, potential_bb);
                     self.cfg.add_edge(start_bb, next_block);
-                    self.cfg.add_edge(voltage_src_bb, next_block);
+                    self.cfg.add_edge(potential_bb, next_block);
 
                     // Debugging
                     // println!("start bb {:?}", start_bb);
-                    // println!("voltage src bb {:?}", voltage_src_bb);
+                    // println!("voltage src bb {:?}", potential_bb);
                     // println!("next block {:?}", next_block);
                     // println!("cursor at {:?}", self.cursor.position());
 
-                    // Get expression (condition) that determines if branch acts as a voltage source
+                    // Get the condition that determines if branch acts as a voltage source
                     // Skip trailing optbarriers
                     let is_potential = strip_optbarrier(&self.cursor, contribs.is_potential);
-                    // Insert branch command (after?) condition
-                    // If condition is true, jump to voltage_src_bb block
-                    // If false go to next_block
-                    self.cursor.ins().br(is_potential, voltage_src_bb, next_block);
-                    // Go to the end of voltage_src_bb block
-                    self.cursor.goto_bottom(voltage_src_bb);
-                    // Insert jump command to next_block
+                    // If condition is true, jump to potential_bb, or else go to next_block
+                    self.cursor.ins().br(is_potential, potential_bb, next_block);
+                    self.cursor.goto_bottom(potential_bb);
                     self.cursor.ins().jump(next_block);
-                    // Go to the end of next_block
                     self.cursor.goto_bottom(next_block);
-                    let contrib = self.switch_branch(contribs, voltage_src_bb, start_bb);
+                    let contrib = self.switch_branch(contribs, potential_bb, start_bb);
                     self.add_source_equation(&contrib, contribs.flow.unknown.unwrap(), dst)
                 } else {
                     // Not a real switch branch
@@ -206,24 +207,23 @@ impl Builder<'_> {
     }
 
     pub(super) fn build_implicit_equation(&mut self, eq: ImplicitEquation, contrib: &Contribution) {
-        get_residual!(self, SimUnknownKind::Implicit(eq)).add_contribution(
-            contrib,
-            &mut self.cursor,
-            false,
-        );
+        get_residual!(self, SimUnknownKind::Implicit(eq))
+            .add_contrib::<POS>(contrib, &mut self.cursor);
     }
 
     fn flow_contribution(&mut self, BranchInfo { flow, .. }: &BranchInfo) -> Contribution {
         let mfactor = self
             .intern
             .ensure_param(&mut self.cursor, ParamKind::ParamSysFun(ParamSysFun::mfactor));
-        let mut noises = Vec::with_capacity(flow.noises.len());
-        let flow_noise = flow.noises.iter().map(|src| {
-            let mut src = src.clone();
-            src.factor = self.mfactor_multiply(mfactor, src.factor);
-            src
-        });
-        noises.extend(flow_noise);
+        let noises = flow
+            .noises
+            .iter()
+            .map(|src| {
+                let mut src = src.clone();
+                src.factor = self.multiply_sqrt_mfactor(mfactor, src.factor);
+                src
+            })
+            .collect();
 
         Contribution {
             unknown: flow.unknown,
@@ -242,13 +242,15 @@ impl Builder<'_> {
         let mfactor = self
             .intern
             .ensure_param(&mut self.cursor, ParamKind::ParamSysFun(ParamSysFun::mfactor));
-        let mut noises = Vec::with_capacity(potential.noises.len());
-        let potential_noise = potential.noises.iter().map(|src| {
-            let mut src = src.clone();
-            src.factor = self.mfactor_divide(mfactor, src.factor);
-            src
-        });
-        noises.extend(potential_noise);
+        let noises = potential
+            .noises
+            .iter()
+            .map(|src| {
+                let mut src = src.clone();
+                src.factor = self.divide_sqrt_mfactor(mfactor, src.factor);
+                src
+            })
+            .collect();
 
         Contribution {
             unknown: potential.unknown,
@@ -276,45 +278,47 @@ impl Builder<'_> {
             }
         };
 
-        let voltage = potential.unknown.unwrap();
-        let current = flow.unknown.unwrap();
-        let unknown = select(voltage, current);
-        // Build noise phi commands
-        // Voltage noise, for each noise add a phi instruction that joins the values for
-        // the case the switch branch behaves as a voltage source (source value) and as a current source (0)
-        let mut noise = Vec::with_capacity(potential.noises.len() + flow.noises.len());
-        let voltage_noise = potential.noises.iter().map(|src| {
+        let unknown = select(potential.unknown.unwrap(), flow.unknown.unwrap());
+
+        // Build noise phi nodes
+        let mut noises = Vec::with_capacity(potential.noises.len() + flow.noises.len());
+
+        // For each noise add a phi instruction that joins the values for the case the
+        // switch branch behaves as a voltage source (source value) and as a current source (0)
+        let potential_noise = potential.noises.iter().map(|src| {
             let mut src = src.clone();
             src.factor = select(src.factor, F_ZERO);
             src
         });
-        noise.extend(voltage_noise);
-        // Current noise, for each noise add a phi instruction that joins the values for
-        // the case the switch branch behaves as a voltage source (0) and as a current source (source value)
-        let current_noise = flow.noises.iter().map(|src| {
+        noises.extend(potential_noise);
+
+        // For each noise add a phi instruction that joins the values for the case the
+        // switch branch behaves as a voltage source (0) and as a current source (source value)
+        let flow_noise = flow.noises.iter().map(|src| {
             let mut src = src.clone();
             src.factor = select(F_ZERO, src.factor);
             src
         });
-        noise.extend(current_noise);
-        // Build remaining phi commands
+        noises.extend(flow_noise);
+
+        // Build remaining phi nodes
         let phi_resist = select(potential.resist, flow.resist);
         let phi_react = select(potential.react, flow.react);
         let phi_resist_ss = select(potential.resist_small_signal, flow.resist_small_signal);
         let phi_react_ss = select(potential.react_small_signal, flow.react_small_signal);
-        // Scale noise
-        // Must do this after all phi commands
-        // because all phi commands must be listed at block beginning
+
+        // Scale noise signal with mfactor. Refer to [LRM 6.3.6] for rules of applying mfactor
+        // This *must* be done after building all phis, since phis must be listed at block beginning
         let mfactor = self
             .intern
             .ensure_param(&mut self.cursor, ParamKind::ParamSysFun(ParamSysFun::mfactor));
         for ii in 0..potential.noises.len() + flow.noises.len() {
             if ii < potential.noises.len() {
-                // Voltage noise
-                noise[ii].factor = self.mfactor_divide(mfactor, noise[ii].factor);
+                // Noise contributed to branch potential quantity
+                noises[ii].factor = self.divide_sqrt_mfactor(mfactor, noises[ii].factor);
             } else {
-                // Current noise
-                noise[ii].factor = self.mfactor_multiply(mfactor, noise[ii].factor);
+                // Noise contributed to branch flow quantity
+                noises[ii].factor = self.multiply_sqrt_mfactor(mfactor, noises[ii].factor);
             }
         }
 
@@ -324,16 +328,17 @@ impl Builder<'_> {
             react: phi_react,
             resist_small_signal: phi_resist_ss,
             react_small_signal: phi_react_ss,
-            noises: noise,
+            noises,
         }
     }
 
-    fn mfactor_multiply(&mut self, mfactor: Value, srcfactor: Value) -> Value {
+    /// Multiply the noise `srcfactor` with sqrt(mfactor).
+    /// `srcfactor` is the signal scaling factor (not power scale factor)
+    /// Since power scales with mfactor, the signal scales with sqrt(mfactor)
+    fn multiply_sqrt_mfactor(&mut self, mfactor: Value, srcfactor: Value) -> Value {
         match (mfactor, srcfactor) {
             // Leave srcfactor unchanged if mfactor is 1
             (F_ONE, fac) => fac,
-            // Note that srcfactor is the signal scaling factor.
-            // Since power scales with mfactor, the signal scales with sqrt(mfactor)
             (mfactor, srcfactor) => {
                 let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
                 if srcfactor == F_ONE {
@@ -347,12 +352,12 @@ impl Builder<'_> {
         }
     }
 
-    fn mfactor_divide(&mut self, mfactor: Value, srcfactor: Value) -> Value {
+    /// Divide the noise `srcfactor` with sqrt(mfactor).
+    /// `srcfactor` is the signal scaling factor (not power scale factor)
+    fn divide_sqrt_mfactor(&mut self, mfactor: Value, srcfactor: Value) -> Value {
         match (mfactor, srcfactor) {
             // Leave srcfactor unchanged if mfactor is 1
             (F_ONE, fac) => fac,
-            // Note that srcfactor is the signal scaling factor.
-            // Since power scales with mfactor, the signal scales with sqrt(mfactor)
             (mfactor, srcfactor) => {
                 let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
                 self.cursor.ins().fdiv(srcfactor, sqrt_mfactor)
@@ -360,42 +365,38 @@ impl Builder<'_> {
         }
     }
 
+    /// Normal nodal analysis: KCL is already enough.
     fn add_kirchhoff_law(&mut self, contrib: &Contribution, dst: BranchWrite) {
         let (hi, lo) = dst.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
-        get_residual!(self, hi).add_contribution(contrib, &mut self.cursor, false);
+        get_residual!(self, hi).add_contrib::<POS>(contrib, &mut self.cursor);
         if let Some(lo) = lo {
-            get_residual!(self, lo).add_contribution(contrib, &mut self.cursor, true);
+            get_residual!(self, lo).add_contrib::<NEG>(contrib, &mut self.cursor);
         }
-        self.add_noise(contrib, hi, lo);
+        self.add_noise(&contrib.noises, hi, lo);
     }
 
+    /// Modified nodal analysis: an extra equation/unknown for `FlowBranch` is required.
     fn add_source_equation(&mut self, contrib: &Contribution, eq_val: Value, dst: BranchWrite) {
         let residual = get_residual!(self, SimUnknownKind::FlowBranch(dst.into()));
-        residual.add_contribution(contrib, &mut self.cursor, false);
-        residual.add(contrib.unknown.unwrap(), &mut self.cursor, true);
-        // self.add_noise(contrib, SimUnknownKind::Current(dst.into()), None, false);
-        self.add_noise(contrib, SimUnknownKind::FlowBranch(dst.into()), None);
+        residual.add_contrib::<POS>(contrib, &mut self.cursor);
+        residual.add_unknown::<NEG>(contrib.unknown.unwrap(), &mut self.cursor);
+        self.add_noise(&contrib.noises, SimUnknownKind::FlowBranch(dst.into()), None);
 
         let (hi, lo) = dst.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
-        get_residual!(self, hi).add(eq_val, &mut self.cursor, false);
+        get_residual!(self, hi).add_unknown::<POS>(eq_val, &mut self.cursor);
         if let Some(lo) = lo {
-            get_residual!(self, lo).add(eq_val, &mut self.cursor, true);
+            get_residual!(self, lo).add_unknown::<NEG>(eq_val, &mut self.cursor);
         }
     }
 
-    fn add_noise(
-        &mut self,
-        contrib: &Contribution,
-        hi: SimUnknownKind,
-        lo: Option<SimUnknownKind>,
-    ) {
+    fn add_noise(&mut self, noises: &[Noise], hi: SimUnknownKind, lo: Option<SimUnknownKind>) {
         let hi = self.ensure_unknown(hi);
         let lo = lo.map(|lo| self.ensure_unknown(lo));
-        self.system.noise_sources.extend(contrib.noises.iter().map(|src| {
+        self.system.noise_sources.extend(noises.iter().map(|src| {
             let factor = src.factor;
             NoiseSource { name: src.name, kind: src.kind.clone(), hi, lo, factor }
         }))
@@ -596,8 +597,9 @@ impl Builder<'_> {
         }
     }
 
-    /// multiply each residual and matrix entry with mfactor and ensure it has
-    /// a optbarrier
+    /// Multiply each residual and matrix entry with mfactor and ensure it has a optbarrier
+    ///
+    /// Refer to [LRM 6.3.6] for rules of mfactor
     pub(super) fn ensure_optbarriers(&mut self) {
         let mfactor = self
             .intern

@@ -1,4 +1,4 @@
-//! various utilities used in this crate
+//! Various utilities used in this crate
 
 use bitset::BitSet;
 use hir_lower::HirInterner;
@@ -6,15 +6,19 @@ use mir::builder::InstBuilder;
 use mir::cursor::{Cursor, FuncCursor};
 use mir::{Function, Inst, InstructionData, Opcode, Value, ValueDef, F_ZERO};
 
+/// Return whether given `val` is op dependent.
 pub fn is_op_dependent(
-    func: impl AsRef<Function>,
     val: Value,
-    op_dependent_insts: &BitSet<Inst>,
+    func: impl AsRef<Function>,
     intern: &HirInterner,
+    op_dependent_insts: &BitSet<Inst>,
 ) -> bool {
     match func.as_ref().dfg.value_def(val) {
         ValueDef::Result(inst, _) => op_dependent_insts.contains(inst),
-        ValueDef::Param(param) => intern.params.get_index(param).unwrap().0.is_op_dependent(),
+        ValueDef::Param(param) => {
+            let (kind, _) = intern.params.get_index(param).unwrap();
+            kind.is_op_dependent()
+        }
         ValueDef::Const(_) | ValueDef::Invalid => false,
     }
 }

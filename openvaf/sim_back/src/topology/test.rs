@@ -29,9 +29,10 @@ fn assert(src: &str) {
     println!("{func:?}");
     let test_dir = openvaf_test_data("topo");
     let func = format!("{func:#?}");
+    // let _ = std::fs::write(test_dir.join(format!("{name}_mir.snap")), &func);
     expect_file![test_dir.join(format!("{name}_mir.snap"))].assert_eq(&func);
     let topology = format!("{topology:#?}");
-    //let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
+    // let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
     expect_file![test_dir.join(format!("{name}_topo.snap"))].assert_eq(&topology);
 }
 
@@ -222,5 +223,56 @@ fn psp103() {
         endmodule
     "#};
 
+    assert(src);
+}
+
+#[test]
+fn voltage_src() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module voltage_src(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0;
+            analog begin
+                V(a, c) <+ foo;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn const_switch_branch() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module const_switch_branch(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0;
+            analog begin
+                if (foo < 0 )
+                    V(a, c) <+ foo;
+                else
+                    I(a, c) <+ foo;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn dyn_switch_branch() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module dyn_switch_branch(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0;
+            analog begin
+                if (V(a, c) < 0) 
+                    V(a, c) <+ foo * V(a, c);
+                else
+                    I(a, c) <+ foo * V(a, c);
+            end
+        endmodule
+    "#};
     assert(src);
 }

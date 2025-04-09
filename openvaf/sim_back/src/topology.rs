@@ -48,9 +48,19 @@ impl_debug_display! {match BranchId{BranchId(id) => "branch{id}";}}
 
 #[derive(Debug)]
 pub(crate) struct BranchInfo {
-    // Note: for switch branch, the Value is neither TRUE or FALSE
+    /// A boolean flag whether the contribution kind of this branch is potential.
+    ///
+    /// For switch branch, where branch contribution is dynamically switched between
+    /// potential and flow according to run-time parameters, the value is the result
+    /// of phi instructions.
     pub is_potential: Value,
+
+    /// Contributions like `V(br) <+ ...`
     pub potential: Contribution,
+
+    /// Contributions like `I(br) <+ ...`
+    ///
+    /// This should be the primary kind of contributions for most compact models.
     pub flow: Contribution,
 }
 
@@ -187,7 +197,7 @@ impl Topology {
         let small_signal_vals =
             IndexSet::with_capacity_and_hasher(128, ahash::RandomState::default());
 
-        /* Map from MIR Values to contributions */
+        /* Construct a temporary map from MIR values to contributions */
         let mut contributes = AHashMap::with_capacity(128);
         for (kind, val) in &ctxt.intern.outputs {
             let Some(mut val) = val.expand() else { continue };
@@ -208,30 +218,39 @@ impl Topology {
                     );
                 }
                 PlaceKind::IsPotential(branch) => {
-                    let id: BranchId = branches.next_index();
+                    let id = branches.next_index();
                     let (hi, lo) = branch.node_pair(ctxt.db);
                     let is_potential = val;
-                    let has_voltage_probe =
+
+                    // If a contribution branch destination is not flow probe, then it can not be simply
+                    // described using KCL. Additional flow unknown is required (MNA).
+                    // That is to say, if `V(br)` appears at LHS of a contribution statement
+                    // then a new flow unknown is required as parameter
+                    let requires_unknown = is_potential != mir::FALSE;
+
+                    let has_potential_probe =
                         ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Potential { hi, lo })
-                            || is_potential != mir::FALSE;
-                    let has_current_probe =
+                            || requires_unknown;
+                    let has_flow_probe =
                         ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Flow(branch.into()))
-                            || is_potential != mir::FALSE;
-                    let voltage = has_voltage_probe.then(|| {
+                            || requires_unknown;
+
+                    let potential_val = has_potential_probe.then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
                             ParamKind::Potential { hi, lo },
                         )
                     });
-                    let current = has_current_probe.then(|| {
+                    let flow_val = has_flow_probe.then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
                             ParamKind::Flow(branch.into()),
                         )
                     });
-                    let mut get_contrib = |is_reactive: bool, is_potential: bool| {
+
+                    let mut get_contrib = |is_reactive, is_potential| {
                         ctxt.intern
                             .outputs
                             .get(&PlaceKind::Contribute { dst: branch, is_reactive, is_potential })
@@ -246,10 +265,10 @@ impl Topology {
                             })
                             .unwrap_or(F_ZERO)
                     };
-                    let contrib = BranchInfo {
+                    let info = BranchInfo {
                         is_potential,
                         potential: Contribution {
-                            unknown: voltage,
+                            unknown: potential_val,
                             resist: get_contrib(false, true),
                             react: get_contrib(true, true),
                             resist_small_signal: F_ZERO,
@@ -257,7 +276,7 @@ impl Topology {
                             noises: Vec::new(),
                         },
                         flow: Contribution {
-                            unknown: current,
+                            unknown: flow_val,
                             resist: get_contrib(false, false),
                             react: get_contrib(true, false),
                             resist_small_signal: F_ZERO,
@@ -265,7 +284,7 @@ impl Topology {
                             noises: Vec::new(),
                         },
                     };
-                    branches.insert_full(branch, contrib);
+                    branches.insert_full(branch, info);
                 }
                 _ => {}
             }
@@ -301,7 +320,7 @@ impl Topology {
         mir_opt::simplify_cfg_no_phi_merge(builder.func, builder.cfg);
         builder.prune_small_signal();
 
-        // JW: I suppose this field is only used during building. Therefore, clearing it helps
+        // JW: I suppose this is a temporary field only used during building. Therefore, clearing it helps
         // reducing memory usage. For debug purposes, this field shall be retained. However, the
         // order of hashmap is arbitrary, and will cause the unit tests to fail, so this field is
         // still cleared anyway.

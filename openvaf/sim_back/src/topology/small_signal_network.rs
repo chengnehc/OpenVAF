@@ -7,7 +7,7 @@ use mir::{Const, InstructionData, Opcode, Value, ValueDef, FALSE, F_ZERO};
 use super::Builder;
 use crate::util::{add, update_optbarrier};
 
-const RECUSE_DEPTH: u32 = 20;
+const RECURSE_DEPTH: u32 = 20;
 
 /// This is somewhat similar to the value lattices/flat sets used during
 /// constant propagation. By representing the set of possible constants
@@ -178,7 +178,7 @@ impl Builder<'_> {
         *scratch_buf = traversal.visited;
         let mut found_linear = false;
         for val in vals {
-            match self.analyze_dependency(RECUSE_DEPTH, val, unknown) {
+            match self.analyze_dependency(RECURSE_DEPTH, val, unknown) {
                 Dependency::NonLinear => return false,
                 Dependency::Linear if found_linear => return false,
                 Dependency::Linear => found_linear = true,
@@ -282,10 +282,10 @@ impl Builder<'_> {
                 }
                 let mut set = FlatSet::Zero;
                 for &val in &candidate.resist {
-                    set = set.min(self.analyze_value(val, RECUSE_DEPTH));
+                    set = set.min(self.analyze_value(val, RECURSE_DEPTH));
                 }
                 for &val in &candidate.react {
-                    set = set.min(self.analyze_value(val, RECUSE_DEPTH));
+                    set = set.min(self.analyze_value(val, RECURSE_DEPTH));
                 }
                 if set == FlatSet::Zero {
                     match candidate.kind {

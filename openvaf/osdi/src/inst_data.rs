@@ -12,9 +12,10 @@ use llvm::{
 };
 use mir::{Const, Function, Param, ValueDef, F_ZERO};
 use mir_llvm::{CodegenCx, MemLoc};
-use sim_back::dae::{self, MatrixEntryId, SimUnknown};
+use sim_back::dae::{self, MatrixEntryId};
 use sim_back::init::CacheSlot;
 use sim_back::util::strip_optbarrier;
+use sim_back::SimUnknown;
 use typed_index_collections::TiVec;
 use typed_indexmap::TiMap;
 

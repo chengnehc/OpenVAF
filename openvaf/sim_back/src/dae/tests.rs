@@ -10,7 +10,7 @@ use stdx::{integration_test_dir, openvaf_test_data};
 
 use crate::context::{Context, OptimizationStage};
 use crate::dae::DaeSystem;
-use crate::topology;
+use crate::topology::Topology;
 
 fn run_test(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
@@ -20,16 +20,17 @@ fn run_test(src: &str) {
     context.compute_outputs(true);
     context.compute_cfg();
     context.optimize(OptimizationStage::Initial);
-    let topology = topology::Topology::new(&mut context);
-    let mut dae = DaeSystem::new(&mut context, topology);
+
+    let topo = Topology::new(&mut context);
+    let mut dae = DaeSystem::new(&mut context, topo);
     context.compute_cfg();
     context.optimize(OptimizationStage::Final);
     dae.sparsify(&mut context);
 
     let test_dir = openvaf_test_data("dae");
     let name = module.module.name(&db);
-    let topology = format!("{dae:#?}");
-    expect_file![test_dir.join(format!("{name}_system.snap"))].assert_eq(&topology);
+    let dae = format!("{dae:#?}");
+    expect_file![test_dir.join(format!("{name}_system.snap"))].assert_eq(&dae);
 
     assert!(context.func.validate());
     let func = format!("{:#?}", context.func);

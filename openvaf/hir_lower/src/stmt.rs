@@ -47,7 +47,10 @@ impl BodyLowerContext<'_, '_, '_> {
             // since the negated form could already be defined and used.
             self.lower_contribute_node_pair(&mut negate, hi, lo, is_potential)
         }
-        // define a supportive variable, indicating a potential access
+        // Define a supportive variable indicating whether a contribution destination is
+        // potential branch access. This variable can help deal with switch branches, which
+        // may dynamically switch between potential and flow contribution according to
+        // run-time parameters
         self.ctxt.def_place(PlaceKind::IsPotential(lhs), is_potential.into());
 
         // Node collapse hint used by most compact models:

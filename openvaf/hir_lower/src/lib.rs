@@ -310,7 +310,6 @@ impl ParamKind {
     }
 }
 
-///
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FlowKind {
     Branch(Branch),
@@ -348,7 +347,7 @@ pub enum PlaceKind {
         is_reactive: bool,
         is_potential: bool,
     },
-    /// A flag indicating whether a contribution is potential
+    /// A flag indicating whether a branch contribution is potential
     IsPotential(BranchWrite),
     ImplicitResidual {
         equation: ImplicitEquation,

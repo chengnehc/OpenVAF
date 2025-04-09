@@ -1,6 +1,6 @@
 //! Simulator backend
 
-use stdx::impl_debug_display;
+use stdx::{impl_debug_display, impl_idx_from};
 
 use hir::{BranchWrite, CompilationDB, Node};
 use hir_lower::{FlowKind, HirInterner, ImplicitEquation, ParamKind};
@@ -28,7 +28,7 @@ use topology::Topology;
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub enum SimUnknownKind {
-    /// The unknown corresponds to a node potential that satisfies KCL
+    /// The unknown corresponds to a node potential (in KCL form)
     KirchhoffLaw(Node),
     /// The unknown corresponds to the flow between two nodes
     FlowBranch(FlowKind),
@@ -43,6 +43,12 @@ impl_debug_display! {
         SimUnknownKind::Implicit(node) => "{node}";
     }
 }
+
+/// An unknown in the system of DAE equations
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct SimUnknown(u32);
+impl_idx_from!(SimUnknown(u32));
+impl_debug_display! {match SimUnknown{SimUnknown(id) => "sim_node{id}";}}
 
 pub struct CompiledModule<'a> {
     pub info: &'a ModuleInfo,

@@ -1,0 +1,38 @@
+Topology {
+    branches: {
+        branch0: (
+            Unnamed {
+                hi: node0,
+                lo: Some(
+                    node1,
+                ),
+            },
+            BranchInfo {
+                is_potential: v26,
+                potential: Contribution {
+                    unknown: Some(
+                        v16,
+                    ),
+                    resist: v30,
+                    react: v3,
+                    resist_small_signal: v3,
+                    react_small_signal: v3,
+                    noises: [],
+                },
+                flow: Contribution {
+                    unknown: Some(
+                        v22,
+                    ),
+                    resist: v28,
+                    react: v3,
+                    resist_small_signal: v3,
+                    react_small_signal: v3,
+                    noises: [],
+                },
+            },
+        ),
+    },
+    implicit_equations: {},
+    small_signal_vals: {},
+    contributes: {},
+}
