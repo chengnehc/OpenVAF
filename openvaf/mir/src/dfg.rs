@@ -109,7 +109,7 @@ impl DataFlowGraph {
         self.func_ref(inst).map(|func_ref| &self.signatures[func_ref])
     }
 
-    /// Get the function reference of a call instruction.
+    /// Get the callback function reference of a call instruction.
     pub fn func_ref(&self, inst: Inst) -> Option<FuncRef> {
         if let InstructionData::Call { func_ref, .. } = self.insts[inst] {
             Some(func_ref)
@@ -180,7 +180,8 @@ impl fmt::Display for DisplayInst<'_> {
 
 impl DataFlowGraph {
     /// An instruction is safe to remove if none of its results is used anywhere.
-    /// Howerver, an instruction could have side effects.
+    /// Howerver, this does not mean the instruction is dead, as an instruction
+    /// may have side effects.
     pub fn instr_safe_to_remove(&self, inst: Inst) -> bool {
         self.insts.safe_to_remove(inst, &self.values)
     }
@@ -251,6 +252,7 @@ impl DataFlowGraph {
     //     self.insts.operands_mut(inst)
     // }
 
+    /// Return a replace builder to overwrite `inst`
     pub fn replace(&mut self, inst: Inst) -> ReplaceBuilder {
         ReplaceBuilder::new(self, inst)
     }

@@ -1,5 +1,5 @@
 //! This module is responsible for building a set of coherent branch
-//! definations from the raw lowering results. These can be used to
+//! definitions from the raw lowering results. These can be used to
 //! build the model topology (residual, matrix, noise sources)
 //! without significant additional analysis.
 //!
@@ -9,7 +9,7 @@
 //!
 //! * Turn function calls like `ddt` and `white_noise` either into direct
 //!   contributions if possible (linearization), or into an implicit node/
-//!   intenal equation.
+//!   internal equation.
 //! * Determine all nodes which are statically known to always have a large
 //!   signal voltage of zero (small_signal_network).
 //! * Separate contributions made from the small signal network to the large
@@ -23,15 +23,14 @@ use bitset::{BitSet, SparseBitMatrix};
 use hir_lower::{CallBackKind, HirInterner, ImplicitEquation, ParamKind, PlaceKind};
 use indexmap::IndexSet;
 use lasso::Spur;
-use mir::{strip_optbarrier, Function, Inst, Value, F_ZERO, TRUE};
+use mir::{Function, Inst, Value, F_ZERO, TRUE};
 use mir_build::SSAVariableBuilder;
 use typed_index_collections::TiVec;
 use typed_indexmap::TiMap;
 
 use crate::context::Context;
 use crate::noise::NoiseSourceKind;
-use crate::topology::builder::Builder;
-use crate::util::strip_optbarrier_if_const;
+use crate::util::{strip_optbarrier, strip_optbarrier_if_const};
 use crate::BranchWrite;
 
 mod builder;
@@ -40,6 +39,8 @@ mod small_signal_network;
 #[cfg(test)]
 mod test;
 
+use builder::Builder;
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct BranchId(u32);
 impl_idx_from!(BranchId(u32));
@@ -47,9 +48,9 @@ impl_debug_display! {match BranchId{BranchId(id) => "branch{id}";}}
 
 #[derive(Debug)]
 pub(crate) struct BranchInfo {
-    pub is_potential: Value, // a mir bool value used for choosing the branch type
-    pub voltage_src: Contribution, // voltage branch: V(br)
-    pub current_src: Contribution, // current branch: I(br)
+    pub is_potential: Value,     // boolean MIR value
+    pub potential: Contribution, // potential contribution: V(br)
+    pub flow: Contribution,      // flow contribution: I(br)
 }
 
 #[derive(Debug, Clone)]
@@ -59,7 +60,7 @@ pub(crate) struct Contribution {
     pub react: Value,
     pub resist_small_signal: Value,
     pub react_small_signal: Value,
-    pub noise: Vec<Noise>,
+    pub noises: Vec<Noise>,
 }
 
 impl Contribution {
@@ -68,7 +69,7 @@ impl Contribution {
             && self.react == F_ZERO
             && self.resist_small_signal == F_ZERO
             && self.react_small_signal == F_ZERO
-            && self.noise.is_empty()
+            && self.noises.is_empty()
     }
 }
 
@@ -80,7 +81,7 @@ impl Default for Contribution {
             react: F_ZERO,
             resist_small_signal: F_ZERO,
             react_small_signal: F_ZERO,
-            noise: Vec::new(),
+            noises: Vec::new(),
         }
     }
 }
@@ -142,9 +143,9 @@ impl Noise {
     }
 }
 
-/// An intermediate representation the topology of a circuit. It represents circuit
-/// topology as a set of contributions to branches and implicit equations. These
-/// contributions are divided into resistive/reactive voltage/current.
+/// An intermediate representation the topology of a model. It represents
+/// topology as a set of contributions to branches and implicit equations.
+/// These contributions are divided into resistive/reactive voltage/current.
 #[derive(Debug)]
 pub(crate) struct Topology {
     pub(crate) branches: TiMap<BranchId, BranchWrite, BranchInfo>,
@@ -156,7 +157,6 @@ pub(crate) struct Topology {
 impl Topology {
     pub(crate) fn new(ctxt: &mut Context) -> Self {
         let mut branches = TiMap::with_capacity(128);
-        let mut contributes = AHashMap::with_capacity(128);
         let mut implicit_equations: TiVec<_, _> = ctxt
             .intern
             .implicit_equations
@@ -183,7 +183,11 @@ impl Topology {
                 })
             })
             .collect();
+        let small_signal_vals =
+            IndexSet::with_capacity_and_hasher(128, ahash::RandomState::default());
 
+        /* Map from MIR Values to contributions */
+        let mut contributes = AHashMap::with_capacity(128);
         for (kind, val) in &ctxt.intern.outputs {
             let Some(mut val) = val.expand() else { continue };
             val = strip_optbarrier_if_const(&ctxt.func, val);
@@ -243,21 +247,21 @@ impl Topology {
                     };
                     let contrib = BranchInfo {
                         is_potential,
-                        voltage_src: Contribution {
+                        potential: Contribution {
                             unknown: voltage,
                             resist: get_contrib(false, true),
                             react: get_contrib(true, true),
                             resist_small_signal: F_ZERO,
                             react_small_signal: F_ZERO,
-                            noise: Vec::new(),
+                            noises: Vec::new(),
                         },
-                        current_src: Contribution {
+                        flow: Contribution {
                             unknown: current,
                             resist: get_contrib(false, false),
                             react: get_contrib(true, false),
                             resist_small_signal: F_ZERO,
                             react_small_signal: F_ZERO,
-                            noise: Vec::new(),
+                            noises: Vec::new(),
                         },
                     };
                     branches.insert_full(branch, contrib);
@@ -265,16 +269,16 @@ impl Topology {
                 _ => {}
             }
         }
-        let small_signal_vals =
-            IndexSet::with_capacity_and_hasher(128, ahash::RandomState::default());
+
+        let mut topology =
+            Topology { branches, contributes, implicit_equations, small_signal_vals };
 
         let mut postdom_frontiers = SparseBitMatrix::new_square(ctxt.func.layout.num_blocks());
         ctxt.init_op_dependent_insts(&mut postdom_frontiers);
         ctxt.dom_tree.compute_postdom_frontiers(&ctxt.cfg, &mut postdom_frontiers);
 
-        let mut topology =
-            Topology { branches, contributes, implicit_equations, small_signal_vals };
         let num_insts = ctxt.func.dfg.num_insts();
+
         let mut builder = Builder {
             topology: &mut topology,
             db: ctxt.db,
@@ -298,41 +302,17 @@ impl Topology {
 
         // JW: I suppose this field is only used during building. Therefore, clearing it helps
         // reducing memory usage. For debug purposes, this field shall be retained. However, the
-        // order of hashmap is arbitrary, and will cause the unit tests fail, so this field is
+        // order of hashmap is arbitrary, and will cause the unit tests to fail, so this field is
         // still cleared anyway.
         //
         // if !cfg!(debug_assertions) {
         //     topology.contributes = AHashMap::new();
         // }
+        //
+        // clear the hashmap
         topology.contributes = AHashMap::new();
 
         topology
-    }
-
-    fn as_contribution(&self, val: Value) -> Option<ContributeKind> {
-        self.contributes.get(&val).copied()
-    }
-
-    fn get_branch_mut(&mut self, branch: BranchId) -> &mut BranchInfo {
-        &mut self.branches[branch]
-    }
-
-    fn get_mut(&mut self, contrib: ContributeKind) -> &mut Contribution {
-        match contrib {
-            ContributeKind::Branch { id, is_potential: true, .. } => {
-                &mut self.get_branch_mut(id).voltage_src
-            }
-            ContributeKind::Branch { id, is_potential: false, .. } => {
-                &mut self.get_branch_mut(id).current_src
-            }
-            ContributeKind::ImplicitEquation { equation: eq, .. } => {
-                &mut self.implicit_equations[eq]
-            }
-        }
-    }
-
-    fn branches(&self) -> typed_indexmap::map::Iter<'_, BranchId, BranchWrite, BranchInfo> {
-        self.branches.iter_enumerated()
     }
 
     fn new_implicit_equation(&mut self, equation: ImplicitEquation, contributes: Contribution) {
@@ -350,5 +330,31 @@ impl Topology {
         }
         let eq = self.implicit_equations.push_and_get_key(contributes);
         debug_assert_eq!(eq, equation);
+    }
+
+    fn as_contribution(&self, val: Value) -> Option<ContributeKind> {
+        self.contributes.get(&val).copied()
+    }
+
+    fn get_mut(&mut self, contrib: ContributeKind) -> &mut Contribution {
+        match contrib {
+            ContributeKind::Branch { id, is_potential: true, .. } => {
+                &mut self.get_branch_mut(id).potential
+            }
+            ContributeKind::Branch { id, is_potential: false, .. } => {
+                &mut self.get_branch_mut(id).flow
+            }
+            ContributeKind::ImplicitEquation { equation, .. } => {
+                &mut self.implicit_equations[equation]
+            }
+        }
+    }
+
+    fn get_branch_mut(&mut self, branch: BranchId) -> &mut BranchInfo {
+        &mut self.branches[branch]
+    }
+
+    fn branches(&self) -> typed_indexmap::map::Iter<'_, BranchId, BranchWrite, BranchInfo> {
+        self.branches.iter_enumerated()
     }
 }

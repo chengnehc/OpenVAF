@@ -1,5 +1,5 @@
 //! This module is responsible for determining whether an internal unknown needs
-//! to be created for an anlog opertor (like ddt) or to turn the analog operator
+//! to be created for an anlaog operator (ddt, noise), or to turn the analog operator
 //! into a separate dimension instead.
 
 use std::mem;
@@ -14,9 +14,10 @@ use mir::{
 };
 use typed_indexmap::TiSet;
 
-use crate::topology::{Contribution, Noise};
+use super::{Contribution, Noise};
 use crate::util::{add, update_optbarrier};
 
+/// The evaluation type of an analog operator
 #[derive(Debug)]
 pub(super) enum Evaluation {
     /// The analog operator must be evaluated as a separate equation
@@ -24,9 +25,9 @@ pub(super) enum Evaluation {
     /// The analog operator can be evaluated as a linear contribution
     /// without the need for an additional unknown
     Linear {
-        /// The contribute that this linear equation writes to
-        /// Contains a painr of the original contribution and
-        /// the separate dimension it was mapped to
+        /// The contribute that this linear equation writes to.
+        /// The first Value corresponds to the original contribution, and
+        /// the second Value corresponds to the separate dimension it was mapped to
         contributes: Box<[(Value, Value)]>,
     },
     /// This operator is not used and can be ignored
@@ -34,7 +35,8 @@ pub(super) enum Evaluation {
 }
 
 impl super::Builder<'_> {
-    /// Build topology for a list of analog operators (noise and ddt) with a predetermined evaluation.
+    /// Build topology for a list of analog operators (noise and ddt)
+    /// with predetermined evaluation types
     pub(super) fn builid_analog_operators(
         &mut self,
         analog_operators: Vec<(Inst, Evaluation)>,
@@ -45,6 +47,7 @@ impl super::Builder<'_> {
             let arg0 = self.func.dfg.instr_args(operator_inst)[0];
             let cb = self.func.dfg.func_ref(operator_inst).unwrap();
             let is_noise = intern.callbacks[cb].is_noise();
+
             match evaluation {
                 Evaluation::Dead => {
                     cov_mark::hit!(dead_noise);
@@ -54,11 +57,11 @@ impl super::Builder<'_> {
                 Evaluation::Linear { contributes } => {
                     cov_mark::hit!(linear_operator);
                     let cb = &intern.callbacks[cb];
-                    for (contribute, mut dimension) in &*contributes {
-                        let resistive_contribute = *contribute;
-                        let inst = self.func.dfg.value_def(resistive_contribute).inst().unwrap();
-                        let contribute = self.topology.as_contribution(*contribute).unwrap();
-                        let contribute = self.topology.get_mut(contribute);
+                    for (val, mut dimension) in &*contributes {
+                        let resist_contribute = *val;
+                        let inst = self.func.dfg.value_def(resist_contribute).inst().unwrap();
+                        let kind = self.topology.as_contribution(resist_contribute).unwrap();
+                        let contribution = self.topology.get_mut(kind);
                         if is_noise {
                             dimension = FuncCursor::new(self.func)
                                 .after_inst(inst)
@@ -71,11 +74,11 @@ impl super::Builder<'_> {
                                 &mut ssa_builder,
                                 self.func,
                             );
-                            contribute.noise.push(noise)
+                            contribution.noises.push(noise)
                         } else {
                             update_optbarrier(
                                 self.func,
-                                &mut contribute.react,
+                                &mut contribution.react,
                                 |mut val, cursor| {
                                     add(cursor, &mut val, dimension, false);
                                     val
@@ -111,7 +114,7 @@ impl super::Builder<'_> {
                         Contribution {
                             unknown: Some(eq_val),
                             resist: neg_eq_val,
-                            noise: vec![Noise::new(
+                            noises: vec![Noise::new(
                                 operator_inst,
                                 &intern.callbacks[cb],
                                 F_ONE,
@@ -168,7 +171,7 @@ impl super::Builder<'_> {
                         }
                         analog_operators.push((
                             inst,
-                            self.determine_evaluation(
+                            self.determine_evaluation_type(
                                 false,
                                 inst,
                                 postdom_frontiers,
@@ -183,7 +186,7 @@ impl super::Builder<'_> {
                     for inst in mem::take(users) {
                         analog_operators.push((
                             inst,
-                            self.determine_evaluation(
+                            self.determine_evaluation_type(
                                 true,
                                 inst,
                                 postdom_frontiers,
@@ -198,7 +201,7 @@ impl super::Builder<'_> {
         analog_operators
     }
 
-    fn determine_evaluation(
+    fn determine_evaluation_type(
         &mut self,
         noise: bool,
         inst: Inst,
@@ -226,37 +229,39 @@ impl super::Builder<'_> {
         let val_visisted =
             |val| func.dfg.value_def(val).inst().is_some_and(|inst| visisted.contains(inst));
         let mut contributes = Vec::new();
+
+        use InstructionData::*;
+        use Opcode::*;
         for &inst in postorder.iter() {
             match func.dfg.insts[inst] {
-                InstructionData::Binary { opcode: Opcode::Fadd | Opcode::Fsub, .. } => (),
+                Unary { opcode: Fneg, .. } | Binary { opcode: Fadd | Fsub, .. } => {}
+
+                Binary { opcode: Fmul, args } => {
+                    if is_op_dependent(args[0]) && is_op_dependent(args[1]) {
+                        return Evaluation::Equation;
+                    }
+                }
+                Binary { opcode: Fdiv, args } => {
+                    if is_op_dependent(args[1]) {
+                        return Evaluation::Equation;
+                    }
+                }
+
                 // for noise phis don't matter at all
                 // since its a small signal value (so doesn't need to be consistently
                 // maintained across multiple iterations). I am not quite sure if this
                 // plays nice with transient noise and other more advanced simulation
                 // types but I can't see why it wouldn't (also the language standard
                 // specifically calls these small signal sources).
-                InstructionData::PhiNode(_)
-                | InstructionData::Branch { .. }
-                | InstructionData::Binary {
-                    opcode: Opcode::Flt | Opcode::Fle | Opcode::Fgt | Opcode::Fge,
-                    ..
-                } if noise => (),
-                InstructionData::Unary { opcode: Opcode::Fneg, .. } => {}
+                PhiNode(_) | Branch { .. } | Binary { opcode: Flt | Fle | Fgt | Fge, .. }
+                    if noise => {}
+
                 // noise is always zero when these are evaluated
                 // TODO: complex noise power (would allow us to avoid creating an extra node here)
                 InstructionData::Call { func_ref, .. }
                     if noise && callbacks[func_ref] != CallBackKind::TimeDerivative => {}
-                InstructionData::Binary { opcode: Opcode::Fmul, args } => {
-                    if is_op_dependent(args[0]) && is_op_dependent(args[1]) {
-                        return Evaluation::Equation;
-                    }
-                }
-                InstructionData::Binary { opcode: Opcode::Fdiv, args } => {
-                    if is_op_dependent(args[1]) {
-                        return Evaluation::Equation;
-                    }
-                }
-                InstructionData::PhiNode(ref phi) => {
+
+                PhiNode(ref phi) => {
                     // phis are pretty complex to figure out. The most correct
                     // implementation is to check if a phi is operating point
                     // dependent. To determine that we check whether any of
@@ -297,7 +302,6 @@ impl super::Builder<'_> {
                             }
                         }
                     }
-
                     self.val_map.clear();
                     if op_dependent
                         && phi_add_chain_start(
@@ -318,9 +322,8 @@ impl super::Builder<'_> {
                         return Evaluation::Equation;
                     }
                 }
-                InstructionData::Unary { opcode: Opcode::OptBarrier, .. } => {
-                    // if used in multiple outputs its safe to assume that this
-                    // needs its own node.
+                Unary { opcode: OptBarrier, .. } => {
+                    // If used in multiple outputs, it's safe to assume that this needs its own node
                     // TODO: ignore
                     let val = func.dfg.first_result(inst);
                     let is_output = if noise {
@@ -344,9 +347,8 @@ impl super::Builder<'_> {
                         }
                     }
                 }
-                _ => {
-                    return Evaluation::Equation;
-                }
+
+                _ => return Evaluation::Equation,
             }
         }
         if contributes.is_empty() {

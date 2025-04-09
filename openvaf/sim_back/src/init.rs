@@ -9,14 +9,14 @@ use indexmap::IndexMap;
 use mir::builder::InstBuilder;
 use mir::cursor::{Cursor, FuncCursor};
 use mir::{
-    strip_optbarrier, Block, ControlFlowGraph, DominatorTree, FuncRef, Function, Inst,
-    InstructionData, Opcode, Value, FALSE,
+    Block, ControlFlowGraph, DominatorTree, FuncRef, Function, Inst, InstructionData, Opcode,
+    Value, FALSE,
 };
 use mir_opt::{ClassId, GVN};
 use typed_indexmap::TiMap;
 
 use crate::context::Context;
-use crate::util::strip_optbarrier_if_const;
+use crate::util::{strip_optbarrier, strip_optbarrier_if_const};
 
 #[cfg(test)]
 mod tests;

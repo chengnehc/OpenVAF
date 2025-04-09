@@ -7,8 +7,8 @@ use expect_test::expect_file;
 use indoc::indoc;
 use stdx::openvaf_test_data;
 
+use super::Topology;
 use crate::context::{Context, OptimizationStage};
-use crate::topology::Topology;
 
 fn compile(src: &str) -> (Function, Topology, String) {
     let db = CompilationDB::new_from_vfs(src).unwrap();

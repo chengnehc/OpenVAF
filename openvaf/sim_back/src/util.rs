@@ -4,17 +4,7 @@ use bitset::BitSet;
 use hir_lower::HirInterner;
 use mir::builder::InstBuilder;
 use mir::cursor::{Cursor, FuncCursor};
-use mir::{strip_optbarrier, Function, Inst, Value, ValueDef, F_ZERO};
-
-pub fn strip_optbarrier_if_const(func: impl AsRef<Function>, val: Value) -> Value {
-    let func = func.as_ref();
-    let stripped = strip_optbarrier(func, val);
-    if func.dfg.value_def(stripped).as_const().is_some() {
-        stripped
-    } else {
-        val
-    }
-}
+use mir::{Function, Inst, InstructionData, Opcode, Value, ValueDef, F_ZERO};
 
 pub fn is_op_dependent(
     func: impl AsRef<Function>,
@@ -29,6 +19,29 @@ pub fn is_op_dependent(
     }
 }
 
+/// Go back along the use-def chain to get the first actual instruction producing value
+pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
+    let func = func.as_ref();
+    while let Some(inst) = func.dfg.value_def(val).inst() {
+        if let InstructionData::Unary { opcode: Opcode::OptBarrier, arg } = func.dfg.insts[inst] {
+            val = arg;
+        } else {
+            break;
+        }
+    }
+    val
+}
+
+pub fn strip_optbarrier_if_const(func: impl AsRef<Function>, val: Value) -> Value {
+    let func = func.as_ref();
+    let stripped = strip_optbarrier(func, val);
+    if func.dfg.value_def(stripped).as_const().is_some() {
+        stripped
+    } else {
+        val
+    }
+}
+
 pub fn update_optbarrier(
     func: &mut Function,
     val: &mut Value,
@@ -39,7 +52,7 @@ pub fn update_optbarrier(
         arg = update(arg, &mut FuncCursor::new(func).at_inst(inst));
         func.dfg.replace(inst).optbarrier(arg);
     } else {
-        let mut cursor = FuncCursor::new(&mut *func).at_exit();
+        let mut cursor = FuncCursor::new(func).at_exit();
         *val = update(*val, &mut cursor);
         *val = cursor.ins().ensure_optbarrier(*val)
     }
@@ -47,7 +60,7 @@ pub fn update_optbarrier(
 
 /// Create MIR instruction that adds or subtracts `val` to `dst`.
 ///
-/// Sets dst to this new value.
+/// `dst` will be set to the result value of this newly created instruction.
 pub fn add(cursor: &mut FuncCursor, dst: &mut Value, val: Value, negate: bool) {
     match (*dst, val) {
         // val is zero, do nothing

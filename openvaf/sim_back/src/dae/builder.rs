@@ -8,8 +8,8 @@ use indexmap::IndexSet;
 use mir::builder::InstBuilder;
 use mir::cursor::{Cursor, FuncCursor};
 use mir::{
-    strip_optbarrier, Block, ControlFlowGraph, DominatorTree, Inst, KnownDerivatives, Unknown,
-    Value, FALSE, F_ONE, F_ZERO, TRUE,
+    Block, ControlFlowGraph, DominatorTree, Inst, KnownDerivatives, Unknown, Value, FALSE, F_ONE,
+    F_ZERO, TRUE,
 };
 use mir_autodiff::auto_diff;
 use typed_index_collections::TiVec;
@@ -17,38 +17,29 @@ use typed_index_collections::TiVec;
 use crate::context::Context;
 use crate::noise::NoiseSource;
 use crate::topology::{BranchInfo, Contribution};
-use crate::util::{add, is_op_dependent, update_optbarrier};
+use crate::util::{self, add, is_op_dependent, strip_optbarrier, update_optbarrier};
 use crate::SimUnknownKind;
 
 use super::{DaeSystem, MatrixEntry, Residual, SimUnknown};
 
 impl Residual {
-    fn add(&mut self, cursor: &mut FuncCursor, negate: bool, mut val: Value) {
-        // Go back and skip all optbarriers to get the first actual instruction producing val
+    /// Add/subtract val to/from resistive residual value, replace resistive value by result
+    fn add(&mut self, mut val: Value, cursor: &mut FuncCursor, negate: bool) {
         val = strip_optbarrier(&cursor, val);
-        // Add or subtract val to resistive residual value, replace resistive value by result
-        add(cursor, &mut self.resist, val, negate);
+        util::add(cursor, &mut self.resist, val, negate);
     }
 
+    /// Add/subtract contrib to/from residual, replace residual with result
     fn add_contribution(&mut self, contrib: &Contribution, cursor: &mut FuncCursor, negate: bool) {
         let mut add = |residual: &mut Value, contrib| {
-            // Go back and skip all optbarriers to get the first actual instruction producing contrib
             let contrib = strip_optbarrier(&mut *cursor, contrib);
-            // Add/subtract contrib to/from residual, replace residual with result
-            add(cursor, residual, contrib, negate)
+            util::add(cursor, residual, contrib, negate)
         };
         add(&mut self.resist, contrib.resist);
         add(&mut self.react, contrib.react);
         add(&mut self.resist_small_signal, contrib.resist_small_signal);
         add(&mut self.react_small_signal, contrib.react_small_signal);
     }
-}
-
-macro_rules! get_residual {
-    ($self: ident, $unknown: expr) => {{
-        let unknown = $self.ensure_unknown($unknown);
-        &mut $self.system.residual[unknown]
-    }};
 }
 
 pub(super) struct Builder<'a> {
@@ -114,9 +105,26 @@ impl<'a> Builder<'a> {
 
         self.system
     }
+}
 
-    pub(super) fn build_node(&mut self, node: Node) {
+macro_rules! get_residual {
+    ($self: ident, $unknown: expr) => {{
+        let unknown = $self.ensure_unknown($unknown);
+        &mut $self.system.residual[unknown]
+    }};
+}
+
+impl Builder<'_> {
+    fn build_node(&mut self, node: Node) {
         self.ensure_unknown(SimUnknownKind::KirchhoffLaw(node));
+    }
+
+    fn ensure_unknown(&mut self, unknown: SimUnknownKind) -> SimUnknown {
+        let (unknown, new) = self.system.unknowns.ensure(unknown);
+        if new {
+            self.system.residual.push(Residual::default());
+        }
+        unknown
     }
 
     /// Return a list of all parameters that read from one of the simulation
@@ -328,7 +336,7 @@ impl<'a> Builder<'a> {
                     self.add_source_equation(
                         &contrib,
                         // &contributions.current_src,
-                        contributions.current_src.unknown.unwrap(),
+                        contributions.flow.unknown.unwrap(),
                         branch,
                     );
                 } else {
@@ -342,24 +350,17 @@ impl<'a> Builder<'a> {
                 // sources, make sure to ignore these branches
                 let requires_unknown =
                     self.intern.is_param_live(&self.cursor, &ParamKind::Current(current));
-                if requires_unknown || !contributions.voltage_src.is_trivial() {
+                if requires_unknown || !contributions.potential.is_trivial() {
                     let contrib = self.voltage_branch(contributions);
-                    self.add_source_equation(
-                        &contrib,
-                        contributions.current_src.unknown.unwrap(),
-                        branch,
-                    );
+                    self.add_source_equation(&contrib, contributions.flow.unknown.unwrap(), branch);
                 }
             }
             // switch branch
             _ => {
                 // In most cases, what looks like a switch branch is just node collapse hint.
                 // Make sure we don't create switch branches when they aren't needed.
-                let requires_current_unknown = !self
-                    .cursor
-                    .as_ref()
-                    .dfg
-                    .value_dead(contributions.current_src.unknown.unwrap());
+                let requires_current_unknown =
+                    !self.cursor.as_ref().dfg.value_dead(contributions.flow.unknown.unwrap());
                 let op_dependent = is_op_dependent(
                     &self.cursor,
                     contributions.is_potential,
@@ -367,9 +368,7 @@ impl<'a> Builder<'a> {
                     self.intern,
                 );
 
-                if op_dependent
-                    || requires_current_unknown
-                    || !contributions.voltage_src.is_trivial()
+                if op_dependent || requires_current_unknown || !contributions.potential.is_trivial()
                 {
                     // An actual switch branch
                     let start_bb = self.cursor.current_block().unwrap();
@@ -400,11 +399,7 @@ impl<'a> Builder<'a> {
                     // Go to the end of next_block
                     self.cursor.goto_bottom(next_block);
                     let contrib = self.switch_branch(contributions, voltage_src_bb, start_bb);
-                    self.add_source_equation(
-                        &contrib,
-                        contributions.current_src.unknown.unwrap(),
-                        branch,
-                    )
+                    self.add_source_equation(&contrib, contributions.flow.unknown.unwrap(), branch)
                 } else {
                     // Not a real switch branch
                     let contrib = self.current_branch(contributions);
@@ -422,12 +417,15 @@ impl<'a> Builder<'a> {
         );
     }
 
-    fn current_branch(&mut self, BranchInfo { current_src, .. }: &BranchInfo) -> Contribution {
+    fn current_branch(
+        &mut self,
+        BranchInfo { flow: current_src, .. }: &BranchInfo,
+    ) -> Contribution {
         let mfactor = self
             .intern
             .ensure_param(&mut self.cursor, ParamKind::ParamSysFun(ParamSysFun::mfactor));
-        let mut noise = Vec::with_capacity(current_src.noise.len());
-        let current_noise = current_src.noise.iter().map(|src| {
+        let mut noise = Vec::with_capacity(current_src.noises.len());
+        let current_noise = current_src.noises.iter().map(|src| {
             let mut src = src.clone();
             src.factor = self.mfactor_multiply(mfactor, src.factor);
             src
@@ -440,16 +438,19 @@ impl<'a> Builder<'a> {
             react: current_src.react,
             resist_small_signal: current_src.resist_small_signal,
             react_small_signal: current_src.react_small_signal,
-            noise,
+            noises: noise,
         }
     }
 
-    fn voltage_branch(&mut self, BranchInfo { voltage_src, .. }: &BranchInfo) -> Contribution {
+    fn voltage_branch(
+        &mut self,
+        BranchInfo { potential: voltage_src, .. }: &BranchInfo,
+    ) -> Contribution {
         let mfactor = self
             .intern
             .ensure_param(&mut self.cursor, ParamKind::ParamSysFun(ParamSysFun::mfactor));
-        let mut noise = Vec::with_capacity(voltage_src.noise.len());
-        let voltage_noise = voltage_src.noise.iter().map(|src| {
+        let mut noise = Vec::with_capacity(voltage_src.noises.len());
+        let voltage_noise = voltage_src.noises.iter().map(|src| {
             let mut src = src.clone();
             src.factor = self.mfactor_divide(mfactor, src.factor);
             src
@@ -462,13 +463,13 @@ impl<'a> Builder<'a> {
             react: voltage_src.react,
             resist_small_signal: voltage_src.resist_small_signal,
             react_small_signal: voltage_src.react_small_signal,
-            noise,
+            noises: noise,
         }
     }
 
     fn switch_branch(
         &mut self,
-        BranchInfo { voltage_src, current_src, .. }: &BranchInfo,
+        BranchInfo { potential: voltage_src, flow: current_src, .. }: &BranchInfo,
         voltage_bb: Block,
         current_bb: Block,
     ) -> Contribution {
@@ -490,8 +491,8 @@ impl<'a> Builder<'a> {
         // Build noise phi commands
         // Voltage noise, for each noise add a phi instruction that joins the values for
         // the case the switch branch behaves as a voltage source (source value) and as a current source (0)
-        let mut noise = Vec::with_capacity(voltage_src.noise.len() + current_src.noise.len());
-        let voltage_noise = voltage_src.noise.iter().map(|src| {
+        let mut noise = Vec::with_capacity(voltage_src.noises.len() + current_src.noises.len());
+        let voltage_noise = voltage_src.noises.iter().map(|src| {
             let mut src = src.clone();
             src.factor = select(src.factor, F_ZERO);
             src
@@ -499,7 +500,7 @@ impl<'a> Builder<'a> {
         noise.extend(voltage_noise);
         // Current noise, for each noise add a phi instruction that joins the values for
         // the case the switch branch behaves as a voltage source (0) and as a current source (source value)
-        let current_noise = current_src.noise.iter().map(|src| {
+        let current_noise = current_src.noises.iter().map(|src| {
             let mut src = src.clone();
             src.factor = select(F_ZERO, src.factor);
             src
@@ -517,8 +518,8 @@ impl<'a> Builder<'a> {
         let mfactor = self
             .intern
             .ensure_param(&mut self.cursor, ParamKind::ParamSysFun(ParamSysFun::mfactor));
-        for ii in 0..voltage_src.noise.len() + current_src.noise.len() {
-            if ii < voltage_src.noise.len() {
+        for ii in 0..voltage_src.noises.len() + current_src.noises.len() {
+            if ii < voltage_src.noises.len() {
                 // Voltage noise
                 noise[ii].factor = self.mfactor_divide(mfactor, noise[ii].factor);
             } else {
@@ -533,7 +534,7 @@ impl<'a> Builder<'a> {
             react: phi_react,
             resist_small_signal: phi_resist_ss,
             react_small_signal: phi_react_ss,
-            noise,
+            noises: noise,
         }
     }
 
@@ -573,14 +574,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn ensure_unknown(&mut self, unknown: SimUnknownKind) -> SimUnknown {
-        let (unknown, new) = self.system.unknowns.ensure(unknown);
-        if new {
-            self.system.residual.push(Residual::default());
-        }
-        unknown
-    }
-
     fn add_kirchhoff_law(&mut self, contrib: &Contribution, dst: BranchWrite) {
         let (hi, lo) = dst.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
@@ -596,16 +589,16 @@ impl<'a> Builder<'a> {
     fn add_source_equation(&mut self, contrib: &Contribution, eq_val: Value, dst: BranchWrite) {
         let residual = get_residual!(self, SimUnknownKind::Current(dst.into()));
         residual.add_contribution(contrib, &mut self.cursor, false);
-        residual.add(&mut self.cursor, true, contrib.unknown.unwrap());
+        residual.add(contrib.unknown.unwrap(), &mut self.cursor, true);
         // self.add_noise(contrib, SimUnknownKind::Current(dst.into()), None, false);
         self.add_noise(contrib, SimUnknownKind::Current(dst.into()), None);
 
         let (hi, lo) = dst.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
-        get_residual!(self, hi).add(&mut self.cursor, false, eq_val);
+        get_residual!(self, hi).add(eq_val, &mut self.cursor, false);
         if let Some(lo) = lo {
-            get_residual!(self, lo).add(&mut self.cursor, true, eq_val);
+            get_residual!(self, lo).add(eq_val, &mut self.cursor, true);
         }
     }
 
@@ -617,7 +610,7 @@ impl<'a> Builder<'a> {
     ) {
         let hi = self.ensure_unknown(hi);
         let lo = lo.map(|lo| self.ensure_unknown(lo));
-        self.system.noise_sources.extend(contrib.noise.iter().map(|src| {
+        self.system.noise_sources.extend(contrib.noises.iter().map(|src| {
             let factor = src.factor;
             NoiseSource { name: src.name, kind: src.kind.clone(), hi, lo, factor }
         }))

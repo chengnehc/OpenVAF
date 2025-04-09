@@ -9,21 +9,21 @@ Topology {
             },
             BranchInfo {
                 is_potential: v1,
-                voltage_src: Contribution {
+                potential: Contribution {
                     unknown: None,
                     resist: v3,
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
-                current_src: Contribution {
+                flow: Contribution {
                     unknown: None,
                     resist: v31,
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
             },
         ),
@@ -37,7 +37,7 @@ Topology {
             react: v39,
             resist_small_signal: v3,
             react_small_signal: v3,
-            noise: [],
+            noises: [],
         },
     },
     small_signal_vals: {},

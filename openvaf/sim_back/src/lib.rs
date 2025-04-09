@@ -11,12 +11,12 @@ use mir_opt::{simplify_cfg, sparse_conditional_constant_propagation};
 pub mod dae;
 pub mod init;
 pub mod node_collapse;
+pub mod util;
 
 mod context;
 mod module_info;
 mod noise;
 mod topology;
-mod util;
 
 pub use module_info::{collect_modules, ModuleInfo};
 

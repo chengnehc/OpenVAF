@@ -306,7 +306,7 @@ impl BranchKind {
     }
 }
 
-/// `branch_lvalue`/`branch_probe_function_call` as specified in [LRM 5.6.1]
+/// Namely `branch_lvalue` as specified in [LRM 5.6.1]
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum BranchWrite {
     Named(Branch),

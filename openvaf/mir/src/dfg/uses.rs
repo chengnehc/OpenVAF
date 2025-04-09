@@ -168,7 +168,7 @@ impl DataFlowGraph {
     /// Change the `dst` value to behave as an alias of `src`. This means that all uses of `dst`
     /// will behave as if they used that value `src`.
     ///
-    /// The `dst` value can't be attached to an instruction or block.
+    /// The `dst` value can't be attached to an instruction or block then.
     ///
     /// # Note
     /// Calling this value with `dst` == `src` will cause incorrect results

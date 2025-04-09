@@ -4,7 +4,7 @@ use hir::Node;
 use indexmap::IndexMap;
 use mir::{Const, InstructionData, Opcode, Value, ValueDef, FALSE, F_ZERO};
 
-use crate::topology::Builder;
+use super::Builder;
 use crate::util::{add, update_optbarrier};
 
 const RECUSE_DEPTH: u32 = 20;
@@ -98,9 +98,8 @@ impl Builder<'_> {
             let (hi, lo) = branch.node_pair(self.db);
             let is_current_src = contributes.is_potential == FALSE;
             let potential =
-                contributes.voltage_src.unknown.filter(|&val| !self.func.dfg.value_dead(val));
-            let flow =
-                contributes.current_src.unknown.filter(|&val| !self.func.dfg.value_dead(val));
+                contributes.potential.unknown.filter(|&val| !self.func.dfg.value_dead(val));
+            let flow = contributes.flow.unknown.filter(|&val| !self.func.dfg.value_dead(val));
             if let Some(potential) = potential {
                 let mut register_node = |node: Node, valid: bool| {
                     if node.is_port(self.db) {
@@ -115,11 +114,11 @@ impl Builder<'_> {
                             true,
                         ));
                         *valid_ = *valid_ && valid;
-                        if contributes.current_src.resist != F_ZERO {
-                            candidate.resist.push(contributes.current_src.resist);
+                        if contributes.flow.resist != F_ZERO {
+                            candidate.resist.push(contributes.flow.resist);
                         }
-                        if contributes.current_src.react != F_ZERO {
-                            candidate.react.push(contributes.current_src.react);
+                        if contributes.flow.react != F_ZERO {
+                            candidate.react.push(contributes.flow.react);
                         }
                     }
                 };
@@ -131,15 +130,15 @@ impl Builder<'_> {
                 }
             }
             if let Some(flow) = flow.filter(|_| is_current_src) {
-                let resist = if contributes.current_src.resist == F_ZERO {
+                let resist = if contributes.flow.resist == F_ZERO {
                     Vec::new()
                 } else {
-                    vec![contributes.current_src.resist]
+                    vec![contributes.flow.resist]
                 };
-                let react = if contributes.current_src.react == F_ZERO {
+                let react = if contributes.flow.react == F_ZERO {
                     Vec::new()
                 } else {
-                    vec![contributes.current_src.react]
+                    vec![contributes.flow.react]
                 };
                 if !resist.is_empty() || !react.is_empty() {
                     candidates.push(Candidate { kind: CandidateKind::Flow { flow }, resist, react })

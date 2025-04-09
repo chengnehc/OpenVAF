@@ -6,7 +6,7 @@ Topology {
             ),
             BranchInfo {
                 is_potential: v1,
-                voltage_src: Contribution {
+                potential: Contribution {
                     unknown: Some(
                         v20,
                     ),
@@ -14,9 +14,9 @@ Topology {
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
-                current_src: Contribution {
+                flow: Contribution {
                     unknown: Some(
                         v47,
                     ),
@@ -24,7 +24,7 @@ Topology {
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [
+                    noises: [
                         Noise {
                             name: Spur(1),
                             kind: WhiteNoise {
@@ -42,7 +42,7 @@ Topology {
             ),
             BranchInfo {
                 is_potential: v1,
-                voltage_src: Contribution {
+                potential: Contribution {
                     unknown: Some(
                         v20,
                     ),
@@ -50,15 +50,15 @@ Topology {
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
-                current_src: Contribution {
+                flow: Contribution {
                     unknown: None,
                     resist: v59,
                     react: v3,
                     resist_small_signal: v78,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
             },
         ),
@@ -68,7 +68,7 @@ Topology {
             ),
             BranchInfo {
                 is_potential: v1,
-                voltage_src: Contribution {
+                potential: Contribution {
                     unknown: Some(
                         v20,
                     ),
@@ -76,15 +76,15 @@ Topology {
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
-                current_src: Contribution {
+                flow: Contribution {
                     unknown: None,
                     resist: v60,
                     react: v66,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
             },
         ),
@@ -97,21 +97,21 @@ Topology {
             },
             BranchInfo {
                 is_potential: v1,
-                voltage_src: Contribution {
+                potential: Contribution {
                     unknown: None,
                     resist: v3,
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
-                current_src: Contribution {
+                flow: Contribution {
                     unknown: None,
                     resist: v61,
                     react: v68,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
             },
         ),
@@ -124,21 +124,21 @@ Topology {
             },
             BranchInfo {
                 is_potential: v1,
-                voltage_src: Contribution {
+                potential: Contribution {
                     unknown: None,
                     resist: v3,
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
-                current_src: Contribution {
+                flow: Contribution {
                     unknown: None,
                     resist: v62,
                     react: v67,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
             },
         ),
@@ -151,21 +151,21 @@ Topology {
             },
             BranchInfo {
                 is_potential: v1,
-                voltage_src: Contribution {
+                potential: Contribution {
                     unknown: None,
                     resist: v3,
                     react: v3,
                     resist_small_signal: v3,
                     react_small_signal: v3,
-                    noise: [],
+                    noises: [],
                 },
-                current_src: Contribution {
+                flow: Contribution {
                     unknown: None,
                     resist: v63,
                     react: v3,
                     resist_small_signal: v72,
                     react_small_signal: v3,
-                    noise: [
+                    noises: [
                         Noise {
                             name: Spur(2),
                             kind: WhiteNoise {

@@ -276,12 +276,13 @@ pub enum PlaceKind {
         is_reactive: bool,
         is_potential: bool,
     },
-    /// A bool flag indicating whether a contribution is potential
+    /// A flag indicating whether a contribution is potential
     IsPotential(BranchWrite),
     ImplicitResidual {
         equation: ImplicitEquation,
         reactive: bool,
     },
+    /// A flag indicating whether an implicit equation should be collapsed
     CollapseImplicitEquation(ImplicitEquation),
     BoundStep,
     /// A parameter during initialization is mutable (write default in case not given)
@@ -387,6 +388,8 @@ impl TryFrom<CurrentKind> for BranchWrite {
     }
 }
 
+/// Implicit equation or node, which could be automatically generated
+/// via ddt(), idt() operators and noise source.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ImplicitEquation(u32);
 impl_idx_from!(ImplicitEquation(u32));
