@@ -1,4 +1,4 @@
-use hir_lower::{CallBackKind, CurrentKind, LimitState, ParamKind};
+use hir_lower::{CallBackKind, FlowKind, LimitState, ParamKind};
 use llvm::IntPredicate::{IntNE, IntULT};
 use llvm::{
     LLVMAppendBasicBlockInContext, LLVMBuildAlloca, LLVMBuildAnd, LLVMBuildBr, LLVMBuildCall2,
@@ -112,15 +112,15 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                                 .unwrap_or_else(|| model_data.param_loc(cx, param, model).unwrap())
                                 .into()
                         }
-                        ParamKind::Voltage { hi, lo } => {
+                        ParamKind::Potential { hi, lo } => {
                             let hi = get_prev_solve(SimUnknownKind::KirchhoffLaw(hi));
                             lo.map_or(hi, |lo| {
                                 let lo = get_prev_solve(SimUnknownKind::KirchhoffLaw(lo));
                                 llvm::LLVMBuildFSub(builder.llbuilder, hi, lo, UNNAMED)
                             })
                         }
-                        ParamKind::Current(CurrentKind::Port(_)) => cx.const_real(0.0),
-                        ParamKind::Current(kind) => get_prev_solve(SimUnknownKind::Current(kind)),
+                        ParamKind::Flow(FlowKind::Port(_)) => cx.const_real(0.0),
+                        ParamKind::Flow(kind) => get_prev_solve(SimUnknownKind::FlowBranch(kind)),
                         ParamKind::ImplicitUnknown(equation) => {
                             get_prev_solve(SimUnknownKind::Implicit(equation))
                         }

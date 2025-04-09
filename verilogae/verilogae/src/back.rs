@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 
 use camino::Utf8Path;
 use hir::Type;
-use hir_lower::{CallBackKind, CurrentKind, HirInterner, ParamInfoKind, ParamKind, PlaceKind};
+use hir_lower::{CallBackKind, FlowKind, HirInterner, ParamInfoKind, ParamKind, PlaceKind};
 use lasso::Rodeo;
 use llvm::{OptLevel, UNNAMED};
 use mir::{ControlFlowGraph, FuncRef, Function};
@@ -153,7 +153,7 @@ impl<'ll> Codegen<'_, '_, 'll> {
 
     unsafe fn read_voltages(&mut self, offset: &'ll llvm::Value, ptr: &'ll llvm::Value) {
         let voltages = self.intern.live_params(&self.func.dfg).filter_map(|(id, kind, _)| {
-            if let ParamKind::Voltage { hi, lo } = kind {
+            if let ParamKind::Potential { hi, lo } = kind {
                 Some((id, (*hi, *lo)))
             } else {
                 None
@@ -196,7 +196,7 @@ impl<'ll> Codegen<'_, '_, 'll> {
 
     unsafe fn read_currents(&mut self, offset: &'ll llvm::Value, ptr: &'ll llvm::Value) {
         let voltages = self.intern.live_params(&self.func.dfg).filter_map(|(id, kind, _)| {
-            if let ParamKind::Current(kind) = kind {
+            if let ParamKind::Flow(kind) = kind {
                 Some((id, *kind))
             } else {
                 None
@@ -204,7 +204,7 @@ impl<'ll> Codegen<'_, '_, 'll> {
         });
 
         let default_val = |(id, kind)| {
-            if let CurrentKind::Branch(branch) = kind {
+            if let FlowKind::Branch(branch) = kind {
                 if let Some(val) = self.model_info.optional_currents.get(&branch) {
                     return Some(((id, kind), self.builder.cx.const_real(*val)));
                 }
@@ -339,8 +339,8 @@ impl CodegenCtx<'_, '_> {
 
                 let val = match kind {
                     ParamKind::Param(_)
-                    | ParamKind::Voltage { .. }
-                    | ParamKind::Current(_)
+                    | ParamKind::Potential { .. }
+                    | ParamKind::Flow(_)
                     | ParamKind::HiddenState(_) => return BuilderVal::Undef,
                     ParamKind::Temperature => unsafe {
                         let temperature = llvm::LLVMGetParam(llfun, 8);
@@ -428,10 +428,10 @@ impl CodegenCtx<'_, '_> {
     pub(crate) fn ensure_names(&mut self, db: &CompilationDB, intern: &HirInterner) {
         for param in &intern.params.raw {
             match *param.0 {
-                ParamKind::Voltage { hi, lo } => {
+                ParamKind::Potential { hi, lo } => {
                     self.literals.get_or_intern(&voltage_name(db, hi, lo));
                 }
-                ParamKind::Current(kind) => {
+                ParamKind::Flow(kind) => {
                     self.literals.get_or_intern(&current_name(db, kind));
                 }
                 _ => (),
@@ -668,8 +668,8 @@ impl CodegenCtx<'_, '_> {
                     return BuilderVal::Undef;
                 }
                 let val = match kind {
-                    ParamKind::Voltage { .. }
-                    | ParamKind::Current(_)
+                    ParamKind::Potential { .. }
+                    | ParamKind::Flow(_)
                     | ParamKind::HiddenState(_) => {
                         unreachable!()
                     }

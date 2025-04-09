@@ -100,7 +100,7 @@ pub fn build_module_mir(
     simplify_cfg(&mut func, &mut cfg);
 
     for (param, (kind, _)) in intern.params.iter_enumerated() {
-        if matches!(kind, ParamKind::Voltage { .. } | ParamKind::Current(_)) {
+        if matches!(kind, ParamKind::Potential { .. } | ParamKind::Flow(_)) {
             let changed = intern.callbacks.ensure(CallBackKind::Derivative(param)).1;
             if changed {
                 let signature = CallBackKind::Derivative(param).signature();

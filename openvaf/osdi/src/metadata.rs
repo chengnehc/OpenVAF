@@ -1,7 +1,7 @@
 use std::iter;
 
 use hir::{CompilationDB, ParamSysFun, Type};
-use hir_lower::CurrentKind;
+use hir_lower::FlowKind;
 use lasso::{Rodeo, Spur};
 use llvm::{LLVMABISizeOfType, LLVMOffsetOfElement, TargetData};
 use mir::{ValueDef, F_ZERO};
@@ -336,7 +336,7 @@ fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, Str
             discipline = Some(node.discipline(db));
             is_flow = false;
         }
-        SimUnknownKind::Current(CurrentKind::Unnamed { hi, lo }) => {
+        SimUnknownKind::FlowBranch(FlowKind::Unnamed { hi, lo }) => {
             name = if let Some(lo) = lo {
                 format!("flow({},{})", &hi.name(db), &lo.name(db))
             } else {
@@ -345,12 +345,12 @@ fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, Str
             discipline = Some(hi.discipline(db));
             is_flow = true;
         }
-        SimUnknownKind::Current(CurrentKind::Branch(br)) => {
+        SimUnknownKind::FlowBranch(FlowKind::Branch(br)) => {
             name = format!("flow({})", &br.name(db));
             discipline = Some(br.discipline(db));
             is_flow = true;
         }
-        SimUnknownKind::Current(CurrentKind::Port(node)) => {
+        SimUnknownKind::FlowBranch(FlowKind::Port(node)) => {
             name = format!("flow(<{}>)", &node.name(db));
             discipline = Some(node.discipline(db));
             is_flow = true;

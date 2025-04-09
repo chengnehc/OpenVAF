@@ -3,7 +3,7 @@ use mir::builder::InstBuilder;
 use mir::{Opcode, F_ZERO};
 
 use crate::body::BodyLowerContext;
-use crate::{CallBackKind, CurrentKind, ParamKind, PlaceKind};
+use crate::{CallBackKind, FlowKind, ParamKind, PlaceKind};
 
 impl BodyLowerContext<'_, '_, '_> {
     pub(super) fn lower_stmt(&mut self, stmt: StmtId) {
@@ -127,9 +127,9 @@ impl BodyLowerContext<'_, '_, '_> {
                 } else {
                     // If not, define a new param
                     let param_kind = if is_potential {
-                        ParamKind::Voltage { hi, lo: Some(lo) }
+                        ParamKind::Potential { hi, lo: Some(lo) }
                     } else {
-                        ParamKind::Current(CurrentKind::Unnamed { hi, lo: Some(lo) })
+                        ParamKind::Flow(FlowKind::Unnamed { hi, lo: Some(lo) })
                     };
                     self.ctxt.use_param(param_kind);
                     (hi, Some(lo))

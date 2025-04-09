@@ -11,7 +11,7 @@ use camino::Utf8Path;
 use hir::{
     Branch, BranchKind, Module, Node, Parameter, PathResolveError, ScopeDef, Type, Variable,
 };
-use hir_lower::CurrentKind;
+use hir_lower::FlowKind;
 use indexmap::IndexMap;
 use lasso::{Rodeo, Spur};
 use smol_str::SmolStr;
@@ -58,10 +58,10 @@ pub fn voltage_name(db: &CompilationDB, hi: Node, lo: Option<Node>) -> String {
     name
 }
 
-pub fn current_name(db: &CompilationDB, kind: CurrentKind) -> String {
+pub fn current_name(db: &CompilationDB, kind: FlowKind) -> String {
     match kind {
-        CurrentKind::Branch(branch) => branch.name(db),
-        CurrentKind::Unnamed { hi, lo } => {
+        FlowKind::Branch(branch) => branch.name(db),
+        FlowKind::Unnamed { hi, lo } => {
             let mut name = format!(" {} ", &hi.name(db));
             if let Some(lo) = lo {
                 name.push_str(&lo.name(db));
@@ -69,7 +69,7 @@ pub fn current_name(db: &CompilationDB, kind: CurrentKind) -> String {
             }
             name
         }
-        CurrentKind::Port(port) => format!("< {} >", port.name(db)),
+        FlowKind::Port(port) => format!("< {} >", port.name(db)),
     }
 }
 

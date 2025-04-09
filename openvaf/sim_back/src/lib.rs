@@ -3,7 +3,7 @@
 use stdx::impl_debug_display;
 
 use hir::{BranchWrite, CompilationDB, Node};
-use hir_lower::{CurrentKind, HirInterner, ImplicitEquation, ParamKind};
+use hir_lower::{FlowKind, HirInterner, ImplicitEquation, ParamKind};
 use lasso::Rodeo;
 use mir::Function;
 use mir_opt::{simplify_cfg, sparse_conditional_constant_propagation};
@@ -28,15 +28,18 @@ use topology::Topology;
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub enum SimUnknownKind {
+    /// The unknown corresponds to a node potential that satisfies KCL
     KirchhoffLaw(Node),
-    Current(CurrentKind),
+    /// The unknown corresponds to the flow between two nodes
+    FlowBranch(FlowKind),
+    /// The unknown is implicitly generated rather than explicitly specified
     Implicit(ImplicitEquation),
 }
 
 impl_debug_display! {
     match SimUnknownKind{
         SimUnknownKind::KirchhoffLaw(node) => "{node:?}";
-        SimUnknownKind::Current(curr) => "br[{curr:?}]";
+        SimUnknownKind::FlowBranch(curr) => "br[{curr:?}]";
         SimUnknownKind::Implicit(node) => "{node}";
     }
 }
@@ -82,7 +85,7 @@ impl<'a> CompiledModule<'a> {
                     ParamKind::Param(param) | ParamKind::ParamGiven { param } => {
                         println!(" .. {:?} -> {:?}", param.name(db), val);
                     }
-                    ParamKind::Voltage { hi, lo } => {
+                    ParamKind::Potential { hi, lo } => {
                         if lo.is_some() {
                             print!(" .. V({:?},{:?})", hi.name(db), lo.unwrap().name(db));
                         } else {
@@ -90,11 +93,11 @@ impl<'a> CompiledModule<'a> {
                         }
                         println!(" -> {:?}", val);
                     }
-                    ParamKind::Current(ck) => match ck {
-                        CurrentKind::Branch(br) => {
+                    ParamKind::Flow(ck) => match ck {
+                        FlowKind::Branch(br) => {
                             println!(" .. {:?} -> {:?}", br.name(db), val);
                         }
-                        CurrentKind::Unnamed { hi, lo } => {
+                        FlowKind::Unnamed { hi, lo } => {
                             if lo.is_some() {
                                 print!(" .. I({:?},{:?})", hi.name(db), lo.unwrap().name(db));
                             } else {
@@ -102,7 +105,7 @@ impl<'a> CompiledModule<'a> {
                             }
                             println!(" -> {:?}", val);
                         }
-                        CurrentKind::Port(n) => {
+                        FlowKind::Port(n) => {
                             println!(" .. {:?} -> {:?}", n.name(db), val);
                         }
                     },

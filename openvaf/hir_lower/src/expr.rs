@@ -20,7 +20,7 @@ use syntax::ast::{BinaryOp, UnaryOp};
 use crate::body::BodyLowerContext;
 use crate::fmt::DisplayKind;
 use crate::{
-    CallBackKind, CurrentKind, IdtKind, ImplicitEquationKind, NoiseTable, ParamKind, PlaceKind,
+    CallBackKind, FlowKind, IdtKind, ImplicitEquationKind, NoiseTable, ParamKind, PlaceKind,
 };
 
 /// Match a signature against some expression
@@ -402,13 +402,13 @@ impl BodyLowerContext<'_, '_, '_> {
                         NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                             let hi = self.body.into_node(args[0]);
                             let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                            self.ctxt.nodes(hi, lo, |hi, lo| ParamKind::Current(CurrentKind::Unnamed{hi, lo}))
+                            self.ctxt.nodes(hi, lo, |hi, lo| ParamKind::Flow(FlowKind::Unnamed{hi, lo}))
                         },
-                        NATURE_ACCESS_BRANCH => self.ctxt.use_param(ParamKind::Current(
-                            CurrentKind::Branch(self.body.into_branch(args[0]))
+                        NATURE_ACCESS_BRANCH => self.ctxt.use_param(ParamKind::Flow(
+                            FlowKind::Branch(self.body.into_branch(args[0]))
                         )),
-                        NATURE_ACCESS_PORT_FLOW => self.ctxt.use_param(ParamKind::Current(
-                            CurrentKind::Port(self.body.into_port_flow(args[0]))
+                        NATURE_ACCESS_PORT_FLOW => self.ctxt.use_param(ParamKind::Flow(
+                            FlowKind::Port(self.body.into_port_flow(args[0]))
                         ))
                 }
                 // AB: Do not divide flow probe.
@@ -424,12 +424,12 @@ impl BodyLowerContext<'_, '_, '_> {
                         NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                             let hi = self.body.into_node(args[0]);
                             let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                            self.ctxt.nodes(hi, lo, |hi, lo| ParamKind::Voltage{hi, lo})
+                            self.ctxt.nodes(hi, lo, |hi, lo| ParamKind::Potential{hi, lo})
                         },
                         NATURE_ACCESS_BRANCH => {
                             let branch = self.body.into_branch(args[0]).kind(self.ctxt.db);
                             self.ctxt.nodes(branch.unwrap_hi_node(), branch.lo_node(),
-                            |hi, lo| ParamKind::Voltage{hi, lo})
+                            |hi, lo| ParamKind::Potential{hi, lo})
                         }
                 }
             }

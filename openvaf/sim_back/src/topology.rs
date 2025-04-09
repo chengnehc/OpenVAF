@@ -48,9 +48,10 @@ impl_debug_display! {match BranchId{BranchId(id) => "branch{id}";}}
 
 #[derive(Debug)]
 pub(crate) struct BranchInfo {
-    pub is_potential: Value,     // boolean MIR value
-    pub potential: Contribution, // potential contribution: V(br)
-    pub flow: Contribution,      // flow contribution: I(br)
+    // Note: for switch branch, the Value is neither TRUE or FALSE
+    pub is_potential: Value,
+    pub potential: Contribution,
+    pub flow: Contribution,
 }
 
 #[derive(Debug, Clone)]
@@ -211,23 +212,23 @@ impl Topology {
                     let (hi, lo) = branch.node_pair(ctxt.db);
                     let is_potential = val;
                     let has_voltage_probe =
-                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Voltage { hi, lo })
+                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Potential { hi, lo })
                             || is_potential != mir::FALSE;
                     let has_current_probe =
-                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Current(branch.into()))
+                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Flow(branch.into()))
                             || is_potential != mir::FALSE;
                     let voltage = has_voltage_probe.then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
-                            ParamKind::Voltage { hi, lo },
+                            ParamKind::Potential { hi, lo },
                         )
                     });
                     let current = has_current_probe.then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
-                            ParamKind::Current(branch.into()),
+                            ParamKind::Flow(branch.into()),
                         )
                     });
                     let mut get_contrib = |is_reactive: bool, is_potential: bool| {

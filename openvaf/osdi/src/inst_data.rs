@@ -908,8 +908,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
                     ParamKind::HiddenState(_) => todo!("hidden state"),
 
-                    ParamKind::Voltage { .. }
-                    | ParamKind::Current(_)
+                    ParamKind::Potential { .. }
+                    | ParamKind::Flow(_)
                     | ParamKind::PortConnected { .. }
                     | ParamKind::ParamGiven { .. }
                     | ParamKind::Abstime
@@ -981,8 +981,8 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
                     ParamKind::HiddenState(_) => todo!("hidden state"),
 
-                    ParamKind::Voltage { .. }
-                    | ParamKind::Current(_)
+                    ParamKind::Potential { .. }
+                    | ParamKind::Flow(_)
                     | ParamKind::PortConnected { .. }
                     | ParamKind::ParamGiven { .. }
                     | ParamKind::EnableIntegration

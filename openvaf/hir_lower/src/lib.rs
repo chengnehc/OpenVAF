@@ -191,11 +191,11 @@ impl HirInterner {
             };
 
             let required = match kind {
-                ParamKind::Voltage { hi, lo: Some(lo) } => {
+                ParamKind::Potential { hi, lo: Some(lo) } => {
                     sim_derivatives | node_required(hi, false) | node_required(lo, true)
                 }
-                ParamKind::Voltage { hi, lo: None } => sim_derivatives | node_required(hi, false),
-                ParamKind::Current(_) | ParamKind::ImplicitUnknown(_) => sim_derivatives,
+                ParamKind::Potential { hi, lo: None } => sim_derivatives | node_required(hi, false),
+                ParamKind::Flow(_) | ParamKind::ImplicitUnknown(_) => sim_derivatives,
                 _ => param_required,
             };
 
@@ -216,8 +216,8 @@ impl HirInterner {
                 };
 
                 match *self.params.get_index(param).unwrap().0 {
-                    ParamKind::Voltage { hi, lo: None } => required |= node_required(hi, neg),
-                    ParamKind::Voltage { hi, lo: Some(lo) } => {
+                    ParamKind::Potential { hi, lo: None } => required |= node_required(hi, neg),
+                    ParamKind::Potential { hi, lo: Some(lo) } => {
                         required |= node_required(hi, false) | node_required(lo, !neg);
                     }
                     _ => (),
@@ -252,6 +252,8 @@ impl HirInterner {
     }
 
     // FIXME(JW) return type is too complicated
+    /// Return an iterator over the function parameters that are not dead, i.e., used somewhere
+    /// by some instruction
     pub fn live_params<'a>(
         &'a self,
         dfg: &'a DataFlowGraph,
@@ -262,6 +264,76 @@ impl HirInterner {
         self.params.iter_enumerated().filter_map(|(param, (kind, val))| {
             (!dfg.value_dead(*val)).then_some((param, kind, *val))
         })
+    }
+}
+
+/// Different kinds of parameters of MIR function
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ParamKind {
+    Potential { hi: Node, lo: Option<Node> },
+    Flow(FlowKind),
+    ImplicitUnknown(ImplicitEquation),
+    Param(Parameter),
+    ParamSysFun(ParamSysFun),
+    Temperature,
+    PortConnected { port: Node },
+    ParamGiven { param: Parameter },
+    Abstime,
+    EnableIntegration,
+    EnableLim,
+    HiddenState(Variable),
+    PrevState(LimitState),
+    NewState(LimitState),
+}
+
+impl ParamKind {
+    fn unwrap_potential_node(&self) -> Node {
+        let ParamKind::Potential { hi, lo: None } = self else {
+            unreachable!("{self:?} is not a potential node")
+        };
+        *hi
+    }
+
+    pub fn is_op_dependent(&self) -> bool {
+        matches!(
+            self,
+            ParamKind::Potential { .. }
+                | ParamKind::Flow(_)
+                | ParamKind::ImplicitUnknown(_)
+                | ParamKind::Abstime
+                | ParamKind::EnableIntegration
+                | ParamKind::EnableLim
+                | ParamKind::HiddenState(_)
+                | ParamKind::PrevState(_)
+                | ParamKind::NewState(_)
+        )
+    }
+}
+
+///
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FlowKind {
+    Branch(Branch),
+    Unnamed { hi: Node, lo: Option<Node> },
+    Port(Node),
+}
+impl From<BranchWrite> for FlowKind {
+    fn from(kind: BranchWrite) -> Self {
+        match kind {
+            BranchWrite::Named(branch) => FlowKind::Branch(branch),
+            BranchWrite::Unnamed { hi, lo } => FlowKind::Unnamed { hi, lo },
+        }
+    }
+}
+impl TryFrom<FlowKind> for BranchWrite {
+    type Error = ();
+    // FIXME(JW) should not use () as Error type
+    fn try_from(kind: FlowKind) -> Result<BranchWrite, ()> {
+        match kind {
+            FlowKind::Branch(branch) => Ok(BranchWrite::Named(branch)),
+            FlowKind::Unnamed { hi, lo } => Ok(BranchWrite::Unnamed { hi, lo }),
+            FlowKind::Port(_) => Err(()),
+        }
     }
 }
 
@@ -317,74 +389,6 @@ impl PlaceKind {
 
     pub fn is_init_only(&self) -> bool {
         matches!(self, Self::CollapseImplicitEquation(_))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ParamKind {
-    Voltage { hi: Node, lo: Option<Node> },
-    Current(CurrentKind),
-    ImplicitUnknown(ImplicitEquation),
-    Param(Parameter),
-    ParamSysFun(ParamSysFun),
-    Temperature,
-    PortConnected { port: Node },
-    ParamGiven { param: Parameter },
-    Abstime,
-    EnableIntegration,
-    EnableLim,
-    HiddenState(Variable),
-    PrevState(LimitState),
-    NewState(LimitState),
-}
-
-impl ParamKind {
-    fn unwrap_potential_node(&self) -> Node {
-        let ParamKind::Voltage { hi, lo: None } = self else {
-            unreachable!("{self:?} is not a potential node")
-        };
-        *hi
-    }
-
-    pub fn is_op_dependent(&self) -> bool {
-        matches!(
-            self,
-            ParamKind::Voltage { .. }
-                | ParamKind::Current(_)
-                | ParamKind::ImplicitUnknown(_)
-                | ParamKind::Abstime
-                | ParamKind::EnableIntegration
-                | ParamKind::EnableLim
-                | ParamKind::HiddenState(_)
-                | ParamKind::PrevState(_)
-                | ParamKind::NewState(_)
-        )
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum CurrentKind {
-    Branch(Branch),
-    Unnamed { hi: Node, lo: Option<Node> },
-    Port(Node),
-}
-impl From<BranchWrite> for CurrentKind {
-    fn from(kind: BranchWrite) -> Self {
-        match kind {
-            BranchWrite::Named(branch) => CurrentKind::Branch(branch),
-            BranchWrite::Unnamed { hi, lo } => CurrentKind::Unnamed { hi, lo },
-        }
-    }
-}
-impl TryFrom<CurrentKind> for BranchWrite {
-    type Error = ();
-    // FIXME(JW) should not use () as Error type
-    fn try_from(kind: CurrentKind) -> Result<BranchWrite, ()> {
-        match kind {
-            CurrentKind::Branch(branch) => Ok(BranchWrite::Named(branch)),
-            CurrentKind::Unnamed { hi, lo } => Ok(BranchWrite::Unnamed { hi, lo }),
-            CurrentKind::Port(_) => Err(()),
-        }
     }
 }
 
