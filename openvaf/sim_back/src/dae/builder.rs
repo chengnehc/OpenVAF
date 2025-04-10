@@ -1,3 +1,11 @@
+// TODO:(JW): according to LRM, The value returned by any branch flow probe in the analog block,
+// shall be divided by $mfactor.
+//
+// This means when `I(br)` appears at RHS of some expression, its value should be divided by
+// $mfactor, but it seems that OpenVAF do not handle this so far.
+//
+// However, for compact models, `I<br>` seldomly appears at RHS.
+
 use std::mem;
 
 use ahash::AHashMap;
@@ -497,7 +505,7 @@ impl Builder<'_> {
         // each row pertains to a simulation unknown and contains Value pair (resistive, reactive)
         let mut dense_row = TiVec::from(vec![(F_ZERO, F_ZERO); num_sim_unknowns]);
 
-        // rountine to insert instructions to add/substract derivative result to
+        // routine to insert instructions to add/substract derivative result to
         // SSA values corresponding to each Jacobi matrix entry
         let mut add_jacobi = |matrix_entry: &mut Value, residual, unknown, negate| {
             if let Some(deriv) = derivatives.get(&(residual, unknown)).copied() {

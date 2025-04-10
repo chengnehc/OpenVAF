@@ -1,6 +1,7 @@
+use stdx::{impl_debug_display, impl_idx_from};
+
 use indexmap::IndexSet;
 use mir::{Value, F_ZERO};
-use stdx::{impl_debug_display, impl_idx_from};
 use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
@@ -218,4 +219,6 @@ pub struct MatrixEntry {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct MatrixEntryId(u32);
 impl_idx_from!(MatrixEntryId(u32));
-impl_debug_display! {match MatrixEntryId{MatrixEntryId(id) => "j{id}";}}
+impl_debug_display! {
+    match MatrixEntryId {MatrixEntryId(id) => "j{id}";}
+}

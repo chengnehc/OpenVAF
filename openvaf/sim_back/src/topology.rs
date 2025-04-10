@@ -20,6 +20,7 @@ use stdx::{impl_debug_display, impl_idx_from};
 
 use ahash::AHashMap;
 use bitset::{BitSet, SparseBitMatrix};
+use hir::BranchWrite;
 use hir_lower::{CallBackKind, HirInterner, ImplicitEquation, ParamKind, PlaceKind};
 use indexmap::IndexSet;
 use lasso::Spur;
@@ -31,13 +32,12 @@ use typed_indexmap::TiMap;
 use crate::context::Context;
 use crate::noise::NoiseSourceKind;
 use crate::util::{strip_optbarrier, strip_optbarrier_if_const};
-use crate::BranchWrite;
 
 mod builder;
 mod lineralize;
 mod small_signal_network;
 #[cfg(test)]
-mod test;
+mod tests;
 
 use builder::Builder;
 

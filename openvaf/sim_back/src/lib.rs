@@ -2,7 +2,7 @@
 
 use stdx::{impl_debug_display, impl_idx_from};
 
-use hir::{BranchWrite, CompilationDB, Node};
+use hir::{CompilationDB, Node};
 use hir_lower::{FlowKind, HirInterner, ImplicitEquation, ParamKind};
 use lasso::Rodeo;
 use mir::Function;
