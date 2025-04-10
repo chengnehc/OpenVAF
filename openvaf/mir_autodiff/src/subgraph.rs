@@ -181,10 +181,7 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
                             let base = self.intern.get_unknown(derivative);
                             let new_derivative = self
                                 .intern
-                                .intern(DerivativeInfo {
-                                    base,
-                                    previous_order: Some(new_prev_order),
-                                })
+                                .intern(DerivativeInfo { base, prev_order: Some(new_prev_order) })
                                 .0;
                             self.derivative_map
                                 .insert(derivative, (new_derivative, inner_derivative));
@@ -276,7 +273,7 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
                     }
                 }
                 ValueDef::Param(_) => {
-                    if let Some(unknown) = self.intern.unknowns.index(arg) {
+                    if let Some(unknown) = self.intern.unknowns.index_of(arg) {
                         return !self.curr_subgraph_unknowns.contains(unknown);
                     }
                 }

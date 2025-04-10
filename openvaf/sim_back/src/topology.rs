@@ -44,11 +44,13 @@ use builder::Builder;
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct BranchId(u32);
 impl_idx_from!(BranchId(u32));
-impl_debug_display! {match BranchId{BranchId(id) => "branch{id}";}}
+impl_debug_display! {
+    match BranchId {BranchId(id) => "branch{id}";}
+}
 
 #[derive(Debug)]
 pub(crate) struct BranchInfo {
-    /// A boolean flag whether the contribution kind of this branch is potential.
+    /// A boolean flag of whether the contribution kind of this branch is potential
     ///
     /// For switch branch, where branch contribution is dynamically switched between
     /// potential and flow according to run-time parameters, the value is the result
@@ -56,6 +58,8 @@ pub(crate) struct BranchInfo {
     pub is_potential: Value,
 
     /// Contributions like `V(br) <+ ...`
+    ///
+    /// This should normally not be used by compact models, except for node collapse.
     pub potential: Contribution,
 
     /// Contributions like `I(br) <+ ...`
@@ -335,20 +339,20 @@ impl Topology {
         topology
     }
 
-    fn new_implicit_equation(&mut self, equation: ImplicitEquation, contributes: Contribution) {
-        if contributes.resist != F_ZERO {
+    fn new_implicit_equation(&mut self, equation: ImplicitEquation, contrib: Contribution) {
+        if contrib.resist != F_ZERO {
             self.contributes.insert(
-                contributes.resist,
+                contrib.resist,
                 ContributeKind::ImplicitEquation { equation, is_reactive: false },
             );
         }
-        if contributes.react != F_ZERO {
+        if contrib.react != F_ZERO {
             self.contributes.insert(
-                contributes.react,
+                contrib.react,
                 ContributeKind::ImplicitEquation { equation, is_reactive: true },
             );
         }
-        let eq = self.implicit_equations.push_and_get_key(contributes);
+        let eq = self.implicit_equations.push_and_get_key(contrib);
         debug_assert_eq!(eq, equation);
     }
 
@@ -356,8 +360,8 @@ impl Topology {
         self.contributes.get(&val).copied()
     }
 
-    fn get_mut(&mut self, contrib: ContributeKind) -> &mut Contribution {
-        match contrib {
+    fn get_mut(&mut self, kind: ContributeKind) -> &mut Contribution {
+        match kind {
             ContributeKind::Branch { id, is_potential: true, .. } => {
                 &mut self.get_branch_mut(id).potential
             }
@@ -372,9 +376,5 @@ impl Topology {
 
     fn get_branch_mut(&mut self, branch: BranchId) -> &mut BranchInfo {
         &mut self.branches[branch]
-    }
-
-    fn branches(&self) -> typed_indexmap::map::Iter<'_, BranchId, BranchWrite, BranchInfo> {
-        self.branches.iter_enumerated()
     }
 }

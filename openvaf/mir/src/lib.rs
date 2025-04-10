@@ -25,15 +25,15 @@
 //! [SSA]: https://en.wikipedia.org/wiki/Static_single_assignment_form
 
 use core::fmt;
-use stdx::{impl_debug, impl_display, impl_idx_from};
+use stdx::impl_display;
 
 use ahash::AHashMap;
 use bitset::HybridBitSet;
-use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
 pub use lasso::{Interner, Spur};
 pub use stdx::Ieee64;
+use typed_index_collections::TiVec;
 
 mod dfg;
 mod dominators;
@@ -57,7 +57,7 @@ pub use crate::dfg::{
     ValueDef,
 };
 pub use crate::dominators::DominatorTree;
-pub use crate::entities::{AnyEntity, Block, FuncRef, Inst, Param, Use, Value};
+pub use crate::entities::{AnyEntity, Block, FuncRef, Inst, Param, Unknown, Use, Value};
 pub use crate::instructions::{
     InstructionData, InstructionFormat, Opcode, PhiMap, PhiNode, ValueList, ValueListPool,
 };
@@ -197,9 +197,8 @@ impl Function {
     */
 }
 
-/// An opaque 32-bit repr for source location of instructions
-///
-/// Default value is used for instructions that can't be given a real source location.
+/// An oqaque 32-bit representation for source location of expressions.
+/// Default value is used for those that can't be given a real source location.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct SourceLoc(i32);
 
@@ -218,7 +217,7 @@ impl SourceLoc {
     pub fn bits(self) -> i32 {
         self.0
     }
-
+    /// Inverse the bits.
     pub fn inv(&mut self) {
         self.0 *= -1;
     }
@@ -234,16 +233,23 @@ impl fmt::Display for SourceLoc {
     }
 }
 
-/// An equation unknown.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Unknown(pub u32);
-impl_idx_from!(Unknown(u32));
-impl_debug!(match Unknown{Unknown(raw) => "unknown{raw}";});
-
+/// Known symbolic (partial) derivatives explicitly specified by user: ddx() calls.
+///
+/// `ddx(expr, unknown_quantity)`. According to LRM 4.5.6:
+///
+/// - `expr` is the expression for which the symbolic derivative needs to be calculated.
+/// - `unknown_quantity` is the potential of a scalar net or port or the flow through a
+///   branch -- the unknown variables in the system of equations for the analog solver.
+///
+/// ddx() calls should normally only be used to calculate output variables, as they are
+/// symbolic derivatives by nature.
 #[derive(Debug, Clone, Default)]
 pub struct KnownDerivatives {
-    pub unknowns: TiSet<Unknown, Value>,
+    /// Mapping from user explicitly specified ddx() callback ID to its positive
+    /// and negative derivative unknown ID
     pub ddx_calls: AHashMap<FuncRef, (HybridBitSet<Unknown>, HybridBitSet<Unknown>)>,
-    // pub standin_calls: AHashMap<FuncRef, u32>,
+
+    /// Mapping from derivative Unknown ID to its SSA value.
+    /// A set is used for de-duplication.
+    pub unknowns: TiSet<Unknown, Value>,
 }

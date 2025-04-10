@@ -113,13 +113,14 @@ impl<'a> Context<'a> {
         self.dom_tree.compute::<true, true>(&self.func, &self.cfg);
     }
 
-    pub fn compute_outputs(&mut self, contributes: bool) {
+    pub fn compute_outputs<const CONTRIBUTES: bool>(&mut self) {
         self.output_values.clear();
         self.output_values.ensure(self.func.dfg.num_values() + 1);
-        if contributes {
+        if CONTRIBUTES {
             self.output_values
                 .extend(self.intern.outputs.values().copied().filter_map(PackedOption::expand));
         } else {
+            // filter out contributions
             for (kind, val) in self.intern.outputs.iter() {
                 if matches!(kind, PlaceKind::Var(var) if self.module.op_vars.contains_key(var))
                     || matches!(kind, PlaceKind::CollapseImplicitEquation(_) | PlaceKind::BoundStep)

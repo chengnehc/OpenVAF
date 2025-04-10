@@ -20,23 +20,30 @@ use builder::Builder;
 /// Represents the topology of Verliog-A (top level) module as a set
 /// of DAE equations.
 ///
-/// I(x) + ddt(Q(x)) = 0
+/// `I(X) + ddt(Q(X)) = 0`
 ///
-/// This system can be solved using a newton iteration:
+/// This system can be solved using NR iteration:
 ///
-/// J_I(x) delta_x = I(x) + ddt(Q)
-/// x' = x - delta_x
+/// `J(X) · ∆X = I(X) + ddt(Q(X))`
+/// where:
+///     `X' = X - ∆X`
 ///
+/// `X` is the current solution, `X'` is the next solution.
 #[derive(Default, Debug)]
 pub struct DaeSystem {
-    /// The unknowns of the DAE system which are solved (x)
+    /// The simulation unknowns of the DAE system which are solved: `X`
     pub unknowns: TiSet<SimUnknown, SimUnknownKind>,
-    /// The cost function of the DAE system (resistive: I, reactive: Q).
+    /// The cost function of the DAE system (resistive I, and reactive Q)
     pub residual: TiVec<SimUnknown, Residual>,
-    /// The jacobian of the DAE system J_ij = (ddx(I_i, x_j), ddx(Q_i, x_j))
+    /// The Jacobian entries of the DAE system (resistive G, and reactive C)
+    ///
+    /// Jacobian entry at `i`'th row, `j`'th column is the symbolic derivative
+    /// of `i`'th residual with respect to `j`'s th simulation unknown.
+    ///
+    /// `J_ij = (ddx(I_i, x_j), ddx(Q_i, x_j))`
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,
-    /// list of parameters which are known to be small signal values (always zero during
-    /// large signal simulation).
+    /// The parameters which are known to be small signal values
+    /// (always zero during large signal simulation).
     pub small_signal_params: IndexSet<Value, ahash::RandomState>,
 
     pub noise_sources: Vec<NoiseSource>,
@@ -66,7 +73,7 @@ impl DaeSystem {
                 ctx.output_values.remove(val);
                 if let Some(inst) = ctx.func.dfg.value_def(val).inst() {
                     // value is only locally used
-                    if ctx.func.dfg.instr_safe_to_remove(inst) {
+                    if ctx.func.dfg.is_safe_to_remove(inst) {
                         ctx.func.dfg.zap_inst(inst);
                         ctx.func.layout.remove_inst(inst);
                     }
@@ -190,7 +197,6 @@ impl Residual {
         self.resist == F_ZERO && self.react == F_ZERO
     }
 
-    // TODO(JW): make this consume the original residual instead could be more idiomatic?
     pub fn map_vals(&mut self, mut f: impl FnMut(Value) -> Value) {
         self.resist = f(self.resist);
         self.react = f(self.react);

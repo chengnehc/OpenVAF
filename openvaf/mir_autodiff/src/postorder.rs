@@ -56,7 +56,7 @@ impl<'a, 'b, 'c> Postorder<'a, 'b, 'c> {
 
     pub fn populate(&mut self, val: Value) {
         for use_ in self.dfg.uses(val) {
-            self.transverse_use(use_)
+            self.traverse_use(use_)
         }
     }
 
@@ -66,16 +66,16 @@ impl<'a, 'b, 'c> Postorder<'a, 'b, 'c> {
 
     pub fn traverse_successor(&mut self) {
         while let Some(use_) = self.visit_stack.last_mut().and_then(|(_, iter)| iter.next()) {
-            self.transverse_use(use_);
+            self.traverse_use(use_);
         }
     }
 
-    fn transverse_use(&mut self, use_: Use) {
+    fn traverse_use(&mut self, use_: Use) {
         let inst = self.dfg.use_to_user(use_);
-        self.transverse_inst(inst);
+        self.traverse_inst(inst);
     }
 
-    pub fn transverse_inst(&mut self, inst: Inst) {
+    pub fn traverse_inst(&mut self, inst: Inst) {
         if !zero_derivative(self.dfg, inst)
             && !is_zero_call(self.dfg, inst, self.intern)
             && self.visited.insert(inst)

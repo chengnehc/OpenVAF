@@ -132,6 +132,15 @@ impl FuncRef {
     }
 }
 
+/// An opaque reference to a symbolic derivative unknown.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Unknown(pub u32);
+impl_idx_from!(Unknown(u32));
+impl_debug_display! {
+    match Unknown {Unknown(i) => "unknown{i}";}
+}
+
 /// An opaque reference to any of the entities defined in this module.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AnyEntity {

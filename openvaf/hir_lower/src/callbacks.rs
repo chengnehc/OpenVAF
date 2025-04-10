@@ -10,17 +10,17 @@ use crate::LimitState;
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum CallBackKind {
     Print { kind: DisplayKind, arg_tys: Box<[FmtArg]> },
-    SimParam,
-    SimParamOpt,
-    SimParamStr,
-    TimeDerivative,
-    Derivative(Param),
-    NodeDerivative(Node),
+    SimParam,             // $simparam without fallback
+    SimParamOpt,          // $simparam with optional fallback
+    SimParamStr,          // $simparam$str()
+    TimeDerivative,       // ddt()
+    NodeDerivative(Node), // ddx(expr, V(node)), special case when the unknown is node potential probe
+    Derivative(Param),    // other types of ddx()
     ParamInfo(ParamInfoKind, Parameter),
     CollapseHint(Node, Option<Node>),
-    LimDiscontinuity,
-    Analysis,
-    BuiltinLimit { name: Spur, num_args: u32 },
+    LimDiscontinuity,                           // $discontinuity (unimplemented)
+    Analysis,                                   // analysis()
+    BuiltinLimit { name: Spur, num_args: u32 }, // $limit
     StoreLimit(LimitState),
     WhiteNoise { name: Spur, idx: u32 },
     FlickerNoise { name: Spur, idx: u32 },

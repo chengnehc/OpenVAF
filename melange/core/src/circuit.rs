@@ -248,7 +248,7 @@ impl Circuit {
     ///
     /// If no such node exists returns `None`
     pub fn lookup_node(&self, name: &str) -> Option<Node> {
-        self.nodes.index(name)
+        self.nodes.index_of(name)
     }
 
     /// returns the name of a node
@@ -357,7 +357,7 @@ impl Circuit {
     ///
     /// The Node in this circuit that has the name `name`
     pub fn lookup_device(&mut self, name: &str) -> Option<DeviceId> {
-        self.devices.index(name)
+        self.devices.index_of(name)
     }
 
     /// Lookup various information about a device implementation

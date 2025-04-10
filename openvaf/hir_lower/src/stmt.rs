@@ -201,7 +201,7 @@ impl BodyLowerContext<'_, '_, '_> {
 
                 // Create the next block
                 let next_block = self.ctxt.create_block();
-                self.ctxt.ins().branch(cond, body_head, next_block, false);
+                self.ctxt.ins().br(cond, body_head, next_block);
 
                 self.ctxt.switch_to_block(next_block);
             }

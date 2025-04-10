@@ -9,13 +9,14 @@ use stdx::openvaf_test_data;
 
 use super::Topology;
 use crate::context::{Context, OptimizationStage};
+use crate::WITH_CONTRIBUTES;
 
 fn compile(src: &str) -> (Function, Topology, String) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut context = Context::new(&db, &mut literals, &module);
-    context.compute_outputs(true);
+    context.compute_outputs::<WITH_CONTRIBUTES>();
     context.compute_cfg();
     context.optimize(OptimizationStage::Initial);
     let topology = Topology::new(&mut context);

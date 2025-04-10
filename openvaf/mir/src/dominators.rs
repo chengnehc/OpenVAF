@@ -72,7 +72,7 @@ pub struct DominatorTree {
 
 /// Methods for querying the dominator tree.
 impl DominatorTree {
-    /// Get the CFG post-order of blocks that was used to compute the dominator tree.
+    /// Get the CFG post-order traversal of blocks that was used to compute the dom_tree.
     ///
     /// Note that this post-order is not updated automatically when the CFG is modified.
     /// It is computed from scratch and cached by `compute()`.

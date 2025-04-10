@@ -11,13 +11,14 @@ use stdx::{integration_test_dir, openvaf_test_data};
 use crate::context::{Context, OptimizationStage};
 use crate::dae::DaeSystem;
 use crate::topology::Topology;
+use crate::WITH_CONTRIBUTES;
 
 fn run_test(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut context = Context::new(&db, &mut literals, &module);
-    context.compute_outputs(true);
+    context.compute_outputs::<WITH_CONTRIBUTES>();
     context.compute_cfg();
     context.optimize(OptimizationStage::Initial);
 

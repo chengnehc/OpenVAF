@@ -1,7 +1,6 @@
 //! Lowers the HIR to build MIR. This serves as the only bridge between
 //! various MIR crates and the HIR.
 
-use std::iter::FilterMap;
 use stdx::packed_option::PackedOption;
 use stdx::{impl_debug_display, impl_idx_from};
 
@@ -15,7 +14,7 @@ use mir::builder::InstBuilder;
 use mir::{DataFlowGraph, FuncRef, Function, Inst, KnownDerivatives, Param, Value};
 use mir_build::{FunctionBuilder, FunctionBuilderContext, RetBuilder};
 use typed_index_collections::TiVec;
-use typed_indexmap::{map, TiMap, TiSet};
+use typed_indexmap::{TiMap, TiSet};
 
 mod body;
 mod callbacks;
@@ -151,30 +150,24 @@ pub struct HirInterner {
     /// Implicit equation unknowns needed by simulator backend
     pub implicit_equations: TiVec<ImplicitEquation, ImplicitEquationKind>,
     /// Internal states induced by $limit
+    /// Mapping from unknown value to (lim_val, negate_lim)
     pub lim_state: TiMap<LimitState, Value, Vec<(Value, bool)>>,
-    /// JW: for VerilogAE(?)
+    // JW: for VerilogAE(?)
     pub tagged_reads: IndexMap<Value, Variable, ahash::RandomState>,
 }
 
-/* impl trait type alias is not yet stable
-pub type LiveParams<'a> = FilterMap<
-    map::Iter<'a, Param, ParamKind, Value>,
-    impl FnMut((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)> + Clone,
->;
-*/
-
 impl HirInterner {
-    pub fn derivative_info(
-        &self,
-        func: impl AsRef<Function>,
-        sim_derivatives: bool,
-    ) -> KnownDerivatives {
+    /// Get all known derivatives (ddx calls) explicitly specified by the user.
+    ///
+    /// This method can be used by both parameter extraction backend and simulator backend.
+    /// A major difference between sim_back and verilogae is that sim_back requires full Jacobi.
+    pub fn derivative_info(&self, func: impl AsRef<Function>, sim_back: bool) -> KnownDerivatives {
         let func = func.as_ref();
         let KnownDerivatives { mut unknowns, mut ddx_calls } = KnownDerivatives::default();
 
-        let mut ensure_ddx = |ddx, unk, neg| match self.callbacks.index(&ddx) {
-            Some(ddx) => {
-                let (pos_dst, neg_dst): &mut (_, _) = ddx_calls.entry(ddx).or_default();
+        let mut has_ddx_call = |ddx, unk, neg| match self.callbacks.index_of(&ddx) {
+            Some(ddx_call) => {
+                let (pos_dst, neg_dst) = ddx_calls.entry(ddx_call).or_default();
                 let dst = if neg { neg_dst } else { pos_dst };
                 dst.insert(unk, func.dfg.num_values());
                 true
@@ -184,35 +177,37 @@ impl HirInterner {
 
         for (param, &kind, val) in self.live_params(&func.dfg) {
             let ddx = CallBackKind::Derivative(param);
-            let param_required = ensure_ddx(ddx, unknowns.len().into(), false);
+            let param_required = has_ddx_call(ddx, unknowns.len().into(), false);
             let mut node_required = |node, neg| {
                 let ddx = CallBackKind::NodeDerivative(node);
-                ensure_ddx(ddx, unknowns.len().into(), neg)
+                has_ddx_call(ddx, unknowns.len().into(), neg)
             };
 
-            let required = match kind {
+            let unknown_required = match kind {
+                // For simulator backend, parameter typed branch potential probe, flow
+                // probe and implicit unknowns are always required.
                 ParamKind::Potential { hi, lo: Some(lo) } => {
-                    sim_derivatives | node_required(hi, false) | node_required(lo, true)
+                    sim_back | node_required(hi, false) | node_required(lo, true)
                 }
-                ParamKind::Potential { hi, lo: None } => sim_derivatives | node_required(hi, false),
-                ParamKind::Flow(_) | ParamKind::ImplicitUnknown(_) => sim_derivatives,
+                ParamKind::Potential { hi, lo: None } => sim_back | node_required(hi, false),
+                ParamKind::Flow(_) | ParamKind::ImplicitUnknown(_) => sim_back,
                 _ => param_required,
             };
 
-            if required {
+            if unknown_required {
                 unknowns.insert(val);
             }
         }
 
-        /* Deal with limit state */
+        // Deal with limit state
         for (param, vals) in self.lim_state.iter() {
             for &(val, neg) in vals {
                 let param = func.dfg.value_def(*param).unwrap_param();
                 let ddx = CallBackKind::Derivative(param);
-                let mut required = ensure_ddx(ddx, unknowns.len().into(), neg);
+                let mut required = has_ddx_call(ddx, unknowns.len().into(), neg);
                 let mut node_required = |node, neg| {
                     let ddx = CallBackKind::NodeDerivative(node);
-                    ensure_ddx(ddx, unknowns.len().into(), neg)
+                    has_ddx_call(ddx, unknowns.len().into(), neg)
                 };
 
                 match *self.params.get_index(param).unwrap().0 {
@@ -223,7 +218,7 @@ impl HirInterner {
                     _ => (),
                 };
 
-                if required | sim_derivatives {
+                if required | sim_back {
                     unknowns.insert(val);
                 }
             }
@@ -251,16 +246,12 @@ impl HirInterner {
         self.params.get(kind).is_some_and(|val| !func.as_ref().dfg.value_dead(*val))
     }
 
-    // FIXME(JW) return type is too complicated
-    /// Return an iterator over the function parameters that are not dead, i.e., used somewhere
-    /// by some instruction
+    /// Return an iterator over the function parameters that are alive,
+    /// i.e., still used by some instruction.
     pub fn live_params<'a>(
         &'a self,
         dfg: &'a DataFlowGraph,
-    ) -> FilterMap<
-        map::Iter<'a, Param, ParamKind, Value>,
-        impl FnMut((Param, (&'a ParamKind, &'a Value))) -> Option<(Param, &'a ParamKind, Value)> + Clone,
-    > {
+    ) -> impl Iterator<Item = (Param, &'a ParamKind, Value)> + Clone {
         self.params.iter_enumerated().filter_map(|(param, (kind, val))| {
             (!dfg.value_dead(*val)).then_some((param, kind, *val))
         })

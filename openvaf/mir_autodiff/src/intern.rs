@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::iter;
-use std::mem::take;
+use std::mem;
 use stdx::{impl_debug, impl_idx_from};
 
 use ahash::AHashMap;
@@ -13,9 +13,9 @@ use typed_indexmap::TiSet;
 #[repr(transparent)]
 pub struct Derivative(u32);
 impl_idx_from!(Derivative(u32));
-impl_debug! {match Derivative{
-    Derivative(raw) => "derivative{}", raw;
-}}
+impl_debug! {
+    match Derivative {Derivative(i) => "derivative{i}";}
+}
 
 impl Derivative {
     pub fn assert_first_order(self) -> Unknown {
@@ -25,7 +25,7 @@ impl Derivative {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DerivativeInfo {
-    pub previous_order: Option<Derivative>,
+    pub prev_order: Option<Derivative>,
     pub base: Unknown,
 }
 
@@ -41,16 +41,14 @@ impl<'a> DerivativeIntern<'a> {
         let derivatives = known
             .unknowns
             .iter_enumerated()
-            .map(|(base, _)| DerivativeInfo { base, previous_order: None })
+            .map(|(base, _)| DerivativeInfo { base, prev_order: None })
             .collect();
 
         Self {
             unknowns: known.unknowns.clone(),
             ddx_calls: &known.ddx_calls,
             derivatives,
-            // standin_calls: &info.standin_calls,
-            // don't expect more than 8. th order derivative in most code
-            buf: Vec::with_capacity(8),
+            buf: Vec::with_capacity(8), // don't expect more than 8th order derivative in most code
         }
     }
 
@@ -64,7 +62,7 @@ impl<'a> DerivativeIntern<'a> {
 
     pub fn ensure_unknown(&mut self, val: Value) -> Unknown {
         let unknown = self.unknowns.ensure(val).0;
-        self.derivatives.ensure(DerivativeInfo { previous_order: None, base: unknown });
+        self.derivatives.ensure(DerivativeInfo { prev_order: None, base: unknown });
         unknown
     }
 
@@ -73,7 +71,7 @@ impl<'a> DerivativeIntern<'a> {
     }
 
     pub fn previous_order(&self, derivative: Derivative) -> Option<Derivative> {
-        self.derivatives[derivative].previous_order
+        self.derivatives[derivative].prev_order
     }
 
     pub fn get_unknown(&self, derivative: Derivative) -> Unknown {
@@ -85,7 +83,7 @@ impl<'a> DerivativeIntern<'a> {
     }
 
     pub fn to_derivative(&self, base: Unknown) -> Derivative {
-        self.derivatives.unwrap_index(&DerivativeInfo { previous_order: None, base })
+        self.derivatives.unwrap_index(&DerivativeInfo { prev_order: None, base })
     }
 
     pub fn unknowns(&self, derivative: Derivative) -> impl Iterator<Item = Unknown> + '_ {
@@ -114,7 +112,7 @@ impl<'a> DerivativeIntern<'a> {
         // This is safe since we never hand out a reference
 
         let mut changed = false;
-        let mut prev_orders = take(&mut self.buf);
+        let mut prev_orders = mem::take(&mut self.buf);
         prev_orders.extend(self.unknowns(derivative));
 
         let mut curr = self.to_derivative(next_unknown);
@@ -122,7 +120,7 @@ impl<'a> DerivativeIntern<'a> {
             if !f(self.to_derivative(base)) {
                 return None;
             }
-            let info = DerivativeInfo { previous_order: Some(curr), base };
+            let info = DerivativeInfo { prev_order: Some(curr), base };
             (curr, changed) = self.intern(info);
         }
 

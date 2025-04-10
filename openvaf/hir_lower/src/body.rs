@@ -59,7 +59,7 @@ impl<'c1, 'c2> BodyLowerContext<'_, 'c1, 'c2> {
     ) -> [Value; N] {
         let ((then_bb, mut then_vals), (else_bb, else_vals)) = self.lower_cond(cond, lower_body);
         for (then_val, else_val) in zip(&mut then_vals, else_vals) {
-            *then_val = self.ctxt.ins().phi(&[(then_bb, *then_val), (else_bb, else_val)]);
+            *then_val = self.ctxt.ins().phi1(&[(then_bb, *then_val), (else_bb, else_val)]);
         }
         then_vals
     }

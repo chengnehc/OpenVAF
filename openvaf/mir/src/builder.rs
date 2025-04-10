@@ -63,7 +63,7 @@ use core::marker::PhantomData;
 /// their results.
 pub struct InsertBuilder<'f, IIB: InstInserterBase<'f>> {
     pub inserter: IIB,
-    unused: PhantomData<&'f u32>,
+    _marker: PhantomData<&'f u32>,
 }
 
 impl<'f, IIB> InsertBuilder<'f, IIB>
@@ -73,7 +73,7 @@ where
     /// Create a new builder which inserts instructions at `pos`.
     /// The `dfg` and `pos.layout` references should be from the same `Function`.
     pub fn new(inserter: IIB) -> Self {
-        Self { inserter, unused: PhantomData }
+        Self { inserter, _marker: PhantomData }
     }
 
     /// Reuse result values in `reuse`.
@@ -87,7 +87,7 @@ where
     where
         Array: AsRef<[Option<Value>]>,
     {
-        InsertReuseBuilder { inserter: self.inserter, reuse, unused: PhantomData }
+        InsertReuseBuilder { inserter: self.inserter, reuse, _marker: PhantomData }
     }
 
     /// Reuse a single result value.
@@ -133,7 +133,7 @@ where
 {
     inserter: IIB,
     reuse: Array,
-    unused: PhantomData<&'f u32>,
+    _marker: PhantomData<&'f u32>,
 }
 
 impl<'f, IIB, Array> InstBuilderBase<'f> for InsertReuseBuilder<'f, IIB, Array>

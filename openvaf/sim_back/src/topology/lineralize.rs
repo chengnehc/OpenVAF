@@ -109,7 +109,7 @@ impl super::Builder<'_> {
                     }
 
                     let neg_eq_val = FuncCursor::new(self.func).at_exit().ins().fneg(eq_val);
-                    let contributions = if is_noise {
+                    let contrib = if is_noise {
                         self.topology.small_signal_vals.insert(eq_val);
                         Contribution {
                             unknown: Some(eq_val),
@@ -134,7 +134,7 @@ impl super::Builder<'_> {
                         }
                     };
 
-                    self.topology.new_implicit_equation(eq, contributions);
+                    self.topology.new_implicit_equation(eq, contrib);
                 }
             }
             // not needed anymore, wipe the callback
@@ -160,7 +160,7 @@ impl super::Builder<'_> {
                         if self.func.layout.inst_block(inst).is_none() {
                             continue;
                         }
-                        if self.func.dfg.instr_safe_to_remove(inst)
+                        if self.func.dfg.is_safe_to_remove(inst)
                             || !self.op_dependent_insts.contains(inst)
                         {
                             let result = self.func.dfg.first_result(inst);

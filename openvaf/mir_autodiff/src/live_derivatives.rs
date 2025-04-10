@@ -156,7 +156,7 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
                 InstructionData::Unary { opcode: Opcode::OptBarrier | Opcode::Fneg, .. }
                 | InstructionData::Binary { opcode: Opcode::Fadd | Opcode::Fsub, .. } => continue,
                 InstructionData::Unary { .. } | InstructionData::Binary { .. } => {
-                    post_order.transverse_inst(inst);
+                    post_order.traverse_inst(inst);
                     continue;
                 }
                 _ => continue,
@@ -174,7 +174,7 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
                 || arg0_base && arg1_prev
                 || arg0_prev && arg1_base
             {
-                post_order.transverse_inst(inst)
+                post_order.traverse_inst(inst)
             }
         }
 
@@ -278,8 +278,7 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
         }
     }
 
-    /// This function strip unneeded live derivatives by taking an intersection with the reachable
-    /// derivatives
+    /// Strip unneeded live derivatives by taking an intersection with the reachable derivatives
     fn strip_unneeded_derivatives(&mut self) {
         let mut reachable_derivatives = mem::take(&mut self.reachable_derivatives);
         self.live_derivatives.mat.ensure_columns(self.intern.num_derivatives());

@@ -94,7 +94,7 @@ impl Builder<'_> {
     fn collect_candidates(&mut self) -> Vec<Candidate> {
         let mut nodes = IndexMap::with_capacity_and_hasher(32, ahash::RandomState::new());
         let mut candidates = Vec::new();
-        for (_, (&branch, contributes)) in self.topology.branches() {
+        for (&branch, contributes) in self.topology.branches.iter() {
             let (hi, lo) = branch.node_pair(self.db);
             let is_current_src = contributes.is_potential == FALSE;
             let potential =

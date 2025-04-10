@@ -321,8 +321,7 @@ impl<'a> Builder<'a> {
         }
 
         if cache_inst
-            || self.func.dfg.instr_safe_to_remove(inst)
-                && !self.func.dfg.insts[inst].is_terminator()
+            || self.func.dfg.is_safe_to_remove(inst) && !self.func.dfg.insts[inst].is_terminator()
         {
             self.func.dfg.zap_inst(inst);
             self.func.layout.remove_inst(inst);

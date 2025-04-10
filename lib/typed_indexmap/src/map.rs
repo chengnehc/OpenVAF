@@ -121,7 +121,8 @@ where
     I: From<usize> + Into<usize>,
     K: Eq + Hash,
 {
-    pub fn index<Q>(&self, key: &Q) -> Option<I>
+    /// Return item index, if it exists in the map.
+    pub fn index_of<Q>(&self, key: &Q) -> Option<I>
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {

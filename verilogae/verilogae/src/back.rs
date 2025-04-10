@@ -99,7 +99,7 @@ impl<'ll> Codegen<'_, '_, 'll> {
             self.spec.dependency_breaking.iter().copied().filter(|var| var.ty(self.db) == ty);
         let llty = lltype(&ty, self.builder.cx);
         for (i, var) in vars.clone().enumerate() {
-            if let Some(id) = self.intern.params.index(&ParamKind::HiddenState(var)) {
+            if let Some(id) = self.intern.params.index_of(&ParamKind::HiddenState(var)) {
                 self.builder.params[id] = self.read_fat_ptr_at(i, offset, ptr, llty).into();
             }
         }

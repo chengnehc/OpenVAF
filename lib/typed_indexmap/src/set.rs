@@ -133,7 +133,8 @@ where
         (id.into(), changed)
     }
 
-    pub fn index<Q>(&self, val: &Q) -> Option<K>
+    /// Return item index, if it exists in the set.
+    pub fn index_of<Q>(&self, val: &Q) -> Option<K>
     where
         Q: ?Sized + Hash + Equivalent<V>,
     {

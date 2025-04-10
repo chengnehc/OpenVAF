@@ -182,7 +182,7 @@ impl DataFlowGraph {
     /// An instruction is safe to remove if none of its results is used anywhere.
     /// Howerver, this does not mean the instruction is dead, as an instruction
     /// may have side effects.
-    pub fn instr_safe_to_remove(&self, inst: Inst) -> bool {
+    pub fn is_safe_to_remove(&self, inst: Inst) -> bool {
         self.insts.safe_to_remove(inst, &self.values)
     }
 
@@ -195,8 +195,8 @@ impl DataFlowGraph {
     }
 
     /// A instruction is dead if it is safe to remove and has no side effects.
-    pub fn instr_dead(&self, inst: Inst, keep_branches: bool) -> bool {
-        self.insts.safe_to_remove(inst, &self.values) && !self.has_side_effects(inst, keep_branches)
+    pub fn inst_dead(&self, inst: Inst, keep_branches: bool) -> bool {
+        self.is_safe_to_remove(inst) && !self.has_side_effects(inst, keep_branches)
     }
 
     /// Get all value arguments on `inst` as a slice.

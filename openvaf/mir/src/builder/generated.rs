@@ -51,23 +51,18 @@ pub trait InstBuilder<'f>: InstBuilderBase<'f> {
         let data = InstructionData::Jump { destination };
         self.build(data).0
     }
-    fn build_call(self, func_ref: FuncRef, args: ValueList) -> (Inst, &'f mut DataFlowGraph) {
+    fn call(mut self, func_ref: FuncRef, args: &[Value]) -> (Inst, &'f mut DataFlowGraph) {
+        let pool = &mut self.data_flow_graph_mut().insts.value_lists;
+        let args = ValueList::from_slice(args, pool);
         let data = InstructionData::Call { args, func_ref };
         self.build(data)
     }
-    fn call(mut self, func_ref: FuncRef, args: &[Value]) -> Inst {
-        let pool = &mut self.data_flow_graph_mut().insts.value_lists;
-        let args = ValueList::from_slice(args, pool);
-        self.build_call(func_ref, args).0
-    }
-    fn call1(mut self, func_ref: FuncRef, args: &[Value]) -> Value {
-        let pool = &mut self.data_flow_graph_mut().insts.value_lists;
-        let args = ValueList::from_slice(args, pool);
-        let (inst, dfg) = self.build_call(func_ref, args);
+    fn call1(self, func_ref: FuncRef, args: &[Value]) -> Value {
+        let (inst, dfg) = self.call(func_ref, args);
         dfg.first_result(inst)
     }
     #[inline]
-    fn phi(mut self, edges: &[(Block, Value)]) -> Value {
+    fn phi(mut self, edges: &[(Block, Value)]) -> (Inst, &'f mut DataFlowGraph) {
         let mut args = ValueList::new();
         let mut blocks = PhiMap::new();
         let dfg = self.data_flow_graph_mut();
@@ -75,7 +70,11 @@ pub trait InstBuilder<'f>: InstBuilderBase<'f> {
             args.push(*val, &mut dfg.insts.value_lists);
             blocks.insert(*block, i as u32, &mut dfg.phi_forest, &());
         }
-        let (inst, dfg) = self.build(PhiNode { args, blocks }.into());
+        self.build(PhiNode { args, blocks }.into())
+    }
+    #[inline]
+    fn phi1(self, edges: &[(Block, Value)]) -> Value {
+        let (inst, dfg) = self.phi(edges);
         dfg.first_result(inst)
     }
     #[inline]

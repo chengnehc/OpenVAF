@@ -58,7 +58,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 unsafe { model_data.read_nth_inst_param(inst_data, i, model, builder.llbuilder) };
             match param {
                 OsdiInstanceParam::Builtin(builtin) => {
-                    if let Some(dst) = intern.params.index(&ParamKind::ParamSysFun(builtin)) {
+                    if let Some(dst) = intern.params.index_of(&ParamKind::ParamSysFun(builtin)) {
                         let default_val = builtin.default_value();
                         let default_val = cx.const_real(default_val);
                         let val = unsafe { builder.select(is_given, val, default_val) };
@@ -208,7 +208,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     unsafe {
                         inst_data.store_nth_param(i, instance, val, builder.llbuilder);
                     }
-                    if let Some(dst) = intern.params.index(&ParamKind::ParamSysFun(builtin)) {
+                    if let Some(dst) = intern.params.index_of(&ParamKind::ParamSysFun(builtin)) {
                         builder.params[dst] = BuilderVal::Eager(val);
                     }
                 }
@@ -224,19 +224,19 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         for (i, param) in model_data.params.keys().copied().enumerate() {
             let i = i as u32;
 
-            if let Some(dst) = intern.params.index(&ParamKind::Param(param)) {
+            if let Some(dst) = intern.params.index_of(&ParamKind::Param(param)) {
                 let loc = model_data.nth_param_loc(cx, i, model);
                 builder.params[dst] = BuilderVal::Load(Box::new(loc));
             }
 
-            if let Some(dst) = intern.params.index(&ParamKind::ParamGiven { param }) {
+            if let Some(dst) = intern.params.index_of(&ParamKind::ParamGiven { param }) {
                 let is_given =
                     unsafe { model_data.is_nth_param_given(cx, i, model, builder.llbuilder) };
                 builder.params[dst] = BuilderVal::Eager(is_given);
             }
         }
 
-        if let Some(dst) = intern.params.index(&ParamKind::Temperature) {
+        if let Some(dst) = intern.params.index_of(&ParamKind::Temperature) {
             builder.params[dst] = BuilderVal::Eager(temperature)
         }
 

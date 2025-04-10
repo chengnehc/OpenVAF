@@ -52,11 +52,16 @@ pub fn update_optbarrier(
     update: impl FnOnce(Value, &mut FuncCursor) -> Value,
 ) {
     if let Some(inst) = func.dfg.value_def(*val).inst() {
-        let mut arg = func.dfg.instr_args(inst)[0];
-        arg = update(arg, &mut FuncCursor::new(func).at_inst(inst));
-        func.dfg.replace(inst).optbarrier(arg);
+        // strip a layer of optbarrier, if any
+        let stripped = func.dfg.instr_args(inst)[0];
+        // update the stripped, original value
+        let updated = update(stripped, &mut FuncCursor::new(func).at_inst(inst));
+        // replace the optbarrier instruction with the updated value
+        func.dfg.replace(inst).optbarrier(updated);
     } else {
+        // no existing optbarrier
         let mut cursor = FuncCursor::new(func).at_exit();
+        // just update the current value and ensure its optbarrier
         *val = update(*val, &mut cursor);
         *val = cursor.ins().ensure_optbarrier(*val)
     }

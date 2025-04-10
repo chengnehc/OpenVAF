@@ -83,7 +83,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             .collect();
 
         let get_prev_solve = |node| {
-            if let Some(node) = module.dae.unknowns.index(&node) {
+            if let Some(node) = module.dae.unknowns.index_of(&node) {
                 prev_solve_vec[node]
             } else {
                 info!("node {node:?} is always zero");

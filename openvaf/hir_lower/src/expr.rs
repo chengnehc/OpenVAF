@@ -445,8 +445,8 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             BuiltIn::ddx => {
                 let val = self.lower_expr(args[0]);
-                let unknown = self.lower_expr(args[1]);
-                let param = self.ctxt.dfg().value_def(unknown).unwrap_param();
+                let unk = self.lower_expr(args[1]);
+                let param = self.ctxt.dfg().value_def(unk).unwrap_param();
                 let kind = match signature {
                     DDX_POT => {
                         let node = self.ctxt.get_param_kind(param).unwrap_potential_node();

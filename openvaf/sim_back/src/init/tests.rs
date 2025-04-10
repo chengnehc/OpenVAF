@@ -12,13 +12,14 @@ use crate::context::{Context, OptimizationStage};
 use crate::dae::DaeSystem;
 use crate::init::Initialization;
 use crate::topology::Topology;
+use crate::WITH_CONTRIBUTES;
 
 fn run_test(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut cxt = Context::new(&db, &mut literals, &module);
-    cxt.compute_outputs(true);
+    cxt.compute_outputs::<WITH_CONTRIBUTES>();
     cxt.compute_cfg();
     cxt.optimize(OptimizationStage::Initial);
 

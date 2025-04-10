@@ -241,7 +241,7 @@ impl<'a, 'u> DerivativeBuilder<'a, 'u> {
                             let unknown = self.intern.get_unknown(derivative);
 
                             let edges: Vec<_> = self.func.dfg.phi_edges(&phi).collect();
-                            let val = self.ins().phi(&edges);
+                            let val = self.ins().phi1(&edges);
                             self.derivative_values.insert((prev_order, unknown), val);
 
                             self.cyclical_phis.push((self.dst.0, derivative))
@@ -261,7 +261,7 @@ impl<'a, 'u> DerivativeBuilder<'a, 'u> {
                             if edges.iter().all(|(_, val)| *val == edges[0].1) {
                                 self.insert_derivative(prev_order, unknown, edges[0].1);
                             } else {
-                                let val = self.ins().phi(&edges);
+                                let val = self.ins().phi1(&edges);
                                 self.derivative_values.insert((prev_order, unknown), val);
                             }
                         }
@@ -312,7 +312,7 @@ impl<'a, 'u> DerivativeBuilder<'a, 'u> {
 
                             let checked_val = self
                                 .ins()
-                                .phi(&[(old_block, F_ZERO), (calculate_derivative_block, val)]);
+                                .phi1(&[(old_block, F_ZERO), (calculate_derivative_block, val)]);
                             Some((checked_val, derivative))
                         })
                         .collect();

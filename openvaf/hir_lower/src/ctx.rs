@@ -28,7 +28,7 @@ pub struct MainLowerContext<'a, 'c> {
     pub places: TiSet<Place, PlaceKind>,
     tagged_vars: AHashSet<Variable>,
 
-    pub no_equations: bool, // do not lower equations
+    pub no_equations: bool, // This flag means do not lower equations
     pub inside_lim: bool,
     /// We create a dedicated callback for each noise source
     /// by giving each callback a unique index. Kind of ineffcient
@@ -153,7 +153,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     pub fn call(&mut self, kind: CallBackKind, args: &[Value]) -> Inst {
         let tracked = !self.no_equations && kind.tracked();
         let func_ref = self.dec_callback(kind);
-        let inst = self.func.ins().call(func_ref, args);
+        let (inst, _) = self.func.ins().call(func_ref, args);
         if tracked {
             self.intern.callback_users[func_ref].push(inst)
         }
@@ -272,7 +272,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         lower_branch: impl FnMut(&mut Self, bool) -> Value,
     ) -> Value {
         let (then_src, else_src) = self.make_if_stmt(cond, lower_branch);
-        self.func.ins().phi(&[then_src, else_src])
+        self.func.ins().phi1(&[then_src, else_src])
     }
 
     pub fn make_if_stmt<T>(
