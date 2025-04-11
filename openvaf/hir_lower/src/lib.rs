@@ -340,7 +340,7 @@ pub enum PlaceKind {
         is_reactive: bool,
         is_potential: bool,
     },
-    /// A flag indicating whether a branch contribution is potential
+    /// A flag indicating whether a branch contribution is potential source
     IsPotential(BranchWrite),
     ImplicitResidual {
         equation: ImplicitEquation,

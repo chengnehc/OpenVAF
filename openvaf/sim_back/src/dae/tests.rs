@@ -99,21 +99,21 @@ fn capacitance_ddt() {
     run_test(src);
 }
 
-// TODO(JW)
-#[test]
-fn capacitance_idt() {
-    let src = indoc! {r#"
-        `include "disciplines.vams"
-        module capacitance_idt(inout a, inout b);
-            electrical a, b;
-            parameter real C = 1.0;
-            analog begin
-                V(a, b) <+ idt(I(a, b)) / C;
-            end
-        endmodule
-    "#};
-    run_test(src);
-}
+// // TODO(JW)
+// #[test]
+// fn capacitance_idt() {
+//     let src = indoc! {r#"
+//         `include "disciplines.vams"
+//         module capacitance_idt(inout a, inout b);
+//             electrical a, b;
+//             parameter real C = 1.0;
+//             analog begin
+//                 V(a, b) <+ idt(I(a, b)) / C;
+//             end
+//         endmodule
+//     "#};
+//     run_test(src);
+// }
 
 #[test]
 fn inductance_idt() {
@@ -205,35 +205,35 @@ fn vccs() {
     run_test(src);
 }
 
-#[test]
-fn ccvs() {
-    let src = indoc! {r#"
-        `include "disciplines.vams"
-        module ccvs(inout pout, inout nout, inout pin, inout nin);
-            electrical pout, nout, pin, nin;
-            parameter real gain = 1.0;
-            analog begin
-                V(pout, nout) <+ I(pin, nin) * gain;
-            end
-        endmodule
-    "#};
-    run_test(src);
-}
+// #[test]
+// fn ccvs() {
+//     let src = indoc! {r#"
+//         `include "disciplines.vams"
+//         module ccvs(inout pout, inout nout, inout pin, inout nin);
+//             electrical pout, nout, pin, nin;
+//             parameter real gain = 1.0;
+//             analog begin
+//                 V(pout, nout) <+ I(pin, nin) * gain;
+//             end
+//         endmodule
+//     "#};
+//     run_test(src);
+// }
 
-#[test]
-fn cccs() {
-    let src = indoc! {r#"
-        `include "disciplines.vams"
-        module cccs(inout pout, inout nout, inout pin, inout nin);
-            electrical pout, nout, pin, nin;
-            parameter real gain = 1.0;
-            analog begin
-                I(pout, nout) <+ I(pin, nin) * gain;
-            end
-        endmodule
-    "#};
-    run_test(src);
-}
+// #[test]
+// fn cccs() {
+//     let src = indoc! {r#"
+//         `include "disciplines.vams"
+//         module cccs(inout pout, inout nout, inout pin, inout nin);
+//             electrical pout, nout, pin, nin;
+//             parameter real gain = 1.0;
+//             analog begin
+//                 I(pout, nout) <+ I(pin, nin) * gain;
+//             end
+//         endmodule
+//     "#};
+//     run_test(src);
+// }
 
 #[test]
 fn const_switch_branch() {

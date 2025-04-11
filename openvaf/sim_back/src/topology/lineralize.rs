@@ -35,7 +35,7 @@ pub(super) enum Evaluation {
 }
 
 impl super::Builder<'_> {
-    /// Build topology for a list of analog operators (noise and ddt)
+    /// Build topology for a list of analog operators (ddt, noise)
     /// with predetermined evaluation types
     pub(super) fn builid_analog_operators(
         &mut self,
@@ -60,8 +60,8 @@ impl super::Builder<'_> {
                     for (val, mut dimension) in &*contributes {
                         let resist_contribute = *val;
                         let inst = self.func.dfg.value_def(resist_contribute).inst().unwrap();
-                        let kind = self.topology.as_contribution(resist_contribute).unwrap();
-                        let contribution = self.topology.get_mut(kind);
+                        let kind = self.topology.as_contribute_kind(resist_contribute).unwrap();
+                        let contribution = self.topology.get_contrib_mut(kind);
                         if is_noise {
                             dimension = FuncCursor::new(self.func)
                                 .after_inst(inst)
@@ -93,9 +93,9 @@ impl super::Builder<'_> {
                     } else {
                         ImplicitEquationKind::Ddt
                     };
-                    let eq = intern.implicit_equations.push_and_get_key(eq);
+                    let eq_id = intern.implicit_equations.push_and_get_key(eq);
                     let eq_val =
-                        intern.ensure_param(&mut self.func, ParamKind::ImplicitUnknown(eq));
+                        intern.ensure_param(&mut self.func, ParamKind::ImplicitUnknown(eq_id));
                     let res = self.func.dfg.first_result(operator_inst);
                     self.func.dfg.replace_uses(res, eq_val);
                     let collapse =
@@ -105,7 +105,7 @@ impl super::Builder<'_> {
                         debug_assert_ne!(collapse, TRUE);
                         intern
                             .outputs
-                            .insert(PlaceKind::CollapseImplicitEquation(eq), collapse.into());
+                            .insert(PlaceKind::CollapseImplicitEquation(eq_id), collapse.into());
                     }
 
                     let neg_eq_val = FuncCursor::new(self.func).at_exit().ins().fneg(eq_val);
@@ -134,7 +134,7 @@ impl super::Builder<'_> {
                         }
                     };
 
-                    self.topology.new_implicit_equation(eq, contrib);
+                    self.topology.new_implicit_equation(eq_id, contrib);
                 }
             }
             // not needed anymore, wipe the callback
@@ -327,7 +327,7 @@ impl super::Builder<'_> {
                     // TODO: ignore
                     let val = func.dfg.first_result(inst);
                     let is_output = if noise {
-                        self.topology.as_contribution(val).is_some()
+                        self.topology.as_contribute_kind(val).is_some()
                     } else {
                         output_values.contains(val)
                     };
@@ -338,7 +338,7 @@ impl super::Builder<'_> {
                             return Evaluation::Equation;
                         } else if self
                             .topology
-                            .as_contribution(val)
+                            .as_contribute_kind(val)
                             .is_some_and(|it| !it.is_reactive())
                         {
                             contributes.push((val, F_ZERO))

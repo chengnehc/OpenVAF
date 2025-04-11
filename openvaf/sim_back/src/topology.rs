@@ -27,7 +27,6 @@ use lasso::Spur;
 use mir::{Function, Inst, Value, F_ZERO};
 use mir_build::SSAVariableBuilder;
 use typed_index_collections::TiVec;
-use typed_indexmap::TiMap;
 
 use crate::context::Context;
 use crate::noise::NoiseSourceKind;
@@ -41,15 +40,10 @@ mod tests;
 
 use builder::Builder;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct BranchId(u32);
-impl_idx_from!(BranchId(u32));
-impl_debug_display! {
-    match BranchId {BranchId(id) => "branch{id}";}
-}
-
 #[derive(Debug)]
 pub(crate) struct BranchInfo {
+    pub branch: BranchWrite,
+
     /// A boolean flag of whether the contribution kind of this branch is potential
     ///
     /// For switch branch, where branch contribution is dynamically switched between
@@ -57,12 +51,12 @@ pub(crate) struct BranchInfo {
     /// of phi instructions.
     pub is_potential: Value,
 
-    /// Contribution statements like `V(br) <+ ...`
+    /// Contribution to potential source branch destination
     ///
     /// This should normally not be used by compact models, except for node collapse.
     pub potential: Contribution,
 
-    /// Contribution statements like `I(br) <+ ...`
+    /// Contribution to flow source branch destination
     ///
     /// This should be the primary kind of contributions for most compact models.
     pub flow: Contribution,
@@ -70,6 +64,7 @@ pub(crate) struct BranchInfo {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Contribution {
+    /// If the conrtibution is also probed
     pub unknown: Option<Value>,
     pub resist: Value,
     pub react: Value,
@@ -101,17 +96,25 @@ impl Default for Contribution {
     }
 }
 
+/// A unique ID for a branch contribution destination
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct BranchId(u32);
+impl_idx_from!(BranchId(u32));
+impl_debug_display! {
+    match BranchId {BranchId(id) => "branch{id}";}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ContributeKind {
     Branch { id: BranchId, is_potential: bool, is_reactive: bool },
-    ImplicitEquation { equation: ImplicitEquation, is_reactive: bool },
+    Implicit { id: ImplicitEquation, is_reactive: bool },
 }
 
 impl ContributeKind {
     pub fn is_reactive(self) -> bool {
         match self {
             ContributeKind::Branch { is_reactive, .. }
-            | ContributeKind::ImplicitEquation { is_reactive, .. } => is_reactive,
+            | ContributeKind::Implicit { is_reactive, .. } => is_reactive,
         }
     }
 }
@@ -163,15 +166,16 @@ impl Noise {
 /// These contributions are divided into resistive/reactive voltage/current.
 #[derive(Debug)]
 pub(crate) struct Topology {
-    pub(crate) branches: TiMap<BranchId, BranchWrite, BranchInfo>,
+    pub(crate) branches: TiVec<BranchId, BranchInfo>,
     pub(crate) implicit_equations: TiVec<ImplicitEquation, Contribution>,
     pub(crate) small_signal_vals: IndexSet<Value, ahash::RandomState>,
-    contributes: AHashMap<Value, ContributeKind>,
+    // a temporary map for building topology
+    contrib_map: AHashMap<Value, ContributeKind>,
 }
 
 impl Topology {
     pub(crate) fn new(ctxt: &mut Context) -> Self {
-        let mut branches = TiMap::with_capacity(128);
+        let mut branches = TiVec::with_capacity(128);
         let mut implicit_equations: TiVec<_, _> = ctxt
             .intern
             .implicit_equations
@@ -201,54 +205,42 @@ impl Topology {
         let small_signal_vals =
             IndexSet::with_capacity_and_hasher(128, ahash::RandomState::default());
 
-        /* Construct a temporary map from MIR values to contributions */
-        let mut contributes = AHashMap::with_capacity(128);
+        let mut contrib_map = AHashMap::with_capacity(128); // a temporary map used during building
         for (kind, val) in &ctxt.intern.outputs {
             let Some(val) = val.expand() else { continue };
             let val = strip_optbarrier_if_const(&ctxt.func, val);
             match *kind {
-                PlaceKind::ImplicitResidual { equation, reactive: false } => {
-                    implicit_equations[equation].resist = val;
-                    contributes.insert(
-                        val,
-                        ContributeKind::ImplicitEquation { equation, is_reactive: false },
-                    );
+                PlaceKind::ImplicitResidual { equation: id, reactive: false } => {
+                    implicit_equations[id].resist = val;
+                    contrib_map.insert(val, ContributeKind::Implicit { id, is_reactive: false });
                 }
-                PlaceKind::ImplicitResidual { equation, reactive: true } => {
-                    implicit_equations[equation].react = val;
-                    contributes.insert(
-                        val,
-                        ContributeKind::ImplicitEquation { equation, is_reactive: true },
-                    );
+                PlaceKind::ImplicitResidual { equation: id, reactive: true } => {
+                    implicit_equations[id].react = val;
+                    contrib_map.insert(val, ContributeKind::Implicit { id, is_reactive: true });
                 }
                 PlaceKind::IsPotential(branch) => {
-                    let id = branches.next_index();
+                    let id = branches.next_key();
                     let (hi, lo) = branch.node_pair(ctxt.db);
                     let is_potential = val;
 
-                    // If a contribution branch destination is not flow probe, then it cannot be
-                    // described using KCL. Additional flow branch sim unknown is required (MNA).
-                    // That is to say, if `V(br)` appears at LHS of a contribution statement,
-                    // then a new flow branch sim unknown is required as function parameter.
+                    // A potential source branch cannot be described by KFL, additional
+                    // branch flow simulation unknown is required.
                     let requires_unknown = is_potential != mir::FALSE;
 
-                    // Check if `V(br)` or `I<br>` value is used by some instruction.
-                    // If `V(br)` or `I<br>` appears at RHS of an expression, then we need to
-                    // make sure that it is passed as a function parameter.
-                    let potential_used =
+                    // Check if the potential/flow of the branch is probed.
+                    // If so, make sure that the probed value is passed as function parameter.
+                    let potential_probed =
                         ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Potential { hi, lo });
-                    let flow_used =
+                    let flow_probed =
                         ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Flow(branch.into()));
-
-                    // Make sure that the potential/flow is passed as function parameter
-                    let potential_param = (requires_unknown || potential_used).then(|| {
+                    let potential_unknown = (requires_unknown || potential_probed).then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
                             ParamKind::Potential { hi, lo },
                         )
                     });
-                    let flow_param = (requires_unknown || flow_used).then(|| {
+                    let flow_unknown = (requires_unknown || flow_probed).then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
@@ -261,9 +253,9 @@ impl Topology {
                             .outputs
                             .get(&PlaceKind::Contribute { dst: branch, is_reactive, is_potential })
                             .and_then(|it| it.expand())
-                            .map(|mut val| {
-                                val = strip_optbarrier_if_const(&ctxt.func, val);
-                                contributes.insert(
+                            .map(|val| {
+                                let val = strip_optbarrier_if_const(&ctxt.func, val);
+                                contrib_map.insert(
                                     val,
                                     ContributeKind::Branch { id, is_potential, is_reactive },
                                 );
@@ -271,10 +263,12 @@ impl Topology {
                             })
                             .unwrap_or(F_ZERO)
                     };
-                    let info = BranchInfo {
+
+                    branches.push(BranchInfo {
+                        branch,
                         is_potential,
                         potential: Contribution {
-                            unknown: potential_param,
+                            unknown: potential_unknown,
                             resist: get_contrib(false, true),
                             react: get_contrib(true, true),
                             resist_small_signal: F_ZERO,
@@ -282,22 +276,21 @@ impl Topology {
                             noises: Vec::new(),
                         },
                         flow: Contribution {
-                            unknown: flow_param,
+                            unknown: flow_unknown,
                             resist: get_contrib(false, false),
                             react: get_contrib(true, false),
                             resist_small_signal: F_ZERO,
                             react_small_signal: F_ZERO,
                             noises: Vec::new(),
                         },
-                    };
-                    branches.insert_full(branch, info);
+                    });
                 }
                 _ => {}
             }
         }
 
         let mut topology =
-            Topology { branches, contributes, implicit_equations, small_signal_vals };
+            Topology { branches, implicit_equations, small_signal_vals, contrib_map };
 
         let mut postdom_frontiers = SparseBitMatrix::new_square(ctxt.func.layout.num_blocks());
         ctxt.init_op_dependent_insts(&mut postdom_frontiers);
@@ -336,47 +329,39 @@ impl Topology {
         // }
         //
         // clear the hashmap
-        topology.contributes = AHashMap::new();
+        topology.contrib_map = AHashMap::new();
 
         topology
     }
 
     fn new_implicit_equation(&mut self, equation: ImplicitEquation, contrib: Contribution) {
         if contrib.resist != F_ZERO {
-            self.contributes.insert(
+            self.contrib_map.insert(
                 contrib.resist,
-                ContributeKind::ImplicitEquation { equation, is_reactive: false },
+                ContributeKind::Implicit { id: equation, is_reactive: false },
             );
         }
         if contrib.react != F_ZERO {
-            self.contributes.insert(
+            self.contrib_map.insert(
                 contrib.react,
-                ContributeKind::ImplicitEquation { equation, is_reactive: true },
+                ContributeKind::Implicit { id: equation, is_reactive: true },
             );
         }
         let eq = self.implicit_equations.push_and_get_key(contrib);
         debug_assert_eq!(eq, equation);
     }
 
-    fn as_contribution(&self, val: Value) -> Option<ContributeKind> {
-        self.contributes.get(&val).copied()
+    fn as_contribute_kind(&self, val: Value) -> Option<ContributeKind> {
+        self.contrib_map.get(&val).copied()
     }
 
-    fn get_mut(&mut self, kind: ContributeKind) -> &mut Contribution {
+    fn get_contrib_mut(&mut self, kind: ContributeKind) -> &mut Contribution {
         match kind {
             ContributeKind::Branch { id, is_potential: true, .. } => {
-                &mut self.get_branch_mut(id).potential
+                &mut self.branches[id].potential
             }
-            ContributeKind::Branch { id, is_potential: false, .. } => {
-                &mut self.get_branch_mut(id).flow
-            }
-            ContributeKind::ImplicitEquation { equation, .. } => {
-                &mut self.implicit_equations[equation]
-            }
+            ContributeKind::Branch { id, is_potential: false, .. } => &mut self.branches[id].flow,
+            ContributeKind::Implicit { id, .. } => &mut self.implicit_equations[id],
         }
-    }
-
-    fn get_branch_mut(&mut self, branch: BranchId) -> &mut BranchInfo {
-        &mut self.branches[branch]
     }
 }

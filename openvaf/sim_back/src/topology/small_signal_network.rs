@@ -71,11 +71,11 @@ impl Builder<'_> {
                 self.create_dimension(placeholder, val);
                 for contribute in contributes {
                     let dimension = self.val_map[&contribute];
-                    let contribute = self.topology.as_contribution(contribute).unwrap();
-                    let reactive = contribute.is_reactive();
+                    let contrib_kind = self.topology.as_contribute_kind(contribute).unwrap();
+                    let is_reactive = contrib_kind.is_reactive();
                     cov_mark::hit!(prune_small_signal);
-                    let contribute = self.topology.get_mut(contribute);
-                    let val = if reactive {
+                    let contribute = self.topology.get_contrib_mut(contrib_kind);
+                    let val = if is_reactive {
                         &mut contribute.react_small_signal
                     } else {
                         &mut contribute.resist_small_signal
@@ -94,12 +94,11 @@ impl Builder<'_> {
     fn collect_candidates(&mut self) -> Vec<Candidate> {
         let mut nodes = IndexMap::with_capacity_and_hasher(32, ahash::RandomState::new());
         let mut candidates = Vec::new();
-        for (&branch, contributes) in self.topology.branches.iter() {
-            let (hi, lo) = branch.node_pair(self.db);
-            let is_current_src = contributes.is_potential == FALSE;
-            let potential =
-                contributes.potential.unknown.filter(|&val| !self.func.dfg.value_dead(val));
-            let flow = contributes.flow.unknown.filter(|&val| !self.func.dfg.value_dead(val));
+        for contrib in &self.topology.branches {
+            let (hi, lo) = contrib.branch.node_pair(self.db);
+            let is_current_src = contrib.is_potential == FALSE;
+            let potential = contrib.potential.unknown.filter(|&val| !self.func.dfg.value_dead(val));
+            let flow = contrib.flow.unknown.filter(|&val| !self.func.dfg.value_dead(val));
             if let Some(potential) = potential {
                 let mut register_node = |node: Node, valid: bool| {
                     if node.is_port(self.db) {
@@ -114,11 +113,11 @@ impl Builder<'_> {
                             true,
                         ));
                         *valid_ = *valid_ && valid;
-                        if contributes.flow.resist != F_ZERO {
-                            candidate.resist.push(contributes.flow.resist);
+                        if contrib.flow.resist != F_ZERO {
+                            candidate.resist.push(contrib.flow.resist);
                         }
-                        if contributes.flow.react != F_ZERO {
-                            candidate.react.push(contributes.flow.react);
+                        if contrib.flow.react != F_ZERO {
+                            candidate.react.push(contrib.flow.react);
                         }
                     }
                 };
@@ -130,15 +129,15 @@ impl Builder<'_> {
                 }
             }
             if let Some(flow) = flow.filter(|_| is_current_src) {
-                let resist = if contributes.flow.resist == F_ZERO {
+                let resist = if contrib.flow.resist == F_ZERO {
                     Vec::new()
                 } else {
-                    vec![contributes.flow.resist]
+                    vec![contrib.flow.resist]
                 };
-                let react = if contributes.flow.react == F_ZERO {
+                let react = if contrib.flow.react == F_ZERO {
                     Vec::new()
                 } else {
-                    vec![contributes.flow.react]
+                    vec![contrib.flow.react]
                 };
                 if !resist.is_empty() || !react.is_empty() {
                     candidates.push(Candidate { kind: CandidateKind::Flow { flow }, resist, react })
@@ -409,7 +408,7 @@ impl Builder<'_> {
                 _ => return None,
             }
             let val = func.dfg.first_result(inst);
-            if self.topology.as_contribution(val).is_some() {
+            if self.topology.as_contribute_kind(val).is_some() {
                 res.push(val);
             }
         }

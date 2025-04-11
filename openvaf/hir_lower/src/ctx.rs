@@ -77,7 +77,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 | ParamMax(_)
                 | FunctionReturn { .. }
                 | FunctionArg { .. } => return place,
-                // A `Variable` without proper initialization would cause hidden state
+                // A variable without proper initialization would cause hidden state
                 Var(var) => self.use_param(ParamKind::HiddenState(var)),
                 Contribute { .. } | ImplicitResidual { .. } => F_ZERO,
                 CollapseImplicitEquation(_) => TRUE,
@@ -260,7 +260,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
             (Type::Array { .. }, Type::EmptyArray) | (Type::EmptyArray, Type::Array { .. }) => {
                 return val
             }
-            _ => unreachable!("unknown cast found {:?} -> {:?}", src, dst),
+            _ => unreachable!("unknown cast found {src:?} -> {dst:?}"),
         };
 
         self.func.ins().unary1(op, val)

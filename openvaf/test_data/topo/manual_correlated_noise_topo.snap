@@ -1,73 +1,69 @@
 Topology {
     branches: {
-        branch0: (
-            Unnamed {
+        branch0: BranchInfo {
+            branch: Unnamed {
                 hi: node2,
                 lo: None,
             },
-            BranchInfo {
-                is_potential: v1,
-                potential: Contribution {
-                    unknown: Some(
-                        v16,
-                    ),
-                    resist: v3,
-                    react: v3,
-                    resist_small_signal: v3,
-                    react_small_signal: v3,
-                    noises: [],
-                },
-                flow: Contribution {
-                    unknown: None,
-                    resist: v27,
-                    react: v3,
-                    resist_small_signal: v34,
-                    react_small_signal: v3,
-                    noises: [
-                        Noise {
-                            name: Spur(1),
-                            kind: WhiteNoise {
-                                pwr: v31,
-                            },
-                            factor: v30,
-                        },
-                    ],
-                },
+            is_potential: v1,
+            potential: Contribution {
+                unknown: Some(
+                    v16,
+                ),
+                resist: v3,
+                react: v3,
+                resist_small_signal: v3,
+                react_small_signal: v3,
+                noises: [],
             },
-        ),
-        branch1: (
-            Unnamed {
+            flow: Contribution {
+                unknown: None,
+                resist: v27,
+                react: v3,
+                resist_small_signal: v34,
+                react_small_signal: v3,
+                noises: [
+                    Noise {
+                        name: Spur(1),
+                        kind: WhiteNoise {
+                            pwr: v31,
+                        },
+                        factor: v30,
+                    },
+                ],
+            },
+        },
+        branch1: BranchInfo {
+            branch: Unnamed {
                 hi: node0,
                 lo: Some(
                     node1,
                 ),
             },
-            BranchInfo {
-                is_potential: v1,
-                potential: Contribution {
-                    unknown: Some(
-                        v21,
-                    ),
-                    resist: v3,
-                    react: v3,
-                    resist_small_signal: v3,
-                    react_small_signal: v3,
-                    noises: [],
-                },
-                flow: Contribution {
-                    unknown: None,
-                    resist: v28,
-                    react: v3,
-                    resist_small_signal: v35,
-                    react_small_signal: v3,
-                    noises: [],
-                },
+            is_potential: v1,
+            potential: Contribution {
+                unknown: Some(
+                    v21,
+                ),
+                resist: v3,
+                react: v3,
+                resist_small_signal: v3,
+                react_small_signal: v3,
+                noises: [],
             },
-        ),
+            flow: Contribution {
+                unknown: None,
+                resist: v28,
+                react: v3,
+                resist_small_signal: v35,
+                react_small_signal: v3,
+                noises: [],
+            },
+        },
     },
     implicit_equations: {},
     small_signal_vals: {
         v16,
     },
-    contributes: {},
+    contrib_map: {},
 }

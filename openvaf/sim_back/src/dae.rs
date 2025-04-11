@@ -54,11 +54,11 @@ impl DaeSystem {
     pub(crate) fn new(ctx: &mut Context, topo: Topology) -> DaeSystem {
         let mut builder = Builder::new(ctx).with_small_signal_network(topo.small_signal_vals);
 
-        for (branch, contribs) in topo.branches.raw {
-            builder.build_branch(branch, &contribs)
+        for branch in topo.branches.iter() {
+            builder.build_branch_contrib(branch)
         }
-        for (eq, contrib) in topo.implicit_equations.iter_enumerated() {
-            builder.build_implicit_equation(eq, contrib)
+        for (equation, contrib) in topo.implicit_equations.iter_enumerated() {
+            builder.build_implicit_equation(equation, contrib)
         }
 
         builder.finish()

@@ -30,10 +30,10 @@ fn assert(src: &str) {
     println!("{func:?}");
     let test_dir = openvaf_test_data("topo");
     let func = format!("{func:#?}");
-    // let _ = std::fs::write(test_dir.join(format!("{name}_mir.snap")), &func);
+    //let _ = std::fs::write(test_dir.join(format!("{name}_mir.snap")), &func);
     expect_file![test_dir.join(format!("{name}_mir.snap"))].assert_eq(&func);
     let topology = format!("{topology:#?}");
-    // let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
+    //let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
     expect_file![test_dir.join(format!("{name}_topo.snap"))].assert_eq(&topology);
 }
 
@@ -272,6 +272,126 @@ fn dyn_switch_branch() {
                     V(a, c) <+ foo * V(a, c);
                 else
                     I(a, c) <+ foo * V(a, c);
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn conductance() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module conductance(inout a, inout b);
+            electrical a, b;
+            parameter real G = 1.0;
+            analog begin
+                I(a, b) <+ V(a, b) * G;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn resistance() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module resistance(inout a, inout b);
+            electrical a, b;
+            parameter real R = 1.0;
+            analog begin
+                V(a, b) <+ I(a, b) * R;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn capacitance_ddt() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module capacitance_ddt(inout a, inout b);
+            electrical a, b;
+            parameter real C = 1.0;
+            analog begin
+                I(a, b) <+ ddt(V(a, b)) * C;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn inductance_idt() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module inductance_idt(inout a, inout b);
+            electrical a, b;
+            parameter real L = 1.0;
+            analog begin
+                I(a, b) <+ idt(V(a, b)) / L;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn inductance_ddt() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module inductance_ddt(inout a, inout b);
+            electrical a, b;
+            parameter real L = 1.0;
+            analog begin
+                V(a, b) <+ ddt(I(a, b)) * L;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn current_src() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module current_src(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0;
+            analog begin
+                I(a, c) <+ foo;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn vcvs() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module vcvs(inout pout, inout nout, inout pin, inout nin);
+            electrical pout, nout, pin, nin;
+            parameter real gain = 1.0;
+            analog begin
+                V(pout, nout) <+ V(pin, nin) * gain;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn vccs() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module vccs(inout pout, inout nout, inout pin, inout nin);
+            electrical pout, nout, pin, nin;
+            parameter real gain = 1.0;
+            analog begin
+                I(pout, nout) <+ V(pin, nin) * gain;
             end
         endmodule
     "#};

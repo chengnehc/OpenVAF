@@ -130,41 +130,41 @@ impl<'a> Builder<'a> {
 /// If the residual entry does not exist, allocate a new one and return it.
 macro_rules! get_residual {
     ($self: ident, $unknown: expr) => {{
-        let unknown = $self.ensure_unknown($unknown);
+        let unknown = $self.ensure_sim_unknown($unknown);
         &mut $self.dae.residual[unknown]
     }};
 }
 
 impl Builder<'_> {
-    fn ensure_unknown(&mut self, unknown: SimUnknownKind) -> SimUnknown {
-        let (unknown, new) = self.dae.unknowns.ensure(unknown);
+    fn ensure_sim_unknown(&mut self, unk: SimUnknownKind) -> SimUnknown {
+        let (unk, new) = self.dae.unknowns.ensure(unk);
         if new {
             self.dae.residual.push(Residual::default());
         }
-        unknown
+        unk
     }
 
     pub(super) fn build_node(&mut self, node: Node) {
-        self.ensure_unknown(SimUnknownKind::KirchhoffLaw(node));
+        self.ensure_sim_unknown(SimUnknownKind::KirchhoffLaw(node));
     }
 
-    pub(super) fn build_branch(&mut self, dst: BranchWrite, branch: &BranchInfo) {
-        match branch.is_potential {
+    pub(super) fn build_branch_contrib(&mut self, data: &BranchInfo) {
+        match data.is_potential {
             // flow source branch
             // only flow(branch) is assigned (appears at contribution statement LHS)
             mir::FALSE => {
                 // Get the flow contribution
-                let contrib = self.flow_contribution(branch);
+                let contrib = self.flow_contribution(data);
 
                 // If the flow of branch is probed (appears at contribution statement RHS),
                 // we should make the flow an extra simulation unknown
                 let flow_probed =
-                    self.intern.is_param_live(&self.cursor, &ParamKind::Flow(dst.into()));
+                    self.intern.is_param_live(&self.cursor, &ParamKind::Flow(data.branch.into()));
 
                 if flow_probed {
-                    self.add_source_equation(&contrib, branch.flow.unknown.unwrap(), dst);
+                    self.add_source_equation(&contrib, data.flow.unknown.unwrap(), data.branch);
                 } else {
-                    self.add_kirchhoff_law(&contrib, dst);
+                    self.add_kirchhoff_law(&contrib, data.branch);
                 }
             }
             // potential source branch
@@ -177,16 +177,16 @@ impl Builder<'_> {
                 // If the flow of branch is probed (appears at contribution statement RHS),
                 // we should make the flow an extra simulation unknown
                 let flow_probed =
-                    self.intern.is_param_live(&self.cursor, &ParamKind::Flow(dst.into()));
+                    self.intern.is_param_live(&self.cursor, &ParamKind::Flow(data.branch.into()));
 
                 // Branches only used for node collapse look like pure potential sources,
                 // but has zero potential contributions, e.g. V(a, b) < 0.0
                 // Make sure to ignore these branches.
-                let is_collapse_hint = branch.potential.is_trivial();
+                let is_collapse_hint = data.potential.is_trivial();
 
                 if flow_probed || !is_collapse_hint {
-                    let contrib = self.potential_contribution(branch);
-                    self.add_source_equation(&contrib, branch.flow.unknown.unwrap(), dst);
+                    let contrib = self.potential_contribution(data);
+                    self.add_source_equation(&contrib, data.flow.unknown.unwrap(), data.branch);
                 }
             }
             // switch source branch
@@ -197,16 +197,16 @@ impl Builder<'_> {
 
                 // Is the source branch type op dependent?
                 let is_op_dependent = is_op_dependent(
-                    branch.is_potential,
+                    data.is_potential,
                     &self.cursor,
                     self.intern,
                     self.op_dependent_insts,
                 );
                 // Is the flow of branch probed?
                 let flow_probed =
-                    self.intern.is_param_live(&self.cursor, &ParamKind::Flow(dst.into()));
+                    self.intern.is_param_live(&self.cursor, &ParamKind::Flow(data.branch.into()));
                 // Is the potential contribution zero?
-                let is_collapse_hint = branch.potential.is_trivial();
+                let is_collapse_hint = data.potential.is_trivial();
 
                 if is_op_dependent || flow_probed || !is_collapse_hint {
                     // An actual switch branch
@@ -226,18 +226,18 @@ impl Builder<'_> {
 
                     // Get the condition that determines if branch acts as a voltage source
                     // Skip trailing optbarriers
-                    let is_potential = strip_optbarrier(&self.cursor, branch.is_potential);
+                    let is_potential = strip_optbarrier(&self.cursor, data.is_potential);
                     // If condition is true, jump to potential_bb, or else go to next_block
                     self.cursor.ins().br(is_potential, potential_bb, next_block);
                     self.cursor.goto_bottom(potential_bb);
                     self.cursor.ins().jump(next_block);
                     self.cursor.goto_bottom(next_block);
-                    let contrib = self.switch_branch_contribution(branch, potential_bb, start_bb);
-                    self.add_source_equation(&contrib, branch.flow.unknown.unwrap(), dst)
+                    let contrib = self.switch_branch_contribution(data, potential_bb, start_bb);
+                    self.add_source_equation(&contrib, data.flow.unknown.unwrap(), data.branch)
                 } else {
                     // Not a real switch branch
-                    let contrib = self.flow_contribution(branch);
-                    self.add_kirchhoff_law(&contrib, dst);
+                    let contrib = self.flow_contribution(data);
+                    self.add_kirchhoff_law(&contrib, data.branch);
                 }
             }
         };
@@ -404,8 +404,8 @@ impl Builder<'_> {
     }
 
     /// Add contributions according to Kirchhoff Flow Law (KFL), or KCL in terms of electrical discipline.
-    fn add_kirchhoff_law(&mut self, contrib: &Contribution, dst: BranchWrite) {
-        let (hi, lo) = dst.node_pair(self.db);
+    fn add_kirchhoff_law(&mut self, contrib: &Contribution, branch: BranchWrite) {
+        let (hi, lo) = branch.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
         get_residual!(self, hi).add_contrib::<POS>(contrib, &mut self.cursor);
@@ -449,8 +449,8 @@ impl Builder<'_> {
     }
 
     fn add_noise(&mut self, noises: &[Noise], hi: SimUnknownKind, lo: Option<SimUnknownKind>) {
-        let hi = self.ensure_unknown(hi);
-        let lo = lo.map(|lo| self.ensure_unknown(lo));
+        let hi = self.ensure_sim_unknown(hi);
+        let lo = lo.map(|lo| self.ensure_sim_unknown(lo));
         self.dae.noise_sources.extend(noises.iter().map(|src| {
             let factor = src.factor;
             NoiseSource { name: src.name, kind: src.kind.clone(), hi, lo, factor }

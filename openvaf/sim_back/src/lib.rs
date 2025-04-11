@@ -42,7 +42,7 @@ pub enum SimUnknownKind {
 impl_debug_display! {
     match SimUnknownKind{
         SimUnknownKind::KirchhoffLaw(node) => "{node:?}";
-        SimUnknownKind::BranchFlow(curr) => "br[{curr:?}]";
+        SimUnknownKind::BranchFlow(flow) => "br[{flow:?}]";
         SimUnknownKind::Implicit(node) => "{node}";
     }
 }
