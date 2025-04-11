@@ -167,6 +167,7 @@ impl HirInterner {
 
         let mut has_ddx_call = |ddx, unk, neg| match self.callbacks.index_of(&ddx) {
             Some(ddx_call) => {
+                // insert ddx calls
                 let (pos_dst, neg_dst) = ddx_calls.entry(ddx_call).or_default();
                 let dst = if neg { neg_dst } else { pos_dst };
                 dst.insert(unk, func.dfg.num_values());
@@ -231,7 +232,8 @@ impl HirInterner {
         Self::ensure_param_(&mut self.params, func, kind)
     }
 
-    // FIXME(JW) this is a work-around borrow checker
+    // FIXME(JW) this is to work around borrow checker,
+    // try find another more idiomatic way
     pub fn ensure_param_(
         params: &mut TiMap<Param, ParamKind, Value>,
         mut func: impl AsMut<Function>,

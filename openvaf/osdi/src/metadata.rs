@@ -336,7 +336,7 @@ fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, Str
             discipline = Some(node.discipline(db));
             is_flow = false;
         }
-        SimUnknownKind::FlowBranch(FlowKind::Unnamed { hi, lo }) => {
+        SimUnknownKind::BranchFlow(FlowKind::Unnamed { hi, lo }) => {
             name = if let Some(lo) = lo {
                 format!("flow({},{})", &hi.name(db), &lo.name(db))
             } else {
@@ -345,12 +345,12 @@ fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, Str
             discipline = Some(hi.discipline(db));
             is_flow = true;
         }
-        SimUnknownKind::FlowBranch(FlowKind::Branch(br)) => {
+        SimUnknownKind::BranchFlow(FlowKind::Branch(br)) => {
             name = format!("flow({})", &br.name(db));
             discipline = Some(br.discipline(db));
             is_flow = true;
         }
-        SimUnknownKind::FlowBranch(FlowKind::Port(node)) => {
+        SimUnknownKind::BranchFlow(FlowKind::Port(node)) => {
             name = format!("flow(<{}>)", &node.name(db));
             discipline = Some(node.discipline(db));
             is_flow = true;

@@ -120,7 +120,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                             })
                         }
                         ParamKind::Flow(FlowKind::Port(_)) => cx.const_real(0.0),
-                        ParamKind::Flow(kind) => get_prev_solve(SimUnknownKind::FlowBranch(kind)),
+                        ParamKind::Flow(kind) => get_prev_solve(SimUnknownKind::BranchFlow(kind)),
                         ParamKind::ImplicitUnknown(equation) => {
                             get_prev_solve(SimUnknownKind::Implicit(equation))
                         }

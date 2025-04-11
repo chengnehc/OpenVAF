@@ -1,0 +1,19 @@
+function %(v16, v17, v18, v19, v21, v26) {
+    v6 = fconst 0x1.0000000000000p0
+                                block2:
+@0007                               v20 = fneg v19
+@0009                               v22 = fdiv v17, v21
+@fffffff7                           v33 = fdiv v6, v21
+                                    v40 = fmul v26, v22
+                                    v27 = optbarrier v40
+                                    v28 = fneg v22
+                                    v34 = fneg v33
+                                    v29 = optbarrier v20
+                                    v44 = fmul v26, v33
+                                    v35 = optbarrier v44
+                                    v45 = fmul v26, v34
+                                    v36 = optbarrier v45
+                                    v42 = fmul v26, v28
+                                    v41 = optbarrier v42
+                                    v43 = optbarrier v26
+}

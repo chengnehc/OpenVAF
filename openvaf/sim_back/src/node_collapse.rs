@@ -40,7 +40,7 @@ impl NodeCollapse {
         }
         let mut extra_pairs = TiVec::from(vec![HybridBitSet::default(); pairs.len()]);
         for (unknown, &kind) in dae.unknowns.iter_enumerated() {
-            if let SimUnknownKind::FlowBranch(kind) = kind {
+            if let SimUnknownKind::BranchFlow(kind) = kind {
                 let Ok(branch) = BranchWrite::try_from(kind) else { continue };
                 let (hi, lo) = branch.node_pair(ctx.db);
                 let hi = dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));

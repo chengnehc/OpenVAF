@@ -24,7 +24,7 @@ use hir::BranchWrite;
 use hir_lower::{CallBackKind, HirInterner, ImplicitEquation, ParamKind, PlaceKind};
 use indexmap::IndexSet;
 use lasso::Spur;
-use mir::{Function, Inst, Value, F_ZERO, TRUE};
+use mir::{Function, Inst, Value, F_ZERO};
 use mir_build::SSAVariableBuilder;
 use typed_index_collections::TiVec;
 use typed_indexmap::TiMap;
@@ -57,12 +57,12 @@ pub(crate) struct BranchInfo {
     /// of phi instructions.
     pub is_potential: Value,
 
-    /// Contributions like `V(br) <+ ...`
+    /// Contribution statements like `V(br) <+ ...`
     ///
     /// This should normally not be used by compact models, except for node collapse.
     pub potential: Contribution,
 
-    /// Contributions like `I(br) <+ ...`
+    /// Contribution statements like `I(br) <+ ...`
     ///
     /// This should be the primary kind of contributions for most compact models.
     pub flow: Contribution,
@@ -187,7 +187,7 @@ impl Topology {
                     .get(&PlaceKind::CollapseImplicitEquation(eq))
                     .and_then(|val| val.expand())
                     .map(|val| strip_optbarrier(&ctxt.func, val));
-                if is_collapsed == Some(TRUE) {
+                if is_collapsed == Some(mir::TRUE) {
                     ctxt.func.dfg.replace_uses(eq_val, F_ZERO);
                     return None;
                 }
@@ -204,8 +204,8 @@ impl Topology {
         /* Construct a temporary map from MIR values to contributions */
         let mut contributes = AHashMap::with_capacity(128);
         for (kind, val) in &ctxt.intern.outputs {
-            let Some(mut val) = val.expand() else { continue };
-            val = strip_optbarrier_if_const(&ctxt.func, val);
+            let Some(val) = val.expand() else { continue };
+            let val = strip_optbarrier_if_const(&ctxt.func, val);
             match *kind {
                 PlaceKind::ImplicitResidual { equation, reactive: false } => {
                     implicit_equations[equation].resist = val;
@@ -226,27 +226,29 @@ impl Topology {
                     let (hi, lo) = branch.node_pair(ctxt.db);
                     let is_potential = val;
 
-                    // If a contribution branch destination is not flow probe, then it can not be simply
-                    // described using KCL. Additional flow unknown is required (MNA).
-                    // That is to say, if `V(br)` appears at LHS of a contribution statement
-                    // then a new flow unknown is required as parameter
+                    // If a contribution branch destination is not flow probe, then it cannot be
+                    // described using KCL. Additional flow branch sim unknown is required (MNA).
+                    // That is to say, if `V(br)` appears at LHS of a contribution statement,
+                    // then a new flow branch sim unknown is required as function parameter.
                     let requires_unknown = is_potential != mir::FALSE;
 
-                    let has_potential_probe =
-                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Potential { hi, lo })
-                            || requires_unknown;
-                    let has_flow_probe =
-                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Flow(branch.into()))
-                            || requires_unknown;
+                    // Check if `V(br)` or `I<br>` value is used by some instruction.
+                    // If `V(br)` or `I<br>` appears at RHS of an expression, then we need to
+                    // make sure that it is passed as a function parameter.
+                    let potential_used =
+                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Potential { hi, lo });
+                    let flow_used =
+                        ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Flow(branch.into()));
 
-                    let potential_val = has_potential_probe.then(|| {
+                    // Make sure that the potential/flow is passed as function parameter
+                    let potential_param = (requires_unknown || potential_used).then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
                             ParamKind::Potential { hi, lo },
                         )
                     });
-                    let flow_val = has_flow_probe.then(|| {
+                    let flow_param = (requires_unknown || flow_used).then(|| {
                         HirInterner::ensure_param_(
                             &mut ctxt.intern.params,
                             &mut ctxt.func,
@@ -272,7 +274,7 @@ impl Topology {
                     let info = BranchInfo {
                         is_potential,
                         potential: Contribution {
-                            unknown: potential_val,
+                            unknown: potential_param,
                             resist: get_contrib(false, true),
                             react: get_contrib(true, true),
                             resist_small_signal: F_ZERO,
@@ -280,7 +282,7 @@ impl Topology {
                             noises: Vec::new(),
                         },
                         flow: Contribution {
-                            unknown: flow_val,
+                            unknown: flow_param,
                             resist: get_contrib(false, false),
                             react: get_contrib(true, false),
                             resist_small_signal: F_ZERO,

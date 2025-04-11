@@ -1,0 +1,27 @@
+DaeSystem {
+    unknowns: {
+        sim_node0: node0,
+        sim_node1: node1,
+    },
+    residual: {
+        sim_node0: Residual {
+            resist: v20,
+            react: v3,
+            resist_small_signal: v3,
+            react_small_signal: v3,
+            resist_lim_rhs: v3,
+            react_lim_rhs: v3,
+        },
+        sim_node1: Residual {
+            resist: v23,
+            react: v3,
+            resist_small_signal: v3,
+            react_small_signal: v3,
+            resist_lim_rhs: v3,
+            react_lim_rhs: v3,
+        },
+    },
+    jacobian: {},
+    small_signal_params: {},
+    noise_sources: [],
+}
