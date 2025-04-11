@@ -30,9 +30,10 @@ fn check_simple(src: &str, data_flow_result: Expect) {
     .into_iter()
     .collect();
 
-    let unknowns = KnownDerivatives { unknowns, ddx_calls };
+    let derivatives = KnownDerivatives { unknowns, ddx_calls };
 
-    auto_diff(&mut func, &dom_tree, &unknowns, &[]);
+    auto_diff(&mut func, &dom_tree, &derivatives, &[]);
+
     data_flow_result.assert_eq(&func.to_debug_string());
 }
 

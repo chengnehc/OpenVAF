@@ -156,6 +156,9 @@ pub struct HirInterner {
     pub tagged_reads: IndexMap<Value, Variable, ahash::RandomState>,
 }
 
+const NEG: bool = true;
+const POS: bool = false;
+
 impl HirInterner {
     /// Get all known derivatives (ddx calls) explicitly specified by the user.
     ///
@@ -177,22 +180,22 @@ impl HirInterner {
         };
 
         for (param, &kind, val) in self.live_params(&func.dfg) {
-            let ddx = CallBackKind::Derivative(param);
-            let param_required = has_ddx_call(ddx, unknowns.len().into(), false);
             let mut node_required = |node, neg| {
                 let ddx = CallBackKind::NodeDerivative(node);
                 has_ddx_call(ddx, unknowns.len().into(), neg)
             };
-
             let unknown_required = match kind {
                 // For simulator backend, parameter typed branch potential probe, flow
                 // probe and implicit unknowns are always required.
                 ParamKind::Potential { hi, lo: Some(lo) } => {
-                    sim_back | node_required(hi, false) | node_required(lo, true)
+                    sim_back | node_required(hi, POS) | node_required(lo, NEG)
                 }
-                ParamKind::Potential { hi, lo: None } => sim_back | node_required(hi, false),
+                ParamKind::Potential { hi, lo: None } => sim_back | node_required(hi, POS),
                 ParamKind::Flow(_) | ParamKind::ImplicitUnknown(_) => sim_back,
-                _ => param_required,
+                _ => {
+                    let ddx = CallBackKind::Derivative(param);
+                    has_ddx_call(ddx, unknowns.len().into(), POS)
+                }
             };
 
             if unknown_required {

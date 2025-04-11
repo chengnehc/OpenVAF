@@ -5,13 +5,21 @@ use mir::{KnownDerivatives, Unknown};
 mod builder;
 mod intern;
 mod live_derivatives;
-mod postorder;
-mod subgraph;
 
+use builder::DerivativeBuilder;
 use intern::{Derivative, DerivativeIntern};
 
-pub use builder::build_derivatives;
 pub use live_derivatives::LiveDerivatives;
+
+pub type Operand = (Value, Unknown);
+
+#[derive(Debug, Clone)]
+struct ChainRule {
+    pub inner_derivative: (Value, Derivative),
+    pub outer_derivative: Derivative,
+    pub dst_derivative: Derivative,
+    pub val: Value,
+}
 
 /// The main entrance routine for doing auto-differentiation.
 ///
@@ -20,13 +28,14 @@ pub fn auto_diff(
     mut func: impl AsMut<Function>,
     dom_tree: &DominatorTree,
     known_derivatives: &KnownDerivatives, // ddx calls explicitly specified by user code
-    extra_derivatives: &[(Value, Unknown)], // Jacobians
-) -> AHashMap<(Value, Unknown), Value> {
+    extra_derivatives: &[Operand],        // Jacobians
+) -> AHashMap<Operand, Value> {
     let func = func.as_mut();
     let mut intern = DerivativeIntern::new(known_derivatives);
     let live_derivatives = LiveDerivatives::build(func, &mut intern, extra_derivatives, dom_tree);
 
-    build_derivatives(func, &mut intern, &live_derivatives, dom_tree.cfg_postorder())
+    let builder = DerivativeBuilder::new(func, &mut intern, &live_derivatives);
+    builder.run(dom_tree.cfg_postorder())
 }
 
 fn is_zero_call(dfg: &DataFlowGraph, inst: Inst, intern: &DerivativeIntern) -> bool {
@@ -83,12 +92,4 @@ fn zero_derivative(dfg: &DataFlowGraph, inst: Inst) -> bool {
             | Opcode::Br
             | Opcode::Jmp
     )
-}
-
-#[derive(Debug, Clone)]
-struct ChainRule {
-    pub inner_derivative: (Value, Derivative),
-    pub outer_derivative: Derivative,
-    pub dst_derivative: Derivative,
-    pub val: Value,
 }

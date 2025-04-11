@@ -62,6 +62,12 @@ pub(crate) struct BranchInfo {
     pub flow: Contribution,
 }
 
+impl BranchInfo {
+    pub fn branch_flow_unknown(&self) -> Value {
+        self.flow.unknown.unwrap()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Contribution {
     /// If the conrtibution is also probed

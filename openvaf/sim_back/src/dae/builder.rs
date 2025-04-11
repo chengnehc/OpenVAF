@@ -101,12 +101,12 @@ impl<'a> Builder<'a> {
         let sim_unknown_reads = self.sim_unknown_reads();
         let derivative_info = self.intern.derivative_info(&self.cursor, true);
         let jacobian_info =
-            self.jacobian_info(sim_unknown_reads.iter().map(|&(_, val)| val), &derivative_info);
+            self.jacobian_entries(sim_unknown_reads.iter().map(|&(_, val)| val), &derivative_info);
 
         // TODO(perf): incrementally update dom_tree (for switch branches) instead
         self.dom_tree.compute::<true, false>(self.cursor.func, self.cfg);
 
-        // Actually generate the instructions and values for derivatives
+        // Actually generate and insert the instructions of derivatives
         let derivatives =
             auto_diff(&mut *self.cursor.func, self.dom_tree, &derivative_info, &jacobian_info);
         drop(jacobian_info);
@@ -153,7 +153,6 @@ impl Builder<'_> {
             // flow source branch
             // only flow(branch) is assigned (appears at contribution statement LHS)
             mir::FALSE => {
-                // Get the flow contribution
                 let contrib = self.flow_contribution(data);
 
                 // If the flow of branch is probed (appears at contribution statement RHS),
@@ -162,7 +161,7 @@ impl Builder<'_> {
                     self.intern.is_param_live(&self.cursor, &ParamKind::Flow(data.branch.into()));
 
                 if flow_probed {
-                    self.add_source_equation(&contrib, data.flow.unknown.unwrap(), data.branch);
+                    self.add_source_equation(&contrib, data);
                 } else {
                     self.add_kirchhoff_law(&contrib, data.branch);
                 }
@@ -186,7 +185,7 @@ impl Builder<'_> {
 
                 if flow_probed || !is_collapse_hint {
                     let contrib = self.potential_contribution(data);
-                    self.add_source_equation(&contrib, data.flow.unknown.unwrap(), data.branch);
+                    self.add_source_equation(&contrib, data);
                 }
             }
             // switch source branch
@@ -233,7 +232,7 @@ impl Builder<'_> {
                     self.cursor.ins().jump(next_block);
                     self.cursor.goto_bottom(next_block);
                     let contrib = self.switch_branch_contribution(data, potential_bb, start_bb);
-                    self.add_source_equation(&contrib, data.flow.unknown.unwrap(), data.branch)
+                    self.add_source_equation(&contrib, data)
                 } else {
                     // Not a real switch branch
                     let contrib = self.flow_contribution(data);
@@ -427,14 +426,9 @@ impl Builder<'_> {
     /// ...     ...    ...   ...   ...    |    ...
     /// I(p,n)  xxx    xxx   ...    0     |  -V(p,n)
     /// ```
-    fn add_source_equation(
-        &mut self,
-        contrib: &Contribution,
-        branch_flow: Value,
-        dst: BranchWrite,
-    ) {
+    fn add_source_equation(&mut self, contrib: &Contribution, info: &BranchInfo) {
+        let dst = info.branch;
         let residual = get_residual!(self, SimUnknownKind::BranchFlow(dst.into()));
-        // For additional equation residual: contribution -
         residual.add_contrib::<POS>(contrib, &mut self.cursor);
         residual.add_unknown::<NEG>(contrib.unknown.unwrap(), &mut self.cursor);
         self.add_noise(&contrib.noises, SimUnknownKind::BranchFlow(dst.into()), None);
@@ -442,6 +436,7 @@ impl Builder<'_> {
         let (hi, lo) = dst.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
+        let branch_flow = info.branch_flow_unknown();
         get_residual!(self, hi).add_unknown::<POS>(branch_flow, &mut self.cursor);
         if let Some(lo) = lo {
             get_residual!(self, lo).add_unknown::<NEG>(branch_flow, &mut self.cursor);
@@ -483,7 +478,7 @@ impl Builder<'_> {
     /// Return the operand pair of ddx():
     /// - the dependent variable (`Residual`)
     /// - the independent variable (`mir::Unknown`)
-    pub fn jacobian_info(
+    pub fn jacobian_entries(
         &self,
         sim_unknowns: impl Iterator<Item = Value>,
         derivative_info: &KnownDerivatives,
@@ -507,7 +502,7 @@ impl Builder<'_> {
             .filter_map(|&param| derivative_info.unknowns.index_of(&param))
             .collect();
 
-        // For each `(Residual, Unknown)` pair, we need 2 entries for both resistive and reactive Jacobi
+        // For each `(Residual, Unknown)` pair, we need 2 entries for resistive and reactive Jacobi
         let mut jacobians = Vec::with_capacity(self.dae.residual.len() * unknowns.len() * 2);
         for residual in &self.dae.residual {
             // If residual is non-constant, then a Jacobian derivative is required
@@ -542,18 +537,18 @@ impl Builder<'_> {
 
         let deriv_unknowns = &derivative_info.unknowns;
 
-        // each row pertains to a simulation unknown and contains Value pair (resistive, reactive)
+        // each row corresponds to a simulation unknown, and contains
+        // a pair of Jacobian result (resistive, reactive)
         let mut dense_row = TiVec::from(vec![(F_ZERO, F_ZERO); num_sim_unknowns]);
 
         // routine to insert instructions to add/substract derivative result to
-        // SSA values corresponding to each Jacobi matrix entry
-        let mut add_jacobi = |matrix_entry: &mut Value, residual, unknown, negate| {
+        // SSA values corresponding to each Jacobian entry
+        let mut add_jacobi = |jac_entry: &mut Value, residual, unknown, negate| {
             if let Some(deriv) = derivatives.get(&(residual, unknown)).copied() {
-                util::add(&mut self.cursor, matrix_entry, deriv, negate)
+                util::add(&mut self.cursor, jac_entry, deriv, negate)
             }
         };
 
-        // construct the matrix by creating a dense row first, and then sparsifying
         for (row, residual) in self.dae.residual.iter_enumerated() {
             let mut construct = |kind: SimUnknownKind, val, neg| {
                 let Some(sim_unknown) = self.dae.unknowns.index_of(&kind) else { return };
@@ -579,7 +574,7 @@ impl Builder<'_> {
                 }
             };
 
-            // construct the dense row
+            // construct the dense row first
             for &(param, val) in sim_unknown_reads {
                 let kind = match param {
                     ParamKind::Potential { hi, lo } => {

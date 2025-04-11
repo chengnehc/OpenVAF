@@ -222,9 +222,7 @@ pub struct Node {
     id: NodeId,
 }
 impl_debug! {
-    match Node{
-        Node{ id } => "{id:?}";
-    }
+    match Node { Node { id } => "{id:?}"; }
 }
 impl Node {
     #[inline]

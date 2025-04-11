@@ -53,6 +53,14 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
         }
     }
 
+    pub fn run(&mut self) {
+        for bb in self.dom_tree.cfg_postorder().iter().rev() {
+            for inst in self.func.layout.block_insts(*bb) {
+                self.explore_subgraph(inst)
+            }
+        }
+    }
+
     fn as_subgraph_entry(&mut self, inst: Inst) -> Option<(SparseBitSet<Derivative>, Value)> {
         self.curr_subgraph_dominator = self.func.layout.inst_block(inst).unwrap();
 
@@ -83,14 +91,6 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
         }
 
         Some((derivatives, results[0]))
-    }
-
-    pub fn run(&mut self) {
-        for bb in self.dom_tree.cfg_postorder().iter().rev() {
-            for inst in self.func.layout.block_insts(*bb) {
-                self.explore_subgraph(inst)
-            }
-        }
     }
 
     fn explore_subgraph(&mut self, inst: Inst) {
@@ -218,9 +218,7 @@ impl<'a, 'b> SubGraphExplorer<'a, 'b> {
         inner_derivative_val: Value,
         extra_inst: &mut u32,
     ) {
-        let Some(&val) = self.func.dfg.inst_results(inst).first() else {
-            return;
-        };
+        let Some(&val) = self.func.dfg.inst_results(inst).first() else { return };
 
         while let Some(next) = self.func.layout.next_inst(inst) {
             if self.func.dfg.insts[next].is_phi() {

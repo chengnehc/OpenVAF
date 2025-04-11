@@ -6,11 +6,14 @@ use mir::{DominatorTree, Function, Inst, InstructionData, Opcode, Value, ValueDe
 use workqueue::WorkQueue;
 
 use crate::intern::{Derivative, DerivativeIntern};
-use crate::postorder::{Postorder, PostorderParts};
 use crate::ChainRule;
 
+mod postorder;
+mod subgraph;
 #[cfg(test)]
 mod tests;
+
+use postorder::{Postorder, PostorderParts};
 
 #[derive(Debug, Clone)]
 pub struct LiveDerivatives {
@@ -88,6 +91,11 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
             post_order_parts,
             visited: BitSet::default(),
         }
+    }
+
+    pub fn finish(mut self) -> (LiveDerivatives, BitSet<Inst>) {
+        self.visited.clear();
+        (self.live_derivatives, self.visited)
     }
 
     fn depends_on(&self, val: Value, derivative: Derivative) -> bool {
@@ -292,10 +300,5 @@ impl<'a, 'b> LiveDerivativeBuilder<'a, 'b> {
                 self.live_derivatives.mat.insert(inst, self.intern.to_derivative(*unknown));
             }
         }
-    }
-
-    pub fn finish(mut self) -> (LiveDerivatives, BitSet<Inst>) {
-        self.visited.clear();
-        (self.live_derivatives, self.visited)
     }
 }

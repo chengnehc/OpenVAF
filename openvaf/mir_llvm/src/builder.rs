@@ -39,10 +39,12 @@ impl<'ll> MemLoc<'ll> {
         }
     }
 
-    pub unsafe fn read(&self, llbuilder: &llvm::Builder<'ll>) -> &'ll llvm::Value {
-        self.read_with_ptr(llbuilder, self.base_ptr)
+    pub fn read(&self, llbuilder: &llvm::Builder<'ll>) -> &'ll llvm::Value {
+        unsafe { self.read_with_ptr(llbuilder, self.base_ptr) }
     }
 
+    /// # Safety
+    ///
     pub unsafe fn read_with_ptr(
         &self,
         llbuilder: &llvm::Builder<'ll>,

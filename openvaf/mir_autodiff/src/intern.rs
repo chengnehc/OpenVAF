@@ -60,6 +60,35 @@ impl<'a> DerivativeIntern<'a> {
         self.unknowns.len()
     }
 
+    pub fn previous_order(&self, id: Derivative) -> Option<Derivative> {
+        self.derivatives[id].prev_order
+    }
+
+    pub fn get_unknown(&self, id: Derivative) -> Unknown {
+        self.derivatives[id].base
+    }
+
+    pub fn get_base_derivative(&self, id: Derivative) -> Derivative {
+        self.to_derivative(self.derivatives[id].base)
+    }
+
+    pub fn to_derivative(&self, base: Unknown) -> Derivative {
+        self.derivatives.unwrap_index(&DerivativeInfo { prev_order: None, base })
+    }
+
+    pub fn unknowns(&self, id: Derivative) -> impl Iterator<Item = Unknown> + '_ {
+        iter::successors(Some(id), |it| self.previous_order(*it))
+            .map(|unknown| self.get_unknown(unknown))
+    }
+
+    #[allow(clippy::needless_collect)] // false positive: can't reverse iter::successors
+    pub fn unknowns_rev(&self, id: Derivative) -> impl Iterator<Item = Unknown> + '_ {
+        let unknowns: Vec<_> = iter::successors(Some(id), |it| self.previous_order(*it))
+            .map(|deriv| self.get_unknown(deriv))
+            .collect();
+        unknowns.into_iter().rev()
+    }
+
     pub fn ensure_unknown(&mut self, val: Value) -> Unknown {
         let unknown = self.unknowns.ensure(val).0;
         self.derivatives.ensure(DerivativeInfo { prev_order: None, base: unknown });
@@ -70,42 +99,13 @@ impl<'a> DerivativeIntern<'a> {
         self.derivatives.ensure(derivative)
     }
 
-    pub fn previous_order(&self, derivative: Derivative) -> Option<Derivative> {
-        self.derivatives[derivative].prev_order
-    }
-
-    pub fn get_unknown(&self, derivative: Derivative) -> Unknown {
-        self.derivatives[derivative].base
-    }
-
-    pub fn get_base_derivative(&self, derivative: Derivative) -> Derivative {
-        self.to_derivative(self.derivatives[derivative].base)
-    }
-
-    pub fn to_derivative(&self, base: Unknown) -> Derivative {
-        self.derivatives.unwrap_index(&DerivativeInfo { prev_order: None, base })
-    }
-
-    pub fn unknowns(&self, derivative: Derivative) -> impl Iterator<Item = Unknown> + '_ {
-        iter::successors(Some(derivative), |it| self.previous_order(*it))
-            .map(|unknown| self.get_unknown(unknown))
-    }
-
-    #[allow(clippy::needless_collect)] // false positive can't revese successors
-    pub fn unknowns_rev(&self, derivative: Derivative) -> impl Iterator<Item = Unknown> + '_ {
-        let unknowns: Vec<_> = iter::successors(Some(derivative), |it| self.previous_order(*it))
-            .map(|unknown| self.get_unknown(unknown))
-            .collect();
-        unknowns.into_iter().rev()
-    }
-
-    pub fn raise_order(&mut self, derivative: Derivative, next_unknown: Unknown) -> Derivative {
-        self.raise_order_with(derivative, next_unknown, |_| true).unwrap().0
+    pub fn raise_order(&mut self, id: Derivative, next_unknown: Unknown) -> Derivative {
+        self.raise_order_with(id, next_unknown, |_| true).unwrap().0
     }
 
     pub fn raise_order_with(
         &mut self,
-        derivative: Derivative,
+        id: Derivative,
         next_unknown: Unknown,
         f: impl Fn(Derivative) -> bool,
     ) -> Option<(Derivative, bool)> {
@@ -113,7 +113,7 @@ impl<'a> DerivativeIntern<'a> {
 
         let mut changed = false;
         let mut prev_orders = mem::take(&mut self.buf);
-        prev_orders.extend(self.unknowns(derivative));
+        prev_orders.extend(self.unknowns(id));
 
         let mut curr = self.to_derivative(next_unknown);
         for base in prev_orders.drain(..).rev() {
