@@ -30,10 +30,10 @@ use mir::{
 use typed_index_collections::TiVec;
 
 mod ssa;
-use ssa::SSABuilder;
+use ssa::{CompleteCfg, IncompleteCfg, SSABuilder};
 
-/// An opaque reference to a place. It could be viewed as a Variable or
-/// a (possibly mutable) memory location.
+/// An opaque reference to a place. It corresponds to the way variables are
+/// represented in the non-SSA language.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Place(u32);
 impl_idx_from!(Place(u32));
@@ -66,7 +66,7 @@ pub struct FunctionBuilder<'a> {
 /// functions, rather than dropped, preserving the underlying allocations.
 #[derive(Default)]
 pub struct FunctionBuilderContext {
-    ssa: SSABuilder<ssa::IncompleteCfg>,
+    ssa: SSABuilder<IncompleteCfg>,
     status: TiVec<Block, BlockStatus>,
 }
 
@@ -375,8 +375,8 @@ impl<'a> FunctionBuilder<'a> {
         self.func_ctxt.ssa.def_var(var, val, block);
     }
 
-    /// Returns the MIR value corresponding to the utilization at the current program
-    /// position of a previously defined user variable.
+    /// Returns the SSA value corresponding to the utilization of a previously defined
+    /// user variable at current program position.
     pub fn use_var(&mut self, var: Place) -> Value {
         self.ensure_inserted_block();
         self.func_ctxt.ssa.use_var(self.func, var, self.position)
@@ -506,12 +506,12 @@ impl FunctionBuilder<'_> {
 /// Add (potentially mutable) values to an *already finished* MIR function.
 /// It will be available at the end of the function just like a place during building.
 pub struct SSAVariableBuilder<'a> {
-    ssa: SSABuilder<&'a ssa::CompleteCfg>,
+    ssa: SSABuilder<&'a CompleteCfg>,
 }
 
 impl<'a> SSAVariableBuilder<'a> {
     pub fn new(cfg: &'a ControlFlowGraph) -> Self {
-        Self { ssa: SSABuilder::<&'a ssa::CompleteCfg>::new(cfg) }
+        Self { ssa: SSABuilder::<&'a CompleteCfg>::new(cfg) }
     }
 
     #[must_use]
@@ -519,24 +519,23 @@ impl<'a> SSAVariableBuilder<'a> {
         &mut self,
         func: &mut Function,
         init: Value,
-        mut val: Value,
+        def: Value,
         inst: Inst,
     ) -> Value {
+        self.ssa.clear();
         let finished_vals = func.dfg.num_values();
-        self.new_var();
+        // define the variable at entry block and initialize it with `init`
         self.def_var(init, func.layout.entry_block().unwrap());
-        let bb = func.layout.inst_block(inst).unwrap();
-        self.def_var(val, bb);
+        // define the variable at the inst block and assign it with `def`
+        self.def_var(def, func.layout.inst_block(inst).unwrap());
+        // use the variable at exit block
         let exit = func.layout.last_block().unwrap();
-        val = self.use_var(func, exit);
-        let res = FuncCursor::new(func).at_bottom(exit).ins().ensure_optbarrier(val);
+        let val = self.use_var(func, exit);
+        // ensure optbarrier of the `val` at the end of function
+        let val = FuncCursor::new(func).at_bottom(exit).ins().ensure_optbarrier(val);
         func.dfg.strip_alias_after(finished_vals);
 
-        res
-    }
-
-    pub fn new_var(&mut self) {
-        self.ssa.clear();
+        val
     }
 
     /// Defines the value of the variable at the start of a basic block

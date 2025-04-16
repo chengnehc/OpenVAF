@@ -134,7 +134,7 @@ impl CallBackKind {
         }
     }
 
-    pub fn is_noise(&self) -> bool {
+    pub const fn is_noise(&self) -> bool {
         matches!(
             self,
             CallBackKind::WhiteNoise { .. }
@@ -143,7 +143,7 @@ impl CallBackKind {
         )
     }
 
-    pub fn is_op_dependent(&self) -> bool {
+    pub const fn is_op_dependent(&self) -> bool {
         matches!(
             self,
             CallBackKind::SimParam
@@ -156,11 +156,11 @@ impl CallBackKind {
         )
     }
 
-    pub fn ignore_if_op_dependent(&self) -> bool {
+    pub const fn ignore_if_op_dependent(&self) -> bool {
         matches!(self, CallBackKind::CollapseHint(_, _))
     }
 
-    pub fn tracked(&self) -> bool {
+    pub const fn tracked(&self) -> bool {
         !matches!(self, CallBackKind::Print { .. })
     }
 }

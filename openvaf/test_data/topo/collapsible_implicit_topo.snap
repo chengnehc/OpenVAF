@@ -7,22 +7,18 @@ Topology {
                     node1,
                 ),
             },
-            is_potential: v2,
+            is_potential: v1,
             potential: Contribution {
-                unknown: Some(
-                    v16,
-                ),
-                resist: v18,
+                unknown: None,
+                resist: v3,
                 react: v3,
                 resist_small_signal: v3,
                 react_small_signal: v3,
                 noises: [],
             },
             flow: Contribution {
-                unknown: Some(
-                    v19,
-                ),
-                resist: v3,
+                unknown: None,
+                resist: v31,
                 react: v3,
                 resist_small_signal: v3,
                 react_small_signal: v3,
@@ -30,6 +26,17 @@ Topology {
             },
         },
     },
-    implicit_equations: {},
+    implicit_equations: {
+        inode0: Contribution {
+            unknown: Some(
+                v32,
+            ),
+            resist: v36,
+            react: v39,
+            resist_small_signal: v3,
+            react_small_signal: v3,
+            noises: [],
+        },
+    },
     small_signal_vals: {},
 }

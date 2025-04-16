@@ -162,8 +162,8 @@ impl Context<'_> {
                     debug_assert_eq!(case.exprs().next(), None);
                     CaseCond::Default
                 } else {
-                    let vals = case.exprs().map(|e| self.collect_expr(e)).collect();
-                    CaseCond::Vals(vals)
+                    let exprs = case.exprs().map(|e| self.collect_expr(e)).collect();
+                    CaseCond::Exprs(exprs)
                 };
                 Case { cond, body: self.collect_stmt_opt(case.stmt()) }
             })

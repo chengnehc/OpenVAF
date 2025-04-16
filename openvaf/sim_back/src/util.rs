@@ -24,7 +24,7 @@ pub fn is_op_dependent(
 }
 
 /// Go back along the use-def chain to get the first actual instruction producing value
-pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
+pub fn strip_optbarrier(func: &impl AsRef<Function>, mut val: Value) -> Value {
     let func = func.as_ref();
     while let Some(inst) = func.dfg.value_def(val).inst() {
         if let InstructionData::Unary { opcode: Opcode::OptBarrier, arg } = func.dfg.insts[inst] {
@@ -36,7 +36,7 @@ pub fn strip_optbarrier(func: impl AsRef<Function>, mut val: Value) -> Value {
     val
 }
 
-pub fn strip_optbarrier_if_const(func: impl AsRef<Function>, val: Value) -> Value {
+pub fn strip_optbarrier_if_const(func: &impl AsRef<Function>, val: Value) -> Value {
     let func = func.as_ref();
     let stripped = strip_optbarrier(func, val);
     if func.dfg.value_def(stripped).as_const().is_some() {

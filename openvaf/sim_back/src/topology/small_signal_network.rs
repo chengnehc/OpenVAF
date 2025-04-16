@@ -2,7 +2,7 @@ use std::{iter, mem};
 
 use hir::Node;
 use indexmap::IndexMap;
-use mir::{Const, InstructionData, Opcode, Value, ValueDef, FALSE, F_ZERO};
+use mir::{Const, InstructionData, Opcode, Postorder, Value, ValueDef, FALSE, F_ZERO};
 
 use super::Builder;
 use crate::util::{add, update_optbarrier};
@@ -68,20 +68,18 @@ impl Builder<'_> {
                 // create placeholder since all uses of val will be replaced with 0
                 // but we obviously still need it
                 let placeholder = self.func.dfg.make_invalid_value();
-                self.create_dimension(placeholder, val);
+                self.create_dimension(val, placeholder);
                 for contribute in contributes {
-                    let dimension = self.val_map[&contribute];
-                    let contrib_kind = self.topology.as_contribute_kind(contribute).unwrap();
-                    let is_reactive = contrib_kind.is_reactive();
                     cov_mark::hit!(prune_small_signal);
-                    let contribute = self.topology.get_contrib_mut(contrib_kind);
-                    let val = if is_reactive {
-                        &mut contribute.react_small_signal
+                    let kind = self.as_contribute_kind(contribute).unwrap();
+                    let contrib = self.topology.get_contrib_mut(kind);
+                    let val = if kind.is_reactive() {
+                        &mut contrib.react_small_signal
                     } else {
-                        &mut contribute.resist_small_signal
+                        &mut contrib.resist_small_signal
                     };
                     update_optbarrier(self.func, val, |mut val, cursor| {
-                        add(cursor, &mut val, dimension, false);
+                        add(cursor, &mut val, self.val_map[&contribute], false);
                         val
                     });
                 }
@@ -151,8 +149,8 @@ impl Builder<'_> {
             }
             valid.then_some(candidate)
         }));
-        let implice_eq = mem::take(&mut self.topology.implicit_equations);
-        candidates.extend(implice_eq.iter().filter_map(|contrib| {
+        let implicit_eq = mem::take(&mut self.topology.implicit_equations);
+        candidates.extend(implicit_eq.iter().filter_map(|contrib| {
             let unknown = contrib.unknown?;
             let valid = self.has_linear_dependency(iter::once(contrib.resist), unknown);
             valid.then_some(Candidate {
@@ -161,7 +159,7 @@ impl Builder<'_> {
                 react: vec![contrib.react],
             })
         }));
-        self.topology.implicit_equations = implice_eq;
+        self.topology.implicit_equations = implicit_eq;
 
         candidates
     }
@@ -171,8 +169,9 @@ impl Builder<'_> {
 
         postorder.clear();
         scratch_buf.clear();
-        let mut traversal =
-            func.dfg.uses_postorder_with(unknown, (mem::take(scratch_buf), Vec::new()), |_| true);
+        let mut traversal = Postorder::new(&func.dfg, |_| true)
+            .with_parts((mem::take(scratch_buf), Vec::new()))
+            .at_value(unknown);
         (&mut traversal).for_each(|_| ());
         *scratch_buf = traversal.visited;
         let mut found_linear = false;
@@ -369,7 +368,7 @@ impl Builder<'_> {
         }
     }
 
-    /// returns the list of contributes that `val` is used in if and only if turning
+    /// returns the list of contributes that `val` is used if and only if in turning
     /// these contributions value into a separate dimension is valid. Specifically that
     /// means that all partial deriveves of these contrbituions (and the contributions themselves)
     /// do not changed their value if `val` zero (unless derived by itself)
@@ -378,10 +377,11 @@ impl Builder<'_> {
 
         postorder.clear();
         scratch_buf.clear();
-        let mut traversal =
-            func.dfg.uses_postorder_with(val, (mem::take(scratch_buf), Vec::new()), |_| true);
-        postorder.extend(&mut traversal);
-        *scratch_buf = traversal.visited;
+
+        *postorder = Postorder::new(&func.dfg, |_| true)
+            .with_parts((mem::take(scratch_buf), Vec::new()))
+            .at_value(val)
+            .collect();
 
         let is_op_dependent = |val| {
             if let Some(inst) = func.dfg.value_def(val).inst() {
@@ -408,7 +408,7 @@ impl Builder<'_> {
                 _ => return None,
             }
             let val = func.dfg.first_result(inst);
-            if self.topology.as_contribute_kind(val).is_some() {
+            if self.contrib_map.get(&val).is_some() {
                 res.push(val);
             }
         }

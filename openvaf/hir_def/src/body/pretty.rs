@@ -108,9 +108,9 @@ impl Printer<'_> {
                     for case in case_arms {
                         match case.cond {
                             CaseCond::Default => write!(p, "default")?,
-                            CaseCond::Vals(ref vals) => {
-                                for val in vals {
-                                    p.pretty_print_expr(*val)?;
+                            CaseCond::Exprs(ref exprs) => {
+                                for e in exprs {
+                                    p.pretty_print_expr(*e)?;
                                     writeln!(p, ", ")?;
                                 }
                             }

@@ -1,13 +1,11 @@
 use bitset::BitSet;
 
-use crate::{DataFlowGraph, Inst, InstUseIter, Use, Value};
+use super::{DataFlowGraph, Inst, InstUseIter, Use, Value};
 
-pub type PostorderParts<'a> = (BitSet<Inst>, Vec<(Inst, InstUseIter<'a>)>);
-
-/// Postorder traversal of instructions in a data flow graph
+/// Postorder traversal of instructions in a data flow graph.
 ///
-/// Postorder traversal is when each node is visited after all of its
-/// successors, except when the successor is only reachable by a back-edge
+/// Each node is visited after all of its successors, except
+/// when the successor is only reachable by a back-edge.
 ///
 /// ```text
 ///
@@ -22,44 +20,65 @@ pub type PostorderParts<'a> = (BitSet<Inst>, Vec<(Inst, InstUseIter<'a>)>);
 ///
 /// A Postorder traversal of this graph is `D B C A` or `D C B A`
 ///
-pub struct Postorder<'a, F> {
+pub struct Postorder<'a, P: FnMut(Inst) -> bool> {
     dfg: &'a DataFlowGraph,
+    /// a predicate that indicates whether to descend at a specific instruction
+    descend: P,
+    /// a bitset registering all visited instructions
     pub visited: BitSet<Inst>,
+    /// the output of the postorder traserval
     pub visit_stack: Vec<(Inst, InstUseIter<'a>)>,
-    descend: F,
 }
 
-impl<'a, F: FnMut(Inst) -> bool> Postorder<'a, F> {
-    pub fn new(dfg: &'a DataFlowGraph, descend: F) -> Postorder<'a, F> {
+pub type PostorderParts<'a> = (BitSet<Inst>, Vec<(Inst, InstUseIter<'a>)>);
+
+impl<'a, P: FnMut(Inst) -> bool> Postorder<'a, P> {
+    pub fn new(dfg: &'a DataFlowGraph, descend: P) -> Postorder<'a, P> {
         Postorder {
             dfg,
+            descend,
             visited: BitSet::new_empty(dfg.num_insts()),
             visit_stack: Vec::new(),
-            descend,
         }
     }
 
-    pub fn from_parts(dfg: &'a DataFlowGraph, mut parts: PostorderParts<'a>, descend: F) -> Self {
-        parts.0.ensure(dfg.num_insts());
+    pub fn with_parts(self, parts: PostorderParts<'a>) -> Self {
+        let Self { dfg, descend, .. } = self;
+        let (mut visited, visit_stack) = parts;
+        visited.ensure(self.dfg.num_insts());
 
-        Postorder { dfg, visited: parts.0, visit_stack: parts.1, descend }
+        Postorder { dfg, descend, visited, visit_stack }
     }
 
     pub fn into_parts(self) -> PostorderParts<'a> {
         (self.visited, self.visit_stack)
     }
 
+    pub fn at_value(mut self, val: Value) -> Self {
+        self.populate(val);
+        self.traverse_successor();
+        self
+    }
+
+    pub fn at_inst(mut self, inst: Inst) -> Self {
+        for &res in self.dfg.inst_results(inst) {
+            self.populate(res);
+        }
+        self.traverse_successor();
+        self
+    }
+
     pub fn clear(&mut self) {
         self.visited.clear();
     }
 
-    pub fn populate(&mut self, val: Value) {
+    fn populate(&mut self, val: Value) {
         for use_ in self.dfg.uses(val) {
             self.traverse_use(use_)
         }
     }
 
-    pub fn traverse_successor(&mut self) {
+    fn traverse_successor(&mut self) {
         while let Some(use_) = self.visit_stack.last_mut().and_then(|(_, iter)| iter.next()) {
             self.traverse_use(use_);
         }
@@ -77,7 +96,7 @@ impl<'a, F: FnMut(Inst) -> bool> Postorder<'a, F> {
     }
 }
 
-impl<F: FnMut(Inst) -> bool> Iterator for Postorder<'_, F> {
+impl<P: FnMut(Inst) -> bool> Iterator for Postorder<'_, P> {
     type Item = Inst;
 
     fn next(&mut self) -> Option<Inst> {

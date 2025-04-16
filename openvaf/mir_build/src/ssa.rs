@@ -1,4 +1,4 @@
-//! A SSA-building API that handles incomplete CFGs.
+//! A SSA-building API that handles incomplete and complete CFGs.
 //!
 //! This API will give you the correct SSA values to use as arguments of your instructions,
 //! as well as modify the jump instruction and `Block` parameters to account for the SSA
@@ -10,7 +10,8 @@
 //! Lecture Notes in Computer Science, vol 7791. Springer, Berlin, Heidelberg
 //!
 //! <https://link.springer.com/content/pdf/10.1007/978-3-642-37051-9_6.pdf>
-//!
+//！
+//！ See Also: <https://docs.rs/cranelift-frontend/0.118.0/src/cranelift_frontend/ssa.rs.html>
 
 use std::iter::{self, zip};
 use std::slice;
@@ -27,6 +28,27 @@ use typed_index_collections::TiVec;
 use crate::Place;
 pub(crate) use mir::ControlFlowGraph as CompleteCfg;
 
+/// Structure containing the data relevant to the construction of SSA for a given function.
+///
+/// This SSA building module allows you to def and use variables *on the fly* while you are
+/// constructing the CFG, no need for a separate SSA pass after the CFG is completed.
+///
+/// A basic block is said _filled_ if all the instruction that it contains have been translated,
+/// and it is said _sealed_ if all of its predecessors have been declared. Only filled predecessors
+/// can be declared.
+pub(crate) struct SSABuilder<C: ControlFlowGraph> {
+    // TODO: Consider a sparse representation rather than Map-of-Map.
+    /// Records for every variable and for every relevant block, the last definition of
+    /// the variable in the block.
+    variables: TiVec<Place, TiVec<Block, PackedOption<Value>>>,
+    /// Records the position of the basic blocks. It could be `CompleteCfg` or `IncompleteCfg`.
+    cfg: C,
+    /// Call stack for use in the `use_var`/`predecessors_lookup` state machine.
+    calls: Vec<Call>,
+    /// Result stack for use in the `use_var`/`predecessors_lookup` state machine.
+    results: Vec<Value>,
+}
+
 pub(crate) trait ControlFlowGraph {
     type Predecessors<'a>: Iterator<Item = Block> + 'a
     where
@@ -36,8 +58,8 @@ pub(crate) trait ControlFlowGraph {
         Self: 'a;
     const NEEDS_TAG: bool;
     fn predecessors(&self, bb: Block) -> Self::Predecessors<'_>;
-    fn has_single_predecessor(&self, bb: Block) -> bool;
     fn predecessors_rev(&self, bb: Block) -> Self::PredecessorsRev<'_>;
+    fn has_single_predecessor(&self, bb: Block) -> bool;
     fn sealed(&self, bb: Block) -> bool;
     fn push_undef_phis(&mut self, bb: Block, var: Place, val: Value);
 }
@@ -56,19 +78,15 @@ impl<'c> ControlFlowGraph for &'c CompleteCfg {
     fn predecessors(&self, bb: Block) -> Self::Predecessors<'_> {
         self.pred_iter(bb)
     }
-
-    fn has_single_predecessor(&self, bb: Block) -> bool {
-        self.single_predecessor_of(bb).is_some()
-    }
-
     fn predecessors_rev(&self, bb: Block) -> Self::PredecessorsRev<'_> {
         self.pred_rev_iter(bb)
     }
-
+    fn has_single_predecessor(&self, bb: Block) -> bool {
+        self.single_predecessor_of(bb).is_some()
+    }
     fn sealed(&self, _bb: Block) -> bool {
         true
     }
-
     fn push_undef_phis(&mut self, _bb: Block, _var: Place, _val: Value) {
         unreachable!("all blocks are sealed")
     }
@@ -86,19 +104,15 @@ impl ControlFlowGraph for IncompleteCfg {
     fn predecessors(&self, bb: Block) -> Self::Predecessors<'_> {
         self.blocks[bb].predecessors.iter().copied()
     }
-
-    fn has_single_predecessor(&self, bb: Block) -> bool {
-        self.blocks[bb].predecessors.len() == 1
-    }
-
     fn predecessors_rev(&self, bb: Block) -> Self::PredecessorsRev<'_> {
         self.blocks[bb].predecessors.iter().rev().copied()
     }
-
+    fn has_single_predecessor(&self, bb: Block) -> bool {
+        self.blocks[bb].predecessors.len() == 1
+    }
     fn sealed(&self, bb: Block) -> bool {
         self.blocks[bb].sealed
     }
-
     fn push_undef_phis(&mut self, bb: Block, var: Place, val: Value) {
         self.blocks[bb].undef_phis.push((var, val));
     }
@@ -132,34 +146,8 @@ impl SSABlockData {
     }
 }
 
-/// Structure containing the data relevant the construction of SSA for a given function.
-///
-/// The parameter struct `Variable` corresponds to the way variables are represented in the
-/// non-SSA language you're translating from.
-///
-/// The SSA building relies on information about the variables used and defined.
-///
-/// This SSA building module allows you to def and use variables on the fly while you are
-/// constructing the CFG, no need for a separate SSA pass after the CFG is completed.
-///
-/// A basic block is said _filled_ if all the instruction that it contains have been translated,
-/// and it is said _sealed_ if all of its predecessors have been declared. Only filled predecessors
-/// can be declared.
-pub(crate) struct SSABuilder<C: ControlFlowGraph> {
-    // TODO: Consider a sparse representation rather than Map-of-Map.
-    /// Records for every variable and for every relevant block, the last definition of
-    /// the variable in the block.
-    variables: TiVec<Place, TiVec<Block, PackedOption<Value>>>,
-    /// Records the position of the basic blocks. It could be `CompleteCfg` or `IncompleteCfg`.
-    cfg: C,
-    /// Call stack for use in the `use_var`/`predecessors_lookup` state machine.
-    calls: Vec<Call>,
-    /// Result stack for use in the `use_var`/`predecessors_lookup` state machine.
-    results: Vec<Value>,
-}
-
 impl<'a> SSABuilder<&'a CompleteCfg> {
-    /// Allocate a new blank SSA builder struct. Use the API function to interact with the struct.
+    /// Allocate a new blank SSA builder struct.
     pub fn new(cfg: &'a CompleteCfg) -> Self {
         Self { variables: TiVec::new(), cfg, calls: Vec::new(), results: Vec::new() }
     }
@@ -310,8 +298,8 @@ enum ZeroOneOrMore<T> {
     More,
 }
 
-#[derive(Debug)]
 /// States for the `use_var`/`predecessors_lookup` state machine.
+#[derive(Debug)]
 enum Call {
     UseVar(Block),
     FinishSealedOnePredecessor(Block),
@@ -327,8 +315,7 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
     /// Declares a new definition of a variable in a given basic block.
     ///
     /// The SSA value is passed as an argument because it should be created with
-    /// `DataFlowGraph::make_inst_results`, or (`DataFlowGraph::append_result`)
-    /// at a lowerer level.
+    /// `make_inst_results`, or `append_result` at a lower level.
     pub fn def_var(&mut self, var: Place, val: Value, block: Block) {
         if usize::from(var) >= self.variables.len() {
             self.variables.resize(usize::from(var) + 1, TiVec::default());

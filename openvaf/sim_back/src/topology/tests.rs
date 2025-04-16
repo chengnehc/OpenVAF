@@ -30,10 +30,10 @@ fn assert(src: &str) {
     println!("{func:?}");
     let test_dir = openvaf_test_data("topo");
     let func = format!("{func:#?}");
-    //let _ = std::fs::write(test_dir.join(format!("{name}_mir.snap")), &func);
+    // let _ = std::fs::write(test_dir.join(format!("{name}_mir.snap")), &func);
     expect_file![test_dir.join(format!("{name}_mir.snap"))].assert_eq(&func);
     let topology = format!("{topology:#?}");
-    //let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
+    // let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
     expect_file![test_dir.join(format!("{name}_topo.snap"))].assert_eq(&topology);
 }
 
@@ -54,19 +54,87 @@ fn linear_analog_operators() {
     assert(src);
 }
 
-/// This testcase ensures that conditional time derivates are evaluated properly.
-/// In general conditions are a bit tricky to handle. We need to create
-/// a dedicated internal node for the ddt(x) if it's used in an operating
-/// point dependent condition to ensure the internal state gets updated
-/// correctly (otherwise there would be discontinuities). This is fairly niche
-/// tough and its important to ensure that the more common case (of operting
-/// point independent conditions) also work.
+/// This testcase ensures three forms of ddt() are correctly handled:
+/// 1. `Q = f(V(b_cap)); I(b_cap) <+ ddt(Q);` (based directly on charge)
+/// 2. `C = f(V(b_cap)); I(b_cap) <+ C*ddt(V(b_cap));` (based directly on capacitance)
+/// 3. `C = f(V(b_cap)); I(b_cap) <+ ddt(C*V(b_cap));` (by computing charge as Q = C*V)
+///
+/// - Form 1 is linear. It is recommended and should be used by compact models.
+/// - Form 2 is not linear and not recommended, as it:
+///     1. does not align with KCL nodal formulation and requires an implicit unknown/equation
+///     2. makes it more difficult to guarantee that a model is charge conserving
+/// - Although form 3 is linear, its result is incorrect when `C` is non-linear (op-dependent).
+///
+/// See Also: section IV of (1) and slide branch-ddt of (2)
+///
+/// 1. C. C. McAndrew et al., “Best Practices for Compact Modeling in Verilog-A,”
+/// IEEE Journal of the Electron Devices Society, vol. 3, no. 5, pp. 383–396, Sep. 2015
+/// 2. M. Mierzwinski, P. O’Halloran, and B. Troyanovsky, “Developing and releasing compact models using Verilog-A,”
+/// in MOS-AK Workshop, San Francisco, CA, USA, Dec. 2008
+#[test]
+fn ddt() {
+    let form_1 = indoc! {r#"
+        `include "disciplines.vams"
+        module ddt_form_1(inout a, inout c);
+            electrical a, c;
+            branch (a, c) cap;
+            parameter real foo=1.0;
+            real Q = 0.0;
+            analog begin
+                Q = foo * V(cap) * V(cap);
+                I(cap) <+ ddt(Q);
+            end
+        endmodule
+    "#};
+
+    let form_2 = indoc! {r#"
+        `include "disciplines.vams"
+        module ddt_form_2(inout a, inout c);
+            electrical a, c;
+            branch (a, c) cap;
+            parameter real foo=1.0;
+            real C = 0.0;
+            analog begin
+                C = foo * V(cap);
+                I(cap) <+ C * ddt(V(cap));
+            end
+        endmodule
+    "#};
+
+    let form_3 = indoc! {r#"
+        `include "disciplines.vams"
+        module ddt_form_3(inout a, inout c);
+            electrical a, c;
+            branch (a, c) cap;
+            parameter real foo=1.0;
+            real C = 0.0;
+            analog begin
+                C = foo * V(cap);
+                I(cap) <+ ddt(C * V(cap));
+            end
+        endmodule
+    "#};
+
+    assert(form_1);
+    assert(form_2);
+    assert(form_3);
+}
+
+/// This testcase ensures that conditional time derivatives are evaluated properly.
+///
+/// In general, conditions are a bit tricky to handle. If ddt(x) is used in an
+/// operating point dependent condition, we need to create a dedicated internal
+/// node for it, so as to ensure the internal state gets updated correctly
+/// (otherwise there would be discontinuities). This is fairly niche tough.
+///
+/// It's important to ensure that the more common case, i.e, using ddt(x) in
+/// operating point independent conditions, also works.
 #[test]
 fn conditional_ddt() {
     cov_mark::check!(conditional_phi);
-    let src = indoc! {r#"
+    let op_dependent = indoc! {r#"
         `include "disciplines.vams"
-        module conditional_ddt(inout a, inout c);
+        module conditional_ddt_op_dependent(inout a, inout c);
             electrical a, c;
             parameter real foo=1.0, bar=2.0;
             real tmp;
@@ -80,6 +148,15 @@ fn conditional_ddt() {
                         end
                     end
                 end
+            end
+        endmodule
+    "#};
+    let op_independent = indoc! {r#"
+        `include "disciplines.vams"
+        module conditional_ddt_op_independent(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0, bar=2.0;
+            analog begin
                 if (foo < 0) begin
                     if (bar < 0) begin
                         I(a, c)  <+ ddt(V(c));
@@ -89,44 +166,25 @@ fn conditional_ddt() {
         endmodule
     "#};
 
-    assert(src);
+    assert(op_dependent);
+    assert(op_independent);
 }
+
+/// This testcase makes sure that the implicit equation caused by
+/// un-linearize-able analog operators within can be collapsed under
+/// specific parameter set, if the analog operator is defined within
+/// conditionals.
 #[test]
-fn collapsible_ddt() {
-    cov_mark::check!(collapsible_ddt);
+fn collapsible_implicit() {
+    cov_mark::check!(collapsible_implicit);
     let src = indoc! {r#"
         `include "disciplines.vams"
-        module collapsible_ddt(inout a, inout c);
+        module collapsible_implicit(inout a, inout c);
             electrical a, c;
             parameter real foo=1.0;
-            real tmp;
             analog begin
                 if (foo < 0) begin
                     I(a, c)  <+ V(a) * ddt(V(c));
-                end
-            end
-        endmodule
-    "#};
-
-    assert(src);
-}
-
-/// Noise doesn't really create its own equation (its just a small
-/// signal source) so it can be used in conditions directly and can
-/// stay linear even in conditional code.
-#[test]
-fn conditional_noise() {
-    cov_mark::check!(linear_operator);
-    let src = indoc! {r#"
-        `include "disciplines.vams"
-        module conditional_noise(inout a, inout c);
-            electrical a, c;
-            parameter real foo=1.0, bar=2.0;
-            real tmp;
-            analog begin
-                I(a, c) <+ V(a);
-                if (V(a) < 0) begin
-                    I(a, c)  <+ white_noise(foo*bar);
                 end
             end
         endmodule
@@ -156,9 +214,32 @@ fn unused_noise() {
     assert(src);
 }
 
-/// This test tests two things:
-/// * that a noise source that is used in multiple times is correctly transformed to a noise source.
-/// * that the contributions (to external nodes in this case) are correctly transformed to small
+/// Noise doesn't really create its own equation (its just a small
+/// signal source) so it can be used in conditions directly and can
+/// stay linear even in conditional code.
+#[test]
+fn conditional_noise() {
+    cov_mark::check!(linear_operator);
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module conditional_noise(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0, bar=2.0;
+            analog begin
+                I(a, c) <+ V(a);
+                if (V(a) < 0) begin
+                    I(a, c)  <+ white_noise(foo*bar);
+                end
+            end
+        endmodule
+    "#};
+
+    assert(src);
+}
+
+/// This test covers two scenario:
+/// * a noise source that is used multiple times is correctly transformed to a noise source.
+/// * the contributions (to external nodes in this case) are correctly transformed to small
 ///   signal contributions
 #[test]
 fn correlated_noise() {
@@ -243,8 +324,23 @@ fn voltage_src() {
 }
 
 #[test]
-fn const_switch_branch() {
+fn current_src() {
     let src = indoc! {r#"
+        `include "disciplines.vams"
+        module current_src(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0;
+            analog begin
+                I(a, c) <+ foo;
+            end
+        endmodule
+    "#};
+    assert(src);
+}
+
+#[test]
+fn switch_branch() {
+    let constant = indoc! {r#"
         `include "disciplines.vams"
         module const_switch_branch(inout a, inout c);
             electrical a, c;
@@ -257,12 +353,7 @@ fn const_switch_branch() {
             end
         endmodule
     "#};
-    assert(src);
-}
-
-#[test]
-fn dyn_switch_branch() {
-    let src = indoc! {r#"
+    let dynamic = indoc! {r#"
         `include "disciplines.vams"
         module dyn_switch_branch(inout a, inout c);
             electrical a, c;
@@ -275,7 +366,9 @@ fn dyn_switch_branch() {
             end
         endmodule
     "#};
-    assert(src);
+
+    assert(constant);
+    assert(dynamic);
 }
 
 #[test]
@@ -309,7 +402,7 @@ fn resistance() {
 }
 
 #[test]
-fn capacitance_ddt() {
+fn capacitance() {
     let src = indoc! {r#"
         `include "disciplines.vams"
         module capacitance_ddt(inout a, inout b);
@@ -324,8 +417,8 @@ fn capacitance_ddt() {
 }
 
 #[test]
-fn inductance_idt() {
-    let src = indoc! {r#"
+fn inductance() {
+    let idt = indoc! {r#"
         `include "disciplines.vams"
         module inductance_idt(inout a, inout b);
             electrical a, b;
@@ -335,12 +428,8 @@ fn inductance_idt() {
             end
         endmodule
     "#};
-    assert(src);
-}
 
-#[test]
-fn inductance_ddt() {
-    let src = indoc! {r#"
+    let ddt = indoc! {r#"
         `include "disciplines.vams"
         module inductance_ddt(inout a, inout b);
             electrical a, b;
@@ -350,22 +439,9 @@ fn inductance_ddt() {
             end
         endmodule
     "#};
-    assert(src);
-}
 
-#[test]
-fn current_src() {
-    let src = indoc! {r#"
-        `include "disciplines.vams"
-        module current_src(inout a, inout c);
-            electrical a, c;
-            parameter real foo=1.0;
-            analog begin
-                I(a, c) <+ foo;
-            end
-        endmodule
-    "#};
-    assert(src);
+    assert(idt);
+    assert(ddt);
 }
 
 #[test]

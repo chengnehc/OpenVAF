@@ -11,7 +11,7 @@ use crate::builder::ReplaceBuilder;
 use crate::entities::{Inst, Param, Tag, Value};
 use crate::instructions::PhiForest;
 use crate::write::write_operands;
-use crate::{Block, FuncRef, FunctionSignature, Ieee64, InstructionData, Use, ValueList};
+use crate::{FuncRef, FunctionSignature, Ieee64, InstructionData, Use, ValueList};
 
 mod insts;
 mod phis;
@@ -95,10 +95,10 @@ impl DataFlowGraph {
         DisplayInst(self, inst)
     }
 
-    /// Get the inner of a branch instruction.
-    pub fn as_branch(&self, inst: Inst) -> Option<(Value, Block, Block)> {
-        if let InstructionData::Branch { cond, then_dst, else_dst, .. } = self.insts[inst] {
-            Some((cond, then_dst, else_dst))
+    /// If `inst` is a branch instruction, return its condition, otherwise return None.
+    pub fn branch_cond(&self, inst: Inst) -> Option<Value> {
+        if let InstructionData::Branch { cond, .. } = self.insts[inst] {
+            Some(cond)
         } else {
             None
         }
@@ -116,46 +116,6 @@ impl DataFlowGraph {
         } else {
             None
         }
-    }
-
-    // postorder traversal
-    pub fn uses_postorder_with<'a, F: FnMut(Inst) -> bool>(
-        &'a self,
-        val: Value,
-        parts: PostorderParts<'a>,
-        descend: F,
-    ) -> Postorder<'a, F> {
-        let mut po = Postorder::from_parts(self, parts, descend);
-        po.populate(val);
-        po.traverse_successor();
-        po
-    }
-
-    pub fn inst_uses_postorder<F: FnMut(Inst) -> bool>(
-        &self,
-        inst: Inst,
-        descend: F,
-    ) -> Postorder<'_, F> {
-        let mut po = Postorder::new(self, descend);
-        for &res in self.inst_results(inst) {
-            po.populate(res);
-        }
-        po.traverse_successor();
-        po
-    }
-
-    pub fn inst_uses_postorder_with<'a, F: FnMut(Inst) -> bool>(
-        &'a self,
-        inst: Inst,
-        parts: PostorderParts<'a>,
-        descend: F,
-    ) -> Postorder<'a, F> {
-        let mut po = Postorder::from_parts(self, parts, descend);
-        for &res in self.inst_results(inst) {
-            po.populate(res);
-        }
-        po.traverse_successor();
-        po
     }
 }
 

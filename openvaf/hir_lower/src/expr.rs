@@ -402,7 +402,7 @@ impl BodyLowerContext<'_, '_, '_> {
                         NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                             let hi = self.body.into_node(args[0]);
                             let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                            self.ctxt.nodes(hi, lo, |hi, lo| ParamKind::Flow(FlowKind::Unnamed{hi, lo}))
+                            self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Flow(FlowKind::Unnamed{hi, lo}))
                         },
                         NATURE_ACCESS_BRANCH => self.ctxt.use_param(ParamKind::Flow(
                             FlowKind::Branch(self.body.into_branch(args[0]))
@@ -424,11 +424,11 @@ impl BodyLowerContext<'_, '_, '_> {
                         NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                             let hi = self.body.into_node(args[0]);
                             let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                            self.ctxt.nodes(hi, lo, |hi, lo| ParamKind::Potential{hi, lo})
+                            self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Potential{hi, lo})
                         },
                         NATURE_ACCESS_BRANCH => {
                             let branch = self.body.into_branch(args[0]).kind(self.ctxt.db);
-                            self.ctxt.nodes(branch.unwrap_hi_node(), branch.lo_node(),
+                            self.ctxt.node_pair(branch.unwrap_hi_node(), branch.lo_node(),
                             |hi, lo| ParamKind::Potential{hi, lo})
                         }
                 }
@@ -449,7 +449,8 @@ impl BodyLowerContext<'_, '_, '_> {
                 let param = self.ctxt.dfg().value_def(unk).unwrap_param();
                 let kind = match signature {
                     DDX_POT => {
-                        let node = self.ctxt.get_param_kind(param).unwrap_potential_node();
+                        let (kind, _) = self.ctxt.intern.params.get_index(param).unwrap();
+                        let node = kind.unwrap_potential_node();
                         CallBackKind::NodeDerivative(node)
                     }
                     _ => CallBackKind::Derivative(param),
@@ -773,8 +774,8 @@ impl BodyLowerContext<'_, '_, '_> {
             [self.ctxt.ins().fneg(arg), val]
         };
 
-        self.ctxt.def_resist_residual(residual[0], equation);
-        self.ctxt.def_react_residual(residual[1], equation);
+        self.ctxt.def_implicit_residual(residual[0], equation, false);
+        self.ctxt.def_implicit_residual(residual[1], equation, true);
 
         val
     }

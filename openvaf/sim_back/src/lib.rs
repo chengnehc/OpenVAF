@@ -78,11 +78,13 @@ impl<'a> CompiledModule<'a> {
 
         let topology = Topology::new(&mut ctxt);
         debug_assert!(ctxt.func.validate());
-        let mut dae = DaeSystem::new(&mut ctxt, topology);
+        let dae = DaeSystem::new(&mut ctxt, topology);
+        //dbg!(&ctxt.func, &dae);
         debug_assert!(ctxt.func.validate());
         ctxt.compute_cfg();
         let gvn = ctxt.optimize(OptimizationStage::PostDerivative);
-        dae.sparsify(&mut ctxt);
+        //dae.sparsify(&mut ctxt);
+        //dbg!(&dae);
 
         // For debugging purposes - print parameters
         let debugging = false; //  && cfg!(debug_assertions);

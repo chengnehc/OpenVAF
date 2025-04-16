@@ -65,5 +65,4 @@ Topology {
     small_signal_vals: {
         v16,
     },
-    contrib_map: {},
 }

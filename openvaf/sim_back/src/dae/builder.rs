@@ -1,10 +1,11 @@
-// TODO:(JW): according to LRM, The value returned by any branch flow probe in the analog block,
+// TODO(JW) according to LRM, the value returned by any branch flow probe in the analog block,
 // shall be divided by $mfactor.
 //
-// This means when `I(br)` appears at RHS of some expression, its value should be divided by
-// $mfactor, but it seems that OpenVAF do not handle this so far.
+// This means when `I(branch)` appears at the RHS of some expression, it should be divided by
+// $mfactor, but it seems that OpenVAF do not handle this for now.
 //
-// However, for compact models, `I<br>` seldomly appears at RHS.
+// However, for compact models, `I(branch)` seldomly appears at RHS. One common exception is
+// that when modeling an inductor: `V(branch) <+ ddt(L * I(branch))`
 
 use std::mem;
 
@@ -34,8 +35,8 @@ const NEG: bool = true;
 impl Residual {
     /// Add/subtract `contrib` to/from this residual
     fn add_contrib<const NEGATE: bool>(&mut self, contrib: &Contribution, cursor: &mut FuncCursor) {
-        let mut add = |residual: &mut Value, contrib: Value| {
-            let contrib = strip_optbarrier(&mut *cursor, contrib);
+        let mut add = |residual, contrib| {
+            let contrib = strip_optbarrier(cursor, contrib);
             util::add(cursor, residual, contrib, NEGATE)
         };
         add(&mut self.resist, contrib.resist);
@@ -44,11 +45,11 @@ impl Residual {
         add(&mut self.react_small_signal, contrib.react_small_signal);
     }
 
-    /// Add/subtract `val` to/from the resistive part of this residual
+    /// Add/subtract unknown `val` to/from the resistive part of this residual
     ///
-    /// This should be used when dealing with additional source equation/sim_unknown
-    fn add_unknown<const NEGATE: bool>(&mut self, mut val: Value, cursor: &mut FuncCursor) {
-        val = strip_optbarrier(&cursor, val);
+    /// This should be used when adding extra source equation/sim_unknown
+    fn add_unknown<const NEGATE: bool>(&mut self, val: Value, cursor: &mut FuncCursor) {
+        let val = strip_optbarrier(cursor, val);
         util::add(cursor, &mut self.resist, val, NEGATE);
     }
 }
@@ -67,6 +68,7 @@ pub(super) struct Builder<'a> {
 impl<'a> Builder<'a> {
     pub(super) fn new(ctx: &'a mut Context) -> Self {
         ctx.compute_outputs::<WITHOUT_CONTRIBUTES>();
+
         let mut builder = Self {
             dae: DaeSystem::default(),
             db: ctx.db,
@@ -155,7 +157,7 @@ impl Builder<'_> {
             mir::FALSE => {
                 let contrib = self.flow_contribution(data);
 
-                // If the flow of branch is probed (appears at contribution statement RHS),
+                // If the flow of branch is probed (appears at RHS of some expression),
                 // we should make the flow an extra simulation unknown
                 let flow_probed =
                     self.intern.is_param_live(&self.cursor, &ParamKind::Flow(data.branch.into()));
@@ -173,7 +175,7 @@ impl Builder<'_> {
                 // the flow through the potential source's branch should be included
                 // as an extra simulation unknown.
 
-                // If the flow of branch is probed (appears at contribution statement RHS),
+                // If the flow of branch is probed (appears at RHS of some expression),
                 // we should make the flow an extra simulation unknown
                 let flow_probed =
                     self.intern.is_param_live(&self.cursor, &ParamKind::Flow(data.branch.into()));
@@ -369,11 +371,10 @@ impl Builder<'_> {
     }
 
     /// Multiply the noise `srcfactor` with sqrt(mfactor).
-    /// `srcfactor` is the signal scaling factor (not power scale factor).
-    /// Since power scales with mfactor, the signal scales with sqrt(mfactor).
+    /// `srcfactor` is for signal scaling, not power scaling. Since power scales with mfactor, the signal
+    /// scales with sqrt(mfactor).
     fn multiply_sqrt_mfactor(&mut self, mfactor: Value, srcfactor: Value) -> Value {
         match (mfactor, srcfactor) {
-            // Leave srcfactor unchanged if mfactor is 1
             (F_ONE, fac) => fac,
             (mfactor, srcfactor) => {
                 let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
@@ -389,11 +390,10 @@ impl Builder<'_> {
     }
 
     /// Divide the noise `srcfactor` with sqrt(mfactor).
-    /// `srcfactor` is the signal scaling factor (not power scale factor).
-    /// Since power scales with mfactor, the signal scales with sqrt(mfactor).
+    /// `srcfactor` is for signal scaling, not power scaling. Since power scales with mfactor, the signal
+    /// scales with sqrt(mfactor).
     fn divide_sqrt_mfactor(&mut self, mfactor: Value, srcfactor: Value) -> Value {
         match (mfactor, srcfactor) {
-            // Leave srcfactor unchanged if mfactor is 1
             (F_ONE, fac) => fac,
             (mfactor, srcfactor) => {
                 let sqrt_mfactor = self.cursor.ins().sqrt(mfactor);
@@ -414,26 +414,34 @@ impl Builder<'_> {
         self.add_noise(&contrib.noises, hi, lo);
     }
 
-    /// Add contributions with respect to an extra equation according to Modified Nodal Analysis (MNA).
-    /// The extra equation's unknown type is not nodal potential but branch flow.
+    /// Add contributions with respect to the extra equation, whose unknown is not node potential but branch flow.
     ///
-    /// After allocating the extra equation, the formulation will become:
-    ///
+    /// Suppose we have a contribution stmt that defines a voltage source: `V(p,n) <+ expr`.
+    /// The Jacobian entries and residuals for it will be:
     /// ```text
-    ///         V(p)   V(n)  ...  I(p,n)  |    RHS
-    /// V(p)    J_pp   J_pn  ...   xxx    |  +I(p,n)
-    /// V(n)    J_np   J_nn  ...   xxx    |  -I(p,n)
-    /// ...     ...    ...   ...   ...    |    ...
-    /// I(p,n)  xxx    xxx   ...    0     |  -V(p,n)
+    ///                    +1          |    +I(p,n)
+    ///                    -1          |    -I(p,n)
+    ///  -1   +1   +d(expr)/d(I(p,n))  |  expr - V(p,n)
+    /// ```
+    /// which is the case here, or,
+    /// ```text
+    ///                     +1         |    +I(p,n)
+    ///                     -1         |    -I(p,n)
+    ///  +1   -1   -d(expr)/d(I(p,n))  |  V(p,n) - expr
     /// ```
     fn add_source_equation(&mut self, contrib: &Contribution, info: &BranchInfo) {
-        let dst = info.branch;
-        let residual = get_residual!(self, SimUnknownKind::BranchFlow(dst.into()));
+        let branch = info.branch;
+        let residual = get_residual!(self, SimUnknownKind::BranchFlow(branch.into()));
         residual.add_contrib::<POS>(contrib, &mut self.cursor);
         residual.add_unknown::<NEG>(contrib.unknown.unwrap(), &mut self.cursor);
-        self.add_noise(&contrib.noises, SimUnknownKind::BranchFlow(dst.into()), None);
+        // # Note(JW)
+        // It's OK to swap the sign of `contrib` and `unknown`:
+        // residual.add_contrib::<NEG>(contrib, &mut self.cursor);
+        // residual.add_unknown::<POS>(contrib.unknown.unwrap(), &mut self.cursor);
 
-        let (hi, lo) = dst.node_pair(self.db);
+        self.add_noise(&contrib.noises, SimUnknownKind::BranchFlow(branch.into()), None);
+
+        let (hi, lo) = branch.node_pair(self.db);
         let hi = SimUnknownKind::KirchhoffLaw(hi);
         let lo = lo.map(SimUnknownKind::KirchhoffLaw);
         let branch_flow = info.branch_flow_unknown();

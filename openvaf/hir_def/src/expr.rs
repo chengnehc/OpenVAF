@@ -91,8 +91,8 @@ pub enum Literal {
 impl_debug! {
     match Literal{
         Literal::String(_) => "\"<literal>\"";
-        Literal::Int(val) => "{}",val;
-        Literal::Float(val) => "{}",f64::from(*val);
+        Literal::Int(val) => "{val}";
+        Literal::Float(val) => "{}", f64::from(*val);
         Literal::Inf => "inf";
     }
 }
@@ -158,10 +158,9 @@ impl Stmt {
             Stmt::Case { discr, ref case_arms, .. } => {
                 f(discr);
                 for case in case_arms {
-                    if let CaseCond::Vals(ref vals) = case.cond {
-                        for val in vals {
-                            f(*val);
-                        }
+                    let CaseCond::Exprs(ref exprs) = case.cond else { continue };
+                    for e in exprs {
+                        f(*e);
                     }
                 }
             }
@@ -202,6 +201,7 @@ impl Stmt {
     }
 }
 
+/// A case arm
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Case {
     pub cond: CaseCond,
@@ -211,7 +211,7 @@ pub struct Case {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CaseCond {
     Default,
-    Vals(Vec<ExprId>), // TODO PROFILE: SmallVec<[ExprId; 1]> here
+    Exprs(Vec<ExprId>), // TODO PROFILE: SmallVec<[ExprId; 1]> here
 }
 
 // non_exhaustive because currently the full standard is not implemented

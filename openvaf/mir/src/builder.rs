@@ -8,7 +8,7 @@
 //! https://docs.rs/crate/cranelift-codegen/latest/source/src/ir/builder.rs
 
 use crate::instructions::{PhiMap, PhiNode, ValueList};
-use crate::{Block, DataFlowGraph, FuncRef, Inst, InstructionData, Opcode, Value};
+use crate::{Block, DataFlowGraph, FuncRef, Inst, InstructionData, Opcode, Value, ValueDef};
 
 #[cfg(test)]
 mod tests;

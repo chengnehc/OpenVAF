@@ -1,17 +1,10 @@
 //! The main HIR lowering context.
-//!
-//! The most important methods are:
-//! * def_place
-//! * use_place, use_param
-//! * call
 
 use ahash::AHashSet;
 use hir::{CompilationDB, Node, Type, Variable};
 use mir::builder::{InsertBuilder, InstBuilder};
-use mir::{
-    Block, DataFlowGraph, FuncRef, Ieee64, Inst, Opcode, Param, SourceLoc, Value, FALSE, F_ZERO,
-    INFINITY, TRUE,
-};
+use mir::{Block, DataFlowGraph, FuncRef, Ieee64, Inst, Opcode, SourceLoc, Value};
+use mir::{FALSE, F_ZERO, INFINITY, TRUE};
 use mir_build::{FuncInstBuilder, FunctionBuilder, Place};
 use typed_indexmap::TiSet;
 
@@ -28,7 +21,7 @@ pub struct MainLowerContext<'a, 'c> {
     pub places: TiSet<Place, PlaceKind>,
     tagged_vars: AHashSet<Variable>,
 
-    pub no_equations: bool, // This flag means do not lower equations
+    pub no_equations: bool,
     pub inside_lim: bool,
     /// We create a dedicated callback for each noise source
     /// by giving each callback a unique index. Kind of ineffcient
@@ -56,20 +49,34 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         }
     }
 
+    /// A builder method to include tagged variables.
     pub fn with_tagged_vars(mut self, vars: AHashSet<Variable>) -> Self {
         self.tagged_vars = vars;
         self
     }
 
-    /// Declare and initialize (if necessary) a mutable memory location in
-    /// the entry block, which will be translated to SSA values automatically.
+    /// Return the MIR SSA value of a HIR `Variable`.
     ///
-    /// If the requested place already exists, simply return it, otherwise a
+    /// This function should be used to correctly handle tagging.
+    pub fn read_var(&mut self, var: Variable) -> Value {
+        let mut val = self.use_place(PlaceKind::Var(var));
+        if self.tagged_vars.contains(&var) {
+            val = self.func.ins().optbarrier(val);
+            self.intern.tagged_reads.insert(val, var);
+        }
+        val
+    }
+
+    /// Declare and initialize (if necessary) a mutable memory slot in the entry block,
+    /// which will be translated to SSA values automatically.
+    ///
+    /// If the requested kind of place already exists, simply return it, otherwise a
     /// new memory slot is created.
     pub fn dec_place(&mut self, kind: PlaceKind) -> Place {
         use PlaceKind::*;
-        let (place, inserted) = self.places.ensure(kind);
-        if inserted {
+        let (place, new) = self.places.ensure(kind);
+        if new {
+            // initialize the place
             let init_val = match kind {
                 // such kinds of places are always initialized
                 Param(_)
@@ -77,7 +84,10 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 | ParamMax(_)
                 | FunctionReturn { .. }
                 | FunctionArg { .. } => return place,
-                // A variable without proper initialization would cause hidden state
+
+                // such kinds of places require initialization
+                // TODO(JW) hidden state: a variable without proper initialization could
+                // cause hidden state, which should not be used by compact models.
                 Var(var) => self.use_param(ParamKind::HiddenState(var)),
                 Contribute { .. } | ImplicitResidual { .. } => F_ZERO,
                 CollapseImplicitEquation(_) => TRUE,
@@ -90,48 +100,33 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         place
     }
 
+    /// Declare a place and define it with `val` at current basic block.
+    /// SSA value numbering algorithm is applied.
     pub fn def_place(&mut self, kind: PlaceKind, val: Value) {
         let place = self.dec_place(kind);
         self.func.def_var(place, val)
     }
 
+    /// Ensure the place is initialized and use it at current basic block.
+    /// SSA value numbering algorithm is applied.
     pub fn use_place(&mut self, kind: PlaceKind) -> Value {
         let place = self.dec_place(kind);
         self.func.use_var(place)
     }
 
-    /// Return the MIR SSA value of a HIR variable.
-    ///
-    /// This function should be used to correctly handle tagging.
-    pub fn read_var(&mut self, var: Variable) -> Value {
-        let place = self.dec_place(PlaceKind::Var(var));
-        let mut val = self.func.use_var(place);
-        if self.tagged_vars.contains(&var) {
-            val = self.func.ins().optbarrier(val);
-            self.intern.tagged_reads.insert(val, var);
-        }
-        val
+    /// Get the SSA value of the parameter kind. If it does not exist in the
+    /// interner, insert a new one and make a related SSA value.
+    pub fn use_param(&mut self, kind: ParamKind) -> Value {
+        let len = self.intern.params.len();
+        *self.intern.params.raw.entry(kind).or_insert_with(|| self.func.make_param(len.into()))
     }
 
-    pub fn get_param_value(&self, kind: ParamKind) -> Option<Value> {
-        self.intern.params.get(&kind).copied()
-    }
-
-    pub fn get_param_kind(&mut self, param: Param) -> &ParamKind {
-        let (kind, _) = self.intern.params.get_index(param).unwrap();
-        kind
-    }
-
+    /// Define a parameter with `val`. This will overwrite the previous value.
     pub fn def_param(&mut self, kind: ParamKind, val: Value) {
         self.intern.params.insert(kind, val);
     }
 
-    pub fn use_param(&mut self, kind: ParamKind) -> Value {
-        let len = self.intern.params.len();
-        let entry = self.intern.params.raw.entry(kind);
-        *entry.or_insert_with(|| self.func.make_param(len.into()))
-    }
-
+    /// Define a output with `val`. This will overwrite the previous value.
     pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
         self.intern.outputs.insert(kind, val.into());
     }
@@ -139,11 +134,11 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     /// Declare a callback function. If it already exists then simply return
     /// the reference to the declared callback.
     pub fn dec_callback(&mut self, kind: CallBackKind) -> FuncRef {
-        let data = kind.signature();
+        let sig = kind.signature();
         let (func_ref, changed) = self.intern.callbacks.ensure(kind);
         if changed {
-            self.intern.callback_users.push(Vec::new());
-            let sig = self.func.import_function(data);
+            self.intern.callback_callers.push(Vec::new());
+            let sig = self.func.import_function(sig);
             debug_assert_eq!(func_ref, sig);
         }
         func_ref
@@ -155,7 +150,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         let func_ref = self.dec_callback(kind);
         let (inst, _) = self.func.ins().call(func_ref, args);
         if tracked {
-            self.intern.callback_users[func_ref].push(inst)
+            self.intern.callback_callers[func_ref].push(inst)
         }
         inst
     }
@@ -175,7 +170,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         }
     }
 
-    pub fn nodes(
+    pub fn node_pair(
         &mut self,
         hi: Node,
         lo: Option<Node>,
@@ -190,14 +185,36 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 self.func.ins().fneg(lo)
             }
             (Some(hi), Some(lo)) => {
-                if let Some(inverted) = self.get_param_value(kind(lo, Some(hi))) {
-                    self.func.ins().fneg(inverted)
+                if let Some(inverted) = self.intern.params.get(&kind(lo, Some(hi))) {
+                    self.func.ins().fneg(*inverted)
                 } else {
                     self.use_param(kind(hi, Some(lo)))
                 }
             }
             (None, None) => F_ZERO,
         }
+    }
+
+    /// Create an implicit equation with `kind`, and define
+    /// - a flag variable to indicate collapsing the equation
+    /// - the function parameter corresponding to the implicit unknown
+    pub fn implicit_equation(&mut self, kind: ImplicitEquationKind) -> (ImplicitEquation, Value) {
+        let equation = self.intern.implicit_equations.push_and_get_key(kind);
+        let place = self.dec_place(PlaceKind::CollapseImplicitEquation(equation));
+        self.func.def_var(place, FALSE);
+        let val = self.use_param(ParamKind::ImplicitUnknown(equation));
+        (equation, val)
+    }
+
+    pub fn def_implicit_residual(
+        &mut self,
+        val: Value,
+        equation: ImplicitEquation,
+        reactive: bool,
+    ) {
+        let place = PlaceKind::ImplicitResidual { equation, reactive };
+        let place = self.dec_place(place);
+        self.func.def_var(place, val);
     }
 
     /// Start lowering a `$limit` function by allocating a state slot
@@ -226,26 +243,6 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         debug_assert!(self.inside_lim);
         self.inside_lim = false;
         val
-    }
-
-    pub fn implicit_equation(&mut self, kind: ImplicitEquationKind) -> (ImplicitEquation, Value) {
-        let equation = self.intern.implicit_equations.push_and_get_key(kind);
-        let place = self.dec_place(PlaceKind::CollapseImplicitEquation(equation));
-        self.func.def_var(place, FALSE);
-        let val = self.use_param(ParamKind::ImplicitUnknown(equation));
-        (equation, val)
-    }
-
-    pub fn def_resist_residual(&mut self, residual_val: Value, equation: ImplicitEquation) {
-        let place = PlaceKind::ImplicitResidual { equation, reactive: false };
-        let place = self.dec_place(place);
-        self.func.def_var(place, residual_val);
-    }
-
-    pub fn def_react_residual(&mut self, residual_val: Value, equation: ImplicitEquation) {
-        let place = PlaceKind::ImplicitResidual { equation, reactive: true };
-        let place = self.dec_place(place);
-        self.func.def_var(place, residual_val);
     }
 
     pub fn make_type_cast(&mut self, val: Value, src: &Type, dst: &Type) -> Value {

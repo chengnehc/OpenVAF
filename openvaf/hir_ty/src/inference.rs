@@ -140,16 +140,10 @@ impl Context<'_> {
                 if let Some(ty) = self.infere_expr(stmt, discr) {
                     let req = ty.to_value().map_or(TyRequirement::AnyVal, TyRequirement::Val);
                     for case in case_arms {
-                        if let CaseCond::Vals(vals) = &case.cond {
-                            for val in vals {
-                                if let Some(val_ty) = self.infere_expr(stmt, *val) {
-                                    self.expect::<false>(
-                                        *val,
-                                        None,
-                                        val_ty,
-                                        Cow::Owned(vec![req.clone()]),
-                                    );
-                                }
+                        let CaseCond::Exprs(exprs) = &case.cond else { continue };
+                        for &e in exprs {
+                            if let Some(ty) = self.infere_expr(stmt, e) {
+                                self.expect::<false>(e, None, ty, Cow::Owned(vec![req.clone()]));
                             }
                         }
                     }

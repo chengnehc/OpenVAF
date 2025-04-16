@@ -2,8 +2,8 @@
 //!
 //! A large part of this module is auto-generated.
 
-use std::hash::Hash;
-use std::{fmt, slice};
+use std::hash::{Hash, Hasher};
+use std::{fmt, mem, slice};
 
 use list_pool::{ListHandle, ListPool};
 
@@ -46,22 +46,23 @@ fn instruction_data_size() {
 use InstructionData::*;
 
 impl InstructionData {
-    pub fn is_terminator(&self) -> bool {
-        matches!(self, InstructionData::Branch { .. } | InstructionData::Jump { .. })
+    pub const fn is_terminator(&self) -> bool {
+        matches!(self, Branch { .. } | Jump { .. })
     }
 
-    pub fn is_phi(&self) -> bool {
-        matches!(self, InstructionData::PhiNode(_))
+    pub const fn is_phi(&self) -> bool {
+        matches!(self, PhiNode(_))
     }
 
-    pub fn unwrap_phi(&self) -> &PhiNode {
-        let InstructionData::PhiNode(node) = self else { unreachable!() };
-        node
-    }
-
-    pub fn unwrap_phi_mut(&mut self) -> &mut PhiNode {
-        let InstructionData::PhiNode(node) = self else { unreachable!() };
-        node
+    /// Get the opcode of this instruction.
+    pub fn opcode(&self) -> Opcode {
+        match self {
+            Unary { opcode: op, .. } | Binary { opcode: op, .. } => *op,
+            Branch { .. } => Opcode::Br,
+            Jump { .. } => Opcode::Jmp,
+            Call { .. } => Opcode::Call,
+            PhiNode(PhiNode { .. }) => Opcode::Phi,
+        }
     }
 
     /// Get references to the value arguments to this instruction.
@@ -84,17 +85,6 @@ impl InstructionData {
             Binary { args, .. } => &mut *args,
             Call { args, .. } | PhiNode(PhiNode { args, .. }) => args.as_mut_slice(pool),
             Jump { .. } => &mut [],
-        }
-    }
-
-    /// Get the opcode of this instruction.
-    pub fn opcode(&self) -> Opcode {
-        match self {
-            Unary { opcode: op, .. } | Binary { opcode: op, .. } => *op,
-            Branch { .. } => Opcode::Br,
-            Jump { .. } => Opcode::Jmp,
-            Call { .. } => Opcode::Call,
-            PhiNode(PhiNode { .. }) => Opcode::Phi,
         }
     }
 
@@ -137,13 +127,8 @@ impl InstructionData {
         }
     }
 
-    pub fn hash<H: std::hash::Hasher>(
-        &self,
-        state: &mut H,
-        val_pool: &ValueListPool,
-        phi_forest: &PhiForest,
-    ) {
-        core::mem::discriminant(self).hash(state);
+    pub fn hash<H: Hasher>(&self, state: &mut H, val_pool: &ValueListPool, phi_forest: &PhiForest) {
+        mem::discriminant(self).hash(state);
         match self {
             Unary { opcode: op, arg } => {
                 op.hash(state);
@@ -168,6 +153,16 @@ impl InstructionData {
         }
     }
 
+    pub fn unwrap_phi(&self) -> &PhiNode {
+        let PhiNode(node) = self else { unreachable!() };
+        node
+    }
+
+    pub fn unwrap_phi_mut(&mut self) -> &mut PhiNode {
+        let PhiNode(node) = self else { unreachable!() };
+        node
+    }
+
     #[inline]
     pub fn to_pool<'a>(
         &self,
@@ -188,17 +183,17 @@ impl InstructionData {
 
 impl Opcode {
     #[inline]
-    pub fn is_branch(self) -> bool {
+    pub const fn is_branch(self) -> bool {
         matches!(self, Opcode::Jmp | Opcode::Br)
     }
 
     #[inline]
-    pub fn is_call(self) -> bool {
+    pub const fn is_call(self) -> bool {
         matches!(self, Opcode::Call)
     }
 
     #[inline]
-    pub fn is_commutative(self) -> bool {
+    pub const fn is_commutative(self) -> bool {
         matches!(
             self,
             Opcode::Fmul
@@ -382,12 +377,7 @@ impl PhiNode {
     }
 
     #[inline]
-    pub fn hash<H: std::hash::Hasher>(
-        &self,
-        state: &mut H,
-        val_pool: &ValueListPool,
-        phi_forest: &PhiForest,
-    ) {
+    pub fn hash<H: Hasher>(&self, state: &mut H, val_pool: &ValueListPool, phi_forest: &PhiForest) {
         for (block, val) in self.edges(val_pool, phi_forest) {
             block.hash(state);
             val.hash(state)

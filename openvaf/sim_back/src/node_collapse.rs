@@ -45,10 +45,8 @@ impl NodeCollapse {
                 let (hi, lo) = branch.node_pair(ctx.db);
                 let hi = dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(hi));
                 let lo = lo.map(|lo| dae.unknowns.unwrap_index(&SimUnknownKind::KirchhoffLaw(lo)));
-                let source_pair: Option<CollapsePair> = pairs.index_of(&(hi, lo)).or_else(|| {
-                    let lo = lo?;
-                    pairs.index_of(&(lo, Some(hi)))
-                });
+                let source_pair: Option<CollapsePair> =
+                    pairs.index_of(&(hi, lo)).or_else(|| pairs.index_of(&(lo?, Some(hi))));
                 if let Some(source_pair) = source_pair {
                     // careful, if we insert extra derivatives for currents then we need to
                     // check that we are not overwriting that list here

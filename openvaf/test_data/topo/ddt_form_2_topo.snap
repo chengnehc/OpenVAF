@@ -1,15 +1,14 @@
 Topology {
     branches: {
         branch0: BranchInfo {
-            branch: Unnamed {
-                hi: node0,
-                lo: Some(
-                    node1,
-                ),
-            },
+            branch: Named(
+                BranchId(0),
+            ),
             is_potential: v1,
             potential: Contribution {
-                unknown: None,
+                unknown: Some(
+                    v17,
+                ),
                 resist: v3,
                 react: v3,
                 resist_small_signal: v3,
@@ -18,8 +17,8 @@ Topology {
             },
             flow: Contribution {
                 unknown: None,
-                resist: v80,
-                react: v116,
+                resist: v22,
+                react: v3,
                 resist_small_signal: v3,
                 react_small_signal: v3,
                 noises: [],
@@ -29,15 +28,14 @@ Topology {
     implicit_equations: {
         inode0: Contribution {
             unknown: Some(
-                v83,
+                v23,
             ),
-            resist: v99,
-            react: v115,
+            resist: v24,
+            react: v25,
             resist_small_signal: v3,
             react_small_signal: v3,
             noises: [],
         },
     },
     small_signal_vals: {},
-    contrib_map: {},
 }

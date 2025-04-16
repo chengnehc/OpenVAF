@@ -77,15 +77,14 @@ pub trait InstBuilder<'f>: InstBuilderBase<'f> {
         let (inst, dfg) = self.phi(edges);
         dfg.first_result(inst)
     }
+    #[doc = r" Create an optbarrier for given value, unless it is a constant or it"]
+    #[doc = r" has already been guarded by a optbarrier."]
     #[inline]
     fn ensure_optbarrier(self, val: Value) -> Value {
-        match self.data_flow_graph().value_def(val) {
-            crate::ValueDef::Result(inst, _)
-                if self.data_flow_graph().insts[inst].opcode() == Opcode::OptBarrier =>
-            {
-                val
-            }
-            crate::ValueDef::Const(_) => val,
+        let dfg = self.data_flow_graph();
+        match dfg.value_def(val) {
+            ValueDef::Const(_) => val,
+            ValueDef::Result(inst, _) if dfg.insts[inst].opcode() == Opcode::OptBarrier => val,
             _ => self.optbarrier(val),
         }
     }

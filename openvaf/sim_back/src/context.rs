@@ -4,7 +4,7 @@ use bitset::{BitSet, SparseBitMatrix};
 use hir::CompilationDB;
 use hir_lower::{HirInterner, MirBuilder, PlaceKind};
 use lasso::Rodeo;
-use mir::{Block, ControlFlowGraph, DominatorTree, Function, Inst, Value};
+use mir::{ControlFlowGraph, DominatorTree, Function, Inst, Value};
 use mir_opt::{
     aggressive_dead_code_elimination, dead_code_elimination, inst_combine, propagate_direct_taint,
     propagate_taint, simplify_cfg, simplify_cfg_no_phi_merge,
@@ -34,22 +34,19 @@ pub enum OptimizationStage {
 
 impl<'a> Context<'a> {
     pub fn new(db: &'a CompilationDB, literals: &mut Rodeo, module: &'a ModuleInfo) -> Self {
-        let (mut func, mut intern) = MirBuilder::new(
-            db,
-            module.module,
-            &|kind| match kind {
-                PlaceKind::Contribute { .. }
-                | PlaceKind::ImplicitResidual { .. }
-                | PlaceKind::CollapseImplicitEquation(_)
-                | PlaceKind::IsPotential(_) => true,
-                PlaceKind::Var(var) => module.op_vars.contains_key(&var),
-                _ => false,
-            },
-            &mut module.op_vars.keys().copied(),
-        )
-        .with_equations()
-        .with_tagged_writes()
-        .build(literals);
+        let is_output = |kind| match kind {
+            PlaceKind::Contribute { .. }
+            | PlaceKind::IsPotential(_)
+            | PlaceKind::ImplicitResidual { .. }
+            | PlaceKind::CollapseImplicitEquation(_) => true,
+            PlaceKind::Var(var) => module.op_vars.contains_key(&var),
+            _ => false,
+        };
+        let (mut func, mut intern) =
+            MirBuilder::new(db, module.module, &is_output, &mut module.op_vars.keys().copied())
+                .with_equations()
+                .with_tagged_writes()
+                .build(literals);
 
         // TODO hidden state
         intern.insert_var_init(db, &mut func, literals);
@@ -131,14 +128,16 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub fn init_op_dependent_insts(&mut self, dom_frontiers: &mut SparseBitMatrix<Block, Block>) {
-        self.dom_tree.compute_dom_frontiers(&self.cfg, dom_frontiers);
+    pub fn init_op_dependent_insts(&mut self) {
+        let mut dom_frontiers = SparseBitMatrix::new_square(self.func.layout.num_blocks());
+        self.dom_tree.compute_dom_frontiers(&self.cfg, &mut dom_frontiers);
+
         let dfg = &mut self.func.dfg;
         self.op_dependent_insts.ensure(dfg.num_insts());
 
-        for (cb, users) in self.intern.callback_users.iter_mut_enumerated() {
+        for (cb, insts) in self.intern.callback_callers.iter_mut_enumerated() {
             if self.intern.callbacks[cb].is_noise() {
-                users.retain(|&inst| {
+                insts.retain(|&inst| {
                     if self.func.layout.inst_block(inst).is_none() {
                         return false;
                     }
@@ -157,7 +156,7 @@ impl<'a> Context<'a> {
         }
         propagate_direct_taint(
             &self.func,
-            dom_frontiers,
+            &dom_frontiers,
             self.op_dependent_vals.iter().copied(),
             &mut self.op_dependent_insts,
         )
@@ -168,9 +167,9 @@ impl<'a> Context<'a> {
         self.op_dependent_vals.clear();
         self.op_dependent_insts.clear();
         self.op_dependent_insts.ensure(dfg.num_insts());
-        for (cb, uses) in self.intern.callback_users.iter_mut_enumerated() {
+        for (cb, insts) in self.intern.callback_callers.iter_mut_enumerated() {
             if self.intern.callbacks[cb].is_op_dependent() {
-                uses.retain(|&inst| {
+                insts.retain(|&inst| {
                     if self.func.layout.inst_block(inst).is_none() {
                         return false;
                     }

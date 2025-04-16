@@ -10,7 +10,6 @@ pub type Iter<'a, K, V> =
     iter::Map<iter::Enumerate<indexmap::set::Iter<'a, V>>, fn((usize, &'a V)) -> (K, &'a V)>;
 
 pub struct TiSet<K, V> {
-    /// raw set property
     pub raw: IndexSet<V, ahash::RandomState>,
     _marker: PhantomData<fn(K) -> K>,
 }

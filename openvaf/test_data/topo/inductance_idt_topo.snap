@@ -41,5 +41,4 @@ Topology {
         },
     },
     small_signal_vals: {},
-    contrib_map: {},
 }

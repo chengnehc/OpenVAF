@@ -163,11 +163,7 @@ impl DfgValues {
 }
 
 impl DataFlowGraph {
-    /// Turn a value into an alias of another.
-    ///
-    /// Change the `dst` value to behave as an alias of `src`. This means that all uses of `dst`
-    /// will behave as if they used that value `src`.
-    ///
+    /// Change all uses of `dst` to behave as if they used value `src`.
     /// The `dst` value can't be attached to an instruction or block then.
     ///
     /// # Note

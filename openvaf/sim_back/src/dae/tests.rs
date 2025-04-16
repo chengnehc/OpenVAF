@@ -99,22 +99,6 @@ fn capacitance_ddt() {
     run_test(src);
 }
 
-// // TODO(JW)
-// #[test]
-// fn capacitance_idt() {
-//     let src = indoc! {r#"
-//         `include "disciplines.vams"
-//         module capacitance_idt(inout a, inout b);
-//             electrical a, b;
-//             parameter real C = 1.0;
-//             analog begin
-//                 V(a, b) <+ idt(I(a, b)) / C;
-//             end
-//         endmodule
-//     "#};
-//     run_test(src);
-// }
-
 #[test]
 fn inductance_idt() {
     let src = indoc! {r#"

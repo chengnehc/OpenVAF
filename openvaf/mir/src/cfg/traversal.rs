@@ -4,14 +4,12 @@
 
 use bitset::BitSet;
 
-use super::Successors;
-use crate::Block;
-use crate::ControlFlowGraph;
+use super::{Block, ControlFlowGraph, Successors};
 
-/// Postorder traversal of a graph.
+/// Postorder traversal of instructions in a graph.
 ///
-/// Postorder traversal is when each node is visited after all of its
-/// successors, except when the successor is only reachable by a back-edge
+/// Each node is visited after all of its successors, except
+/// when the successor is only reachable by a back-edge.
 ///
 /// ```text
 ///
@@ -119,7 +117,7 @@ impl Iterator for Postorder<'_> {
     }
 }
 
-/// Reverse postorder traversal of a graph
+/// Reverse postorder traversal of a graph.
 ///
 /// Reverse postorder is the reverse order of a postorder traversal.
 /// This is different to a preorder traversal and represents a natural
@@ -136,7 +134,8 @@ impl Iterator for Postorder<'_> {
 ///         D
 /// ```
 ///
-/// A reverse postorder traversal of this graph is either `A B C D` or `A C B D`
+/// A reverse postorder traversal of this graph is either `A B C D` or `A C B D`.
+///
 /// Note that for a graph containing no loops (i.e., a DAG), this is equivalent to
 /// a topological sort.
 #[derive(Clone, Debug)]

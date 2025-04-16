@@ -43,6 +43,7 @@ pub struct DaeSystem {
     ///
     /// `J_ij = (ddx(I_i, x_j), ddx(Q_i, x_j))`
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,
+    // TODO(JW): this is only used during building, move it into the Builder struct
     /// The parameters which are known to be small signal values
     /// (always zero during large signal simulation).
     pub small_signal_params: IndexSet<Value, ahash::RandomState>,
@@ -64,16 +65,24 @@ impl DaeSystem {
         builder.finish()
     }
 
+    // TODO(JW): this function has no effects on the DAE and MIR
+    //
+    /// After the derivatives are inserted and post-derivative optimizations
+    /// are applied, sparsify the MIR and DAE.
+    #[allow(unused)]
     pub(super) fn sparsify(&mut self, ctx: &mut Context) {
         let mut sparsify = |val| {
+            dbg!(val);
             let stripped = strip_optbarrier(&ctx.func, val);
             if ctx.func.dfg.value_def(stripped).inst().is_some() {
-                // value is used somewhere beyond opt barrier
+                // value is used somewhere other than opt barrier
                 val
             } else {
+                // value is not used anywhere except for optbarrier,
+                // this means value is either a constant, or a function parameter
                 ctx.output_values.remove(val);
                 if let Some(inst) = ctx.func.dfg.value_def(val).inst() {
-                    // value is only locally used
+                    // value is only used locally
                     if ctx.func.dfg.is_safe_to_remove(inst) {
                         ctx.func.dfg.zap_inst(inst);
                         ctx.func.layout.remove_inst(inst);
@@ -83,6 +92,7 @@ impl DaeSystem {
             }
         };
 
+        // JW: retain?
         for residual in &mut self.residual {
             residual.map_vals(&mut sparsify)
         }
@@ -90,13 +100,13 @@ impl DaeSystem {
         self.noise_sources.retain_mut(|noise_src| {
             noise_src.map_vals(&mut sparsify);
             if noise_src.factor == F_ZERO {
-                return false;
-            }
-            match noise_src.kind {
-                NoiseSourceKind::WhiteNoise { pwr } | NoiseSourceKind::FlickerNoise { pwr, .. } => {
-                    pwr != F_ZERO
+                false
+            } else {
+                match noise_src.kind {
+                    NoiseSourceKind::WhiteNoise { pwr }
+                    | NoiseSourceKind::FlickerNoise { pwr, .. } => pwr != F_ZERO,
+                    NoiseSourceKind::NoiseTable { .. } => true,
                 }
-                NoiseSourceKind::NoiseTable { .. } => true,
             }
         });
 

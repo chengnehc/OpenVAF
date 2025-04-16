@@ -1,0 +1,10 @@
+function %(v16, v17, v20) {
+    inst0 = const fn %ddt(1) -> 1
+    v3 = fconst 0.0
+
+                                block2:
+@0005                               v18 = fmul v16, v17
+@0008                               v19 = fmul v18, v17
+                                    v22 = optbarrier v3
+                                    v23 = optbarrier v19
+}

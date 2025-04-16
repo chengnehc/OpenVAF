@@ -33,7 +33,7 @@ use crate::noise::NoiseSourceKind;
 use crate::util::{strip_optbarrier, strip_optbarrier_if_const};
 
 mod builder;
-mod lineralize;
+mod linearize;
 mod small_signal_network;
 #[cfg(test)]
 mod tests;
@@ -70,7 +70,6 @@ impl BranchInfo {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Contribution {
-    /// If the conrtibution is also probed
     pub unknown: Option<Value>,
     pub resist: Value,
     pub react: Value,
@@ -167,26 +166,26 @@ impl Noise {
     }
 }
 
-/// An intermediate representation the topology of a model. It represents
-/// topology as a set of contributions to branches and implicit equations.
-/// These contributions are divided into resistive/reactive voltage/current.
+/// An intermediate representation for the topology of a model.
+///
+/// It represents topology as a set of branch contributions and implicit equations.
 #[derive(Debug)]
 pub(crate) struct Topology {
     pub(crate) branches: TiVec<BranchId, BranchInfo>,
     pub(crate) implicit_equations: TiVec<ImplicitEquation, Contribution>,
     pub(crate) small_signal_vals: IndexSet<Value, ahash::RandomState>,
-    // a temporary map for building topology
-    contrib_map: AHashMap<Value, ContributeKind>,
 }
 
 impl Topology {
     pub(crate) fn new(ctxt: &mut Context) -> Self {
-        let mut branches = TiVec::with_capacity(128);
+        // For now this only include idt() induced implicit equations,
+        // ddt and noise_source induced ones will be add by the topology builder.
         let mut implicit_equations: TiVec<_, _> = ctxt
             .intern
             .implicit_equations
             .keys()
             .filter_map(|eq| {
+                // filter out dead and collapsible implicit unknowns
                 let &eq_val = ctxt.intern.params.get(&ParamKind::ImplicitUnknown(eq))?;
                 if ctxt.func.dfg.value_dead(eq_val) {
                     return None;
@@ -208,11 +207,13 @@ impl Topology {
                 })
             })
             .collect();
+
+        let mut branches = TiVec::with_capacity(128);
         let small_signal_vals =
             IndexSet::with_capacity_and_hasher(128, ahash::RandomState::default());
 
         let mut contrib_map = AHashMap::with_capacity(128); // a temporary map used during building
-        for (kind, val) in &ctxt.intern.outputs {
+        for (kind, val) in ctxt.intern.outputs.iter() {
             let Some(val) = val.expand() else { continue };
             let val = strip_optbarrier_if_const(&ctxt.func, val);
             match *kind {
@@ -225,7 +226,6 @@ impl Topology {
                     contrib_map.insert(val, ContributeKind::Implicit { id, is_reactive: true });
                 }
                 PlaceKind::IsPotential(branch) => {
-                    let id = branches.next_key();
                     let (hi, lo) = branch.node_pair(ctxt.db);
                     let is_potential = val;
 
@@ -233,8 +233,12 @@ impl Topology {
                     // branch flow simulation unknown is required.
                     let requires_unknown = is_potential != mir::FALSE;
 
+                    // In Verilog-A, a current is automatically added as a system unknown when
+                    // it is referenced using the access function I(branch) on the right hand
+                    // side of an expression.
+                    //
                     // Check if the potential/flow of the branch is probed.
-                    // If so, make sure that the probed value is passed as function parameter.
+                    // If so, make sure that the probed value is passed as a parameter.
                     let potential_probed =
                         ctxt.intern.is_param_live(&ctxt.func, &ParamKind::Potential { hi, lo });
                     let flow_probed =
@@ -254,20 +258,19 @@ impl Topology {
                         )
                     });
 
-                    let mut get_contrib = |is_reactive, is_potential| {
+                    let id = branches.next_key();
+                    let mut get_contrib = |is_potential| {
                         ctxt.intern
                             .outputs
-                            .get(&PlaceKind::Contribute { dst: branch, is_reactive, is_potential })
+                            .get(&PlaceKind::Contribute { branch, is_potential })
                             .and_then(|it| it.expand())
-                            .map(|val| {
+                            .map_or(F_ZERO, |val| {
                                 let val = strip_optbarrier_if_const(&ctxt.func, val);
-                                contrib_map.insert(
-                                    val,
-                                    ContributeKind::Branch { id, is_potential, is_reactive },
-                                );
+                                let kind =
+                                    ContributeKind::Branch { id, is_potential, is_reactive: false };
+                                contrib_map.insert(val, kind);
                                 val
                             })
-                            .unwrap_or(F_ZERO)
                     };
 
                     branches.push(BranchInfo {
@@ -275,19 +278,13 @@ impl Topology {
                         is_potential,
                         potential: Contribution {
                             unknown: potential_unknown,
-                            resist: get_contrib(false, true),
-                            react: get_contrib(true, true),
-                            resist_small_signal: F_ZERO,
-                            react_small_signal: F_ZERO,
-                            noises: Vec::new(),
+                            resist: get_contrib(true),
+                            ..Default::default()
                         },
                         flow: Contribution {
                             unknown: flow_unknown,
-                            resist: get_contrib(false, false),
-                            react: get_contrib(true, false),
-                            resist_small_signal: F_ZERO,
-                            react_small_signal: F_ZERO,
-                            noises: Vec::new(),
+                            resist: get_contrib(false),
+                            ..Default::default()
                         },
                     });
                 }
@@ -295,70 +292,36 @@ impl Topology {
             }
         }
 
-        let mut topology =
-            Topology { branches, implicit_equations, small_signal_vals, contrib_map };
+        let topology = Topology { branches, implicit_equations, small_signal_vals };
 
+        ctxt.init_op_dependent_insts();
         let mut postdom_frontiers = SparseBitMatrix::new_square(ctxt.func.layout.num_blocks());
-        ctxt.init_op_dependent_insts(&mut postdom_frontiers);
         ctxt.dom_tree.compute_postdom_frontiers(&ctxt.cfg, &mut postdom_frontiers);
 
         let num_insts = ctxt.func.dfg.num_insts();
 
         let mut builder = Builder {
-            topology: &mut topology,
-            db: ctxt.db,
+            topology,
             func: &mut ctxt.func,
+            db: ctxt.db,
             output_values: &ctxt.output_values,
-            cfg: &mut ctxt.cfg,
+            op_dependent_insts: &ctxt.op_dependent_insts,
+            op_dependent_vals: &ctxt.op_dependent_vals,
             scratch_buf: BitSet::new_empty(num_insts),
             postorder: Vec::with_capacity(128),
             val_map: AHashMap::with_capacity(128),
-            edges: Vec::with_capacity(128),
-            phis: Vec::with_capacity(128),
-            op_dependent_insts: &ctxt.op_dependent_insts,
-            op_dependent_vals: &ctxt.op_dependent_vals,
+            contrib_map,
         };
 
         let operators = builder.analog_operator_evaluations(&postdom_frontiers, &mut ctxt.intern);
         drop(postdom_frontiers);
-        builder.builid_analog_operators(operators, &mut ctxt.intern);
-        mir_opt::simplify_cfg_no_phi_merge(builder.func, builder.cfg);
+        builder.build_analog_operators(operators, &mut ctxt.intern, &ctxt.cfg);
+
+        // simplify the CFG before pruning small signal
+        mir_opt::simplify_cfg_no_phi_merge(builder.func, &mut ctxt.cfg);
         builder.prune_small_signal();
 
-        // JW: I suppose this is a temporary field only used during building. Therefore, clearing it helps
-        // reducing memory usage. For debug purposes, this field shall be retained. However, the
-        // order of hashmap is arbitrary, and will cause the unit tests to fail, so this field is
-        // still cleared anyway.
-        //
-        // if !cfg!(debug_assertions) {
-        //     topology.contributes = AHashMap::new();
-        // }
-        //
-        // clear the hashmap
-        topology.contrib_map = AHashMap::new();
-
-        topology
-    }
-
-    fn new_implicit_equation(&mut self, equation: ImplicitEquation, contrib: Contribution) {
-        if contrib.resist != F_ZERO {
-            self.contrib_map.insert(
-                contrib.resist,
-                ContributeKind::Implicit { id: equation, is_reactive: false },
-            );
-        }
-        if contrib.react != F_ZERO {
-            self.contrib_map.insert(
-                contrib.react,
-                ContributeKind::Implicit { id: equation, is_reactive: true },
-            );
-        }
-        let eq = self.implicit_equations.push_and_get_key(contrib);
-        debug_assert_eq!(eq, equation);
-    }
-
-    fn as_contribute_kind(&self, val: Value) -> Option<ContributeKind> {
-        self.contrib_map.get(&val).copied()
+        builder.topology
     }
 
     fn get_contrib_mut(&mut self, kind: ContributeKind) -> &mut Contribution {

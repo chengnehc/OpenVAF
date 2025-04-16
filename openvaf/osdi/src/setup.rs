@@ -125,7 +125,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let exit_bb = cfg
             .postorder(func)
             .find(|bb| {
-                func.layout.last_inst(*bb).is_none_or(|term| !func.dfg.insts[term].is_terminator())
+                func.layout.last_inst(*bb).is_none_or(|inst| !func.dfg.insts[inst].is_terminator())
             })
             .unwrap();
 

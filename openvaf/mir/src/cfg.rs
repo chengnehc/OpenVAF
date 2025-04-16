@@ -17,7 +17,7 @@ use crate::{Block, Function, InstructionData};
 mod render;
 mod traversal;
 
-pub use traversal::{Postorder, ReversePostorder};
+use traversal::{Postorder, ReversePostorder};
 
 /// The Control Flow Graph maintains a mapping of blocks to their predecessors
 /// and successors.

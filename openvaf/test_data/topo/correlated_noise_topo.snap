@@ -80,5 +80,4 @@ Topology {
     small_signal_vals: {
         v27,
     },
-    contrib_map: {},
 }

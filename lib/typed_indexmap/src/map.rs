@@ -14,7 +14,6 @@ pub type Iter<'a, I, K, V> = iter::Map<
 
 #[repr(transparent)]
 pub struct TiMap<I, K, V> {
-    /// raw set property
     pub raw: IndexMap<K, V, ahash::RandomState>,
     _marker: PhantomData<fn(I) -> I>,
 }

@@ -299,7 +299,7 @@ impl<'a> Builder<'a> {
         if is_output {
             cov_mark::hit!(op_independent_output);
             let val = self.func.dfg.first_result(inst);
-            let arg = strip_optbarrier(&*self.func, val);
+            let arg = strip_optbarrier(self.func, val);
             // if the argument is already cached, just keep the opt barrier
             let needs_cache = self.func.dfg.get_tag(arg).is_none();
             let inst = self.func.dfg.value_def(arg).inst().filter(|_| needs_cache);
