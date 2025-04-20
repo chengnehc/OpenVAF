@@ -1,26 +1,103 @@
 use bitset::{BitSet, HybridBitSet, SparseBitMatrix};
 use mir::{Block, ControlFlowGraph, DominatorTree, Function, Inst, InstructionData, Value};
 
-// The result is returned through `tainted_insts` by reference.
+/// By 'direct', it means that only phis at dominator frontier is tainted, instructions
+/// within dominated blocks are not.
+///
+/// This is meant to be used for op-dependent instruction for topology setup.
+pub fn propagate_direct_taint(
+    func: &Function,
+    dom_frontiers: &SparseBitMatrix<Block, Block>,
+    taint_source: impl Iterator<Item = Value>,
+    tainted_insts: &mut BitSet<Inst>,
+) {
+    tainted_insts.ensure(func.dfg.num_insts());
+    let mut solver =
+        DirectTaintSolver { func, dom_frontiers, inst_work_stack: Vec::new(), tainted_insts };
+
+    // Initial propagation
+    for val in taint_source {
+        for use_ in func.dfg.uses(val) {
+            let inst = func.dfg.use_to_user(use_);
+            solver.taint_inst(inst)
+        }
+    }
+    // Recursive propagation
+    solver.solve();
+}
+
+struct DirectTaintSolver<'a> {
+    // Inputs
+    func: &'a Function,
+    dom_frontiers: &'a SparseBitMatrix<Block, Block>,
+    // Work stack used during solving taint propagation
+    inst_work_stack: Vec<Inst>,
+    // Output
+    tainted_insts: &'a mut BitSet<Inst>,
+}
+
+impl DirectTaintSolver<'_> {
+    fn taint_inst(&mut self, inst: Inst) {
+        if self.tainted_insts.insert(inst) {
+            self.inst_work_stack.push(inst);
+        }
+    }
+
+    fn taint_dom_frontier_phis(&mut self, frontiers: impl Iterator<Item = Block>) {
+        for block in frontiers {
+            for inst in self.func.layout.block_insts(block) {
+                if self.func.dfg.insts[inst].is_phi() {
+                    self.taint_inst(inst)
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn solve(&mut self) {
+        while let Some(inst) = self.inst_work_stack.pop() {
+            if let InstructionData::Branch { then_dst, else_dst, .. } = self.func.dfg.insts[inst] {
+                // dominance frontiers are blocks where control flow merges and phis should be placed.
+                //
+                // TODO(JW): when blocks are not merged, for pure if-else statements without loops,
+                // dom frontiers of `then_dst` and `else_dst` are always the same.
+                // dbg!(&self.dom_frontiers.row(then_dst), &self.dom_frontiers.row(else_dst));
+                if let Some(frontiers) = self.dom_frontiers.row(then_dst) {
+                    self.taint_dom_frontier_phis(frontiers.iter());
+                }
+                if let Some(frontiers) = self.dom_frontiers.row(else_dst) {
+                    self.taint_dom_frontier_phis(frontiers.iter());
+                }
+            } else {
+                for use_ in self.func.dfg.inst_uses(inst) {
+                    let inst = self.func.dfg.use_to_user(use_);
+                    self.taint_inst(inst);
+                }
+            }
+        }
+    }
+}
+
 pub fn propagate_taint(
     func: &Function,
     dom_tree: &DominatorTree,
     cfg: &ControlFlowGraph,
-    tainted: impl Iterator<Item = Value>,
-    tainted_insts: &mut BitSet<Inst>,
+    taint_source: impl Iterator<Item = Value>,
+    tainted_insts: &mut BitSet<Inst>, // Result returned through `tainted_insts` by reference.
 ) {
     tainted_insts.ensure(func.dfg.num_insts());
     let mut solver = TaintSolver {
-        dom_tree,
         func,
+        cfg,
+        dom_tree,
         inst_work_stack: Vec::new(),
+        block_work_stack: Vec::new(),
         tainted_blocks: BitSet::new_empty(func.layout.num_blocks()),
         tainted_insts,
-        cfg,
-        block_work_stack: Vec::new(),
     };
 
-    for val in tainted {
+    for val in taint_source {
         for use_ in func.dfg.uses(val) {
             let inst = func.dfg.use_to_user(use_);
             solver.taint_inst(inst)
@@ -31,15 +108,15 @@ pub fn propagate_taint(
 }
 
 struct TaintSolver<'a> {
+    // Inputs
     func: &'a Function,
     cfg: &'a ControlFlowGraph,
     dom_tree: &'a DominatorTree,
-    // Work stack used during solving taint propagation
+    // Temporary states
     inst_work_stack: Vec<Inst>,
     block_work_stack: Vec<Block>,
-    // Used in `taint_block` to keep a record of tainted blocks
     tainted_blocks: BitSet<Block>,
-    // Oputput
+    // Output
     tainted_insts: &'a mut BitSet<Inst>,
 }
 
@@ -106,74 +183,6 @@ impl TaintSolver<'_> {
             for use_ in self.func.dfg.inst_uses(inst) {
                 let user = self.func.dfg.use_to_user(use_);
                 self.taint_inst(user);
-            }
-        }
-    }
-}
-
-// The result is returned through `tainted_insts` by reference.
-pub fn propagate_direct_taint(
-    func: &Function,
-    dom_frontiers: &SparseBitMatrix<Block, Block>,
-    tainted: impl Iterator<Item = Value>,
-    tainted_insts: &mut BitSet<Inst>,
-) {
-    tainted_insts.ensure(func.dfg.num_insts());
-    let mut solver =
-        DirectTaintSolver { func, inst_work_stack: Vec::new(), tainted_insts, dom_frontiers };
-
-    for val in tainted {
-        for use_ in func.dfg.uses(val) {
-            let inst = func.dfg.use_to_user(use_);
-            solver.taint_inst(inst)
-        }
-    }
-
-    solver.solve();
-}
-
-struct DirectTaintSolver<'a> {
-    func: &'a Function,
-    dom_frontiers: &'a SparseBitMatrix<Block, Block>,
-    // Work stack used during solving taint propagation
-    inst_work_stack: Vec<Inst>,
-    // Output
-    tainted_insts: &'a mut BitSet<Inst>,
-}
-
-impl DirectTaintSolver<'_> {
-    fn taint_inst(&mut self, inst: Inst) {
-        if self.tainted_insts.insert(inst) {
-            self.inst_work_stack.push(inst);
-        }
-    }
-
-    fn taint_dom_frontier_phis(&mut self, frontiers: impl Iterator<Item = Block>) {
-        for dom_frontier in frontiers {
-            for inst in self.func.layout.block_insts(dom_frontier) {
-                if self.func.dfg.insts[inst].is_phi() {
-                    self.taint_inst(inst)
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    fn solve(&mut self) {
-        while let Some(inst) = self.inst_work_stack.pop() {
-            if let InstructionData::Branch { then_dst, else_dst, .. } = self.func.dfg.insts[inst] {
-                if let Some(frontiers) = self.dom_frontiers.row(then_dst) {
-                    self.taint_dom_frontier_phis(frontiers.iter());
-                }
-                if let Some(frontiers) = self.dom_frontiers.row(else_dst) {
-                    self.taint_dom_frontier_phis(frontiers.iter());
-                }
-            } else {
-                for use_ in self.func.dfg.inst_uses(inst) {
-                    let user = self.func.dfg.use_to_user(use_);
-                    self.taint_inst(user);
-                }
             }
         }
     }

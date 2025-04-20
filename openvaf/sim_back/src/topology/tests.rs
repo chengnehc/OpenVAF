@@ -16,9 +16,12 @@ fn compile(src: &str) -> (Function, Topology, String) {
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut context = Context::new(&db, &mut literals, &module);
+
     context.compute_outputs::<WITH_CONTRIBUTES>();
     context.compute_cfg();
     context.optimize(OptimizationStage::Initial);
+    context.init_op_dependent_insts();
+
     let topology = Topology::new(&mut context);
     assert!(context.func.validate());
 
@@ -26,14 +29,13 @@ fn compile(src: &str) -> (Function, Topology, String) {
 }
 
 fn assert(src: &str) {
-    let (func, topology, name) = compile(src);
-    println!("{func:?}");
     let test_dir = openvaf_test_data("topo");
+    let (func, topology, name) = compile(src);
     let func = format!("{func:#?}");
-    // let _ = std::fs::write(test_dir.join(format!("{name}_mir.snap")), &func);
+    //let _ = std::fs::write(test_dir.join(format!("{name}_mir.snap")), &func);
     expect_file![test_dir.join(format!("{name}_mir.snap"))].assert_eq(&func);
     let topology = format!("{topology:#?}");
-    // let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
+    //let _ = std::fs::write(test_dir.join(format!("{name}_topo.snap")), &topology);
     expect_file![test_dir.join(format!("{name}_topo.snap"))].assert_eq(&topology);
 }
 
@@ -65,8 +67,7 @@ fn linear_analog_operators() {
 ///     2. makes it more difficult to guarantee that a model is charge conserving
 /// - Although form 3 is linear, its result is incorrect when `C` is non-linear (op-dependent).
 ///
-/// See Also: section IV of (1) and slide branch-ddt of (2)
-///
+/// See also:
 /// 1. C. C. McAndrew et al., “Best Practices for Compact Modeling in Verilog-A,”
 /// IEEE Journal of the Electron Devices Society, vol. 3, no. 5, pp. 383–396, Sep. 2015
 /// 2. M. Mierzwinski, P. O’Halloran, and B. Troyanovsky, “Developing and releasing compact models using Verilog-A,”
@@ -120,38 +121,11 @@ fn ddt() {
     assert(form_3);
 }
 
-/// This testcase ensures that conditional time derivatives are evaluated properly.
-///
-/// In general, conditions are a bit tricky to handle. If ddt(x) is used in an
-/// operating point dependent condition, we need to create a dedicated internal
-/// node for it, so as to ensure the internal state gets updated correctly
-/// (otherwise there would be discontinuities). This is fairly niche tough.
-///
-/// It's important to ensure that the more common case, i.e, using ddt(x) in
-/// operating point independent conditions, also works.
+/// Ensure that using ddt() in op-independent conditions works.
+/// No implicit equation is be generated, which is the most common scenario for compact models.
 #[test]
-fn conditional_ddt() {
-    cov_mark::check!(conditional_phi);
-    let op_dependent = indoc! {r#"
-        `include "disciplines.vams"
-        module conditional_ddt_op_dependent(inout a, inout c);
-            electrical a, c;
-            parameter real foo=1.0, bar=2.0;
-            real tmp;
-            analog begin
-                I(a, c) <+ V(a);
-                tmp = ddt(V(a));
-                if (V(a) < 0) begin
-                    if (foo < 0) begin
-                        if (bar < 0) begin
-                            I(a, c)  <+ tmp;
-                        end
-                    end
-                end
-            end
-        endmodule
-    "#};
-    let op_independent = indoc! {r#"
+fn conditional_ddt_op_independent() {
+    let src = indoc! {r#"
         `include "disciplines.vams"
         module conditional_ddt_op_independent(inout a, inout c);
             electrical a, c;
@@ -159,7 +133,34 @@ fn conditional_ddt() {
             analog begin
                 if (foo < 0) begin
                     if (bar < 0) begin
-                        I(a, c)  <+ ddt(V(c));
+                        I(a, c) <+ ddt(V(c));
+                    end
+                end
+            end
+        endmodule
+    "#};
+
+    assert(src);
+}
+
+/// When ddt() or variables that depend on ddt() are used in an op-dependent conditional
+/// block, an implicit equation is required for it, so as to ensure the internal state
+/// gets updated correctly (otherwise there would be discontinuities).
+/// This should typically be avoided by compact models.
+#[test]
+fn conditional_ddt_op_dependent() {
+    cov_mark::check!(conditional_phi);
+    let op_dependent = indoc! {r#"
+        `include "disciplines.vams"
+        module conditional_ddt_op_dependent(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0;
+            real Q_ddt = 0;
+            analog begin
+                Q_ddt = ddt(V(a));
+                if (V(a) < 0) begin
+                    if (foo < 0) begin
+                        I(a, c) <+ Q_ddt;
                     end
                 end
             end
@@ -167,13 +168,102 @@ fn conditional_ddt() {
     "#};
 
     assert(op_dependent);
-    assert(op_independent);
 }
 
-/// This testcase makes sure that the implicit equation caused by
-/// un-linearize-able analog operators within can be collapsed under
-/// specific parameter set, if the analog operator is defined within
-/// conditionals.
+/// Using variables that depend on ddt() in op-dependent conditionals is bad practice,
+/// as extra implicit equation is generated. Instead, move the ddt() arguments into
+/// the conditional blocks.
+///
+/// M. Mierzwinski et al., “Developing and releasing compact models using Verilog-A,”
+/// in MOS-AK Workshop, San Francisco, CA, USA, Dec. 2008
+#[test]
+fn conditional_ddt() {
+    let bad = indoc! {r#"
+    `include "disciplines.vams"
+    module ddt_variables_in_conditional(inout b, inout d, inout s);
+        electrical b, d, s;
+        branch (d, s) b_ds;
+        branch (b, s) b_bs;
+        branch (b, d) b_bd;
+        parameter real Cbd = 1.0, Cbs = 2.0;
+        real Qbd = 0, Qbs = 0;
+        real Qbd_ddt = 0, Qbs_ddt = 0;
+        real Ibdx_ddt = 0, Ibsx_ddt = 0;
+
+        analog begin
+            Qbd = Cbd * V(b_bd);
+            Qbs = Cbs * V(b_bs);
+            Qbd_ddt = ddt(Qbd);
+            Qbs_ddt = ddt(Qbs);
+            if (V(b_ds) >= 0.0) begin 
+                Ibdx_ddt = Qbd_ddt; 
+                Ibsx_ddt = Qbs_ddt;
+            end else begin 
+                Ibdx_ddt = Qbs_ddt;
+                Ibsx_ddt = Qbd_ddt; 
+            end
+            I(b_bd) <+ Ibdx_ddt;
+            I(b_bs) <+ Ibsx_ddt;
+        end
+    endmodule
+    "#};
+
+    let good = indoc! {r#"
+    `include "disciplines.vams"
+    module ddt_arguments_in_conditional(inout b, inout d, inout s);
+        electrical b, d, s;
+        branch (d, s) b_ds;
+        branch (b, s) b_bs;
+        branch (b, d) b_bd;
+        parameter real Cbd = 1.0, Cbs = 2.0;
+        real Qbd = 0, Qbs = 0;
+        real Qbdx = 0, Qbsx = 0;
+
+        analog begin
+            Qbd = Cbd * V(b_bd);
+            Qbs = Cbs * V(b_bs);
+            if (V(b_ds) >= 0.0) begin 
+                Qbdx = Qbd;
+                Qbsx = Qbs;
+            end else begin
+                Qbdx = Qbs;
+                Qbsx = Qbd;
+            end 
+            I(b_bd) <+ ddt(Qbdx);
+            I(b_bs) <+ ddt(Qbsx);
+        end
+    endmodule
+    "#};
+
+    assert(bad);
+    assert(good);
+}
+
+/// Test the phi add chain optimization, which should reduce the number of generated
+/// implict equations.
+#[test]
+fn phi_add_chain() {
+    let src = indoc! {r#"
+        `include "disciplines.vams"
+        module phi_add_chain_optimized(inout a, inout c);
+            electrical a, c;
+            parameter real foo=1.0, bar=2.0;
+            analog begin
+                I(a, c) <+ V(a);
+                I(a, c) <+ ddt(V(a));
+                if (V(a) < 0) begin
+                    I(a, c) <+ foo;
+                end
+            end
+        endmodule
+    "#};
+
+    assert(src);
+}
+
+/// Makes sure that the implicit equation caused by un-linearize-able analog operators
+/// could possibly be collapsed, if the analog operator is defined within op-independent
+/// conditional blocks.
 #[test]
 fn collapsible_implicit() {
     cov_mark::check!(collapsible_implicit);
@@ -184,7 +274,7 @@ fn collapsible_implicit() {
             parameter real foo=1.0;
             analog begin
                 if (foo < 0) begin
-                    I(a, c)  <+ V(a) * ddt(V(c));
+                    I(a, c) <+ V(a) * ddt(V(c));
                 end
             end
         endmodule

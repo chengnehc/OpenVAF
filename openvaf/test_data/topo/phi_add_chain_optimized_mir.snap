@@ -1,0 +1,21 @@
+function %(v16, v17, v22) {
+    inst0 = const fn %ddt(1) -> 1
+    v3 = fconst 0.0
+
+                                block5:
+                                    v19 = fadd v17, v3
+@000f                               v21 = flt v17, v3
+                                    br v21, block2, block3
+
+                                block2:
+                                    v24 = fadd v19, v22
+                                    jmp block4
+
+                                block3:
+                                    jmp block4
+
+                                block4:
+                                    v29 = phi [v24, block2], [v19, block3]
+                                    v31 = optbarrier v29
+                                    v33 = optbarrier v17
+}

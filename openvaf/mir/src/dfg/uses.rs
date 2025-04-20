@@ -200,6 +200,14 @@ impl DataFlowGraph {
         let cursor = vals.next().map(|v| self.values.uses_cursor(*v)).unwrap_or_default();
         InstUseIter { cursor, vals, dfg: &self.values }
     }
+
+    // pub fn use_set_value(&mut self, use_: Use, val: Value) {
+    //     debug_assert!(!self.is_use_detached(use_));
+    //     self.values.detach_use(use_, &self.insts);
+    //     let data = self.values.uses[use_];
+    //     self.insts.args_mut(data.parent)[data.parent_idx as usize] = val;
+    //     self.attach_use(use_, val);
+    // }
 }
 
 #[derive(Clone)]

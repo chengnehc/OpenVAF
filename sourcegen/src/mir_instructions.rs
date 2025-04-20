@@ -327,15 +327,9 @@ fn gen_instr_builder() {
                 dfg.first_result(inst)
             }
 
-            fn branch(
-                self,
-                cond: Value,
-                then_dst: Block,
-                else_dst: Block,
-                loop_entry: bool
-            ) -> (Inst, &'f mut DataFlowGraph) {
+            fn branch(self, cond: Value, then_dst: Block, else_dst: Block, loop_entry: bool) -> Inst {
                 let data = InstructionData::Branch { cond, then_dst, else_dst, loop_entry };
-                self.build(data)
+                self.build(data).0
             }
 
             fn br(
@@ -344,7 +338,7 @@ fn gen_instr_builder() {
                 then_dst: Block,
                 else_dst: Block,
             ) -> Inst  {
-                self.branch(cond, then_dst, else_dst, false).0
+                self.branch(cond, then_dst, else_dst, false)
             }
 
             fn br_loop(
@@ -353,7 +347,7 @@ fn gen_instr_builder() {
                 then_dst: Block,
                 else_dst: Block,
             ) -> Inst  {
-                self.branch(cond, then_dst, else_dst, true).0
+                self.branch(cond, then_dst, else_dst, true)
             }
 
             fn jump(self, destination: Block) -> Inst {

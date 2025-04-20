@@ -25,12 +25,10 @@ pub struct Postorder<'a, P: FnMut(Inst) -> bool> {
     /// a predicate that indicates whether to descend at a specific instruction
     descend: P,
     /// a bitset registering all visited instructions
-    pub visited: BitSet<Inst>,
+    visited: BitSet<Inst>,
     /// the output of the postorder traserval
-    pub visit_stack: Vec<(Inst, InstUseIter<'a>)>,
+    visit_stack: Vec<(Inst, InstUseIter<'a>)>,
 }
-
-pub type PostorderParts<'a> = (BitSet<Inst>, Vec<(Inst, InstUseIter<'a>)>);
 
 impl<'a, P: FnMut(Inst) -> bool> Postorder<'a, P> {
     pub fn new(dfg: &'a DataFlowGraph, descend: P) -> Postorder<'a, P> {
@@ -42,16 +40,8 @@ impl<'a, P: FnMut(Inst) -> bool> Postorder<'a, P> {
         }
     }
 
-    pub fn with_parts(self, parts: PostorderParts<'a>) -> Self {
-        let Self { dfg, descend, .. } = self;
-        let (mut visited, visit_stack) = parts;
-        visited.ensure(self.dfg.num_insts());
-
-        Postorder { dfg, descend, visited, visit_stack }
-    }
-
-    pub fn into_parts(self) -> PostorderParts<'a> {
-        (self.visited, self.visit_stack)
+    pub fn visited(self) -> BitSet<Inst> {
+        self.visited
     }
 
     pub fn at_value(mut self, val: Value) -> Self {
@@ -99,7 +89,7 @@ impl<'a, P: FnMut(Inst) -> bool> Postorder<'a, P> {
 impl<P: FnMut(Inst) -> bool> Iterator for Postorder<'_, P> {
     type Item = Inst;
 
-    fn next(&mut self) -> Option<Inst> {
+    fn next(&mut self) -> Option<Self::Item> {
         let (inst, _) = self.visit_stack.pop()?;
         self.traverse_successor();
 

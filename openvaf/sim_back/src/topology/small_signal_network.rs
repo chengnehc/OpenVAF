@@ -2,7 +2,7 @@ use std::{iter, mem};
 
 use hir::Node;
 use indexmap::IndexMap;
-use mir::{Const, InstructionData, Opcode, Postorder, Value, ValueDef, FALSE, F_ZERO};
+use mir::{Const, Inst, InstructionData, Opcode, Postorder, Value, ValueDef, FALSE, F_ZERO};
 
 use super::Builder;
 use crate::util::{add, update_optbarrier};
@@ -64,11 +64,13 @@ impl Builder<'_> {
         self.solve(&mut candidates);
         let small_signal_vals = mem::take(&mut self.topology.small_signal_vals);
         for &val in &small_signal_vals {
-            if let Some(contributes) = self.collect_linear_contributes(val) {
+            let postorder =
+                Postorder::new(&self.func.dfg, |_| true).at_value(val).collect::<Box<_>>();
+            if let Some(contributes) = self.collect_linear_contributes(&postorder) {
                 // create placeholder since all uses of val will be replaced with 0
                 // but we obviously still need it
                 let placeholder = self.func.dfg.make_invalid_value();
-                self.create_dimension(val, placeholder);
+                self.create_dimension(val, placeholder, &postorder);
                 for contribute in contributes {
                     cov_mark::hit!(prune_small_signal);
                     let kind = self.as_contribute_kind(contribute).unwrap();
@@ -94,7 +96,7 @@ impl Builder<'_> {
         let mut candidates = Vec::new();
         for contrib in &self.topology.branches {
             let (hi, lo) = contrib.branch.node_pair(self.db);
-            let is_current_src = contrib.is_potential == FALSE;
+            let is_current_src = contrib.is_potential_source == FALSE;
             let potential = contrib.potential.unknown.filter(|&val| !self.func.dfg.value_dead(val));
             let flow = contrib.flow.unknown.filter(|&val| !self.func.dfg.value_dead(val));
             if let Some(potential) = potential {
@@ -165,15 +167,14 @@ impl Builder<'_> {
     }
 
     fn has_linear_dependency(&mut self, vals: impl Iterator<Item = Value>, unknown: Value) -> bool {
-        let Self { func, scratch_buf, postorder, .. } = self;
+        let Self { func, visited_set, .. } = self;
+        // postorder.clear();
+        visited_set.clear();
 
-        postorder.clear();
-        scratch_buf.clear();
-        let mut traversal = Postorder::new(&func.dfg, |_| true)
-            .with_parts((mem::take(scratch_buf), Vec::new()))
-            .at_value(unknown);
-        (&mut traversal).for_each(|_| ());
-        *scratch_buf = traversal.visited;
+        let mut traversal = Postorder::new(&func.dfg, |_| true).at_value(unknown);
+        traversal.by_ref().for_each(|_| ());
+        *visited_set = traversal.visited();
+
         let mut found_linear = false;
         for val in vals {
             match self.analyze_dependency(RECURSE_DEPTH, val, unknown) {
@@ -187,86 +188,80 @@ impl Builder<'_> {
     }
 
     fn analyze_dependency(&self, mut recurse: u32, val: Value, unknown: Value) -> Dependency {
+        use Dependency::*;
         let inst = match self.func.dfg.value_def(val) {
             ValueDef::Result(inst, _) => inst,
-            ValueDef::Param(_) if unknown == val => return Dependency::Linear,
+            ValueDef::Param(_) if unknown == val => return Linear,
             ValueDef::Const(Const::Float(val_)) if val != F_ZERO && val_.is_finite() => {
-                return Dependency::NonZero
+                return NonZero
             }
-            ValueDef::Param(_) | ValueDef::Const(_) => return Dependency::Independent,
+            ValueDef::Param(_) | ValueDef::Const(_) => return Independent,
             ValueDef::Invalid => unreachable!(),
         };
-        if !self.scratch_buf.contains(inst) {
-            return Dependency::Independent;
+        if !self.visited_set.contains(inst) {
+            return Independent;
         }
-        let Some(it) = recurse.checked_sub(1) else { return Dependency::NonLinear };
+        let Some(it) = recurse.checked_sub(1) else { return NonLinear };
         recurse = it;
 
         match self.func.dfg.insts[inst] {
             InstructionData::Binary { opcode: Opcode::Fadd | Opcode::Fsub, args } => {
                 let arg0 = self.analyze_dependency(recurse, args[0], unknown);
-                if arg0 == Dependency::NonLinear {
-                    return Dependency::NonLinear;
+                if arg0 == NonLinear {
+                    return NonLinear;
                 }
                 let arg1 = self.analyze_dependency(recurse, args[1], unknown);
                 match (arg0, arg1) {
-                    (Dependency::NonLinear, _)
-                    | (_, Dependency::NonLinear)
-                    | (Dependency::Linear, Dependency::Linear) => Dependency::NonLinear,
-                    (Dependency::Linear, _) | (_, Dependency::Linear) => Dependency::Linear,
-                    _ => Dependency::Independent,
+                    (NonLinear, _) | (_, NonLinear) | (Linear, Linear) => NonLinear,
+                    (Linear, _) | (_, Linear) => Linear,
+                    _ => Independent,
                 }
             }
             InstructionData::Binary { opcode: Opcode::Fdiv, args } => {
                 let arg0 = self.analyze_dependency(recurse, args[0], unknown);
-                if arg0 == Dependency::NonLinear {
-                    return Dependency::NonLinear;
+                if arg0 == NonLinear {
+                    return NonLinear;
                 }
                 let arg1 = self.analyze_dependency(recurse, args[1], unknown);
                 match (arg0, arg1) {
-                    (_, Dependency::Linear | Dependency::NonLinear)
-                    | (Dependency::NonLinear, _) => Dependency::NonLinear,
-                    (Dependency::Linear, Dependency::NonZero | Dependency::Independent) => {
-                        Dependency::Linear
-                    }
-                    _ => Dependency::Independent,
+                    (_, Linear | NonLinear) | (NonLinear, _) => NonLinear,
+                    (Linear, NonZero | Independent) => Linear,
+                    _ => Independent,
                 }
             }
             InstructionData::Binary { opcode: Opcode::Fmul, args } => {
                 let arg0 = self.analyze_dependency(recurse, args[0], unknown);
-                if arg0 == Dependency::NonLinear {
-                    return Dependency::NonLinear;
+                if arg0 == NonLinear {
+                    return NonLinear;
                 }
                 let arg1 = self.analyze_dependency(recurse, args[1], unknown);
                 match (arg0, arg1) {
-                    (_, Dependency::Independent) | (Dependency::Independent, _) => {
-                        Dependency::Independent
-                    }
-                    _ => Dependency::Linear,
+                    (_, Independent) | (Independent, _) => Independent,
+                    _ => Linear,
                 }
             }
             InstructionData::PhiNode(ref phi) => {
                 let mut is_linear = true;
                 for (_, arg) in self.func.dfg.phi_edges(phi) {
                     match self.analyze_dependency(recurse, arg, unknown) {
-                        Dependency::Linear => (),
-                        Dependency::NonZero | Dependency::Independent => {
+                        Linear => (),
+                        NonZero | Independent => {
                             is_linear = false;
                         }
-                        Dependency::NonLinear => return Dependency::NonLinear,
+                        NonLinear => return NonLinear,
                     }
                 }
                 if is_linear {
-                    Dependency::Linear
+                    Linear
                 } else {
-                    Dependency::Independent
+                    Independent
                 }
             }
 
             InstructionData::Unary { opcode: Opcode::Fneg | Opcode::OptBarrier, arg } => {
                 self.analyze_dependency(recurse, arg, unknown)
             }
-            _ => Dependency::Independent,
+            _ => Independent,
         }
     }
 
@@ -372,27 +367,19 @@ impl Builder<'_> {
     /// these contributions value into a separate dimension is valid. Specifically that
     /// means that all partial deriveves of these contrbituions (and the contributions themselves)
     /// do not changed their value if `val` zero (unless derived by itself)
-    fn collect_linear_contributes(&mut self, val: Value) -> Option<Vec<Value>> {
-        let Self { func, scratch_buf, postorder, .. } = self;
-
-        postorder.clear();
-        scratch_buf.clear();
-
-        *postorder = Postorder::new(&func.dfg, |_| true)
-            .with_parts((mem::take(scratch_buf), Vec::new()))
-            .at_value(val)
-            .collect();
-
+    fn collect_linear_contributes(&mut self, postorder: &[Inst]) -> Option<Vec<Value>> {
+        let dfg = &self.func.dfg;
         let is_op_dependent = |val| {
-            if let Some(inst) = func.dfg.value_def(val).inst() {
+            if let Some(inst) = dfg.value_def(val).inst() {
                 self.op_dependent_insts.contains(inst)
             } else {
                 self.op_dependent_vals.contains(&val)
             }
         };
-        let mut res = Vec::new();
+        let mut contributes = Vec::new();
+
         for &inst in postorder.iter() {
-            match func.dfg.insts[inst] {
+            match dfg.insts[inst] {
                 InstructionData::Call { .. } | InstructionData::Branch { .. } => continue,
                 InstructionData::Binary {
                     opcode: Opcode::Fadd | Opcode::Fsub | Opcode::Fmul,
@@ -407,11 +394,11 @@ impl Builder<'_> {
                 }
                 _ => return None,
             }
-            let val = func.dfg.first_result(inst);
+            let val = dfg.first_result(inst);
             if self.contrib_map.get(&val).is_some() {
-                res.push(val);
+                contributes.push(val);
             }
         }
-        (!res.is_empty()).then_some(res)
+        (!contributes.is_empty()).then_some(contributes)
     }
 }

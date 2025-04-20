@@ -19,7 +19,3 @@ The tradeoffs are different:
 - A comparator object is used to compare keys, allowing smaller "context free" keys.
 - Empty trees have a very small 32-bit footprint.
 - All the trees in a forest can be cleared in constant time.
-
-## See Also:
-- https://docs.rs/cranelift-bforest/0.116.0/cranelift_bforest/
-- https://github.com/bytecodealliance/wasmtime/tree/main/cranelift/bforest/src

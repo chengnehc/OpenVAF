@@ -16,8 +16,7 @@ pub(super) struct Builder<'a> {
     pub(super) op_dependent_insts: &'a BitSet<Inst>,
     pub(super) op_dependent_vals: &'a [Value],
     // temporary state
-    pub(super) postorder: Vec<Inst>, // postorder traversal of DFG
-    pub(super) scratch_buf: BitSet<Inst>, // tracks instruction dependency
+    pub(super) visited_set: BitSet<Inst>, // the set of instructions visited by postorder
     pub(super) val_map: AHashMap<Value, Value>, // for operator linearization
     pub(super) contrib_map: AHashMap<Value, ContributeKind>, // for topo building
 }
@@ -59,7 +58,7 @@ impl Builder<'_> {
     /// This means the call instruction result:
     /// 1. gets replaced with zero
     /// 2. all calculations that depends on it will use the argument of the analog operator
-    pub(super) fn create_dimension(&mut self, orig: Value, mapped: Value) {
+    pub(super) fn create_dimension(&mut self, orig: Value, mapped: Value, postorder: &[Inst]) {
         self.val_map.clear();
         self.val_map.insert(orig, mapped);
 
@@ -69,7 +68,7 @@ impl Builder<'_> {
 
         // reverse post-order traversal is a serialization of the DFG starting from
         // the call instruction of the analog operator
-        for &inst in self.postorder.iter().rev() {
+        for &inst in postorder.iter().rev() {
             macro_rules! ins {
                 () => {
                     FuncCursor::new(self.func).after_inst(inst).ins()
@@ -145,16 +144,12 @@ impl Builder<'_> {
         contrib: Contribution,
     ) {
         if contrib.resist != F_ZERO {
-            self.contrib_map.insert(
-                contrib.resist,
-                ContributeKind::Implicit { id: equation, is_reactive: false },
-            );
+            self.contrib_map
+                .insert(contrib.resist, ContributeKind::Implicit { id: equation, reactive: false });
         }
         if contrib.react != F_ZERO {
-            self.contrib_map.insert(
-                contrib.react,
-                ContributeKind::Implicit { id: equation, is_reactive: true },
-            );
+            self.contrib_map
+                .insert(contrib.react, ContributeKind::Implicit { id: equation, reactive: true });
         }
         let eq = self.topology.implicit_equations.push_and_get_key(contrib);
         debug_assert_eq!(eq, equation);

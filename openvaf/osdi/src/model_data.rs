@@ -38,7 +38,7 @@ impl<'ll> OsdiModelData<'ll> {
 
         // # Notes
         // The OsdiModelData struct *type* contains all inst/model params,
-        // but only model param data is actually stored.
+        // but only model param *data* is actually stored at run time.
         let mut fields = vec![param_given];
         fields.extend(params.values().copied());
         fields.extend(inst_params.values());

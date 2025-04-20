@@ -65,14 +65,17 @@ impl DaeSystem {
         builder.finish()
     }
 
-    // TODO(JW): this function has no effects on the DAE and MIR
+    // TODO(JW): it seems this function has barely no effects on DAE and MIR
     //
-    /// After the derivatives are inserted and post-derivative optimizations
+    /// Once the derivatives are inserted and post-derivative optimizations
     /// are applied, sparsify the MIR and DAE.
+    ///
+    /// # Note
+    /// mutates function and output_values
     #[allow(unused)]
     pub(super) fn sparsify(&mut self, ctx: &mut Context) {
         let mut sparsify = |val| {
-            dbg!(val);
+            // dbg!(val);
             let stripped = strip_optbarrier(&ctx.func, val);
             if ctx.func.dfg.value_def(stripped).inst().is_some() {
                 // value is used somewhere other than opt barrier

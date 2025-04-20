@@ -31,21 +31,15 @@ pub trait InstBuilder<'f>: InstBuilderBase<'f> {
         let (inst, dfg) = self.binary(opcode, arg1, arg2);
         dfg.first_result(inst)
     }
-    fn branch(
-        self,
-        cond: Value,
-        then_dst: Block,
-        else_dst: Block,
-        loop_entry: bool,
-    ) -> (Inst, &'f mut DataFlowGraph) {
+    fn branch(self, cond: Value, then_dst: Block, else_dst: Block, loop_entry: bool) -> Inst {
         let data = InstructionData::Branch { cond, then_dst, else_dst, loop_entry };
-        self.build(data)
+        self.build(data).0
     }
     fn br(self, cond: Value, then_dst: Block, else_dst: Block) -> Inst {
-        self.branch(cond, then_dst, else_dst, false).0
+        self.branch(cond, then_dst, else_dst, false)
     }
     fn br_loop(self, cond: Value, then_dst: Block, else_dst: Block) -> Inst {
-        self.branch(cond, then_dst, else_dst, true).0
+        self.branch(cond, then_dst, else_dst, true)
     }
     fn jump(self, destination: Block) -> Inst {
         let data = InstructionData::Jump { destination };

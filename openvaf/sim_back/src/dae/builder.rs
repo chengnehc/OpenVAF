@@ -56,13 +56,16 @@ impl Residual {
 
 pub(super) struct Builder<'a> {
     pub(super) dae: DaeSystem,
-    pub(super) db: &'a CompilationDB,
+
+    // mutated fields
     pub(super) cursor: FuncCursor<'a>,
     pub(super) intern: &'a mut HirInterner,
-    pub(super) cfg: &'a mut ControlFlowGraph,
-    pub(super) dom_tree: &'a mut DominatorTree,
-    pub(super) op_dependent_insts: &'a BitSet<Inst>,
-    pub(super) output_values: &'a mut BitSet<Value>,
+    pub(super) output_values: &'a mut BitSet<Value>, // for opt barriers
+    pub(super) cfg: &'a mut ControlFlowGraph, // mutable reference required by building switch branch
+
+    // references
+    pub(super) db: &'a CompilationDB,
+    pub(super) op_dependent_insts: &'a BitSet<Inst>, // required by building switch branch
 }
 
 impl<'a> Builder<'a> {
@@ -74,10 +77,9 @@ impl<'a> Builder<'a> {
             db: ctx.db,
             cursor: FuncCursor::new(&mut ctx.func).at_exit(),
             intern: &mut ctx.intern,
-            cfg: &mut ctx.cfg,
-            dom_tree: &mut ctx.dom_tree,
-            op_dependent_insts: &ctx.op_dependent_insts,
             output_values: &mut ctx.output_values,
+            cfg: &mut ctx.cfg,
+            op_dependent_insts: &ctx.op_dependent_insts,
         };
         // ensure ports are the first unknowns and always have an unknown
         for port in ctx.module.module.ports(builder.db) {
@@ -106,11 +108,11 @@ impl<'a> Builder<'a> {
             self.jacobian_entries(sim_unknown_reads.iter().map(|&(_, val)| val), &derivative_info);
 
         // TODO(perf): incrementally update dom_tree (for switch branches) instead
-        self.dom_tree.compute::<true, false>(self.cursor.func, self.cfg);
+        let dom_tree = DominatorTree::with_func_and_cfg::<true, false>(self.cursor.func, self.cfg);
 
         // Actually generate and insert the instructions of derivatives
         let derivatives =
-            auto_diff(&mut *self.cursor.func, self.dom_tree, &derivative_info, &jacobian_info);
+            auto_diff(&mut *self.cursor.func, &dom_tree, &derivative_info, &jacobian_info);
         drop(jacobian_info);
 
         // auto_diff may in an unlikely case add extra bb at the end, ensure we are building everything at the end
@@ -151,7 +153,7 @@ impl Builder<'_> {
     }
 
     pub(super) fn build_branch_contrib(&mut self, data: &BranchInfo) {
-        match data.is_potential {
+        match data.is_potential_source {
             // flow source branch
             // only flow(branch) is assigned (appears at contribution statement LHS)
             mir::FALSE => {
@@ -198,7 +200,7 @@ impl Builder<'_> {
 
                 // Is the source branch type op dependent?
                 let is_op_dependent = is_op_dependent(
-                    data.is_potential,
+                    data.is_potential_source,
                     &self.cursor,
                     self.intern,
                     self.op_dependent_insts,
@@ -227,7 +229,7 @@ impl Builder<'_> {
 
                     // Get the condition that determines if branch acts as a voltage source
                     // Skip trailing optbarriers
-                    let is_potential = strip_optbarrier(&self.cursor, data.is_potential);
+                    let is_potential = strip_optbarrier(&self.cursor, data.is_potential_source);
                     // If condition is true, jump to potential_bb, or else go to next_block
                     self.cursor.ins().br(is_potential, potential_bb, next_block);
                     self.cursor.goto_bottom(potential_bb);
@@ -687,7 +689,7 @@ impl Builder<'_> {
                 matches!(self.dae.unknowns[unknown], SimUnknownKind::KirchhoffLaw(_));
             residual.map_vals(|val| ensure_optbarrier(val, is_kirchhoff));
         }
-        // JW: ?
+
         ensure_optbarrier(mfactor, false);
 
         // noises

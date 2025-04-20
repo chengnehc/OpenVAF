@@ -26,7 +26,7 @@ impl HirInterner {
                 ctxt.dfg_mut().replace_uses(*param, val);
             }
         }
-        ctxt.ensured_sealed();
+        ctxt.ensure_sealed();
         ctxt.func.func.layout.append_inst_to_block(term, ctxt.current_block())
     }
 }

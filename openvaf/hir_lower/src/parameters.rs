@@ -146,20 +146,17 @@ impl HirInterner {
             // let last_inst = builder.func.layout.last_inst(else_src.0).unwrap();
             ctxt.ins().with_result(new_val).phi(&[then_src, else_src]);
 
-            // we purposfull insert these reversed here (new val into params and old val into
+            // we purposefully insert these reversed here (new val into params and old val into
             // outputs). This ensures that the code generated for other parameters uses the
             // correct value. After code generation is complete we swap these two again
             ctxt.def_param(ParamKind::Param(param), new_val);
             ctxt.def_output(PlaceKind::Param(param), param_val);
             param_val = new_val;
 
-            if !build_min_max {
-                continue;
-            }
-
-            let invalid = ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::Invalid, param));
-
-            let precomputed_vals = if build_min_max {
+            // for verilog-ae
+            if build_min_max {
+                let invalid =
+                    ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::Invalid, param));
                 let min_inclusive =
                     ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::MinInclusive, param));
                 let max_inclusive =
@@ -171,7 +168,7 @@ impl HirInterner {
 
                 let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: body.borrow(), path: "" };
                 let mut lowered_bounds = None;
-                let precomputed_vals = bounds
+                let precomputed_vals: Vec<_> = bounds
                     .iter()
                     .filter_map(|bound| {
                         if matches!(bound.kind, ConstraintKind::Exclude) {
@@ -284,35 +281,32 @@ impl HirInterner {
 
                 ctx.ctxt.intern.outputs.insert(PlaceKind::ParamMin(param), min.into());
                 ctx.ctxt.intern.outputs.insert(PlaceKind::ParamMax(param), max.into());
-                precomputed_vals
-            } else {
-                vec![]
-            };
 
-            // first from bounds (here we also get min/max from)
-            let exit = ctxt.create_block();
-            let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: body.borrow(), path: "" };
-            ctx.check_param(
-                param_val,
-                &bounds,
-                &precomputed_vals,
-                ConstraintKind::From,
-                ops,
-                invalid,
-                exit,
-            );
-            ctx.check_param(
-                param_val,
-                &bounds,
-                &precomputed_vals,
-                ConstraintKind::Exclude,
-                ops,
-                invalid,
-                exit,
-            );
-            ctx.ctxt.switch_to_block(exit);
+                // first from bounds (here we also get min/max from)
+                let exit = ctxt.create_block();
+                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: body.borrow(), path: "" };
+                ctx.check_param(
+                    param_val,
+                    &bounds,
+                    &precomputed_vals,
+                    ConstraintKind::From,
+                    ops,
+                    invalid,
+                    exit,
+                );
+                ctx.check_param(
+                    param_val,
+                    &bounds,
+                    &precomputed_vals,
+                    ConstraintKind::Exclude,
+                    ops,
+                    invalid,
+                    exit,
+                );
+                ctx.ctxt.switch_to_block(exit);
+            }
         }
-        ctxt.ensured_sealed();
+        ctxt.ensure_sealed();
         ctxt.func.func.layout.append_inst_to_block(term, ctxt.current_block());
 
         for (i, param) in params.iter().copied().enumerate() {
@@ -326,6 +320,7 @@ impl HirInterner {
 }
 
 impl BodyLowerContext<'_, '_, '_> {
+    /// Perform parameter bounds check
     #[allow(clippy::too_many_arguments)]
     fn check_param(
         &mut self,

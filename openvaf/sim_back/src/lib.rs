@@ -6,7 +6,6 @@ use hir::{CompilationDB, Node};
 use hir_lower::{FlowKind, HirInterner, ImplicitEquation, ParamKind};
 use lasso::Rodeo;
 use mir::Function;
-use mir_opt::{simplify_cfg, sparse_conditional_constant_propagation};
 
 pub mod dae;
 pub mod init;
@@ -56,10 +55,14 @@ impl_debug_display! {match SimUnknown{SimUnknown(id) => "sim_node{id}";}}
 pub struct CompiledModule<'a> {
     pub info: &'a ModuleInfo,
     pub dae: DaeSystem,
+    // op-independent part of MIR function and HIR interner with cache slots
     pub init: Initialization,
+    // collapsed node pairs
     pub node_collapse: NodeCollapse,
+    // all model parameter setup utility function
     pub model_param_setup: Function,
     pub model_param_intern: HirInterner,
+    // op-dependent part of MIR function and HIR interner
     pub eval: Function,
     pub intern: HirInterner,
 }
@@ -71,20 +74,33 @@ impl<'a> CompiledModule<'a> {
         literals: &mut Rodeo,
     ) -> CompiledModule<'a> {
         let mut ctxt = Context::new(db, literals, info);
+
+        // compute the output values (with contributions)
         ctxt.compute_outputs::<WITH_CONTRIBUTES>();
+
+        // execute the initial optimization pass
         ctxt.compute_cfg();
         ctxt.optimize(OptimizationStage::Initial);
         debug_assert!(ctxt.func.validate());
 
+        // topology and DAE setup needs information of op-dependent instructions
+        ctxt.init_op_dependent_insts();
+
+        // collects contribution to form model internal topology
         let topology = Topology::new(&mut ctxt);
         debug_assert!(ctxt.func.validate());
-        let dae = DaeSystem::new(&mut ctxt, topology);
-        //dbg!(&ctxt.func, &dae);
+
+        // setup residual and Jacobians, extra auto-diff instructions/blocks are inserted
+        let mut dae = DaeSystem::new(&mut ctxt, topology);
         debug_assert!(ctxt.func.validate());
+
+        // execute the post-derivative optimization
         ctxt.compute_cfg();
         let gvn = ctxt.optimize(OptimizationStage::PostDerivative);
-        //dae.sparsify(&mut ctxt);
-        //dbg!(&dae);
+        debug_assert!(ctxt.func.validate());
+
+        // TODO(JW): It seems that this has barely no effect on MIR and DAE
+        dae.sparsify(&mut ctxt);
 
         // For debugging purposes - print parameters
         let debugging = false; //  && cfg!(debug_assertions);
@@ -174,23 +190,29 @@ impl<'a> CompiledModule<'a> {
             println!();
         }
 
-        debug_assert!(ctxt.func.validate());
-
+        // after post-derivative optimization, op-dependent instruction set may change
         ctxt.refresh_op_dependent_insts();
+
+        // split the raw function and separate op-independent instructions into another
+        // function for initialization
         let mut init = Initialization::new(&mut ctxt, gvn);
-        let node_collapse = NodeCollapse::new(&init, &dae, &ctxt);
-        debug_assert!(ctxt.func.validate());
-
-        // For debugging purposes - print MIR
-        if debugging {
-            println!("Init function");
-            println!("{:?}", init.func);
-            println!();
-        }
-
         debug_assert!(init.func.validate());
 
-        // TODO: refactor param intilization to use tables
+        // node collapse should only depend on op-independent values
+        let node_collapse = NodeCollapse::new(&init, &dae, &ctxt);
+
+        // JW: It seems that final stage optimization was missing here.
+        // I'm not sure if this is intended to reduce compile speed.
+        //
+        // However, if this is turned on, OpenVAF panics when simplifying CFG.
+        // I suppose this is because part of the optimizations have already
+        // been covered when building initialization function.
+        //
+        // ctxt.optimize(OptimizationStage::Final);
+        debug_assert!(ctxt.func.validate());
+
+        // insert instance parameter setup into op-independent function
+        // TODO: refactor param initialization to use tables
         let inst_params: Vec<_> = info
             .params
             .iter()
@@ -198,6 +220,7 @@ impl<'a> CompiledModule<'a> {
             .collect();
         init.intern.insert_param_init(db, &mut init.func, literals, false, true, &inst_params);
 
+        // create a utility function to set up all model parameters
         let mut model_param_setup = Function::default();
         let model_params: Vec<_> = info.params.keys().copied().collect();
         let mut model_param_intern = HirInterner::default();
@@ -209,18 +232,20 @@ impl<'a> CompiledModule<'a> {
             true,
             &model_params,
         );
+
+        // optimize the parameter setup utility function
         ctxt.cfg.compute(&model_param_setup);
-        simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
-        sparse_conditional_constant_propagation(&mut model_param_setup, &ctxt.cfg);
-        simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
+        mir_opt::simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
+        mir_opt::sparse_conditional_constant_propagation(&mut model_param_setup, &ctxt.cfg);
+        mir_opt::simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
 
         CompiledModule {
             info,
             dae,
             init,
             node_collapse,
-            model_param_intern,
             model_param_setup,
+            model_param_intern,
             eval: ctxt.func,
             intern: ctxt.intern,
         }

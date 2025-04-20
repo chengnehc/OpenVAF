@@ -35,16 +35,15 @@ pub(super) enum Evaluation {
 }
 
 impl super::Builder<'_> {
-    /// Build topology for a list of analog operators (ddt, noise)
-    /// with predetermined evaluation types
+    /// Build topology for analog operators (ddt, noise) with predetermined evaluation types
     pub(super) fn build_analog_operators(
         &mut self,
-        analog_operators: Vec<(Inst, Evaluation)>,
-        intern: &mut HirInterner,
         cfg: &ControlFlowGraph,
+        pdf: &SparseBitMatrix<Block, Block>,
+        intern: &mut HirInterner,
     ) {
         let mut ssa_builder = mir_build::SSAVariableBuilder::new(cfg);
-        for (operator, evaluation) in analog_operators {
+        for (operator, evaluation) in self.analog_operator_evaluations(&pdf, intern) {
             let arg0 = self.func.dfg.instr_args(operator)[0];
             let cb = self.func.dfg.func_ref(operator).unwrap();
             let is_noise = intern.callbacks[cb].is_noise();
@@ -95,7 +94,6 @@ impl super::Builder<'_> {
                     let res = self.func.dfg.first_result(operator);
                     self.func.dfg.replace_uses(res, eq_val);
 
-                    //
                     let collapse = ssa_builder.define_at_exit(self.func, TRUE, FALSE, operator);
                     if collapse != FALSE {
                         cov_mark::hit!(collapsible_implicit);
@@ -104,7 +102,6 @@ impl super::Builder<'_> {
                             .outputs
                             .insert(PlaceKind::CollapseImplicitEquation(eq), collapse.into());
                     }
-                    dbg!(&collapse, &intern.outputs, &self.func);
 
                     // TODO(JW): Why negate the resistive residual here?
                     let neg_eq_val = FuncCursor::new(self.func).at_exit().ins().fneg(eq_val);
@@ -143,7 +140,7 @@ impl super::Builder<'_> {
     }
 
     /// Determine the evaluation type of all the analog operators.
-    pub(super) fn analog_operator_evaluations(
+    fn analog_operator_evaluations(
         &mut self,
         postdom_frontiers: &SparseBitMatrix<Block, Block>,
         intern: &mut HirInterner,
@@ -221,23 +218,18 @@ impl super::Builder<'_> {
     /// - variables that depend on `ddt()` are used in op-dependent conditionals
     fn determine_evaluation_type(
         &mut self,
-        inst: Inst, // the call instruction of analog operator
+        analog_operator_call: Inst, // the call instruction of analog operator
         postdom_frontiers: &SparseBitMatrix<Block, Block>,
         callbacks: &TiSet<FuncRef, CallBackKind>,
         noise: bool,
     ) -> Evaluation {
-        let Self { func, scratch_buf, postorder, output_values, .. } = self;
-        postorder.clear();
-        scratch_buf.clear();
+        let Self { func, output_values, .. } = self;
 
-        *postorder = Postorder::new(&func.dfg, |_| true)
-            .with_parts((mem::take(scratch_buf), Vec::new()))
-            .at_inst(inst)
-            .collect();
-
+        let mut traversal = Postorder::new(&func.dfg, |_| true).at_inst(analog_operator_call);
+        let postorder = traversal.by_ref().collect::<Box<_>>();
+        let visited = traversal.visited();
         let val_visited =
-            &|val| func.dfg.value_def(val).inst().is_some_and(|inst| scratch_buf.contains(inst));
-
+            &|val| func.dfg.value_def(val).inst().is_some_and(|inst| visited.contains(inst));
         let is_op_dependent = |val| {
             if let Some(inst) = func.dfg.value_def(val).inst() {
                 self.op_dependent_insts.contains(inst)
@@ -248,7 +240,7 @@ impl super::Builder<'_> {
         let mut contributes = Vec::new();
 
         use {InstructionData::*, Opcode::*};
-        for &inst in postorder.iter() {
+        for &inst in &postorder {
             match func.dfg.insts[inst] {
                 Unary { opcode: Fneg, .. } | Binary { opcode: Fadd | Fsub, .. } => {}
 
@@ -279,40 +271,40 @@ impl super::Builder<'_> {
                     if noise && callbacks[func_ref] != CallBackKind::TimeDerivative => {}
 
                 PhiNode(ref phi) => {
-                    // Check if a phi is operating point dependent. To determine that we check whether any of
-                    // the control dependencies of phi edge is operating point
-                    // dependent.
-                    let mut op_dependent = false;
-                    for (pred, _) in func.dfg.phi_edges(phi) {
-                        // check if this edge is operating point dependent
-                        if !op_dependent {
+                    // Check if a phi is operating point dependent. To determine that
+                    // we check whether any of the control dependencies of phi edge
+                    // is operating point dependent.
+                    let phi_op_dependent = |phi| {
+                        for (pred, _) in func.dfg.phi_edges(phi) {
                             let Some(control_deps) = postdom_frontiers.row(pred) else { continue };
                             for control_dep in control_deps.iter() {
-                                if let Some(cond) = func
+                                if func
                                     .layout
                                     .block_terminator(control_dep)
                                     .and_then(|inst| func.dfg.branch_cond(inst))
+                                    .is_some_and(|cond| is_op_dependent(cond))
                                 {
-                                    if is_op_dependent(cond) {
-                                        op_dependent = true;
-                                        break;
-                                    }
+                                    return true;
                                 }
                             }
                         }
-                    }
-                    // However, to avoid generating too many unnecessary implicit equations, a special optimization
-                    // for chains of additions is necessary. Chains of addition/subtraction where only one summand
-                    // depends on the analog operator, do not require an extra equation.
+                        false
+                    };
+
+                    // However, to avoid generating too many unnecessary implicit equations,
+                    // a special optimization for chains of additions is necessary.
+                    // Chains of addition/subtraction where only one summand depends on the
+                    // analog operator, do not require an extra equation.
                     //
                     // This optimizes the following (common) case:
                     //
-                    // I(x) <+ ddt(foo);
+                    // I(branch) <+ ddt(V(a));
                     // if (op_dependent_cond)
-                    //    I(x) <+ bar;
+                    //    I(branch) <+ foo;
                     //
-                    // This will create an (op dependent) phi [ddt(foo), ddt(foo) + bar].
-                    // This does not change the ddt state and therefore doesn't require an extra implicit equation.
+                    // This will create an op-dependent phi [ddt(V(a)), ddt(V(a))+foo].
+                    // This does not change the ddt state and therefore doesn't require an
+                    // extra implicit equation.
                     self.val_map.clear();
                     let handle_loops = &mut |phi, enter| {
                         if enter {
@@ -321,62 +313,51 @@ impl super::Builder<'_> {
                             self.val_map.remove(&phi).is_some()
                         }
                     };
-                    if op_dependent
-                        && phi_add_chain_start(func, phi.clone(), val_visited, handle_loops)
-                            .is_none()
+                    if phi_op_dependent(phi)
+                        && phi_add_chain_start(func, phi, val_visited, handle_loops).is_none()
                     {
                         cov_mark::hit!(conditional_phi);
                         return Evaluation::Equation;
                     }
                 }
 
-                Unary { opcode: OptBarrier, .. } => {
-                    // If used in multiple outputs, it's safe to assume that this needs its own node
-                    // TODO: ignore
+                Unary { opcode: OptBarrier, .. } if noise => {
                     let val = func.dfg.first_result(inst);
-                    let is_output = if noise {
-                        self.contrib_map.get(&val).is_some()
-                        //self.as_contribute_kind(val).is_some()
-                    } else {
-                        output_values.contains(val)
-                    };
-                    if is_output {
-                        if noise && !contributes.is_empty() {
+                    if let Some(contrib_kind) = self.contrib_map.get(&val) {
+                        if !contrib_kind.is_reactive() && contributes.is_empty() {
+                            contributes.push(val);
+                        } else {
                             // multiple uses of a noise source means correlated noise,
                             // for now just create a correlation network
                             return Evaluation::Equation;
-                        } else if self
-                            .contrib_map
-                            .get(&val)
-                            //.copied()
-                            .is_some_and(|it| !it.is_reactive())
-                        {
-                            // linearization is possible
-                            contributes.push(val)
+                        }
+                    }
+                }
+                Unary { opcode: OptBarrier, .. } => {
+                    let val = func.dfg.first_result(inst);
+                    if output_values.contains(val) {
+                        if self.contrib_map.get(&val).is_some_and(|it| !it.is_reactive()) {
+                            contributes.push(val);
                         } else {
                             return Evaluation::Equation;
                         }
                     }
                 }
-
                 _ => return Evaluation::Equation,
             }
         }
         if contributes.is_empty() {
-            assert!(noise, "ddt should have been deadcode eliminated");
-            return Evaluation::Dead;
+            debug_assert!(noise, "ddt should have been deadcode eliminated");
+            return Evaluation::Dead; // unused noise
         }
         // Now that the analog operator can be linearized, we can create another dimension
         // of the contribution, a mapping from the original instruction result value to
         // another SSA value.
-        let res = self.func.dfg.first_result(inst);
-        let arg = if noise { F_ONE } else { self.func.dfg.instr_args(inst)[0] };
-        self.create_dimension(res, arg);
+        let res = self.func.dfg.first_result(analog_operator_call);
+        let arg = if noise { F_ONE } else { self.func.dfg.instr_args(analog_operator_call)[0] };
+        self.create_dimension(res, arg, &postorder);
 
-        let contributes =
-            contributes.into_iter().map(|contrib| (contrib, self.val_map[&contrib])).collect();
-
-        // dbg!(/*&self.func,*/ &self.val_map, &contributes);
+        let contributes = contributes.into_iter().map(|val| (val, self.val_map[&val])).collect();
 
         Evaluation::Linear { contributes }
     }
@@ -384,23 +365,22 @@ impl super::Builder<'_> {
 
 fn phi_add_chain_start(
     func: &Function,
-    phi: PhiNode,
+    phi: &PhiNode,
     val_visited: &impl Fn(Value) -> bool,
     handle_loops: &mut impl FnMut(Value, bool) -> bool,
 ) -> Option<Value> {
-    let mut add_chain_start = None;
-    for (_, mut edge) in func.dfg.phi_edges(&phi) {
-        if !val_visited(edge) {
-            return None;
-        }
-        edge = follow_add_chain(func, edge, val_visited, handle_loops);
-        match add_chain_start {
-            Some(start) if start != edge => return None,
-            None => add_chain_start = Some(edge),
-            _ => (),
-        }
+    let mut chain_start = None;
+    for (_, mut edge) in func.dfg.phi_edges(phi) {
+        chain_start = val_visited(edge).then(|| {
+            edge = follow_add_chain(func, edge, val_visited, handle_loops);
+            match chain_start {
+                Some(start) if start != edge => return None,
+                None => Some(edge),
+                _ => chain_start,
+            }
+        })?;
     }
-    add_chain_start
+    chain_start
 }
 
 fn follow_add_chain(
@@ -429,7 +409,7 @@ fn follow_add_chain(
             }
             InstructionData::PhiNode(ref phi) => {
                 if handle_loops(val, true) {
-                    let start = phi_add_chain_start(func, phi.clone(), val_visited, handle_loops);
+                    let start = phi_add_chain_start(func, phi, val_visited, handle_loops);
                     handle_loops(val, false);
                     if let Some(start) = start {
                         val = start;

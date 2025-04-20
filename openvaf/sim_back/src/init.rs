@@ -1,3 +1,5 @@
+//! Separate the operating point independent part of a model into an initialization function
+
 use stdx::packed_option::PackedOption;
 use stdx::{impl_debug_display, impl_idx_from};
 
@@ -37,17 +39,26 @@ pub struct Initialization {
 }
 
 impl Initialization {
-    pub(super) fn new(cxt: &mut Context<'_>, gvn: GVN) -> Initialization {
-        let mut builder = Builder::new(cxt);
-        for _ in 0..builder.func.layout.num_blocks() {
-            builder.init.func.layout.make_block();
-        }
+    pub(super) fn new(ctx: &mut Context<'_>, gvn: GVN) -> Initialization {
+        let mut builder = Builder::new(ctx);
+
+        // for _ in 0..builder.func.layout.num_blocks() {
+        //     builder.init.func.layout.make_block();
+        // }
+        let num = builder.func.layout.num_blocks();
+        builder.init.func.layout.make_blocks(num);
+
         let mut blocks = builder.func.layout.block_cursor();
         while let Some(bb) = blocks.next(&builder.func.layout) {
+            builder.init.func.layout.append_block(bb);
             builder.split_block(bb);
         }
         let collapse_implicit = builder.build_init_itern();
         builder.build_init_cache(&gvn, &collapse_implicit);
+
+        // simplify the main function
+        mir_opt::simplify_cfg(builder.func, builder.cfg);
+
         builder.optimize(collapse_implicit);
 
         builder.init
@@ -57,12 +68,13 @@ impl Initialization {
 struct Builder<'a> {
     init: Initialization,
     init_cache: IndexMap<Value, Inst, RandomState>,
-    // inputs
-    db: &'a CompilationDB,
+    // mutates
     func: &'a mut Function,
     intern: &'a mut HirInterner,
     cfg: &'a mut ControlFlowGraph,
     dom_tree: &'a mut DominatorTree,
+    // reads
+    db: &'a CompilationDB,
     output_values: &'a BitSet<Value>,
     op_dependent_insts: &'a BitSet<Inst>,
     // temporary state
@@ -80,11 +92,11 @@ impl<'a> Builder<'a> {
                 cached_vals: IndexMap::with_capacity_and_hasher(128, RandomState::new()),
             },
             init_cache: IndexMap::with_capacity_and_hasher(256, RandomState::default()),
-            db: ctx.db,
             func: &mut ctx.func,
             intern: &mut ctx.intern,
             cfg: &mut ctx.cfg,
             dom_tree: &mut ctx.dom_tree,
+            db: ctx.db,
             output_values: &ctx.output_values,
             op_dependent_insts: &ctx.op_dependent_insts,
             val_map: AHashMap::with_capacity(1024),
@@ -93,7 +105,7 @@ impl<'a> Builder<'a> {
     }
 
     fn split_block(&mut self, bb: Block) {
-        self.init.func.layout.append_block(bb);
+        // can not use iterator here, as we are doing iteration and modification at the same time
         let mut insts = self.func.layout.block_inst_cursor(bb);
         while let Some(inst) = insts.next(&self.func.layout) {
             // don't copy operating point dependent instructions to the new function
@@ -148,7 +160,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build_init_cache(&mut self, gvn: &GVN, collapse_implicit: &AHashSet<Value>) {
-        // first run deadcode elimination on the main function to figure out which cached
+        // first run DCE on the main function to figure out which cached
         // initialization values are actually used
         self.dom_tree.compute_postdom_frontiers(self.cfg, &mut self.control_dep);
         mir_opt::aggressive_dead_code_elimination(
@@ -218,9 +230,8 @@ impl<'a> Builder<'a> {
             .collect();
     }
 
+    /// Perform final optimization/DCE for initialization function
     fn optimize(&mut self, collapse_implicit: AHashSet<Value>) {
-        // perform final optimization/DCE
-        mir_opt::simplify_cfg(self.func, self.cfg);
         self.cfg.compute(&self.init.func);
         mir_opt::aggressive_dead_code_elimination(
             &mut self.init.func,
@@ -231,19 +242,8 @@ impl<'a> Builder<'a> {
         mir_opt::simplify_cfg(&mut self.init.func, self.cfg);
     }
 
-    fn copy_callback(&mut self, cb: FuncRef) -> FuncRef {
-        let cb = self.intern.callbacks[cb].clone();
-        let signature = cb.signature();
-        let (func, changed) = self.init.intern.callbacks.ensure(cb);
-        if changed {
-            let func_ = self.init.func.import_function(signature);
-            debug_assert_eq!(func_, func);
-        }
-        func
-    }
-
+    /// Copy the instruction to the new function
     fn copy_instruction(&mut self, inst: Inst, bb: Block) {
-        // copy the instruction to the new function
         let mut inst_data = self.func.dfg.insts[inst].to_pool(
             &self.func.dfg.insts.value_lists,
             &self.func.dfg.phi_forest,
@@ -326,5 +326,16 @@ impl<'a> Builder<'a> {
             self.func.dfg.zap_inst(inst);
             self.func.layout.remove_inst(inst);
         }
+    }
+
+    fn copy_callback(&mut self, cb: FuncRef) -> FuncRef {
+        let cb = self.intern.callbacks[cb].clone();
+        let signature = cb.signature();
+        let (func, changed) = self.init.intern.callbacks.ensure(cb);
+        if changed {
+            let func_ = self.init.func.import_function(signature);
+            debug_assert_eq!(func_, func);
+        }
+        func
     }
 }

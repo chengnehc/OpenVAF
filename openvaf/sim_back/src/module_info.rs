@@ -3,8 +3,8 @@
 use ahash::{AHashSet, RandomState};
 use hir::diagnostics::{BaseDB, ConsoleSink, Diagnostic, FileId, Label, LabelStyle, Report};
 use hir::{
-    CompilationDB, CompilationUnit, DiagnosticSink, Module, ParamSysFun, Parameter,
-    ResolvedAliasParam, ScopeDef, Variable,
+    CompilationDB, CompilationUnit, DiagnosticSink, ParamSysFun, Parameter, ResolvedAliasParam,
+    ScopeDef, Variable,
 };
 use indexmap::IndexMap;
 use smol_str::SmolStr;
@@ -41,7 +41,8 @@ pub fn collect_modules(
 }
 
 pub struct ModuleInfo {
-    pub module: Module,
+    pub module: hir::Module,
+    /// all parameters: including model and instance parameters
     pub params: IndexMap<Parameter, ParamInfo, RandomState>,
     pub param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, RandomState>,
     pub op_vars: IndexMap<Variable, OpVar, RandomState>,
@@ -51,7 +52,7 @@ impl ModuleInfo {
     fn collect(
         db: &CompilationDB,
         cu: CompilationUnit,
-        module: Module,
+        module: hir::Module,
         all_vars_op: bool,
         sink: &mut ConsoleSink,
     ) -> ModuleInfo {
@@ -68,8 +69,8 @@ impl ModuleInfo {
         };
         let ast = cu.ast_cache(db);
 
-        while let Some((name, dec)) = decls.next() {
-            match dec {
+        while let Some((name, decl)) = decls.next() {
+            match decl {
                 ScopeDef::Variable(var) => {
                     // 3.2.1 Output variables
                     //

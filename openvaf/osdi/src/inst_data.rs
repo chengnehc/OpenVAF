@@ -514,7 +514,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, struct_ptr);
         let mut val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
 
-        // specifal treatment for bool value
+        // special treatment for bool value
         if module.init.cache_slots[slot] == hir::Type::Bool {
             val = LLVMBuildICmp(
                 llbuilder,

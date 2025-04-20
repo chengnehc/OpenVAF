@@ -1,26 +1,36 @@
-//! # Dominators and immediate dominators
+//! # Dominators
 //!
 //! - A block `d` is said to dominate/post-dominate block `n` if every path from the
-//!   entry/exit block to `n` must go through `d`.
+//!   entry/exit block to `n` must go through `d`. Trivially, each block has at least
+//!   one dominator: itself.
 //! - A block `d` is said to strictly (post-)dominates block `n` if `d` (post-)dominates
-//!   `n` and `d` does not equal `n`.
+//!   `n` and `d` does not equal to `n`.
 //!
-//! The immediate dominator(idom) of a block `n` is the *unique* block that strictly
-//! dominates `n` but does not strictly dominate any other block that strictly dominates
-//! `n`. By definition, every block, except for the entry block and unreachable blocks,
-//! has a unique immediate dominator.
+//! Dominators and post-dominators tell us which block(s) must be executed prior to, or
+//! after a basic block.
 //!
-//! Given a basic block, dominators and post-dominators tell us which block(s) must be
-//! executed prior to, or after this block.
+//! # Immediate Dominator
+//!
+//! - The immediate dominator(idom) of a block `n` is the *unique* block that strictly
+//!   dominates `n` but does not strictly dominate any other block that strictly dominates
+//!   `n`.
+//! - By definition, every block, except for the entry block and unreachable blocks,
+//!   has a unique immediate dominator.
+//!
+//! # Dominator Tree
+//!
+//! A tree where each node's children are those nodes it immediately (post-)dominates.
+//! Each node's parent is its unique immediate (post-)dominator. The root node is the
+//! entry/exit block.
 //!
 //! # Dominance frontiers
 //!
 //! Think of (post-)dominance frontiers as blocks that are “just before” or “just after”
 //! the blocks we’re dominated by, or blocks we dominate.
 //!
-//! By definition The dominance frontier of a basic block N, DF(N), is the set of all
-//! blocks that are immediate successors to blocks dominated by N, but which aren’t
-//! themselves strictly dominated by N.
+//! The dominance frontier of a basic block N, DF(N), is the set of all blocks, Y such
+//! that N dominates a predecessor of Y but does not strictly dominate Y.
+//! DF(N) = { Y | N dom pred(Y) AND !(N sdom Y)}
 //!
 //! See Also:
 //! - https://docs.rs/crate/cranelift-codegen/latest/source/src/dominator_tree.rs
@@ -39,17 +49,13 @@ mod render;
 /// Dominator tree node, one for each block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DomTreeNode {
-    /// Number of this node in a (reverse) post-order traversal of the CFG, starting from 1.
+    /// Number of this node in a (reverse) post-order traversal of the CFG, starting from `1`.
     /// This number is monotonic in the reverse postorder but not contiguous.
-    ///
     /// Unreachable nodes get number `0`, all others are positive.
     rpo_number: u32,
 
-    /// The immediate dominator of this block, represented as the branch or jump instruction at the
-    /// end of the dominating basic block.
-    ///
-    /// This is `None` for unreachable blocks and the entry block which doesn't have an immediate
-    /// dominator.
+    /// The immediate dominator of this block. This is `None` for unreachable blocks and the
+    /// entry block which doesn't have an immediate dominator.
     idom: PackedOption<Block>,
 }
 
@@ -85,17 +91,19 @@ impl DominatorTree {
         self.nodes[block].idom.into()
     }
 
-    /// Returns the post-order immediate dominator of `block`.
+    /// Returns the immediate post-dominator of `block`.
     pub fn ipdom(&self, block: Block) -> Option<Block> {
         self.reverse_nodes[block].idom.into()
     }
 
-    pub fn dominates(&self, block: Block, dominator: Block) -> bool {
-        Self::dominates_(&self.nodes, block, dominator)
+    /// Does `dom` dominate `block`?
+    pub fn dominates(&self, block: Block, dom: Block) -> bool {
+        Self::dominates_(&self.nodes, block, dom)
     }
 
-    pub fn post_dominates(&self, block: Block, dominator: Block) -> bool {
-        Self::dominates_(&self.reverse_nodes, block, dominator)
+    /// Does `pdom` post-dominate `block`?
+    pub fn post_dominates(&self, block: Block, pdom: Block) -> bool {
+        Self::dominates_(&self.reverse_nodes, block, pdom)
     }
 
     fn dominates_(nodes: &TiSlice<Block, DomTreeNode>, mut block: Block, dominator: Block) -> bool {
@@ -327,13 +335,11 @@ impl DominatorTree {
         idom
     }
 
-    // pub fn dom_frontiers(&self, block: Block) -> &HybridBitSet<Block> {
-    //     debug_assert!(self.config.has_dom_frontiers, "dominance frontiers were not calculated");
-    //     &self.nodes[block].dom_frontiers
-    // }
-
-    /// Compute the dominance frontiers of each block in the CFG. The result is
-    /// represented as a sparse square bitset and returned via `dst`.
+    /// Compute the dominance frontiers of each block in the CFG, using Keith D. Cooper's
+    /// "Simple, Fast Dominator Algorithm."
+    ///
+    /// The result is represented as a sparse square bitset, in which each row contains
+    /// the dominance frontiers of a block.
     pub fn compute_dom_frontiers(
         &self,
         cfg: &ControlFlowGraph,
@@ -342,6 +348,7 @@ impl DominatorTree {
         dst.clear(self.nodes.len(), self.nodes.len());
         for bb in self.nodes.keys() {
             let mut predecessors = cfg.pred_iter(bb);
+            // make sure the number of predecessors is at least 2
             let Some(first) = predecessors.next() else { continue };
             let Some(second) = predecessors.next() else { continue };
             Self::propagate_dom_frontiers(&self.nodes, first, bb, dst);
@@ -352,6 +359,7 @@ impl DominatorTree {
         }
     }
 
+    /// Compute the post dominance frontiers of each block in the CFG.
     pub fn compute_postdom_frontiers(
         &self,
         cfg: &ControlFlowGraph,

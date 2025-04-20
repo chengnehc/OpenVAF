@@ -4,7 +4,7 @@ Topology {
             branch: Named(
                 BranchId(0),
             ),
-            is_potential: v1,
+            is_potential_source: v1,
             potential: Contribution {
                 unknown: Some(
                     v17,

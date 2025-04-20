@@ -8,9 +8,9 @@ use expect_test::expect_file;
 use indoc::indoc;
 use stdx::{integration_test_dir, openvaf_test_data};
 
+use super::Initialization;
 use crate::context::{Context, OptimizationStage};
 use crate::dae::DaeSystem;
-use crate::init::Initialization;
 use crate::topology::Topology;
 use crate::WITH_CONTRIBUTES;
 
@@ -18,29 +18,36 @@ fn run_test(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
-    let mut cxt = Context::new(&db, &mut literals, &module);
-    cxt.compute_outputs::<WITH_CONTRIBUTES>();
-    cxt.compute_cfg();
-    cxt.optimize(OptimizationStage::Initial);
+    let mut ctx = Context::new(&db, &mut literals, &module);
+    ctx.compute_outputs::<WITH_CONTRIBUTES>();
+    ctx.compute_cfg();
+    ctx.optimize(OptimizationStage::Initial);
 
-    let topology = Topology::new(&mut cxt);
-    let mut dae_system = DaeSystem::new(&mut cxt, topology);
+    ctx.init_op_dependent_insts();
 
-    cxt.compute_cfg();
-    let gvn = cxt.optimize(OptimizationStage::PostDerivative);
-    dae_system.sparsify(&mut cxt);
+    let topology = Topology::new(&mut ctx);
+    let mut dae_system = DaeSystem::new(&mut ctx, topology);
 
-    cxt.refresh_op_dependent_insts();
-    let init = Initialization::new(&mut cxt, gvn);
+    ctx.compute_cfg();
+    let gvn = ctx.optimize(OptimizationStage::PostDerivative);
+    dae_system.sparsify(&mut ctx);
+    ctx.refresh_op_dependent_insts();
+
+    let init = Initialization::new(&mut ctx, gvn);
+
     let name = module.module.name(&db);
     let test_dir = openvaf_test_data("init");
-    let topology = format!("{:#?}\n{:#?}", init.cached_vals, init.cache_slots);
-    assert!(cxt.func.validate());
+
+    assert!(ctx.func.validate());
     assert!(init.func.validate());
-    expect_file![test_dir.join(format!("{name}_system.snap"))].assert_eq(&topology);
+
+    let system = format!("{:#?}\n{:#?}", init.cached_vals, init.cache_slots);
+    expect_file![test_dir.join(format!("{name}_system.snap"))].assert_eq(&system);
+
     let func = format!("{:#?}", init.func);
     expect_file![test_dir.join(format!("{name}_init_mir.snap"))].assert_eq(&func);
-    let func = format!("{:#?}", &cxt.func);
+
+    let func = format!("{:#?}", &ctx.func);
     expect_file![test_dir.join(format!("{name}_eval_mir.snap"))].assert_eq(&func);
 }
 

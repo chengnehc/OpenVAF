@@ -63,7 +63,6 @@ Stmt =
 | CaseStmt
 | IfStmt
 | EventStmt
-// TODO: JumpStmt, i.e. 'continue', 'break', 'return'
 
 EmptyStmt =
   AttrList* ';'
@@ -105,7 +104,8 @@ WhileStmt =
   AttrList* 'while' '(' condition:Expr ')'
   body:Stmt
 
-// TODO: 'init' and 'incr' could be more detailed `AssignStmt`
+// # Note
+// jump statements like `continue` and `break` are not allowed in analog for loop
 ForStmt =
   AttrList* 'for' '(' init:Stmt ';' condition:Expr ';' incr:Stmt ')'
   for_body:Stmt
@@ -125,7 +125,8 @@ IfStmt =
   then_branch:Stmt
   ('else' else_branch:Stmt)?
 
-// TODO: Consider removing this as it is not suitable for compact model
+// # Note
+// Analog event should not be used by compact model
 EventStmt =
   AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases:('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
 
@@ -334,6 +335,8 @@ ParamRef =
   Path | SysFun
 
 // A.2.6
+// 
+// TODO: `return` is not supported
 Function =
   AttrList* 'analog' 'function' Type? Name ';'
   FunctionItem*

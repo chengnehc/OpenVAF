@@ -25,7 +25,7 @@ mod tests;
 use insts::DfgInsts;
 use values::ValueDataType;
 
-pub use postorder::{Postorder, PostorderParts};
+pub use postorder::Postorder;
 pub use uses::{InstUseIter, UseCursor, UseIter};
 pub use values::{consts, Const, DfgValues, ValueDef};
 
@@ -289,11 +289,12 @@ impl DataFlowGraph {
 
 /// Routines that interact with uses.
 impl DataFlowGraph {
-    /// Return an iterator over all uses of a given value
+    /// Return an iterator over all uses of given value.
     pub fn uses(&self, value: Value) -> UseIter<'_> {
         self.values.uses(value)
     }
 
+    /// Return the user instruction of this use.
     pub fn use_to_user(&self, use_: Use) -> Inst {
         self.values.use_to_user(use_)
     }

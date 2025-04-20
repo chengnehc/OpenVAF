@@ -356,7 +356,6 @@ where
                 res.insert(column, R::from(row));
             }
         }
-
         res
     }
 
@@ -378,6 +377,7 @@ where
         }
         self.rows.truncate(other.rows.len())
     }
+
     #[inline]
     pub fn ensure_row(&mut self, row: R) -> &mut HybridBitSet<C> {
         // Instantiate any missing rows up to and including row `row` with an empty HybridBitSet.

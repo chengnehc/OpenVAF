@@ -136,23 +136,22 @@ impl BodyLowerContext<'_, '_, '_> {
     }
 
     fn lower_loop(&mut self, cond: ExprId, lower_body: impl FnOnce(&mut Self)) {
-        let loop_cond_head = self.ctxt.create_block();
-        let loop_body_head = self.ctxt.create_block();
+        let loop_cond = self.ctxt.create_block();
+        let loop_body = self.ctxt.create_block();
         let loop_end = self.ctxt.create_block();
 
-        self.ctxt.ins().jump(loop_cond_head);
-        self.ctxt.switch_to_block(loop_cond_head);
+        self.ctxt.ins().jump(loop_cond);
 
+        self.ctxt.switch_to_block(loop_cond);
         let cond = self.lower_expr(cond);
-        self.ctxt.ins().br_loop(cond, loop_body_head, loop_end);
-        self.ctxt.seal_block(loop_body_head);
+        self.ctxt.ins().br_loop(cond, loop_body, loop_end);
+        self.ctxt.seal_block(loop_body);
         self.ctxt.seal_block(loop_end);
 
-        self.ctxt.switch_to_block(loop_body_head);
+        self.ctxt.switch_to_block(loop_body);
         lower_body(self);
-        self.ctxt.ins().jump(loop_cond_head);
-
-        self.ctxt.seal_block(loop_cond_head);
+        self.ctxt.ins().jump(loop_cond);
+        self.ctxt.seal_block(loop_cond);
 
         self.ctxt.switch_to_block(loop_end);
     }
@@ -160,11 +159,17 @@ impl BodyLowerContext<'_, '_, '_> {
     // TODO disambiguation required
     //
     // 1. Does default case mean that further cases are ignored?
-    // LRM seems to suggest that no matter where the default case is placed,
-    // all other conditions are tested prior to default.
+    // -- LRM seems to suggest that no matter where the default case is placed,
+    //    all other conditions are tested prior to default.
     //
     // 2. If one case has matched, will all the following cases be ignored,
     //    or still tested?
+    // -- No.
+    //
+    // See Also: [LRM 5.8.3]
+    //
+    // # Note
+    // This impl support short-circuit evaluation.
     fn lower_case(&mut self, discr: ExprId, case_arms: &[Case]) {
         let discr_op = match self.body.expr_type(discr) {
             Type::Bool => Opcode::Beq,
@@ -180,12 +185,10 @@ impl BodyLowerContext<'_, '_, '_> {
         for Case { cond, body } in case_arms {
             let CaseCond::Exprs(exprs) = cond else { continue };
 
-            // Create the body block
             let body_head = self.ctxt.create_block();
 
-            // Lower the case condition, see if val == discriminant
             for e in exprs {
-                self.ctxt.ensured_sealed();
+                self.ctxt.ensure_sealed();
 
                 let val = self.lower_expr(*e);
 
@@ -194,16 +197,13 @@ impl BodyLowerContext<'_, '_, '_> {
                 let cond = self.ctxt.ins().binary1(discr_op, val, discr);
                 self.ctxt.set_srcloc(old_loc);
 
-                // Create the next block
                 let next_block = self.ctxt.create_block();
                 self.ctxt.ins().br(cond, body_head, next_block);
-
                 self.ctxt.switch_to_block(next_block);
             }
 
             self.ctxt.seal_block(body_head);
 
-            // lower the body
             let next = self.ctxt.current_block();
             self.ctxt.switch_to_block(body_head);
             self.lower_stmt(*body);
@@ -217,7 +217,7 @@ impl BodyLowerContext<'_, '_, '_> {
             self.lower_stmt(default_case.body);
         }
 
-        self.ctxt.ensured_sealed();
+        self.ctxt.ensure_sealed();
         self.ctxt.ins().jump(end);
 
         self.ctxt.seal_block(end);

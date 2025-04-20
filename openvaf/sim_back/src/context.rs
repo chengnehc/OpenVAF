@@ -66,6 +66,35 @@ impl<'a> Context<'a> {
         }
     }
 
+    #[inline]
+    pub fn compute_cfg(&mut self) {
+        self.cfg.compute(&self.func);
+    }
+
+    pub fn compute_outputs<const CONTRIBUTES: bool>(&mut self) {
+        self.output_values.clear();
+        self.output_values.ensure(self.func.dfg.num_values() + 1);
+        if CONTRIBUTES {
+            self.output_values
+                .extend(self.intern.outputs.values().copied().filter_map(PackedOption::expand));
+        } else {
+            // filter out contributions
+            for (kind, val) in self.intern.outputs.iter() {
+                if matches!(kind, PlaceKind::Var(var) if self.module.op_vars.contains_key(var))
+                    || matches!(kind, PlaceKind::CollapseImplicitEquation(_) | PlaceKind::BoundStep)
+                {
+                    self.output_values.insert(val.unwrap_unchecked());
+                }
+            }
+        }
+    }
+
+    // TODO(JW): make this function const generic?
+    //
+    /// Optimization passes include: DCE, constant prop, simplify CFG, GVN
+    /// # Note
+    /// - reads: output_values
+    /// - mutates: function, cfg, dom_tree
     pub fn optimize(&mut self, stage: OptimizationStage) -> GVN {
         if stage == OptimizationStage::Initial {
             dead_code_elimination(&mut self.func, &self.output_values);
@@ -80,7 +109,7 @@ impl<'a> Context<'a> {
             simplify_cfg_no_phi_merge(&mut self.func, &mut self.cfg);
         }
 
-        self.compute_domtree();
+        self.dom_tree.compute::<true, true>(&self.func, &self.cfg);
 
         let mut gvn = GVN::default();
         gvn.init(&self.func, &self.dom_tree, self.intern.params.len() as u32);
@@ -102,32 +131,6 @@ impl<'a> Context<'a> {
         gvn
     }
 
-    pub fn compute_cfg(&mut self) {
-        self.cfg.compute(&self.func);
-    }
-
-    pub fn compute_domtree(&mut self) {
-        self.dom_tree.compute::<true, true>(&self.func, &self.cfg);
-    }
-
-    pub fn compute_outputs<const CONTRIBUTES: bool>(&mut self) {
-        self.output_values.clear();
-        self.output_values.ensure(self.func.dfg.num_values() + 1);
-        if CONTRIBUTES {
-            self.output_values
-                .extend(self.intern.outputs.values().copied().filter_map(PackedOption::expand));
-        } else {
-            // filter out contributions
-            for (kind, val) in self.intern.outputs.iter() {
-                if matches!(kind, PlaceKind::Var(var) if self.module.op_vars.contains_key(var))
-                    || matches!(kind, PlaceKind::CollapseImplicitEquation(_) | PlaceKind::BoundStep)
-                {
-                    self.output_values.insert(val.unwrap_unchecked());
-                }
-            }
-        }
-    }
-
     pub fn init_op_dependent_insts(&mut self) {
         let mut dom_frontiers = SparseBitMatrix::new_square(self.func.layout.num_blocks());
         self.dom_tree.compute_dom_frontiers(&self.cfg, &mut dom_frontiers);
@@ -135,31 +138,33 @@ impl<'a> Context<'a> {
         let dfg = &mut self.func.dfg;
         self.op_dependent_insts.ensure(dfg.num_insts());
 
+        // Deal with noises
         for (cb, insts) in self.intern.callback_callers.iter_mut_enumerated() {
             if self.intern.callbacks[cb].is_noise() {
                 insts.retain(|&inst| {
-                    if self.func.layout.inst_block(inst).is_none() {
-                        return false;
+                    if self.func.layout.inst_block(inst).is_some() {
+                        self.op_dependent_insts.insert(inst);
+                        self.op_dependent_vals.extend(dfg.inst_results(inst));
+                        true
+                    } else {
+                        false
                     }
-                    self.op_dependent_insts.insert(inst);
-                    for &result in dfg.inst_results(inst) {
-                        self.op_dependent_vals.push(result);
-                    }
-                    true
                 })
             }
         }
+        // Prepare taint source: op-dependent parameters
         for (param, &val) in self.intern.params.iter() {
             if !dfg.value_dead(val) && param.is_op_dependent() {
                 self.op_dependent_vals.push(val)
             }
         }
+
         propagate_direct_taint(
             &self.func,
             &dom_frontiers,
             self.op_dependent_vals.iter().copied(),
             &mut self.op_dependent_insts,
-        )
+        );
     }
 
     pub fn refresh_op_dependent_insts(&mut self) {
@@ -192,6 +197,6 @@ impl<'a> Context<'a> {
             &self.cfg,
             self.op_dependent_vals.iter().copied(),
             &mut self.op_dependent_insts,
-        )
+        );
     }
 }

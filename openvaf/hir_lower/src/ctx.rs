@@ -148,7 +148,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     pub fn call(&mut self, kind: CallBackKind, args: &[Value]) -> Inst {
         let tracked = !self.no_equations && kind.tracked();
         let func_ref = self.dec_callback(kind);
-        let (inst, _) = self.func.ins().call(func_ref, args);
+        let (inst, _) = self.ins().call(func_ref, args);
         if tracked {
             self.intern.callback_callers[func_ref].push(inst)
         }
@@ -224,9 +224,9 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     /// The returned limit state *must* be passed to `finish_limit` to ensure corectness
     pub fn start_limit(&mut self, probe: Value) -> LimitState {
         let mut unknown = probe;
-        if let Some(inst) = self.func.func.dfg.value_def(unknown).inst() {
-            debug_assert_eq!(self.func.func.dfg.insts[inst].opcode(), Opcode::Fneg);
-            unknown = self.func.func.dfg.instr_args(inst)[0];
+        if let Some(inst) = self.dfg().value_def(unknown).inst() {
+            debug_assert_eq!(self.dfg().insts[inst].opcode(), Opcode::Fneg);
+            unknown = self.dfg().instr_args(inst)[0];
         }
         let dst = self.intern.lim_state.raw.entry(unknown);
         let state = LimitState::from(dst.index());
@@ -260,16 +260,17 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
             _ => unreachable!("unknown cast found {src:?} -> {dst:?}"),
         };
 
-        self.func.ins().unary1(op, val)
+        self.ins().unary1(op, val)
     }
 
+    /// `cond ? then_expr : else_expr`  <=>  `if cond { then_expr } else { else_expr }`
     pub fn make_select_expr(
         &mut self,
         cond: Value,
         lower_branch: impl FnMut(&mut Self, bool) -> Value,
     ) -> Value {
         let (then_src, else_src) = self.make_if_stmt(cond, lower_branch);
-        self.func.ins().phi1(&[then_src, else_src])
+        self.ins().phi1(&[then_src, else_src])
     }
 
     pub fn make_if_stmt<T>(
@@ -277,75 +278,81 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         cond: Value,
         mut lower_branch: impl FnMut(&mut Self, bool) -> T,
     ) -> ((Block, T), (Block, T)) {
-        let then_dst = self.func.create_block();
-        let else_dst = self.func.create_block();
-        let next_bb = self.func.create_block();
+        let then_dst = self.create_block();
+        let else_dst = self.create_block();
+        let merge_bb = self.create_block();
 
-        self.func.ins().br(cond, then_dst, else_dst);
-        self.func.seal_block(then_dst);
-        self.func.seal_block(else_dst);
+        self.ins().br(cond, then_dst, else_dst);
+        self.seal_block(then_dst);
+        self.seal_block(else_dst);
 
-        self.func.switch_to_block(then_dst);
-        self.func.ensure_inserted_block();
+        self.switch_to_block(then_dst);
         let then_val = lower_branch(self, true);
-        self.func.ins().jump(next_bb);
-        let then_tail = self.func.current_block();
+        let then_tail = self.current_block();
+        self.ins().jump(merge_bb);
 
-        self.func.switch_to_block(else_dst);
-        self.func.ensure_inserted_block();
+        self.switch_to_block(else_dst);
         let else_val = lower_branch(self, false);
-        self.func.ins().jump(next_bb);
-        let else_tail = self.func.current_block();
+        let else_tail = self.current_block();
+        self.ins().jump(merge_bb);
 
-        self.func.switch_to_block(next_bb);
-        self.func.ensure_inserted_block();
-        self.func.seal_block(next_bb);
+        self.switch_to_block(merge_bb);
+        self.ensure_sealed();
 
         ((then_tail, then_val), (else_tail, else_val))
     }
 }
 
-/* API wrappers of `FunctionBuilder` */
 impl<'c> MainLowerContext<'_, 'c> {
+    #[inline]
     pub(crate) fn dfg(&self) -> &DataFlowGraph {
         &self.func.func.dfg
     }
+    #[inline]
     pub(crate) fn dfg_mut(&mut self) -> &mut DataFlowGraph {
         &mut self.func.func.dfg
     }
-
+    #[inline]
     pub(crate) fn get_srcloc(&self) -> SourceLoc {
         self.func.get_srcloc()
     }
+    #[inline]
     pub(crate) fn set_srcloc(&mut self, loc: SourceLoc) {
         self.func.set_srcloc(loc)
     }
-
+    #[inline]
     pub(crate) fn current_block(&self) -> Block {
         self.func.current_block()
     }
+    #[inline]
     pub(crate) fn create_block(&mut self) -> Block {
         self.func.create_block()
     }
+    #[inline]
     pub(crate) fn switch_to_block(&mut self, block: Block) {
         self.func.switch_to_block(block)
     }
+    #[inline]
     pub(crate) fn seal_block(&mut self, block: Block) {
         self.func.seal_block(block)
     }
-    pub(crate) fn ensured_sealed(&mut self) {
-        self.func.ensured_sealed()
+    #[inline]
+    pub(crate) fn ensure_sealed(&mut self) {
+        self.func.ensure_sealed()
     }
-
+    #[inline]
     pub(crate) fn ins(&mut self) -> InsertBuilder<'_, FuncInstBuilder<'_, 'c>> {
         self.func.ins()
     }
+    #[inline]
     pub(crate) fn fconst(&mut self, val: Ieee64) -> Value {
         self.func.fconst(val)
     }
+    #[inline]
     pub(crate) fn iconst(&mut self, val: i32) -> Value {
         self.func.iconst(val)
     }
+    #[inline]
     pub(crate) fn sconst(&mut self, val: &str) -> Value {
         self.func.sconst(val)
     }

@@ -121,7 +121,7 @@ impl<'short> InstInserterBase<'short> for FuncInstBuilder<'short, '_> {
     }
 
     fn insert_built_inst(self, inst: Inst) -> &'short mut DataFlowGraph {
-        // We only insert the Block in the layout when an instruction is added to it
+        // We only insert the block into layout when an instruction is added to it
         self.builder.ensure_inserted_block();
         self.builder.func.layout.append_inst_to_block(inst, self.block);
         self.builder.func.srclocs.push(self.builder.srcloc);
@@ -330,7 +330,7 @@ impl<'a> FunctionBuilder<'a> {
     }
 
     /// Ensure that the block at current position is inserted into the layout, as well as sealed.
-    pub fn ensured_sealed(&mut self) {
+    pub fn ensure_sealed(&mut self) {
         self.ensure_inserted_block();
         if !self.func_ctxt.ssa.is_sealed(self.position) {
             self.seal_block(self.position)

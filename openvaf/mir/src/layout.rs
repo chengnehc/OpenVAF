@@ -3,7 +3,10 @@
 //! The order of basic blocks in a function and the order of instructions in a block is
 //! determined by the `Layout` data structure defined in this module.
 
-use std::iter::{IntoIterator, Iterator};
+use std::{
+    iter::{IntoIterator, Iterator},
+    vec,
+};
 use stdx::packed_option::PackedOption;
 
 use typed_index_collections::TiVec;
@@ -77,7 +80,13 @@ impl Layout {
         self.blocks.push_and_get_key(BlockNode::default())
     }
 
+    #[inline]
+    pub fn make_blocks(&mut self, num: usize) {
+        self.blocks = TiVec::from(vec![BlockNode::default(); num]);
+    }
+
     /// Is `block` currently part of the layout?
+    #[inline]
     pub fn is_block_inserted(&self, block: Block) -> bool {
         Some(block) == self.first_block || self.blocks[block].prev.is_some()
     }
@@ -90,7 +99,7 @@ impl Layout {
         block
     }
 
-    /// Insert `block` as the last block in the layout.
+    /// Append `block` in the layout.
     pub fn append_block(&mut self, block: Block) {
         debug_assert!(
             !self.is_block_inserted(block),

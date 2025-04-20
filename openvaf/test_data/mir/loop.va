@@ -1,0 +1,17 @@
+module test;
+    integer i;
+    real a, b;
+
+    analog begin
+        for (i = 1; i < 10; i = i + 1) begin
+            $strobe("hi");
+        end
+        
+        b = 2;
+        a = b * 2;
+        while (a < 10) begin
+            a = a + 1;
+        end
+    end
+    
+endmodule

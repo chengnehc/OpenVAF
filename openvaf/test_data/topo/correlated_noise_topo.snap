@@ -5,7 +5,7 @@ Topology {
                 hi: node0,
                 lo: None,
             },
-            is_potential: v1,
+            is_potential_source: v1,
             potential: Contribution {
                 unknown: Some(
                     v19,
@@ -38,7 +38,7 @@ Topology {
                 hi: node1,
                 lo: None,
             },
-            is_potential: v1,
+            is_potential_source: v1,
             potential: Contribution {
                 unknown: None,
                 resist: v3,

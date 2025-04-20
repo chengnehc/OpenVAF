@@ -22,6 +22,8 @@ fn run_test(src: &str) {
     context.compute_cfg();
     context.optimize(OptimizationStage::Initial);
 
+    context.init_op_dependent_insts();
+
     let topo = Topology::new(&mut context);
     let mut dae = DaeSystem::new(&mut context, topo);
     context.compute_cfg();

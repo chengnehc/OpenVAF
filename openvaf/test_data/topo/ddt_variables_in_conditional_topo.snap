@@ -1,14 +1,13 @@
 Topology {
     branches: {
         branch0: BranchInfo {
-            branch: Unnamed {
-                hi: node2,
-                lo: None,
-            },
+            branch: Named(
+                BranchId(2),
+            ),
             is_potential_source: v1,
             potential: Contribution {
                 unknown: Some(
-                    v16,
+                    v17,
                 ),
                 resist: v3,
                 react: v3,
@@ -18,28 +17,17 @@ Topology {
             },
             flow: Contribution {
                 unknown: None,
-                resist: v27,
+                resist: v44,
                 react: v3,
-                resist_small_signal: v34,
+                resist_small_signal: v3,
                 react_small_signal: v3,
-                noises: [
-                    Noise {
-                        name: Spur(1),
-                        kind: WhiteNoise {
-                            pwr: v31,
-                        },
-                        factor: v30,
-                    },
-                ],
+                noises: [],
             },
         },
         branch1: BranchInfo {
-            branch: Unnamed {
-                hi: node0,
-                lo: Some(
-                    node1,
-                ),
-            },
+            branch: Named(
+                BranchId(1),
+            ),
             is_potential_source: v1,
             potential: Contribution {
                 unknown: Some(
@@ -53,16 +41,35 @@ Topology {
             },
             flow: Contribution {
                 unknown: None,
-                resist: v28,
+                resist: v45,
                 react: v3,
-                resist_small_signal: v35,
+                resist_small_signal: v3,
                 react_small_signal: v3,
                 noises: [],
             },
         },
     },
-    implicit_equations: {},
-    small_signal_vals: {
-        v16,
+    implicit_equations: {
+        inode0: Contribution {
+            unknown: Some(
+                v46,
+            ),
+            resist: v50,
+            react: v54,
+            resist_small_signal: v3,
+            react_small_signal: v3,
+            noises: [],
+        },
+        inode1: Contribution {
+            unknown: Some(
+                v55,
+            ),
+            resist: v59,
+            react: v63,
+            resist_small_signal: v3,
+            react_small_signal: v3,
+            noises: [],
+        },
     },
+    small_signal_vals: {},
 }

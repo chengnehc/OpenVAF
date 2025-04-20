@@ -53,8 +53,7 @@ use crate::write::DummyResolver;
 pub use crate::cfg::ControlFlowGraph;
 pub use crate::dfg::consts::*;
 pub use crate::dfg::{
-    Const, DataFlowGraph, DfgValues, InstUseIter, Postorder, PostorderParts, UseCursor, UseIter,
-    ValueDef,
+    Const, DataFlowGraph, DfgValues, InstUseIter, Postorder, UseCursor, UseIter, ValueDef,
 };
 pub use crate::dominators::DominatorTree;
 pub use crate::entities::{AnyEntity, Block, FuncRef, Inst, Param, Unknown, Use, Value};

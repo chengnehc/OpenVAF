@@ -489,10 +489,15 @@ impl BodyLowerContext<'_, '_, '_> {
                 self.lower_integral(kind, args)
             }
             BuiltIn::limexp => {
+                // limexp = if arg > cut_off { off + off * (arg - cut_off) } else { exp(arg) }
+                //
+                // `arg` should be always op-dependent, otherwise limexp makes no sense.
+                // This means an internal state is required, and will generate op-dependent phis
                 let arg0 = self.lower_expr(args[0]);
                 let cut_off = self.ctxt.fconst(1e30f64.ln().into());
                 let off = self.ctxt.fconst(1e30f64.into());
                 let linearize = self.ctxt.ins().fgt(arg0, cut_off);
+
                 self.ctxt.make_select_expr(linearize, |ctxt, linearize| {
                     if linearize {
                         let delta = ctxt.ins().fsub(arg0, cut_off);

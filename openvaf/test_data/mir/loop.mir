@@ -1,0 +1,45 @@
+function %(v16, v25, v28) {
+    inst0 = fn %Display)(1) -> 0
+    v5 = iconst 1
+    v18 = iconst 10
+    v20 = sconst "<DUMMY>"
+    v23 = iconst 2
+
+                                block0:
+                                    jmp block2
+
+                                block2:
+@000d                               v17 = phi [v5, block0], [v22, block3]
+@0003                               v19 = ilt v17, v18
+                                    br v19, block3[loop], block4
+
+                                block3:
+@000b                               call inst0(v20)
+@0009                               v22 = iadd v17, v5
+                                    jmp block2
+
+                                block4:
+@0010                               v24 = ifcast v23
+@0011                               v26 = ifcast v23
+                                    v27 = fmul v24, v26
+@0013                               jmp block5
+
+                                block5:
+                                    v29 = phi [v27, block4], [v34, block6]
+@0014                               v30 = ifcast v18
+                                    v31 = flt v29, v30
+@0017                               br v31, block6[loop], block7
+
+                                block6:
+@0018                               v33 = ifcast v5
+                                    v34 = fadd v29, v33
+                                    jmp block5
+
+                                block7:
+                                    v39 = optbarrier v17
+                                    v43 = optbarrier v24
+                                    v45 = optbarrier v29
+                                    jmp block1
+
+                                block1:
+}

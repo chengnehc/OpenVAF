@@ -1,14 +1,13 @@
 //! A SSA-building API that handles incomplete and complete CFGs.
 //!
 //! This API will give you the correct SSA values to use as arguments of your instructions,
-//! as well as modify the jump instruction and `Block` parameters to account for the SSA
+//! as well as modify the jump instruction and block parameters to account for the SSA
 //! Phi functions.
 //!
-//! The algorithm is based upon Braun M., Buchwald S., Hack S., Leißa R., Mallon C.,
-//! Zwinkau A. (2013) Simple and Efficient Construction of Static Single Assignment Form.
-//! In: Jhala R., De Bosschere K. (eds) Compiler Construction. CC 2013.
-//! Lecture Notes in Computer Science, vol 7791. Springer, Berlin, Heidelberg
-//!
+//! The algorithm is based upon:
+//! Braun M., Buchwald S., Hack S., Leißa R., Mallon C., Zwinkau A. (2013)
+//! "Simple and Efficient Construction of Static Single Assignment Form", in
+//! Jhala R., De Bosschere K. (eds) Compiler Construction. CC 2013.
 //! <https://link.springer.com/content/pdf/10.1007/978-3-642-37051-9_6.pdf>
 //！
 //！ See Also: <https://docs.rs/cranelift-frontend/0.118.0/src/cranelift_frontend/ssa.rs.html>
@@ -120,15 +119,15 @@ impl ControlFlowGraph for IncompleteCfg {
 
 #[derive(Clone, Default)]
 struct SSABlockData {
-    // The predecessors of the Block with the block and branch instruction.
-    //
-    // # Note
-    // The elements of this smallvec MUST be kept in order.
-    // Ideally only `add_predecessor` is used to modify it
+    /// The predecessors of the Block.
+    ///
+    /// # Note
+    /// The elements of this smallvec MUST be kept in order.
+    /// Ideally only `add_predecessor` is used to modify it.
     predecessors: SmallVec<[Block; 4]>,
-    // A block is sealed if all of its predecessors have been declared.
+    /// A block is sealed if all of its predecessors have been declared.
     sealed: bool,
-    // List of current phis for which an earlier def has not been found yet.
+    /// List of current phis for which an earlier def has not been found yet.
     undef_phis: Vec<(Place, Value)>,
 }
 
@@ -155,7 +154,7 @@ impl<'a> SSABuilder<&'a CompleteCfg> {
     /// Clears a `SSABuilder` from all its data, letting it in a pristine state without
     /// deallocating memory.
     pub fn clear(&mut self) {
-        if let Some(defs) = self.variables.raw.get_mut(0) {
+        if let Some(defs) = self.variables.raw.first_mut() {
             defs.clear();
         }
         debug_assert!(self.calls.is_empty());
@@ -192,21 +191,19 @@ impl SSABuilder<IncompleteCfg> {
     }
 
     /// Declares a new basic block to construct corresponding data for SSA construction.
+    ///
     /// No predecessors are declared here and the block is not sealed.
-    /// Predecessors have to be added with `declare_block_predecessor`.
+    /// Predecessors have to be added with `declare_block_predecessor()`.
     pub fn declare_block(&mut self) {
-        self.cfg.blocks.push(SSABlockData {
-            predecessors: SmallVec::new(),
-            sealed: false,
-            undef_phis: Vec::new(),
-        })
+        self.cfg.blocks.push(SSABlockData::default())
     }
 
     /// Declares a new predecessor for a `Block`
     ///
     /// The precedent `Block` must be filled before added as predecessor.
-    /// Note that you must provide no jump arguments to the branch
-    /// instruction when you create it since `SSABuilder` will fill them for you.
+    ///
+    /// Note that you must provide no jump arguments to the branch instruction when you create
+    /// it since `SSABuilder` will fill them for you.
     ///
     /// Callers are expected to avoid adding the same predecessor more than once in the case
     /// of a jump table.
@@ -248,7 +245,6 @@ impl SSABuilder<IncompleteCfg> {
         }
     }
 
-    /// Helper function for `seal_block` and `seal_all_blocks`.
     fn seal_one_block(&mut self, block: Block, func: &mut Function) {
         let block_data = &mut self.cfg.blocks[block];
         debug_assert!(!block_data.sealed, "Attempting to seal {block} which is already sealed.");
@@ -257,8 +253,8 @@ impl SSABuilder<IncompleteCfg> {
         // can iterate over it without borrowing the whole builder.
         let undef_vars = std::mem::take(&mut block_data.undef_phis);
 
-        // For each undef var we look up values in the predecessors and create a block parameter
-        // only if necessary.
+        // For each undef var, look up values in the predecessors and
+        // create a block parameter only if necessary.
         for (var, val) in undef_vars {
             self.predecessors_lookup(func, val, var, block);
         }
@@ -421,13 +417,6 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
         }
     }
 
-    /// For blocks with a single predecessor, once we've determined the value,
-    /// record a local def for it for future queries to find.
-    fn finish_sealed_one_predecessor(&mut self, var: Place, block: Block) {
-        let val = *self.results.last().unwrap();
-        self.def_var(var, val, block);
-    }
-
     /// Given the local SSA Value of a Variable in a Block, perform a recursive lookup on
     /// predecessors to determine if it is redundant with another Value earlier in the CFG.
     ///
@@ -444,9 +433,6 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
     ///
     /// `sentinel` is a dummy Block parameter inserted by `use_var_nonlocal()`.
     /// Its purpose is to allow detection of CFG cycles while traversing predecessors.
-    ///
-    /// The `sentinel: Value` and the `ty: Type` are describing the `var: Variable`
-    /// that is being looked up.
     fn predecessors_lookup(
         &mut self,
         func: &mut Function,
@@ -469,6 +455,46 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
         let mut calls = std::mem::take(&mut self.calls);
         calls.extend(self.cfg.predecessors_rev(dest_block).map(Call::UseVar));
         self.calls = calls;
+    }
+
+    /// The main algorithm is naturally recursive: when there's a `use_var` in a
+    /// block with no corresponding local defs, it recurses and performs a
+    /// `use_var` in each predecessor.
+    ///
+    /// To avoid risking running out of callstack space, we keep an explicit stack
+    /// and use a small state machine rather than literal recursion.
+    fn run_state_machine(&mut self, func: &mut Function, var: Place) -> Value {
+        // Process the calls scheduled in `self.calls` until it is empty.
+        while let Some(call) = self.calls.pop() {
+            match call {
+                Call::UseVar(ssa_block) => {
+                    // First we look for the current definition of the variable in local block
+                    if let Some(var_defs) = self.variables.get(var) {
+                        if let Some(val) = var_defs.get(ssa_block).and_then(|val| val.expand()) {
+                            let val = func.dfg.resolve_alias(val);
+                            self.results.push(val);
+                            continue;
+                        }
+                    }
+                    self.use_var_nonlocal(func, var, ssa_block);
+                }
+                Call::FinishSealedOnePredecessor(ssa_block) => {
+                    self.finish_sealed_one_predecessor(var, ssa_block);
+                }
+                Call::FinishPredecessorsLookup(sentinel, dest_block) => {
+                    self.finish_predecessors_lookup(func, sentinel, dest_block);
+                }
+            }
+        }
+        debug_assert_eq!(self.results.len(), 1);
+        self.results.pop().unwrap()
+    }
+
+    /// For blocks with a single predecessor, once we've determined the value,
+    /// record a local def for it for future queries to find.
+    fn finish_sealed_one_predecessor(&mut self, var: Place, block: Block) {
+        let val = *self.results.last().unwrap();
+        self.def_var(var, val, block);
     }
 
     /// Examine the values from the predecessors and compute a result value, creating
@@ -503,7 +529,6 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
         }
 
         // Those predecessors' Values have been examined: pop all their results.
-
         let result_val = match pred_values {
             ZeroOneOrMore::Zero => {
                 // The variable is used but never defined before. This is an irregularity in the
@@ -528,7 +553,6 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
             ZeroOneOrMore::More => {
                 // There is disagreement in the predecessors on which value to use so we have
                 // to create a phi
-
                 let mut args = ValueList::new();
                 let mut blocks = Map::new();
 
@@ -557,37 +581,5 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
 
         self.results.truncate(self.results.len() - num_predecessors);
         self.results.push(result_val);
-    }
-
-    /// The main algorithm is naturally recursive: when there's a `use_var` in a
-    /// block with no corresponding local defs, it recurses and performs a
-    /// `use_var` in each predecessor. To avoid risking running out of callstack
-    /// space, we keep an explicit stack and use a small state machine rather
-    /// than literal recursion.
-    fn run_state_machine(&mut self, func: &mut Function, var: Place) -> Value {
-        // Process the calls scheduled in `self.calls` until it is empty.
-        while let Some(call) = self.calls.pop() {
-            match call {
-                Call::UseVar(ssa_block) => {
-                    // First we lookup for the current definition of the variable in this block
-                    if let Some(var_defs) = self.variables.get(var) {
-                        if let Some(val) = var_defs.get(ssa_block).and_then(|val| val.expand()) {
-                            let val = func.dfg.resolve_alias(val);
-                            self.results.push(val);
-                            continue;
-                        }
-                    }
-                    self.use_var_nonlocal(func, var, ssa_block);
-                }
-                Call::FinishSealedOnePredecessor(ssa_block) => {
-                    self.finish_sealed_one_predecessor(var, ssa_block);
-                }
-                Call::FinishPredecessorsLookup(sentinel, dest_block) => {
-                    self.finish_predecessors_lookup(func, sentinel, dest_block);
-                }
-            }
-        }
-        debug_assert_eq!(self.results.len(), 1);
-        self.results.pop().unwrap()
     }
 }
