@@ -278,7 +278,7 @@ impl Topology {
             val_map: AHashMap::with_capacity(128),
             contrib_map,
         };
-        dbg!(&builder.func, &builder.op_dependent_vals, &builder.contrib_map);
+        // dbg!(&builder.func, &builder.op_dependent_vals, &builder.contrib_map);
 
         let mut pdf = SparseBitMatrix::new_square(num_blocks);
         ctxt.dom_tree.compute_postdom_frontiers(&ctxt.cfg, &mut pdf);

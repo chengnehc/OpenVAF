@@ -58,14 +58,12 @@ impl NodeCollapse {
         NodeCollapse { pairs, extra_pairs }
     }
 
-    /// indicates that a collapse hint was provided, `f` is called
+    /// Indicates that a collapse hint was provided, `f` is called
     /// for each pair of nodes that should be collapsed together
     pub fn hint(&self, hi: SimUnknown, lo: Option<SimUnknown>, mut f: impl FnMut(CollapsePair)) {
         let pair = self.pairs.unwrap_index(&(hi, lo));
         f(pair);
-        for extra_pair in self.extra_pairs[pair].iter() {
-            f(extra_pair)
-        }
+        self.extra_pairs[pair].iter().for_each(f);
     }
 
     /// Returns an iterator that yields all possible combination of

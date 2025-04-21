@@ -200,10 +200,9 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     /// - the function parameter corresponding to the implicit unknown
     pub fn implicit_equation(&mut self, kind: ImplicitEquationKind) -> (ImplicitEquation, Value) {
         let equation = self.intern.implicit_equations.push_and_get_key(kind);
-        let place = self.dec_place(PlaceKind::CollapseImplicitEquation(equation));
-        self.func.def_var(place, FALSE);
-        // self.def_place(PlaceKind::CollapseImplicitEquation(equation), FALSE);
+        self.def_place(PlaceKind::CollapseImplicitEquation(equation), FALSE);
         let val = self.use_param(ParamKind::ImplicitUnknown(equation));
+
         (equation, val)
     }
 
@@ -214,8 +213,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         reactive: bool,
     ) {
         let place = PlaceKind::ImplicitResidual { equation, reactive };
-        let place = self.dec_place(place);
-        self.func.def_var(place, val);
+        self.def_place(place, val);
     }
 
     /// Start lowering a `$limit` function by allocating a state slot
