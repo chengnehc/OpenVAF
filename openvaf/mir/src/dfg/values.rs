@@ -286,8 +286,8 @@ impl DfgValues {
         self.make(ValueDataType::Param { param }, None)
     }
     #[inline]
-    pub fn make_param_at(&mut self, param: Param, val: Value) {
-        self.defs[val].ty = ValueDataType::Param { param };
+    pub fn make_param_at(&mut self, param: Param, dst: Value) {
+        self.defs[dst].ty = ValueDataType::Param { param };
     }
     #[inline]
     pub fn make_alias(&mut self, val: Value) -> Value {

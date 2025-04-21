@@ -4,8 +4,7 @@ impl Function {
     pub fn validate(&self) -> bool {
         let mut valid = true;
         let cfg = ControlFlowGraph::with_function(self);
-        let mut dom_tree = DominatorTree::default();
-        dom_tree.compute::<true, false>(self, &cfg);
+        let dom_tree = DominatorTree::with_func_and_cfg::<true, false>(self, &cfg);
 
         for &bb in dom_tree.cfg_postorder() {
             for (seq_num, inst) in self.layout.block_insts(bb).enumerate() {
@@ -20,8 +19,7 @@ impl Function {
                 }
                 if let InstructionData::PhiNode(phi) = &self.dfg.insts[inst] {
                     for (edge_bb, edge_val) in self.dfg.phi_edges(phi) {
-                        // A phi edge block must be a predecessor of the block
-                        // that this phi node belongs to
+                        // A phi edge block must be a predecessor of the block where this phi node belongs
                         assert!(
                             cfg.is_predecessor(edge_bb, bb),
                             "{edge_bb} is not a predecessor of {bb}"
@@ -30,7 +28,7 @@ impl Function {
                         if let Some(arg_def) = edge_def.inst() {
                             if let Some(edge_val_bb) = self.layout.inst_block(arg_def) {
                                 // The block that a phi edge value belongs to must dominate
-                                // the block that uses this phi nde
+                                // the block that uses this phi node
                                 assert!(
                                     dom_tree.dominates(edge_bb, edge_val_bb),
                                     "{edge_val} doesn't dominate use ({edge_val_bb} !dom {edge_bb})"
@@ -68,16 +66,12 @@ impl Function {
                 for use_ in self.dfg.inst_uses(inst) {
                     let user = self.dfg.use_to_user(use_);
                     let use_val = self.dfg.use_to_value(use_);
+                    let user_inst = self.dfg.display_inst(user);
                     assert!(
                         self.dfg.inst_results(inst).contains(&use_val),
-                        "invalid use {} ({use_val})",
-                        self.dfg.display_inst(user)
+                        "invalid use {user_inst} ({use_val})"
                     );
-                    assert!(
-                        self.layout.inst_block(user).is_some(),
-                        "removed use {}",
-                        self.dfg.display_inst(user)
-                    );
+                    assert!(self.layout.inst_block(user).is_some(), "removed use {user_inst}");
                 }
 
                 if !valid_inst {

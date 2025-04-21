@@ -23,6 +23,7 @@ pub fn collect_modules(
     let cu = db.compilation_unit();
     let name = cu.name(db);
 
+    // collect frontend diagnostics
     cu.collect_diagnostics(db, sink);
     if sink.summary(&name) {
         return None;

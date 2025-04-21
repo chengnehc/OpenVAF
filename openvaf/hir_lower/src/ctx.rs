@@ -50,7 +50,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     }
 
     /// A builder method to include tagged variables.
-    pub fn with_tagged_vars(mut self, vars: AHashSet<Variable>) -> Self {
+    pub fn with_tagged_reads(mut self, vars: AHashSet<Variable>) -> Self {
         self.tagged_vars = vars;
         self
     }
@@ -196,12 +196,13 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     }
 
     /// Create an implicit equation with `kind`, and define
-    /// - a flag variable to indicate collapsing the equation
+    /// - a flag variable to indicate whether the equation is collapsible
     /// - the function parameter corresponding to the implicit unknown
     pub fn implicit_equation(&mut self, kind: ImplicitEquationKind) -> (ImplicitEquation, Value) {
         let equation = self.intern.implicit_equations.push_and_get_key(kind);
         let place = self.dec_place(PlaceKind::CollapseImplicitEquation(equation));
         self.func.def_var(place, FALSE);
+        // self.def_place(PlaceKind::CollapseImplicitEquation(equation), FALSE);
         let val = self.use_param(ParamKind::ImplicitUnknown(equation));
         (equation, val)
     }

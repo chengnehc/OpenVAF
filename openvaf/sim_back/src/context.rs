@@ -25,13 +25,6 @@ pub(crate) struct Context<'a> {
     pub(crate) op_dependent_vals: Vec<Value>,
 }
 
-#[derive(PartialEq, Eq, Debug)]
-pub enum OptimizationStage {
-    Initial,
-    PostDerivative,
-    Final,
-}
-
 impl<'a> Context<'a> {
     pub fn new(db: &'a CompilationDB, literals: &mut Rodeo, module: &'a ModuleInfo) -> Self {
         let is_output = |kind| match kind {
@@ -42,14 +35,15 @@ impl<'a> Context<'a> {
             PlaceKind::Var(var) => module.op_vars.contains_key(&var),
             _ => false,
         };
+
+        // for simulator backend, we need to lower equations and tag the writes for function splitting.
         let (mut func, mut intern) =
             MirBuilder::new(db, module.module, &is_output, &mut module.op_vars.keys().copied())
                 .with_equations()
-                .with_tagged_writes()
+                .with_write_tags()
                 .build(literals);
 
-        // TODO hidden state
-        intern.insert_var_init(db, &mut func, literals);
+        intern.insert_var_init(db, &mut func, literals); // TODO hidden state
 
         let num_vals = func.dfg.num_values();
 
@@ -65,7 +59,16 @@ impl<'a> Context<'a> {
             op_dependent_vals: Vec::new(),
         }
     }
+}
 
+#[derive(PartialEq, Eq, Debug)]
+pub enum OptimizationStage {
+    Initial,
+    PostDerivative,
+    Final,
+}
+
+impl Context<'_> {
     #[inline]
     pub fn compute_cfg(&mut self) {
         self.cfg.compute(&self.func);
@@ -92,6 +95,7 @@ impl<'a> Context<'a> {
     // TODO(JW): make this function const generic?
     //
     /// Optimization passes include: DCE, constant prop, simplify CFG, GVN
+    ///
     /// # Note
     /// - reads: output_values
     /// - mutates: function, cfg, dom_tree
@@ -131,6 +135,7 @@ impl<'a> Context<'a> {
         gvn
     }
 
+    /// Get op-dependent instructions for topology setup
     pub fn init_op_dependent_insts(&mut self) {
         let mut dom_frontiers = SparseBitMatrix::new_square(self.func.layout.num_blocks());
         self.dom_tree.compute_dom_frontiers(&self.cfg, &mut dom_frontiers);
@@ -138,7 +143,7 @@ impl<'a> Context<'a> {
         let dfg = &mut self.func.dfg;
         self.op_dependent_insts.ensure(dfg.num_insts());
 
-        // Deal with noises
+        // Deal with noise sources
         for (cb, insts) in self.intern.callback_callers.iter_mut_enumerated() {
             if self.intern.callbacks[cb].is_noise() {
                 insts.retain(|&inst| {
@@ -152,7 +157,7 @@ impl<'a> Context<'a> {
                 })
             }
         }
-        // Prepare taint source: op-dependent parameters
+        // Prepare taint source: live, op-dependent parameters
         for (param, &val) in self.intern.params.iter() {
             if !dfg.value_dead(val) && param.is_op_dependent() {
                 self.op_dependent_vals.push(val)
@@ -167,6 +172,7 @@ impl<'a> Context<'a> {
         );
     }
 
+    /// Get full op-dependent instructions for function split
     pub fn refresh_op_dependent_insts(&mut self) {
         let dfg = &mut self.func.dfg;
         self.op_dependent_vals.clear();
@@ -175,14 +181,13 @@ impl<'a> Context<'a> {
         for (cb, insts) in self.intern.callback_callers.iter_mut_enumerated() {
             if self.intern.callbacks[cb].is_op_dependent() {
                 insts.retain(|&inst| {
-                    if self.func.layout.inst_block(inst).is_none() {
-                        return false;
+                    if self.func.layout.inst_block(inst).is_some() {
+                        self.op_dependent_insts.insert(inst);
+                        self.op_dependent_vals.extend(dfg.inst_results(inst));
+                        true
+                    } else {
+                        false
                     }
-                    self.op_dependent_insts.insert(inst);
-                    for &result in dfg.inst_results(inst) {
-                        self.op_dependent_vals.push(result);
-                    }
-                    true
                 })
             }
         }
@@ -191,10 +196,11 @@ impl<'a> Context<'a> {
                 self.op_dependent_vals.push(val)
             }
         }
+
         propagate_taint(
             &self.func,
-            &self.dom_tree,
             &self.cfg,
+            &self.dom_tree,
             self.op_dependent_vals.iter().copied(),
             &mut self.op_dependent_insts,
         );

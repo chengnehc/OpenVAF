@@ -78,11 +78,11 @@ impl InstructionData {
     /// Get mutable references to the value arguments to this instruction.
     ///
     /// # Note
-    /// It is up to the caller to ensure that uses are updates as appropriate
+    /// It is up to the caller to ensure that uses are updated appropriately.
     pub fn arguments_mut<'a>(&'a mut self, pool: &'a mut ValueListPool) -> &'a mut [Value] {
         match self {
             Unary { arg, .. } | Branch { cond: arg, .. } => slice::from_mut(arg),
-            Binary { args, .. } => &mut *args,
+            Binary { args, .. } => args,
             Call { args, .. } | PhiNode(PhiNode { args, .. }) => args.as_mut_slice(pool),
             Jump { .. } => &mut [],
         }
@@ -163,8 +163,10 @@ impl InstructionData {
         node
     }
 
+    /// Create a deep clone of the instruction data. This keeps from aliasing the original
+    /// memory when the instruction is a phi or call.
     #[inline]
-    pub fn to_pool<'a>(
+    pub fn deep_clone<'a>(
         &self,
         val_pool: &'a ValueListPool,
         phi_forest: &'a PhiForest,

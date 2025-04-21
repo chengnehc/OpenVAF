@@ -14,7 +14,7 @@ pub use basedb::{BaseDB, FileId};
 
 use crate::{CompilationDB, HirDB};
 
-/// Collect all frontend diagnostics to `sink`
+/// Collect all frontend diagnostics to `sink`.
 pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl DiagnosticSink) {
     // BaseDB
     sink.add_diagnostics(db.preprocess(root_file).errors(), root_file, db);

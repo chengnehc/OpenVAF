@@ -39,9 +39,9 @@ pub struct MirBuilder<'a> {
     func_ctxt: Option<&'a mut FunctionBuilderContext>,
     // predicate indicating whether a `Place` should be treated as output
     is_output: &'a dyn Fn(PlaceKind) -> bool,
-    // to store required output variables
+    // store required output variables
     required_vars: &'a mut dyn Iterator<Item = Variable>,
-    // for VerilogAE parameter extraction backend
+    // for parameter extraction backend
     tagged_reads: AHashSet<Variable>,
     // for simulator backend
     tag_writes: bool,
@@ -68,14 +68,14 @@ impl<'a> MirBuilder<'a> {
         }
     }
 
-    pub fn add_tag_read(&mut self, var: Variable) -> bool {
-        self.tagged_reads.insert(var)
-    }
-    pub fn with_tagged_reads(mut self, tagged_vars: AHashSet<Variable>) -> Self {
-        self.tagged_reads = tagged_vars;
+    // pub fn add_tag_read(&mut self, var: Variable) -> bool {
+    //     self.tagged_reads.insert(var)
+    // }
+    pub fn with_tagged_reads(mut self, vars: AHashSet<Variable>) -> Self {
+        self.tagged_reads = vars;
         self
     }
-    pub fn with_tagged_writes(mut self) -> Self {
+    pub fn with_write_tags(mut self) -> Self {
         self.tag_writes = true;
         self
     }
@@ -83,7 +83,7 @@ impl<'a> MirBuilder<'a> {
         self.lower_equations = true;
         self
     }
-    pub fn with_func_ctxt(mut self, func_ctxt: &'a mut FunctionBuilderContext) -> Self {
+    pub fn with_func_builder_context(mut self, func_ctxt: &'a mut FunctionBuilderContext) -> Self {
         self.func_ctxt = Some(func_ctxt);
         self
     }
@@ -99,7 +99,7 @@ impl<'a> MirBuilder<'a> {
             FunctionBuilder::new(&mut function, literals, func_ctxt, self.tag_writes);
         let mut ctxt =
             MainLowerContext::new(self.db, func_builder, !self.lower_equations, &mut interner)
-                .with_tagged_vars(self.tagged_reads);
+                .with_tagged_reads(self.tagged_reads);
 
         let path = self.module.name(self.db);
         let body = self.module.analog_initial_body(self.db);

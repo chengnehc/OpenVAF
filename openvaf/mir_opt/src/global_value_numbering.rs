@@ -13,8 +13,8 @@
 
 use std::cmp::Ordering;
 use std::ops::{Index, IndexMut};
+use stdx::impl_idx_math_from;
 use stdx::packed_option::PackedOption;
-use stdx::{impl_idx_from, impl_idx_math};
 
 use ahash::RandomState;
 use bitset::{BitSet, HybridBitSet};
@@ -73,7 +73,6 @@ impl GVN {
             ValueDef::Param(_) | ValueDef::Const(_) => {
                 return Some(ExprResult::Expr(GVNExpression::new_const(val)))
             }
-
             ValueDef::Invalid => unreachable!(),
         };
 
@@ -254,8 +253,7 @@ impl EquivalenceClass {
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord, Debug)]
 struct DFSId(u32);
-impl_idx_from!(DFSId(u32));
-impl_idx_math!(DFSId(u32));
+impl_idx_math_from!(DFSId(u32));
 
 #[derive(Default)]
 struct DFSMapping {
@@ -313,8 +311,7 @@ impl DFSMapping {
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord, Debug)]
 pub struct ClassId(u32);
-impl_idx_from!(ClassId(u32));
-impl_idx_math!(ClassId(u32));
+impl_idx_math_from!(ClassId(u32));
 
 #[derive(Default)]
 struct ClassMap {

@@ -65,8 +65,7 @@ impl BodyLowerContext<'_, '_, '_> {
             self.ctxt.call(CallBackKind::CollapseHint(hi, lo), &[]);
         }
 
-        // Define a place for the complement nature of contribution branch at current block,
-        // so that if it is probed by some RHS expression, it can be used.
+        // Define a place for the complement nature of contribution branch at current basic block.
         self.ctxt.def_place(PlaceKind::Contribute { branch, is_potential: !is_potential }, F_ZERO);
 
         // Lower the RHS expression

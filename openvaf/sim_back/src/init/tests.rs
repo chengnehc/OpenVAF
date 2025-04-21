@@ -19,10 +19,10 @@ fn run_test(src: &str) {
     let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut ctx = Context::new(&db, &mut literals, &module);
+
     ctx.compute_outputs::<WITH_CONTRIBUTES>();
     ctx.compute_cfg();
     ctx.optimize(OptimizationStage::Initial);
-
     ctx.init_op_dependent_insts();
 
     let topology = Topology::new(&mut ctx);
@@ -33,7 +33,7 @@ fn run_test(src: &str) {
     dae_system.sparsify(&mut ctx);
     ctx.refresh_op_dependent_insts();
 
-    let init = Initialization::new(&mut ctx, gvn);
+    let init = Initialization::new(&mut ctx, &gvn);
 
     let name = module.module.name(&db);
     let test_dir = openvaf_test_data("init");

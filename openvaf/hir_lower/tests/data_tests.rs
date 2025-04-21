@@ -24,7 +24,7 @@ fn lower_to_mir(db: &CompilationDB, is_output: &impl Fn(PlaceKind) -> bool) -> V
             let mut required_vars = [].into_iter();
             let mut literals = Rodeo::new();
             let (mir, _) = MirBuilder::new(db, module, is_output, &mut required_vars)
-                .with_func_ctxt(&mut func_ctxt)
+                .with_func_builder_context(&mut func_ctxt)
                 .build(&mut literals);
             mir
         })

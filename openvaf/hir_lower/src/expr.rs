@@ -228,7 +228,7 @@ impl BodyLowerContext<'_, '_, '_> {
         path.push_str(&fun.name(self.ctxt.db));
 
         let mut args = zip(fun.args(self.ctxt.db), args);
-        // skip the first two arguments
+        // skip the first two arguments if inside lim
         if inside_lim {
             args.next();
             args.next();
@@ -249,7 +249,7 @@ impl BodyLowerContext<'_, '_, '_> {
         let init = match &fun.return_ty(self.ctxt.db) {
             Type::Real => F_ZERO,
             Type::Integer => ZERO,
-            ty => unreachable!("invalid function return type {:?}", ty),
+            ty => unreachable!("invalid function return type {ty:?}"),
         };
         self.ctxt.def_place(PlaceKind::FunctionReturn(fun), init);
 

@@ -1,5 +1,5 @@
 function %(v16, v25, v28) {
-    inst0 = fn %Display)(1) -> 0
+    inst0 = fn %Display(1) -> 0
     v5 = iconst 1
     v18 = iconst 10
     v20 = sconst "<DUMMY>"

@@ -43,7 +43,7 @@ impl super::Builder<'_> {
         intern: &mut HirInterner,
     ) {
         let mut ssa_builder = mir_build::SSAVariableBuilder::new(cfg);
-        for (operator, evaluation) in self.analog_operator_evaluations(&pdf, intern) {
+        for (operator, evaluation) in self.analog_operator_evaluations(pdf, intern) {
             let arg0 = self.func.dfg.instr_args(operator)[0];
             let cb = self.func.dfg.func_ref(operator).unwrap();
             let is_noise = intern.callbacks[cb].is_noise();
@@ -282,7 +282,7 @@ impl super::Builder<'_> {
                                     .layout
                                     .block_terminator(control_dep)
                                     .and_then(|inst| func.dfg.branch_cond(inst))
-                                    .is_some_and(|cond| is_op_dependent(cond))
+                                    .is_some_and(is_op_dependent)
                                 {
                                     return true;
                                 }
@@ -374,7 +374,7 @@ fn phi_add_chain_start(
         chain_start = val_visited(edge).then(|| {
             edge = follow_add_chain(func, edge, val_visited, handle_loops);
             match chain_start {
-                Some(start) if start != edge => return None,
+                Some(start) if start != edge => None,
                 None => Some(edge),
                 _ => chain_start,
             }

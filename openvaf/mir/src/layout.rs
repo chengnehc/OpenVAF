@@ -99,7 +99,7 @@ impl Layout {
         block
     }
 
-    /// Append `block` in the layout.
+    /// Append `block` into function layout.
     pub fn append_block(&mut self, block: Block) {
         debug_assert!(
             !self.is_block_inserted(block),

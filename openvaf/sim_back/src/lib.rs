@@ -86,15 +86,15 @@ impl<'a> CompiledModule<'a> {
         // topology and DAE setup needs information of op-dependent instructions
         ctxt.init_op_dependent_insts();
 
-        // collects contribution to form model internal topology
+        // collects contributions and form model internal topology
         let topology = Topology::new(&mut ctxt);
         debug_assert!(ctxt.func.validate());
 
-        // setup residual and Jacobians, extra auto-diff instructions/blocks are inserted
+        // setup residual and Jacobians, auto-diff instructions/blocks are inserted
         let mut dae = DaeSystem::new(&mut ctxt, topology);
         debug_assert!(ctxt.func.validate());
 
-        // execute the post-derivative optimization
+        // execute post-derivative optimization
         ctxt.compute_cfg();
         let gvn = ctxt.optimize(OptimizationStage::PostDerivative);
         debug_assert!(ctxt.func.validate());
@@ -190,28 +190,29 @@ impl<'a> CompiledModule<'a> {
             println!();
         }
 
-        // after post-derivative optimization, op-dependent instruction set may change
+        // After derivative insertion and post-derivative optimization, op-dependent
+        // instruction set changes. Perform a full taint for function split.
         ctxt.refresh_op_dependent_insts();
 
-        // split the raw function and separate op-independent instructions into another
-        // function for initialization
-        let mut init = Initialization::new(&mut ctxt, gvn);
+        // Split the raw function and separate op-independent instructions into another
+        // function
+        let mut init = Initialization::new(&mut ctxt, &gvn);
         debug_assert!(init.func.validate());
 
         // node collapse should only depend on op-independent values
         let node_collapse = NodeCollapse::new(&init, &dae, &ctxt);
 
         // JW: It seems that final stage optimization was missing here.
-        // I'm not sure if this is intended to reduce compile speed.
+        // I'm not sure if this is intended to increase compile speed.
         //
         // However, if this is turned on, OpenVAF panics when simplifying CFG.
-        // I suppose this is because part of the optimizations have already
-        // been covered when building initialization function.
+        // I suppose this is because some part of the optimizations has already
+        // been covered during initialization function building.
         //
         // ctxt.optimize(OptimizationStage::Final);
         debug_assert!(ctxt.func.validate());
 
-        // insert instance parameter setup into op-independent function
+        // insert instance parameter setup into op-independent(initialization) function
         // TODO: refactor param initialization to use tables
         let inst_params: Vec<_> = info
             .params
@@ -233,7 +234,7 @@ impl<'a> CompiledModule<'a> {
             &model_params,
         );
 
-        // optimize the parameter setup utility function
+        // optimize the model parameter setup utility function
         ctxt.cfg.compute(&model_param_setup);
         mir_opt::simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
         mir_opt::sparse_conditional_constant_propagation(&mut model_param_setup, &ctxt.cfg);
