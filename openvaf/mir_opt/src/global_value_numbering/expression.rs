@@ -3,9 +3,10 @@ use std::mem::{swap, ManuallyDrop};
 use stdx::packed_option::PackedOption;
 
 use ahash::RandomState;
-use mir::{Block, FuncRef, Function, Inst, InstructionData, Opcode, Value, ValueList};
+use mir::{Block, FuncRef, Function, Inst, InstructionData, Opcode, Value, ValueDef, ValueList};
 
 use super::{ClassId, GVN};
+use crate::simplify::SimplifyCtx;
 
 pub(crate) enum ExprResult {
     Expr(GVNExpression),
@@ -13,29 +14,17 @@ pub(crate) enum ExprResult {
 }
 
 impl ExprResult {
+    /// Turn the expression result into a class
     pub(super) fn into_class(self, inst: Inst, gvn: &mut GVN, func: &mut Function) -> ClassId {
         match self {
             ExprResult::Expr(expr) => gvn.class_map.insert_expr(inst, expr, func),
             ExprResult::Simplified(class) => class,
         }
     }
-}
 
-pub(crate) struct GVNExpression {
-    pub(super) opcode: Opcode,
-    pub(super) payload: GVNExprPayLoad,
-}
-
-impl Clone for GVNExpression {
-    fn clone(&self) -> Self {
-        let payload = unsafe { std::ptr::read(&self.payload) };
-        Self { opcode: self.opcode, payload }
-    }
-}
-
-impl GVNExpression {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(gvn: &mut GVN, func: &mut Function, inst: Inst) -> Option<ExprResult> {
+    /// Generate the expression of `inst`, which is either create a new GVNExpression
+    /// or reuse the previous simplified one.
+    pub(super) fn from_inst(inst: Inst, gvn: &mut GVN, func: &mut Function) -> Option<ExprResult> {
         let (opcode, payload) = match func.dfg.insts[inst].clone() {
             InstructionData::Unary { opcode, mut arg } if opcode != Opcode::OptBarrier => {
                 arg = gvn.get_lead_val(arg, func);
@@ -46,10 +35,7 @@ impl GVNExpression {
                         return Some(expr);
                     }
                 }
-                (
-                    opcode,
-                    GVNExprPayLoad { default: DefaultExprPayLoad { val1: arg, val2: None.into() } },
-                )
+                (opcode, PayLoad { default: DefaultPayLoad { val1: arg, val2: None.into() } })
             }
             InstructionData::Binary { opcode, args: [mut val1, mut val2] } => {
                 val1 = gvn.get_lead_val(val1, func);
@@ -64,7 +50,7 @@ impl GVNExpression {
                         return Some(expr);
                     }
                 }
-                (opcode, GVNExprPayLoad { default: DefaultExprPayLoad { val1, val2: val2.into() } })
+                (opcode, PayLoad { default: DefaultPayLoad { val1, val2: val2.into() } })
             }
             InstructionData::PhiNode(phi) => {
                 let simplified_val = gvn.simplify_ctx(func).simplify_phi(phi.clone());
@@ -76,7 +62,6 @@ impl GVNExpression {
 
                 let bb = func.layout.inst_block(inst).unwrap();
                 let mut args = ValueList::new();
-
                 for (_, i) in phi.blocks.iter(&func.dfg.phi_forest) {
                     let pool = &mut func.dfg.insts.value_lists;
                     let val = phi.args.get(i as usize, pool).unwrap();
@@ -84,10 +69,7 @@ impl GVNExpression {
                     let pool = &mut func.dfg.insts.value_lists;
                     args.push(val, pool);
                 }
-                (
-                    Opcode::Phi,
-                    GVNExprPayLoad { phi: ManuallyDrop::new(PhiExprPayLoad { bb, args }) },
-                )
+                (Opcode::Phi, PayLoad { phi: ManuallyDrop::new(PhiPayLoad { bb, args }) })
             }
             InstructionData::Call { func_ref, args }
                 if !func.dfg.signatures[func_ref].has_side_effects =>
@@ -101,10 +83,7 @@ impl GVNExpression {
                         *args.get_mut(i, &mut func.dfg.insts.value_lists).unwrap_unchecked() = arg;
                     };
                 }
-                (
-                    Opcode::Call,
-                    GVNExprPayLoad { call: ManuallyDrop::new(CallExprPayLoad { func_ref, args }) },
-                )
+                (Opcode::Call, PayLoad { call: ManuallyDrop::new(CallPayLoad { func_ref, args }) })
             }
 
             _ => return None,
@@ -112,14 +91,73 @@ impl GVNExpression {
 
         Some(ExprResult::Expr(GVNExpression { opcode, payload }))
     }
+}
 
-    pub fn new_const(val: Value) -> GVNExpression {
+impl GVN {
+    fn simplify_ctx<'a>(
+        &'a mut self,
+        func: &'a mut Function,
+    ) -> SimplifyCtx<'a, f64, impl Fn(Value, &Function) -> Value + 'a> {
+        SimplifyCtx::new(func, |val, func| self.class_map.get_lead_val(val, func))
+    }
+
+    fn check_simplified(&self, val: Value, func: &Function) -> Option<ExprResult> {
+        match func.dfg.value_def(val) {
+            // the value is simplified to a previous instruction result:
+            // attach an existing GVN expression class ID to it.
+            ValueDef::Result(inst, _) => {
+                self.class_map.inst_class[inst].expand().map(ExprResult::Simplified)
+            }
+            // the value is simplified to a parameter or a constant:
+            // create a dummy GVN expression class for it.
+            // can't get any better than this ;)
+            ValueDef::Param(_) | ValueDef::Const(_) => {
+                Some(ExprResult::Expr(GVNExpression::new_const(val)))
+            }
+            ValueDef::Invalid => unreachable!(),
+        }
+    }
+
+    /// Get the leading value that is semantically equivalent to `val`.
+    fn get_lead_val(&self, val: Value, func: &Function) -> Value {
+        self.class_map.get_lead_val(val, func)
+    }
+
+    /// Should the two operand value of a commutative binary instruction be swapped,
+    /// according to the rank computed by GVN?
+    fn should_swap_operands(&self, val1: Value, val2: Value, func: &Function) -> bool {
+        self.dfs_map.should_swap(val1, val2, func)
+    }
+}
+
+pub(crate) struct GVNExpression {
+    pub(super) opcode: Opcode,
+    pub(super) payload: PayLoad,
+}
+
+/* Not used */
+impl Clone for GVNExpression {
+    fn clone(&self) -> Self {
+        let payload = unsafe { std::ptr::read(&self.payload) };
+        Self { opcode: self.opcode, payload }
+    }
+}
+
+impl GVNExpression {
+    fn new_const(val: Value) -> GVNExpression {
         GVNExpression {
-            // we don't value number optbarrier instructions so this is a nice niece optimization
+            // we don't value number optbarrier instructions so this is a nice optimization
             opcode: Opcode::OptBarrier,
-            payload: GVNExprPayLoad {
-                default: DefaultExprPayLoad { val1: val, val2: None.into() },
-            },
+            payload: PayLoad { default: DefaultPayLoad { val1: val, val2: None.into() } },
+        }
+    }
+
+    /// Dispose the GVN expression and its payload.
+    pub(super) fn destroy(&mut self, func: &mut Function) {
+        match self.opcode {
+            Opcode::Phi => self.payload.phi_mut().args.clear(&mut func.dfg.insts.value_lists),
+            Opcode::Call => self.payload.call_mut().args.clear(&mut func.dfg.insts.value_lists),
+            _ => (),
         }
     }
 
@@ -129,21 +167,21 @@ impl GVNExpression {
         self.opcode.hash(&mut hasher);
         match self.opcode {
             Opcode::Phi => {
-                let PhiExprPayLoad { bb, args } = self.payload.phi();
+                let PhiPayLoad { bb, args } = self.payload.phi();
                 bb.hash(&mut hasher);
                 for arg in args.as_slice(&func.dfg.insts.value_lists) {
                     arg.hash(&mut hasher)
                 }
             }
             Opcode::Call => {
-                let CallExprPayLoad { func_ref, args } = self.payload.call();
+                let CallPayLoad { func_ref, args } = self.payload.call();
                 func_ref.hash(&mut hasher);
                 for arg in args.as_slice(&func.dfg.insts.value_lists) {
                     arg.hash(&mut hasher)
                 }
             }
             _ => {
-                let DefaultExprPayLoad { val1, val2 } = self.payload.default();
+                let DefaultPayLoad { val1, val2 } = self.payload.default();
                 val1.hash(&mut hasher);
                 val2.hash(&mut hasher);
             }
@@ -151,6 +189,7 @@ impl GVNExpression {
         hasher.finish()
     }
 
+    /// Test if this expression is equivalent to `other`.
     pub(super) fn eq(&self, other: &Self, func: &Function) -> bool {
         if self.opcode != other.opcode {
             return false;
@@ -158,8 +197,8 @@ impl GVNExpression {
 
         match self.opcode {
             Opcode::Phi => {
-                let PhiExprPayLoad { bb: bb1, args: args1 } = self.payload.phi();
-                let PhiExprPayLoad { bb: bb2, args: args2 } = other.payload.phi();
+                let PhiPayLoad { bb: bb1, args: args1 } = self.payload.phi();
+                let PhiPayLoad { bb: bb2, args: args2 } = other.payload.phi();
                 if bb1 != bb2 {
                     return false;
                 }
@@ -168,8 +207,8 @@ impl GVNExpression {
                 args1.iter().eq(args2)
             }
             Opcode::Call => {
-                let CallExprPayLoad { func_ref: func_ref_1, args: args1 } = self.payload.call();
-                let CallExprPayLoad { func_ref: func_ref_2, args: args2 } = self.payload.call();
+                let CallPayLoad { func_ref: func_ref_1, args: args1 } = self.payload.call();
+                let CallPayLoad { func_ref: func_ref_2, args: args2 } = self.payload.call();
                 if func_ref_1 != func_ref_2 {
                     return false;
                 }
@@ -184,62 +223,49 @@ impl GVNExpression {
             }
         }
     }
-
-    pub(super) fn destroy(&mut self, func: &mut Function) {
-        match self.opcode {
-            Opcode::Phi => {
-                self.payload.phi_mut().args.clear(&mut func.dfg.insts.value_lists);
-            }
-            Opcode::Call => {
-                self.payload.call_mut().args.clear(&mut func.dfg.insts.value_lists);
-            }
-            _ => (),
-        }
-    }
 }
 
-// JW: I guess `union` is used here to save bits
-pub(super) union GVNExprPayLoad {
-    default: DefaultExprPayLoad,
-    // this is basically copy but that just makes the API of ValueList really awkward
-    phi: ManuallyDrop<PhiExprPayLoad>,
-    call: ManuallyDrop<CallExprPayLoad>,
+pub(super) union PayLoad {
+    default: DefaultPayLoad,
+    // this is basically copy but that just makes the API of `ValueList` really awkward
+    phi: ManuallyDrop<PhiPayLoad>,
+    call: ManuallyDrop<CallPayLoad>,
 }
 
-impl GVNExprPayLoad {
-    pub(super) fn default(&self) -> DefaultExprPayLoad {
+impl PayLoad {
+    pub(super) fn default(&self) -> DefaultPayLoad {
         unsafe { self.default }
     }
-    fn phi(&self) -> &PhiExprPayLoad {
+    fn phi(&self) -> &PhiPayLoad {
         unsafe { &self.phi }
     }
-    fn phi_mut(&mut self) -> &mut PhiExprPayLoad {
+    fn phi_mut(&mut self) -> &mut PhiPayLoad {
         unsafe { &mut self.phi }
     }
-    fn call(&self) -> &CallExprPayLoad {
+    fn call(&self) -> &CallPayLoad {
         unsafe { &self.call }
     }
-    fn call_mut(&mut self) -> &mut CallExprPayLoad {
+    fn call_mut(&mut self) -> &mut CallPayLoad {
         unsafe { &mut self.call }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct DefaultExprPayLoad {
+pub(super) struct DefaultPayLoad {
     // We do not have operation using 3 arguments so this is fine.
     pub(super) val1: Value,
     pub(super) val2: PackedOption<Value>,
 }
 
 #[derive(Clone, Debug)]
-struct PhiExprPayLoad {
-    /// The basic block where the phi instruction resides in, not the blocks of phi edges.
+struct PhiPayLoad {
+    /// The basic block where the phi resides in, not block parameters.
     bb: Block,
     args: ValueList,
 }
 
 #[derive(Clone, Debug)]
-struct CallExprPayLoad {
+struct CallPayLoad {
     func_ref: FuncRef,
     args: ValueList,
 }

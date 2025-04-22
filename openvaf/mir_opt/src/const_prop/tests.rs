@@ -2,13 +2,11 @@ use expect_test::{expect, Expect};
 use mir::ControlFlowGraph;
 use mir_reader::parse_function;
 
-use crate::sparse_conditional_constant_propagation;
-
 fn check(src: &str, data_flow_result: Expect) {
     let (mut func, _) = parse_function(src).unwrap();
-    let mut cfg = ControlFlowGraph::new();
-    cfg.compute(&func);
-    sparse_conditional_constant_propagation(&mut func, &cfg);
+    let cfg = ControlFlowGraph::with_function(&func);
+
+    crate::sparse_conditional_constant_propagation(&mut func, &cfg);
     data_flow_result.assert_eq(&func.to_debug_string());
 }
 

@@ -1,7 +1,8 @@
-use expect_test::{expect, Expect};
 use mir::builder::InstBuilder;
 use mir::cursor::{Cursor, FuncCursor};
 use mir::ControlFlowGraph;
+
+use expect_test::{expect, Expect};
 use mir_reader::parse_function;
 
 use crate::simplify_cfg;
@@ -9,8 +10,8 @@ use crate::simplify_cfg;
 fn expect_test(raw: &str, expect: Expect) {
     let (mut func, _) = parse_function(raw).unwrap();
     let mut cfg = ControlFlowGraph::with_function(&func);
-    simplify_cfg(&mut func, &mut cfg);
 
+    simplify_cfg(&mut func, &mut cfg);
     expect.assert_eq(&func.to_debug_string())
 }
 

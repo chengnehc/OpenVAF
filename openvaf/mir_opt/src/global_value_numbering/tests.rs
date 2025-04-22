@@ -1,19 +1,21 @@
-use expect_test::{expect, Expect};
 use mir::{ControlFlowGraph, DominatorTree};
+
+use expect_test::{expect, Expect};
 use mir_reader::parse_function;
 
 fn check(src: &str, data_flow_result: Expect) {
     let (mut func, _) = parse_function(src).unwrap();
-    let mut cfg = ControlFlowGraph::new();
-    cfg.compute(&func);
-    let mut dom_tree = DominatorTree::default();
-    dom_tree.compute::<true, true>(&func, &cfg);
+    let cfg = ControlFlowGraph::with_function(&func);
+    let dom_tree = DominatorTree::with_func_and_cfg::<true, true>(&func, &cfg);
+
     crate::inst_combine(&mut func);
+
     let mut gvn = super::GVN::default();
     gvn.init(&func, &dom_tree, 3);
     gvn.solve(&mut func);
     gvn.remove_unnecessary_insts(&mut func, &dom_tree);
     gvn.clear(&mut func);
+
     data_flow_result.assert_eq(&func.to_debug_string());
 }
 

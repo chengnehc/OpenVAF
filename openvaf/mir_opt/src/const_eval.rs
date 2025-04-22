@@ -1,3 +1,9 @@
+//! Make use of the numeric functions in Rust stdlib for constant evaluation during
+//! compile time. On the other hand, run-time evaluations depend on LLVM instrinsics.
+//! Although both of them kind of depend on libm under the hood, there are some
+//! inconsistent behaviors between them, and some functions have unspecified precision
+//! , so be careful.
+
 use std::mem::size_of_val;
 
 use mir::{Const, Function, Opcode, Value, FALSE, F_ONE, F_ZERO, ONE, TRUE, ZERO};
@@ -102,7 +108,6 @@ pub fn eval_const_unary(func: &mut Function, op: Opcode, val: Const) -> Option<V
                 let val = 8 * size_of_val(&val) as i32 - val.leading_zeros() as i32;
                 func.dfg.iconst(val)
             }
-
             _ => unreachable!("invalid int operation {op}"),
         },
         mir::Const::Bool(true) => match op {
