@@ -66,63 +66,62 @@ pub fn eval_const_binary(func: &mut Function, op: Opcode, lhs: Const, rhs: Const
     }
 }
 
-pub fn eval_const_unary(func: &mut Function, op: Opcode, val: Const) -> Option<Value> {
-    if op == Opcode::OptBarrier {
-        return None;
-    }
-    let val = match val {
-        mir::Const::Float(val) => {
-            let val: f64 = val.into();
+pub fn eval_const_unary(func: &mut Function, op: Opcode, arg: Const) -> Value {
+    match arg {
+        mir::Const::Float(arg) => {
+            let arg: f64 = arg.into();
             match op {
-                Opcode::Sqrt => func.dfg.f64const(val.sqrt()),
-                Opcode::Exp => func.dfg.f64const(val.exp()),
-                Opcode::Ln => func.dfg.f64const(val.ln()),
-                Opcode::Log => func.dfg.f64const(val.log10()),
-                Opcode::Floor => func.dfg.f64const(val.floor()),
-                Opcode::Ceil => func.dfg.f64const(val.ceil()),
-                Opcode::Sin => func.dfg.f64const(val.sin()),
-                Opcode::Cos => func.dfg.f64const(val.cos()),
-                Opcode::Tan => func.dfg.f64const(val.tan()),
-                Opcode::Asin => func.dfg.f64const(val.asin()),
-                Opcode::Acos => func.dfg.f64const(val.acos()),
-                Opcode::Atan => func.dfg.f64const(val.atan()),
-                Opcode::Sinh => func.dfg.f64const(val.sinh()),
-                Opcode::Cosh => func.dfg.f64const(val.cosh()),
-                Opcode::Tanh => func.dfg.f64const(val.tanh()),
-                Opcode::Asinh => func.dfg.f64const(val.asinh()),
-                Opcode::Acosh => func.dfg.f64const(val.acosh()),
-                Opcode::Atanh => func.dfg.f64const(val.atanh()),
-                Opcode::FIcast => func.dfg.iconst(val.round() as i32),
-                Opcode::FBcast => (val.abs() != 0.0).into(),
-                Opcode::Fneg => func.dfg.f64const(-val),
+                Opcode::Sqrt => func.dfg.f64const(arg.sqrt()),
+                Opcode::Exp => func.dfg.f64const(arg.exp()),
+                Opcode::Ln => func.dfg.f64const(arg.ln()),
+                Opcode::Log => func.dfg.f64const(arg.log10()),
+                Opcode::Floor => func.dfg.f64const(arg.floor()),
+                Opcode::Ceil => func.dfg.f64const(arg.ceil()),
+                Opcode::Sin => func.dfg.f64const(arg.sin()),
+                Opcode::Cos => func.dfg.f64const(arg.cos()),
+                Opcode::Tan => func.dfg.f64const(arg.tan()),
+                Opcode::Asin => func.dfg.f64const(arg.asin()),
+                Opcode::Acos => func.dfg.f64const(arg.acos()),
+                Opcode::Atan => func.dfg.f64const(arg.atan()),
+                Opcode::Sinh => func.dfg.f64const(arg.sinh()),
+                Opcode::Cosh => func.dfg.f64const(arg.cosh()),
+                Opcode::Tanh => func.dfg.f64const(arg.tanh()),
+                Opcode::Asinh => func.dfg.f64const(arg.asinh()),
+                Opcode::Acosh => func.dfg.f64const(arg.acosh()),
+                Opcode::Atanh => func.dfg.f64const(arg.atanh()),
+                Opcode::FIcast => func.dfg.iconst(arg.round() as i32),
+                Opcode::FBcast => (arg.abs() != 0.0).into(),
+                Opcode::Fneg => func.dfg.f64const(-arg),
 
                 _ => unreachable!("invalid real operation {op}"),
             }
         }
-        mir::Const::Int(val) => match op {
-            Opcode::Inot => func.dfg.iconst(!val),
-            Opcode::Ineg => func.dfg.iconst(-val),
-            Opcode::IFcast => func.dfg.f64const(val as f64),
-            Opcode::IBcast => (val != 0).into(),
+        mir::Const::Int(arg) => match op {
+            Opcode::Inot => func.dfg.iconst(!arg),
+            Opcode::Ineg => func.dfg.iconst(-arg),
+            Opcode::IFcast => func.dfg.f64const(arg as f64),
+            Opcode::IBcast => (arg != 0).into(),
             Opcode::Clog2 => {
-                let val = 8 * size_of_val(&val) as i32 - val.leading_zeros() as i32;
-                func.dfg.iconst(val)
+                let res = 8 * size_of_val(&arg) as i32 - arg.leading_zeros() as i32;
+                func.dfg.iconst(res)
             }
+
             _ => unreachable!("invalid int operation {op}"),
         },
         mir::Const::Bool(true) => match op {
             Opcode::Bnot => FALSE,
             Opcode::BIcast => ONE,
             Opcode::BFcast => F_ONE,
+
             _ => unreachable!(),
         },
         mir::Const::Bool(false) => match op {
             Opcode::Bnot => TRUE,
             Opcode::BIcast => ZERO,
             Opcode::BFcast => F_ZERO,
+
             _ => unreachable!(),
         },
         mir::Const::Str(_) => unreachable!(),
-    };
-    Some(val)
+    }
 }

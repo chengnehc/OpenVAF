@@ -283,7 +283,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build_init_cache(&mut self, gvn: &GVN) {
-        // first run DCE on the main function to figure out which cached
+        // first run aggressive DCE on the main function to figure out which cached
         // values are actually used
         self.dom_tree.compute_postdom_frontiers(self.cfg, &mut self.control_dep);
         mir_opt::aggressive_dead_code_elimination(
@@ -339,7 +339,7 @@ impl<'a> Builder<'a> {
 
                 // TODO(JW): this seems duplicate
                 let param = usize::from(cache_slot) + self.intern.params.len();
-                dbg!(param);
+                // dbg!(param);
                 self.func.dfg.values.make_param_at(param.into(), val);
 
                 let new_val = self.val_map[&val];

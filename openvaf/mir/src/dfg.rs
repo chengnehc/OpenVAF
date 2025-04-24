@@ -77,7 +77,7 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that query dfg instructions
+/// Routines that query instructions.
 impl DataFlowGraph {
     /// Get the total number of instructions created in this function, whether they are currently
     /// inserted in the layout or not.
@@ -138,10 +138,10 @@ impl fmt::Display for DisplayInst<'_> {
     }
 }
 
+/// Routines that interact with instructions.
 impl DataFlowGraph {
     /// An instruction is safe to remove if none of its results is used anywhere.
-    /// Howerver, this does not mean the instruction is dead, as an instruction
-    /// may have side effects.
+    /// However, this does not mean the instruction is dead, as it can have side effects.
     pub fn is_safe_to_remove(&self, inst: Inst) -> bool {
         self.insts.safe_to_remove(inst, &self.values)
     }
@@ -154,7 +154,7 @@ impl DataFlowGraph {
         }
     }
 
-    /// A instruction is dead if it is safe to remove and has no side effects.
+    /// An instruction is dead if it is safe to remove and has no side effects.
     pub fn inst_dead(&self, inst: Inst, keep_branches: bool) -> bool {
         self.is_safe_to_remove(inst) && !self.has_side_effects(inst, keep_branches)
     }
@@ -218,7 +218,7 @@ impl DataFlowGraph {
     }
 }
 
-/// Routines that query dfg values
+/// Routines that interact with values.
 impl DataFlowGraph {
     pub fn num_values(&self) -> usize {
         self.values.num()

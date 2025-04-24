@@ -203,12 +203,12 @@ impl DominatorTree {
                     // This is the first time we pop the block, so we need to scan its successors and
                     // then revisit it.
                     self.reverse_nodes[block].rpo_number = DONE;
-                    self.stack.push((block, Successors(None.into(), None.into())));
+                    self.stack.push((block, Successors::default()));
 
                     for block in cfg.pred_iter(block) {
                         if self.reverse_nodes[block].rpo_number == UNDEF {
                             self.reverse_nodes[block].rpo_number = SEEN;
-                            self.stack.push((block, Successors(None.into(), None.into())));
+                            self.stack.push((block, Successors::default()));
                         }
                     }
                 }

@@ -49,15 +49,14 @@ impl Arithmetic for i32 {
 
 pub struct SimplifyCtx<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> {
     pub func: &'a mut Function,
-    // dtree: &'a DominatorTree,
     pub map_val_: M,
     pub max_recurse: u32,
-    __fp_arithmetic: PhantomData<fn(&FP)>,
+    _fp_arithmetic: PhantomData<fn(&FP)>,
 }
 
 impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M> {
     pub fn new(func: &'a mut Function, map_val_: M) -> SimplifyCtx<'a, FP, M> {
-        SimplifyCtx { func, map_val_, max_recurse: 3, __fp_arithmetic: PhantomData }
+        SimplifyCtx { func, map_val_, max_recurse: 3, _fp_arithmetic: PhantomData }
     }
 
     #[inline]
@@ -90,16 +89,20 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         let mut iter = self.func.dfg.phi_edges(&phi);
         let (_, all_eq_val) = iter.next()?;
         let all_eq_val = self.map_val(all_eq_val);
-        // a phi can be simplified when all the values of its edges are the same.
+        // simplify when all the values of phi edges are identical
         iter.all(|(_, val)| self.map_val(val) == all_eq_val).then_some(all_eq_val)
     }
 
     pub fn simplify_unary_op(&mut self, op: Opcode, val: Value) -> Option<Value> {
+        // Special case: opt barrier means bypass any optimization :)
+        if op == Opcode::OptBarrier {
+            return None;
+        }
+
         // Try constant evaluation first
         if let Some(const_) = self.func.dfg.value_def(val).as_const() {
-            if let Some(val) = eval_const_unary(self.func, op, const_) {
-                return Some(val);
-            }
+            let val = eval_const_unary(self.func, op, const_);
+            return Some(val);
         }
 
         // Try re-using the argument of a possible inverse(reciprocal) instruction.
@@ -107,64 +110,26 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         // is a pair of inverse operations, then we could just make use of u directly,
         // since x = f(g(u)) = u.
         let inv = match op {
-            // Turn these two into binary op simplification
+            // Turn these into binary op simplification
             Opcode::Fneg => return self.simplify_sub_inst::<FP>(F_ZERO, val),
             Opcode::Ineg => return self.simplify_sub_inst::<i32>(ZERO, val),
 
-            // self-reciprocal
+            // self-reciprocal operations
             Opcode::Inot => Opcode::Inot,
             Opcode::Bnot => Opcode::Bnot,
 
             // inverse cast is lossless
-            // X = FI/IB/FBcast(V), V = IF/BI/BFcast(U)
+            // X = FI/IB/FBcast(V), V = IF/BI/BFcast(U)  =>  X = U
             Opcode::FIcast => Opcode::IFcast,
             Opcode::IBcast => Opcode::BIcast,
             Opcode::FBcast => Opcode::BFcast,
 
             // inverse cast is lossy, or no inverse operation available
-            Opcode::IFcast
-            | Opcode::BIcast
-            | Opcode::BFcast
-            | Opcode::OptBarrier
-            | Opcode::Clog2 => return None,
+            Opcode::IFcast | Opcode::BIcast | Opcode::BFcast | Opcode::Clog2 => return None,
 
-            Opcode::Sqrt => {
-                // X = sqrt(V), V = X * X
-                if let Some([x, y]) = self.as_binary(val, Opcode::Fmul) {
-                    if x == y {
-                        return Some(x);
-                    }
-                }
-                // X = sqrt(V), V = pow(X, 2)
-                if let Some([x, y]) = self.as_binary(val, Opcode::Pow) {
-                    if y == F_TWO {
-                        return Some(x);
-                    }
-                }
-                return None;
-            }
+            // inverse unary operations are defined
             Opcode::Exp => Opcode::Ln,
             Opcode::Ln => Opcode::Exp,
-            Opcode::Log => {
-                // X = log(V), V = pow(10, Y)
-                if let Some([x, y]) = self.as_binary(val, Opcode::Pow) {
-                    if x == F_TEN {
-                        return Some(y);
-                    }
-                }
-                return None;
-            }
-            // Idempotent operations
-            Opcode::Floor | Opcode::Ceil => {
-                if matches!(
-                    self.as_any_unary(val),
-                    Some((Opcode::IFcast | Opcode::BFcast | Opcode::Ceil | Opcode::Floor, _))
-                ) {
-                    return Some(val);
-                } else {
-                    return None;
-                }
-            }
             Opcode::Sin => Opcode::Asin,
             Opcode::Cos => Opcode::Acos,
             Opcode::Tan => Opcode::Atan,
@@ -177,6 +142,45 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             Opcode::Asinh => Opcode::Sinh,
             Opcode::Acosh => Opcode::Cosh,
             Opcode::Atanh => Opcode::Tanh,
+
+            // idempotent operations
+            Opcode::Floor | Opcode::Ceil => {
+                if matches!(
+                    self.as_any_unary(val),
+                    Some(Opcode::IFcast | Opcode::BFcast | Opcode::Ceil | Opcode::Floor)
+                ) {
+                    return Some(val);
+                } else {
+                    return None;
+                }
+            }
+
+            // Turn these into binary op simplification
+            Opcode::Sqrt => {
+                // X = sqrt(V), V = U * U  =>  X = U
+                if let Some([lhs, rhs]) = self.as_binary(val, Opcode::Fmul) {
+                    if lhs == rhs {
+                        return Some(lhs);
+                    }
+                }
+                // X = sqrt(V), V = pow(U, 2)  =>  X = U
+                if let Some([lhs, rhs]) = self.as_binary(val, Opcode::Pow) {
+                    if rhs == F_TWO {
+                        return Some(lhs);
+                    }
+                }
+                return None;
+            }
+            Opcode::Log => {
+                // X = log(V), V = pow(10, U)  =>  X = U
+                if let Some([lhs, rhs]) = self.as_binary(val, Opcode::Pow) {
+                    if lhs == F_TEN {
+                        return Some(rhs);
+                    }
+                }
+                return None;
+            }
+
             _ => unreachable!(""),
         };
 
@@ -228,9 +232,9 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
             | Opcode::Ishr
             | Opcode::Ixor
             | Opcode::Iand
+            | Opcode::Ior
             | Opcode::Hypot
-            | Opcode::Atan2
-            | Opcode::Ior => self.fold_or_commute_consts(op, &mut lhs, &mut rhs),
+            | Opcode::Atan2 => self.fold_or_commute_consts(op, &mut lhs, &mut rhs),
             _ => unreachable!(),
         }
     }
@@ -267,11 +271,11 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
     }
 
     /// Try resolving `val` as the result of an existing unary instruction of any kind.
-    /// Return the instruction's opcode and argument if successful.
-    fn as_any_unary(&self, val: Value) -> Option<(Opcode, Value)> {
+    /// Return the instruction's opcode if successful.
+    fn as_any_unary(&self, val: Value) -> Option<Opcode> {
         if let ValueDef::Result(inst, _) = self.func.dfg.value_def(val) {
-            if let InstructionData::Unary { opcode, arg } = self.func.dfg.insts[inst] {
-                return Some((opcode, arg));
+            if let InstructionData::Unary { opcode, .. } = self.func.dfg.insts[inst] {
+                return Some(opcode);
             }
         }
         None

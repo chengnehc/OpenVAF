@@ -94,7 +94,7 @@ impl Context<'_> {
 
     // TODO(JW): make this function const generic?
     //
-    /// Optimization passes include: DCE, constant prop, simplify CFG, GVN
+    /// Optimization passes: DCE, SCCP, simplify CFG, GVN
     ///
     /// # Note
     /// - reads: output_values
@@ -103,7 +103,7 @@ impl Context<'_> {
         if stage == OptimizationStage::Initial {
             dead_code_elimination(&mut self.func, &self.output_values);
         }
-
+        // dbg!(&self.func);
         sparse_conditional_constant_propagation(&mut self.func, &self.cfg);
         inst_combine(&mut self.func);
 

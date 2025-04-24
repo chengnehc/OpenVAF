@@ -1,3 +1,7 @@
+//! Aggressive DCE that takes control flow into account.
+//!
+//! See also: Todd C. Mowry, Lecture 14: SSA-Style Optimizations, CMU
+
 use bitset::{BitSet, SparseBitMatrix};
 use mir::{Block, ControlFlowGraph, Function, Inst, InstructionData, Value, ValueDef};
 
@@ -7,21 +11,23 @@ pub fn aggressive_dead_code_elimination(
     func: &mut Function,
     cfg: &mut ControlFlowGraph,
     is_live: &dyn Fn(Value, &Function) -> bool,
-    pdom_frontiers: &PostDominanceFrontiers,
+    pdf: &PostDominanceFrontiers,
 ) {
-    let mut live_blocks = BitSet::new_empty(func.layout.num_blocks());
-    live_blocks.insert(func.layout.entry_block().unwrap());
+    let num_blocks = func.layout.num_blocks();
+
     let mut adce = AggressiveDeadCode {
-        pdom_frontiers,
         live_insts: BitSet::new_empty(func.dfg.num_insts()),
-        live_blocks,
-        live_predecessors: BitSet::new_empty(func.layout.num_blocks()),
-        live_control_flow: BitSet::new_empty(func.layout.num_blocks()),
+        live_blocks: BitSet::new_empty(num_blocks),
+        live_predecessors: BitSet::new_empty(num_blocks),
+        live_control_flow: BitSet::new_empty(num_blocks),
         inst_work_list: Vec::new(),
         bb_work_list: Vec::with_capacity(64),
         func,
         cfg,
+        pdf,
     };
+
+    adce.live_blocks.insert(func.layout.entry_block().unwrap());
 
     for inst in func.dfg.insts.iter() {
         if func.layout.inst_block(inst).is_some()
@@ -60,15 +66,18 @@ pub fn aggressive_dead_code_elimination(
 }
 
 struct AggressiveDeadCode<'a> {
+    // outputs
     live_insts: BitSet<Inst>,
     live_blocks: BitSet<Block>,
+    // states
     live_predecessors: BitSet<Block>,
     live_control_flow: BitSet<Block>,
     inst_work_list: Vec<Inst>,
     bb_work_list: Vec<Block>,
+    // reads
     func: &'a Function,
     cfg: &'a ControlFlowGraph,
-    pdom_frontiers: &'a PostDominanceFrontiers,
+    pdf: &'a PostDominanceFrontiers,
 }
 
 impl AggressiveDeadCode<'_> {
@@ -83,7 +92,7 @@ impl AggressiveDeadCode<'_> {
             }
 
             while let Some(bb) = self.bb_work_list.pop() {
-                if let Some(row) = self.pdom_frontiers.row(bb) {
+                if let Some(row) = self.pdf.row(bb) {
                     for dep in row.iter() {
                         self.mark_term_live(dep)
                     }
@@ -100,16 +109,16 @@ impl AggressiveDeadCode<'_> {
         if self.live_insts.insert(inst) {
             self.inst_work_list.push(inst);
 
+            // JW: is it always safe to unwrap here?
             let bb = self.func.layout.inst_block(inst).unwrap();
             self.mark_bb_live(bb);
 
-            if matches!(self.func.dfg.insts[inst], InstructionData::PhiNode(_)) {
-                let bb = self.func.layout.inst_block(inst).unwrap();
-                if self.live_predecessors.insert(bb) {
-                    for pred in self.cfg.pred_iter(bb) {
-                        if self.live_control_flow.insert(pred) {
-                            self.bb_work_list.push(pred)
-                        }
+            if matches!(self.func.dfg.insts[inst], InstructionData::PhiNode(_))
+                && self.live_predecessors.insert(bb)
+            {
+                for pred in self.cfg.pred_iter(bb) {
+                    if self.live_control_flow.insert(pred) {
+                        self.bb_work_list.push(pred)
                     }
                 }
             }

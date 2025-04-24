@@ -13,7 +13,7 @@ use bitset::BitSet;
 /// queue; so attempting to insert X if X is already enqueued has no effect.
 ///
 /// This implementation assumes that the elements are dense indices, so it
-// can allocate the queue to size and also use a bit set to track occupancy.
+/// can allocate the queue to size and also use a bit set to track occupancy.
 pub struct WorkQueue<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> {
     pub deque: VecDeque<T>,
     pub set: BitSet<T>,

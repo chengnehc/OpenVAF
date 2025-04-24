@@ -1,12 +1,10 @@
 use expect_test::{expect, Expect};
-//use mir::ControlFlowGraph;
 use mir_reader::parse_function;
 
 use crate::inst_combine;
 
 fn check(src: &str, data_flow_result: Expect) {
     let (mut func, _) = parse_function(src).unwrap();
-    //let cfg = ControlFlowGraph::with_function(&func);
 
     inst_combine(&mut func);
     data_flow_result.assert_eq(&func.to_debug_string());

@@ -1,3 +1,9 @@
+//! Standard DCE: skim through DFG and remove dead instructions.
+//!
+//! This optimization is local, as it does not take control flow into account.
+//!
+//! See also: Todd C. Mowry, Lecture 14: SSA-Style Optimizations, CMU
+
 use std::collections::VecDeque;
 
 use bitset::BitSet;
@@ -8,6 +14,7 @@ pub fn dead_code_elimination(func: &mut Function, output_values: &BitSet<Value>)
     let mut workq =
         WorkQueue { deque: VecDeque::new(), set: BitSet::new_filled(func.dfg.num_insts()) };
 
+    // Going from the exit to the enry block
     let mut block_cursor = func.layout.block_cursor();
     while let Some(block) = block_cursor.next_back(&func.layout) {
         let mut inst_cursor = func.layout.block_inst_cursor(block);
@@ -40,7 +47,8 @@ fn process(
             }
         }
     } else {
-        // instruction is still live and might be visited again
+        // instruction is still live and might be visited again, since it could
+        // become dead as a result of further dead code elimination process
         workque.set.remove(inst);
     }
 }

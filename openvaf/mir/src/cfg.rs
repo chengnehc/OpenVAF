@@ -43,7 +43,7 @@ pub struct CFGNode {
 
 /// Each `CFGNode` has at most two possible successor blocks.
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
-pub struct Successors(pub PackedOption<Block>, pub PackedOption<Block>);
+pub struct Successors(PackedOption<Block>, PackedOption<Block>);
 
 /// Iterators over block predecessors/successors.
 pub type PredIter<'a> = bforest::SetIter<'a, Block>;
@@ -85,6 +85,8 @@ impl Successors {
     pub fn pop(&mut self) -> Option<Block> {
         self.1.take().or_else(|| self.0.take())
     }
+    /// Insert `block` as a successor, return `true` when the successor
+    /// has changed.
     #[inline]
     pub fn insert(&mut self, block: Block) -> bool {
         let res = PackedOption::from(block);
