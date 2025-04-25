@@ -1,8 +1,8 @@
 //! Optimization passes of OpenVAF MIR
 //!
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust/tree/master/compiler/rustc_mir_transform/
+//! - https://github.com/rust-lang/rust/tree/master/compiler/rustc_mir_transform/
+//! - https://llvm.org/docs/Passes.html
 
 mod const_eval;
 mod const_prop;
@@ -15,7 +15,7 @@ mod simplify_cfg;
 mod split_tainted;
 
 pub use const_prop::sparse_conditional_constant_propagation;
-pub use dead_code::dead_code_elimination;
+pub use dead_code::standard_dead_code_elimination;
 pub use dead_code_aggressive::aggressive_dead_code_elimination;
 pub use global_value_numbering::{ClassId, GVN};
 pub use inst_combine::inst_combine;

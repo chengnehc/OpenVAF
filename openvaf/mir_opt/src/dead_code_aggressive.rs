@@ -1,9 +1,13 @@
-//! Aggressive DCE that takes control flow into account.
+//! Aggressive DCE that takes control flow into account. Basic idea:
+//! assume a statement is dead until proven otherwise.
 //!
 //! See also: Todd C. Mowry, Lecture 14: SSA-Style Optimizations, CMU
 
 use bitset::{BitSet, SparseBitMatrix};
 use mir::{Block, ControlFlowGraph, Function, Inst, InstructionData, Value, ValueDef};
+
+#[cfg(test)]
+mod tests;
 
 pub type PostDominanceFrontiers = SparseBitMatrix<Block, Block>;
 
@@ -55,7 +59,12 @@ pub fn aggressive_dead_code_elimination(
             func.layout.remove_inst(inst);
         }
     }
+
+    // JW: instructions in `dead_blocks` should also be in `dead_insts`, so they should
+    // have been removed above (except for terminators).
+    // So I suppose this is meant to make the following CFG simplification easier.
     for bb in dead_blocks.iter() {
+        // debug_assert!(func.layout.block_insts(bb).all(|inst| dead_insts.contains(inst)));
         if let Some(term) = func.layout.last_inst(bb) {
             if let InstructionData::Branch { else_dst, .. } = func.dfg.insts[term] {
                 func.dfg.insts[term] = InstructionData::Jump { destination: else_dst };
@@ -74,15 +83,17 @@ struct AggressiveDeadCode<'a> {
     live_control_flow: BitSet<Block>,
     inst_work_list: Vec<Inst>,
     bb_work_list: Vec<Block>,
-    // reads
+    // mutates
     func: &'a Function,
     cfg: &'a ControlFlowGraph,
+    // reads
     pdf: &'a PostDominanceFrontiers,
 }
 
 impl AggressiveDeadCode<'_> {
     pub fn solve(mut self) -> (BitSet<Inst>, BitSet<Block>) {
         loop {
+            // if S is live, then its operands should be live
             while let Some(inst) = self.inst_work_list.pop() {
                 for arg in self.func.dfg.instr_args(inst) {
                     if let ValueDef::Result(def, _) = self.func.dfg.value_def(*arg) {
@@ -91,9 +102,10 @@ impl AggressiveDeadCode<'_> {
                 }
             }
 
+            // if S is live, then if T determines whether S executes, T should be live
             while let Some(bb) = self.bb_work_list.pop() {
-                if let Some(row) = self.pdf.row(bb) {
-                    for dep in row.iter() {
+                if let Some(control_deps) = self.pdf.row(bb) {
+                    for dep in control_deps.iter() {
                         self.mark_term_live(dep)
                     }
                 }
@@ -135,10 +147,12 @@ impl AggressiveDeadCode<'_> {
                 self.bb_work_list.push(bb);
             }
 
+            // only deal with unconditional jmp
             if let Some(term) = self.func.layout.last_inst(bb) {
                 if matches!(self.func.dfg.insts[term], InstructionData::Jump { .. }) {
                     self.live_insts.insert(term);
-                    // no need to insert into the work list etc. for trivial jumps
+                    // no need to insert jmp into the work list etc.,
+                    // for jmp does not have any operand
                 }
             }
         }

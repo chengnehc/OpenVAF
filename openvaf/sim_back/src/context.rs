@@ -6,9 +6,9 @@ use hir_lower::{HirInterner, MirBuilder, PlaceKind};
 use lasso::Rodeo;
 use mir::{ControlFlowGraph, DominatorTree, Function, Inst, Value};
 use mir_opt::{
-    aggressive_dead_code_elimination, dead_code_elimination, inst_combine, propagate_direct_taint,
-    propagate_taint, simplify_cfg, simplify_cfg_no_phi_merge,
-    sparse_conditional_constant_propagation, GVN,
+    aggressive_dead_code_elimination, inst_combine, propagate_direct_taint, propagate_taint,
+    simplify_cfg, simplify_cfg_no_phi_merge, sparse_conditional_constant_propagation,
+    standard_dead_code_elimination, GVN,
 };
 
 use crate::ModuleInfo;
@@ -74,6 +74,11 @@ impl Context<'_> {
         self.cfg.compute(&self.func);
     }
 
+    /// Compute the set of output values according to HIR interner.
+    /// We need this information to make optbarriers and control the behavior of some optimization passes.
+    ///
+    /// # Note
+    /// This will clear and overwrite any information already stored
     pub fn compute_outputs<const CONTRIBUTES: bool>(&mut self) {
         self.output_values.clear();
         self.output_values.ensure(self.func.dfg.num_values() + 1);
@@ -92,19 +97,16 @@ impl Context<'_> {
         }
     }
 
-    // TODO(JW): make this function const generic?
+    // TODO(JW): make this function const generic over opt stage?
     //
-    /// Optimization passes: DCE, SCCP, simplify CFG, GVN
-    ///
-    /// # Note
-    /// - reads: output_values
-    /// - mutates: function, cfg, dom_tree
+    /// Optimization passes: DCE, SCCP, Inst combine, CFG simplify, GVN
     pub fn optimize(&mut self, stage: OptimizationStage) -> GVN {
         if stage == OptimizationStage::Initial {
-            dead_code_elimination(&mut self.func, &self.output_values);
+            standard_dead_code_elimination(&mut self.func, &self.output_values);
         }
-        // dbg!(&self.func);
+
         sparse_conditional_constant_propagation(&mut self.func, &self.cfg);
+
         inst_combine(&mut self.func);
 
         if stage == OptimizationStage::Final {

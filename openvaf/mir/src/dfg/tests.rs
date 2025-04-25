@@ -70,11 +70,13 @@ fn phi() {
     let v4 = dfg.fconst(4f64.into());
     let b0 = Block::from(0u32);
     let b1 = Block::from(1u32);
+
     let inst = dfg.make_inst(PhiNode { args: ValueList::new(), blocks: PhiMap::new() }.into());
     assert_eq!(
         dfg.insts[inst].unwrap_phi().edges(&dfg.insts.value_lists, &dfg.phi_forest).count(),
         0
     );
+
     dfg.insert_phi_edge(inst, b0, F_ZERO);
     dfg.insert_phi_edge(inst, b1, v3);
     assert_eq!(dfg.uses(F_ZERO).count(), 1);
@@ -102,7 +104,7 @@ fn phi() {
         dfg.insts[inst].unwrap_phi().edge_val_of(b0, &dfg.insts.value_lists, &dfg.phi_forest),
         Some(F_ZERO)
     );
-    assert!(dfg.try_remove_phi_edge_at(inst, b0).is_some());
+    assert_eq!(dfg.try_remove_phi_edge(inst, b0), Some(F_ZERO));
 
     assert_eq!(dfg.uses(F_ZERO).count(), 0);
     assert_eq!(dfg.uses(v3).count(), 0);

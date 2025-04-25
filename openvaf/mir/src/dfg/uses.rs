@@ -95,7 +95,7 @@ impl DoubleEndedIterator for UseIter<'_> {
 }
 
 impl DfgValues {
-    /// Create a new use of `val` as the `idx` argument of `inst`
+    /// Create a new use for an instruction using `val`.
     pub fn make_use(&mut self, val: Value, user: Inst, idx: u16) -> Use {
         let def = &mut self.defs[val];
         let use_ = self.uses.push_and_get_key(UseData {
@@ -132,6 +132,7 @@ impl DfgValues {
         self.defs[val].uses_head = use_.into();
     }
 
+    /// Detach a use from whatever it is now attached.
     pub fn detach_use(&mut self, use_: Use, insts: &DfgInsts) {
         let prev = mem::take(&mut self.uses[use_].prev);
         let next = mem::take(&mut self.uses[use_].next);
@@ -163,7 +164,7 @@ impl DfgValues {
 }
 
 impl DataFlowGraph {
-    /// Change all uses of `dst` to behave as if they used value `src`.
+    /// Change all uses of `dst` to behave as if they used `src`.
     /// The `dst` value can't be attached to an instruction or block then.
     ///
     /// # Note

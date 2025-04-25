@@ -1,59 +1,66 @@
+//! Simplify the CFG: performs dead code elimination and basic block merging:
+//!
+//! - Removes basic blocks with no predecessors (except for entry block)
+//! - Merges a basic block into its predecessor if there is only one and the predecessor only has one successor.
+//! - Eliminates PHI nodes for basic blocks with a single predecessor.
+//! - Eliminates a basic block that only contains an unconditional branch.
+//! - ...
+
 use std::iter::repeat;
 
 use bitset::BitSet;
-use mir::{Block, ControlFlowGraph, Function, InstructionData, /* Value,*/ ValueDef, FALSE, TRUE,};
+use mir::{Block, ControlFlowGraph, Function, InstructionData, ValueDef, FALSE, TRUE};
 
 #[cfg(test)]
 mod tests;
 
 pub fn simplify_cfg(func: &mut Function, cfg: &mut ControlFlowGraph) {
-    let mut simplify = SimplifyCfg {
-        cfg,
-        merge_phis: true,
-        vals_changed: BitSet::new_filled(func.layout.num_blocks()),
-        func,
-        local_changed: false,
-        // table: RawTable::with_capacity(8),
-        // hash_builer: ahash::RandomState::new(),
-        // unconditional_preds: Vec::with_capacity(4),
-    };
-    simplify.iteratively_simplify_cfg();
+    let mut ctx = SimplifyCtx::new(func, cfg).with_phi_merge();
+    ctx.simplify();
 }
 
 pub fn simplify_cfg_no_phi_merge(func: &mut Function, cfg: &mut ControlFlowGraph) {
-    let mut simplify = SimplifyCfg {
-        cfg,
-        merge_phis: false,
-        vals_changed: BitSet::new_filled(func.layout.num_blocks()),
-        func,
-        local_changed: false,
-        // table: RawTable::with_capacity(8),
-        // hash_builer: ahash::RandomState::new(),
-        // unconditional_preds: Vec::with_capacity(4),
-    };
-    simplify.iteratively_simplify_cfg();
+    let mut ctx = SimplifyCtx::new(func, cfg);
+    ctx.simplify();
 }
 
-struct SimplifyCfg<'a> {
-    cfg: &'a mut ControlFlowGraph,
+struct SimplifyCtx<'a> {
+    // mutates
     func: &'a mut Function,
+    cfg: &'a mut ControlFlowGraph,
+    // flag
     merge_phis: bool,
+    // states
+    /// Has the iterative simplification process converged?
     local_changed: bool,
-    // table: RawTable<Inst>,
-    // hash_builer: ahash::RandomState,
+    /// Blocks that needs to be revisited since the values within it has
+    /// been changed as the result of previous simplication
     vals_changed: BitSet<Block>,
-    // unconditional_preds: Vec<(Block, InstCursor)>,
 }
 
-impl SimplifyCfg<'_> {
-    /// Call SimplifyCFG on all the blocks in the function,
-    fn iteratively_simplify_cfg(&mut self) -> bool {
+impl<'a> SimplifyCtx<'a> {
+    fn new(func: &'a mut Function, cfg: &'a mut ControlFlowGraph) -> Self {
+        let num_blocks = func.layout.num_blocks();
+        let vals_changed = BitSet::new_filled(num_blocks);
+        SimplifyCtx { func, cfg, merge_phis: false, local_changed: false, vals_changed }
+    }
+
+    fn with_phi_merge(mut self) -> Self {
+        self.merge_phis = true;
+        self
+    }
+}
+
+impl SimplifyCtx<'_> {
+    fn simplify(&mut self) -> bool {
         let mut changed = false;
         loop {
+            // A flag to indicate whether the iterative process has converged
             self.local_changed = false;
-            let mut cursor = self.func.layout.block_cursor();
+
             // Loop over all of the basic blocks and remove them if they are unneeded.
-            // only advance after simplification to avoid visiting dead blocks
+            // Only advance *after* simplification to avoid visiting dead blocks
+            let mut cursor = self.func.layout.block_cursor();
             while let Some(bb) = cursor.head.expand() {
                 self.simplify_bb(bb);
                 cursor.next(&self.func.layout);
@@ -61,49 +68,50 @@ impl SimplifyCfg<'_> {
             if !self.local_changed {
                 break;
             }
+            // dbg!(&self.func);
+
             changed = true
         }
         changed
     }
 
     fn simplify_bb(&mut self, bb: Block) {
-        // Remove unreachable blocks, i.e. those without predecessors (except
-        // for the entry block) or just have themself as a predecessor.
+        // Try removing unreachable blocks, i.e., those without predecessors
+        // or just have themself as a predecessor (except for the entry block)
         if (self.cfg[bb].predecessors.is_empty() || self.cfg.self_loop(bb))
             && Some(bb) != self.func.layout.entry_block()
         {
-            // remove phi phi_edges
-            for succ in self.cfg.succ_iter(bb) {
-                if succ != bb {
-                    self.remove_phi_edges(succ, bb);
-                }
-            }
+            self.cfg
+                .succ_iter(bb)
+                .filter(|&succ| succ != bb) // filter out self-loop
+                .for_each(|succ| self.remove_phi_edges(succ, bb));
             // zap just to be sure
             for inst in self.func.layout.block_insts(bb) {
                 self.func.dfg.zap_inst(inst)
             }
-
-            self.func.layout.remove_and_clear_block(bb);
+            self.func.layout.clear_and_remove_block(bb);
             self.local_changed = true;
             self.cfg.recompute_block(self.func, bb);
-            return;
+            return; // nothing more to do for this block as it's already removed
         }
 
+        // Try turning conditional branch into unconditional jump instruction by
+        // constant folding the condition value
         self.const_fold_terminator(bb);
+
+        // Try simplifying trivial and duplicate phis when phi edge values have
+        // changed as a result of other simplication processes
         if self.vals_changed.remove(bb) {
             self.simplify_trivial_phis(bb);
-            self.simplify_duplicates_phis(bb);
+            self.simplify_duplicate_phis(bb);
         }
 
-        // Merge basic blocks into their predecessor when:
-        // * there is only one distinct predecessor
-        // * there is only one distinct successor of the predecessor, and
-        // * there are no PHI nodes
+        // Try merging block into its predecessor
         if self.merge_block_into_predecessor(bb) {
-            // nothing more to do for this block as it's already removed
-            return;
+            return; // nothing more to do for this block as it's already removed
         }
 
+        // Try code sinking
         // if self.sink_common_code_from_predecessors(bb) {
         //     self.local_changed = true;
         //     return;
@@ -116,6 +124,14 @@ impl SimplifyCfg<'_> {
                 }
 
                 // TODO merge common code in successor (for branch)
+            }
+        }
+    }
+
+    fn remove_phi_edges(&mut self, bb: Block, dead_pred: Block) {
+        for inst in self.func.layout.block_insts(bb) {
+            if self.func.dfg.try_remove_phi_edge(inst, dead_pred).is_none() {
+                break;
             }
         }
     }
@@ -135,7 +151,6 @@ impl SimplifyCfg<'_> {
                     TRUE => (then_dst, else_dst),
                     _ => return,
                 };
-
                 if let Some(bb) = self.func.layout.inst_block(inst) {
                     self.func.dfg.detach_operand(inst, 0);
                     self.func.dfg.insts[inst] = InstructionData::Jump { destination };
@@ -144,77 +159,77 @@ impl SimplifyCfg<'_> {
                     self.vals_changed.insert(dead_dst);
                 }
             }
-            //self.func.dfg.value_def(v)
         }
     }
 
     // TODO does this actually belong here?... Probably not..
+    //
+    /// Remove trivial phis when:
+    /// - phi only has a single edge
+    /// - all edge values are identical
+    ///
+    /// Phis could become trivial as a result of previous simplication.
     fn simplify_trivial_phis(&mut self, bb: Block) {
+        // skip entry block
         if Some(bb) == self.func.layout.entry_block() {
             return;
         }
 
         let mut cursor = self.func.layout.block_inst_cursor(bb);
         while let Some(inst) = cursor.next(&self.func.layout) {
-            if let InstructionData::PhiNode(phi) = self.func.dfg.insts[inst].clone() {
-                let mut edges = self.func.dfg.phi_edges(&phi);
-                let phi_val = self.func.dfg.first_result(inst);
-                if let Some((_, first_val)) = edges.find(|it| it.1 != phi_val) {
-                    if edges.all(|(_, val)| val == first_val || val == phi_val) {
-                        for use_ in self.func.dfg.uses(phi_val) {
-                            let inst = self.func.dfg.use_to_user(use_);
-                            if let Some(inst) = self.func.layout.inst_block(inst) {
-                                self.vals_changed.insert(inst);
-                            }
-                        }
-                        self.func.dfg.replace_uses(phi_val, first_val);
-                    } else {
-                        continue;
-                    }
-                } else {
-                    debug_assert_eq!(self.cfg.pred_iter(bb).count(), 0);
-                    continue;
-                }
+            let Some(phi) = self.func.dfg.insts[inst].as_phi() else { break };
 
-                self.local_changed = true;
-                self.func.dfg.zap_inst(inst);
-                self.func.layout.remove_inst(inst);
+            let phi_res = self.func.dfg.first_result(inst);
+            let mut edge_vals =
+                self.func.dfg.phi_edges(phi).map(|(_, val)| val).filter(|&it| it != phi_res);
+            if let Some(arg) = edge_vals.next() {
+                // edge_vals is not empty means the block is reachable
+                if edge_vals.all(|val| val == arg) {
+                    // trivial phi detected, register the blocks that contain uses of phi result
+                    for use_ in self.func.dfg.uses(phi_res) {
+                        let inst = self.func.dfg.use_to_user(use_);
+                        if let Some(block) = self.func.layout.inst_block(inst) {
+                            self.vals_changed.insert(block);
+                        }
+                    }
+                    // replace phi result with its edge value (arg) and remove phi
+                    self.func.dfg.replace_uses(phi_res, arg);
+                    self.local_changed = true;
+                    self.func.dfg.zap_inst(inst);
+                    self.func.layout.remove_inst(inst);
+                }
             } else {
-                break;
+                // block is unreachable
+                debug_assert_eq!(self.cfg.pred_iter(bb).count(), 0);
             }
         }
     }
 
-    fn simplify_duplicates_phis_naive(&mut self, bb: Block) {
-        // This is worstcase O(n_phis^2) which is faster for smaller phis
+    /// # Performance
+    /// This is worstcase O(n_phis^2), which is faster for smaller number of phis.
+    fn simplify_duplicate_phis_naive(&mut self, bb: Block) {
         let mut cursor = self.func.layout.block_inst_cursor(bb);
         while let Some(inst) = cursor.head.expand() {
-            if let InstructionData::PhiNode(phi1) = self.func.dfg.insts[inst].clone() {
-                let val = self.func.dfg.first_result(inst);
-                let mut cursor2 = cursor;
-                cursor2.next(&self.func.layout);
-                while let Some(inst2) = cursor2.next(&self.func.layout) {
-                    // cursor2.next(&self.func.layout);
-                    if let InstructionData::PhiNode(phi2) = &self.func.dfg.insts[inst2] {
-                        if self.func.dfg.phi_eq(&phi1, phi2) {
-                            let duplicate_val = self.func.dfg.first_result(inst2);
-                            for use_ in self.func.dfg.uses(duplicate_val) {
-                                let inst = self.func.dfg.use_to_user(use_);
-                                if let Some(inst) = self.func.layout.inst_block(inst) {
-                                    self.vals_changed.insert(inst);
-                                }
-                            }
-                            self.func.dfg.zap_inst(inst2);
-                            self.func.dfg.replace_uses(duplicate_val, val);
-                            self.func.layout.remove_inst(inst2);
-                            self.local_changed = true;
+            let Some(phi1) = &self.func.dfg.insts[inst].as_phi().cloned() else { break };
+            let val = self.func.dfg.first_result(inst);
+
+            let mut cursor2 = cursor;
+            cursor2.next(&self.func.layout);
+            while let Some(inst2) = cursor2.next(&self.func.layout) {
+                let Some(phi2) = &self.func.dfg.insts[inst2].as_phi().cloned() else { break };
+                if self.func.dfg.phi_eq(phi1, phi2) {
+                    let duplicate_val = self.func.dfg.first_result(inst2);
+                    for use_ in self.func.dfg.uses(duplicate_val) {
+                        let inst = self.func.dfg.use_to_user(use_);
+                        if let Some(block) = self.func.layout.inst_block(inst) {
+                            self.vals_changed.insert(block);
                         }
-                    } else {
-                        break;
                     }
+                    self.func.dfg.zap_inst(inst2);
+                    self.func.dfg.replace_uses(duplicate_val, val);
+                    self.func.layout.remove_inst(inst2);
+                    self.local_changed = true;
                 }
-            } else {
-                break;
             }
 
             cursor.next(&self.func.layout);
@@ -263,7 +278,7 @@ impl SimplifyCfg<'_> {
     //     self.table.clear_no_drop();
     // }
 
-    fn simplify_duplicates_phis(&mut self, bb: Block) {
+    fn simplify_duplicate_phis(&mut self, bb: Block) {
         // // TODO benchmark: is this worth it? Is 32 the right number
         // if self
         //     .func
@@ -273,21 +288,21 @@ impl SimplifyCfg<'_> {
         //     .filter(|(_, inst)| matches!(self.func.dfg.insts[*inst], InstructionData::PhiNode(..)))
         //     .all(|(i, _)| i < 32)
         // {
-        self.simplify_duplicates_phis_naive(bb)
+        self.simplify_duplicate_phis_naive(bb)
         // } else {
         // self.simplify_duplicates_phis_large(bb)
         // }
     }
 
-    /// Merge basic blocks into their predecessor when:
-    /// * there is only one distinct predecessor
-    /// * there is only one distinct successor of the predecessor, and
-    /// * there are no PHI nodes
+    /// Merge a basic block into its predecessor when:
+    /// * it only has one distinct predecessor, and
+    /// * its predecessor only has one distinct successor, and
+    /// * it has no PHI nodes
     fn merge_block_into_predecessor(&mut self, bb: Block) -> bool {
         let Some(pred) = self.cfg.single_predecessor_of(bb) else { return false };
 
         if self.cfg.self_loop(bb)
-            || self.cfg.unique_successor_of(pred).is_none()
+            || self.cfg.single_successor_of(pred).is_none()
             || self
                 .func
                 .layout
@@ -310,29 +325,26 @@ impl SimplifyCfg<'_> {
 
         // update phis in successors
         for succ in self.cfg.succ_iter(bb) {
-            self.vals_changed.insert(succ);
             self.func.update_phi_edges(succ, bb, pred);
+            self.vals_changed.insert(succ);
         }
 
+        // merge bb into pred and remove it from layout
         self.func.layout.merge_blocks(pred, bb);
         self.local_changed = true;
 
-        // update sucessors/predecessors
+        // update successors/predecessors
         self.cfg.recompute_block(self.func, pred);
         self.cfg.recompute_block(self.func, bb);
 
         true
     }
 
-    fn remove_phi_edges(&mut self, bb: Block, dead_pred: Block) {
-        for inst in self.func.layout.block_insts(bb) {
-            if self.func.dfg.try_remove_phi_edge_at(inst, dead_pred).is_none() {
-                break;
-            }
-        }
-    }
-
+    // Code sinking: moves instructions into successor blocks, when possible, so that
+    // they aren’t executed on paths where their results aren’t needed.
+    //
     // TODO porperly implement this... its a bit tricky and not high prio right now
+    //
     //    fn sink_common_code_from_predecessors(&mut self, bb: Block) -> bool {
     //        // We support two situations:
     //        //   (1) all incoming arcs are unconditional
@@ -471,26 +483,30 @@ impl SimplifyCfg<'_> {
     //        res
     //    }
 
-    /// If a block only contains phis and an unconditional jump,
-    /// the used phis can be merged with their
+    /// If a block only contains phis and an unconditional jump, the used phis can
+    /// be merged with their successor.
+    ///
+    /// After simplification, the block is removed.
     fn simplify_unconditional_jmp_term(&mut self, src: Block, dst: Block) {
-        if self.cfg.single_predecessor_of(dst).is_some() {
-            // trivial case let `merge_block_into_predecessor` handle this
+        // TODO(JW) should we skip entry block here?
+        if Some(src) == self.func.layout.entry_block() {
             return;
         }
+        if self.cfg.single_predecessor_of(dst).is_some() {
+            return; // trivial case let `merge_block_into_predecessor` handle this
+        }
 
-        // check that the block only contains phi and a terminator
-        let mut insts = self.func.layout.block_insts(src);
-        insts.next_back();
-        for inst in insts.clone() {
+        // check that the block only contains phis and a terminator
+        let mut src_insts = self.func.layout.block_insts(src);
+        src_insts.next_back();
+        for inst in src_insts.clone() {
             if !matches!(self.func.dfg.insts[inst], InstructionData::PhiNode(_)) {
                 return;
             }
-
+            // check that all uses are phi nodes, otherwise we produce invalid code
+            // in loops where we dominate a block with multiple predecessor
             for use_ in self.func.dfg.inst_uses(inst) {
                 let inst = self.func.dfg.use_to_user(use_);
-                // check that all uses are phi nodes (otherwise we produce invalid code in loops
-                // where we dominate a block with multiple predecessor
                 if self.func.layout.inst_block(inst).is_none() {
                     unreachable!("found use in detached inst {}", self.func.dfg.display_inst(inst));
                 }
@@ -504,105 +520,94 @@ impl SimplifyCfg<'_> {
 
         // check that the successors phis can be merged
         for inst in self.func.layout.block_insts(dst) {
-            if let InstructionData::PhiNode(phi) = self.func.dfg.insts[inst].clone() {
-                // prepare for update
-                let val = self.func.dfg.phi_edge_val(&phi, src).unwrap();
+            let Some(phi) = self.func.dfg.insts[inst].as_phi() else { break };
+            // prepare for update
+            let val = self.func.dfg.phi_edge_val(phi, src).unwrap();
 
-                if let ValueDef::Result(src_inst, _) = self.func.dfg.value_def(val) {
-                    if let InstructionData::PhiNode(src_phi) = self.func.dfg.insts[src_inst].clone()
-                    {
-                        if self.func.layout.inst_block(src_inst) == Some(src) {
-                            // the value depends on the predecessor (its a phi)
-
-                            let can_merge = self.func.dfg.phi_edges(&src_phi).all(|(bb, val)| {
-                                self.func.dfg.phi_edge_val(&phi, bb).is_none_or(|it| it == val)
-                            });
-                            if can_merge {
-                                continue;
-                            } else {
-                                return;
-                            }
+            if let ValueDef::Result(src_inst, _) = self.func.dfg.value_def(val) {
+                if let Some(src_phi) = self.func.dfg.insts[src_inst].as_phi() {
+                    if self.func.layout.inst_block(src_inst) == Some(src) {
+                        // the value depends on the predecessor (it's a phi)
+                        let can_merge = self.func.dfg.phi_edges(src_phi).all(|(bb, val)| {
+                            self.func.dfg.phi_edge_val(phi, bb).is_none_or(|it| it == val)
+                        });
+                        if can_merge {
+                            continue;
+                        } else {
+                            return;
                         }
                     }
                 }
+            }
 
-                // value is the same for all predecessors
-                let can_merge = self
-                    .cfg
-                    .pred_iter(src)
-                    .all(|bb| self.func.dfg.phi_edge_val(&phi, bb).is_none_or(|it| it == val));
+            // value is the same for all predecessors
+            let can_merge = self
+                .cfg
+                .pred_iter(src)
+                .all(|bb| self.func.dfg.phi_edge_val(phi, bb).is_none_or(|it| it == val));
 
-                if !can_merge {
-                    return;
-                }
-            } else {
-                break;
+            if !can_merge {
+                return;
             }
         }
 
         // actually merge the phis
-        for inst in self.func.layout.block_insts(dst) {
-            if let InstructionData::PhiNode(mut phi) = self.func.dfg.insts[inst].clone() {
-                // prepare for update
-                self.func.dfg.zap_inst(inst);
-                let (old_val, _) = self.func.dfg.try_remove_phi_edge(&mut phi, inst, src).unwrap();
+        for dst_inst in self.func.layout.block_insts(dst) {
+            let Some(mut dst_phi) = self.func.dfg.insts[dst_inst].as_phi().cloned() else { break };
+            // prepare for update
+            self.func.dfg.zap_inst(dst_inst);
+            let old_val = self.func.dfg.try_remove_phi_edge(dst_inst, src).unwrap();
 
-                if let ValueDef::Result(src_inst, _) = self.func.dfg.value_def(old_val) {
-                    if let InstructionData::PhiNode(src_phi) = self.func.dfg.insts[src_inst].clone()
-                    {
-                        if self.func.layout.inst_block(src_inst) == Some(src) {
-                            // merge phis...
-
-                            phi.blocks.merge(
-                                src_phi.blocks,
-                                &mut self.func.dfg.phi_forest,
-                                &(),
-                                |old, new| {
-                                    old.unwrap_or_else(|| {
-                                        let val =
-                                            src_phi.args.as_slice(&self.func.dfg.insts.value_lists)
-                                                [new as usize];
-                                        phi.args.push(val, &mut self.func.dfg.insts.value_lists)
-                                            as u32
-                                    })
-                                },
-                            );
-
-                            self.func.dfg.insts[inst] = phi.into();
-                            self.func.dfg.update_inst_uses(inst);
-                            continue;
-                        }
+            if let ValueDef::Result(src_inst, _) = self.func.dfg.value_def(old_val) {
+                if let Some(src_phi) = self.func.dfg.insts[src_inst].as_phi().cloned() {
+                    if self.func.layout.inst_block(src_inst) == Some(src) {
+                        // merge phis...
+                        dst_phi.blocks.merge(
+                            src_phi.blocks,
+                            &mut self.func.dfg.phi_forest,
+                            &(),
+                            |old, new| {
+                                old.unwrap_or_else(|| {
+                                    let val =
+                                        src_phi.args.as_slice(&self.func.dfg.insts.value_lists)
+                                            [new as usize];
+                                    dst_phi.args.push(val, &mut self.func.dfg.insts.value_lists)
+                                        as u32
+                                })
+                            },
+                        );
+                        self.func.dfg.insts[dst_inst] = dst_phi.into();
+                        self.func.dfg.update_inst_uses(dst_inst);
+                        continue;
                     }
                 }
-
-                phi.blocks.insert_sorted_iter(
-                    self.cfg.pred_iter(src).zip(repeat(())),
-                    &mut self.func.dfg.phi_forest,
-                    &(),
-                    |old, _| {
-                        old.unwrap_or_else(|| {
-                            phi.args.push(old_val, &mut self.func.dfg.insts.value_lists) as u32
-                        })
-                    },
-                );
-
-                self.func.dfg.insts[inst] = phi.into();
-                self.func.dfg.update_inst_uses(inst);
-            } else {
-                break;
             }
+
+            dst_phi.blocks.insert_sorted_iter(
+                self.cfg.pred_iter(src).zip(repeat(())),
+                &mut self.func.dfg.phi_forest,
+                &(),
+                |old, _| {
+                    old.unwrap_or_else(|| {
+                        dst_phi.args.push(old_val, &mut self.func.dfg.insts.value_lists) as u32
+                    })
+                },
+            );
+
+            self.func.dfg.insts[dst_inst] = dst_phi.into();
+            self.func.dfg.update_inst_uses(dst_inst);
         }
 
         // zap phis in old block
-        for inst in insts {
+        for inst in src_insts {
             self.func.dfg.zap_inst(inst)
         }
 
         for pred in self.cfg.pred_iter(src) {
             let term = self.func.layout.last_inst(pred).unwrap();
             match &mut self.func.dfg.insts[term] {
-                InstructionData::Branch { then_dst: ref mut destination, .. }
-                | InstructionData::Branch { else_dst: ref mut destination, .. }
+                InstructionData::Branch { then_dst: destination, .. }
+                | InstructionData::Branch { else_dst: destination, .. }
                     if *destination == src =>
                 {
                     *destination = dst;
@@ -618,7 +623,7 @@ impl SimplifyCfg<'_> {
         self.vals_changed.insert(dst);
 
         self.cfg.replace(src, dst);
-        self.func.layout.remove_and_clear_block(src);
+        self.func.layout.clear_and_remove_block(src);
 
         // self.cfg.recompute_block(self.func, src);
         self.local_changed = true;
