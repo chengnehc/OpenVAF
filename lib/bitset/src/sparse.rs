@@ -11,7 +11,7 @@ pub(super) const SPARSE_MAX: usize = 8;
 /// `SPARSE_MAX` elements. The elements are stored as a sorted `ArrayVec` with
 /// no duplicates.
 ///
-/// This type is used by `HybridBitSet`; do not use directly.
+/// This type is used by `HybridBitSet`; DO NOT use directly.
 #[derive(PartialEq, Eq)]
 pub struct SparseBitSet<T> {
     pub(super) elems: ArrayVec<T, SPARSE_MAX>,
@@ -64,19 +64,6 @@ where
     }
 }
 
-impl<T> UnionIntoBitSet<T> for SparseBitSet<T>
-where
-    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
-{
-    fn union_into(&self, other: &mut BitSet<T>) -> bool {
-        let mut changed = false;
-        for elem in self.iter() {
-            changed |= other.insert(*elem);
-        }
-        changed
-    }
-}
-
 impl<T> SparseBitSet<T>
 where
     T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
@@ -98,12 +85,7 @@ where
         };
         changed
     }
-}
 
-impl<T> SparseBitSet<T>
-where
-    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
-{
     pub fn remove(&mut self, elem: T) -> bool {
         if let Some(i) = self.elems.iter().position(|&e| e == elem) {
             self.elems.remove(i);
@@ -115,6 +97,19 @@ where
 
     pub fn contains(&self, elem: T) -> bool {
         self.elems.contains(&elem)
+    }
+}
+
+impl<T> UnionIntoBitSet<T> for SparseBitSet<T>
+where
+    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
+{
+    fn union_into(&self, other: &mut BitSet<T>) -> bool {
+        let mut changed = false;
+        for elem in self.iter() {
+            changed |= other.insert(*elem);
+        }
+        changed
     }
 }
 

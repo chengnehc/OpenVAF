@@ -345,7 +345,7 @@ impl DominatorTree {
         cfg: &ControlFlowGraph,
         dst: &mut SparseBitMatrix<Block, Block>,
     ) {
-        dst.clear(self.nodes.len(), self.nodes.len());
+        dst.clear_square(self.nodes.len());
         for bb in self.nodes.keys() {
             let mut predecessors = cfg.pred_iter(bb);
             // make sure the number of predecessors is at least 2
@@ -365,7 +365,7 @@ impl DominatorTree {
         cfg: &ControlFlowGraph,
         dst: &mut SparseBitMatrix<Block, Block>,
     ) {
-        dst.clear(self.reverse_nodes.len(), self.reverse_nodes.len());
+        dst.clear_square(self.reverse_nodes.len());
         for bb in self.reverse_nodes.keys() {
             if let Some((bb1, bb2)) = cfg.successors_of(bb).as_pair() {
                 Self::propagate_dom_frontiers(&self.reverse_nodes, bb1, bb, dst);

@@ -28,7 +28,10 @@ pub enum HybridBitSet<T> {
     Dense(BitSet<T>),
 }
 
-impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> Clone for HybridBitSet<T> {
+impl<T> Clone for HybridBitSet<T>
+where
+    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
+{
     fn clone(&self) -> Self {
         match self {
             Self::Sparse(arg0) => Self::Sparse(arg0.clone()),
@@ -51,16 +54,13 @@ impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> Clone for HybridBi
     }
 }
 
-impl<T> Default for HybridBitSet<T>
-where
-    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
-{
+impl<T> Default for HybridBitSet<T> {
     fn default() -> Self {
         Self::new_empty()
     }
 }
 
-impl<T> fmt::Debug for HybridBitSet<T>
+impl<T> Debug for HybridBitSet<T>
 where
     T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
 {
@@ -80,7 +80,7 @@ impl<T> HybridBitSet<T> {
 
 impl<T> HybridBitSet<T>
 where
-    T: From<usize> + Into<usize> + Copy + PartialEq + Debug + PartialEq + Copy,
+    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
 {
     // pub fn domain_size(&self) -> usize {
     //     match self {

@@ -5,7 +5,6 @@
 use std::fmt::{self, Debug};
 use std::iter::{self, zip};
 use std::marker::PhantomData;
-use std::mem;
 use stdx::vec::{SliceExtensions, VecExtensions};
 
 use crate::{
@@ -28,11 +27,7 @@ pub struct BitMatrix<R: From<usize>, C: Into<usize>> {
     marker: PhantomData<(R, C)>,
 }
 
-impl<
-        R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-        C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-    > Clone for BitMatrix<R, C>
-{
+impl<R: From<usize>, C: Into<usize>> Clone for BitMatrix<R, C> {
     fn clone_from(&mut self, source: &Self) {
         self.num_rows = source.num_rows;
         self.num_columns = source.num_columns;
@@ -49,10 +44,10 @@ impl<
     }
 }
 
-impl<
-        R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-        C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-    > BitMatrix<R, C>
+impl<R, C> BitMatrix<R, C>
+where
+    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
 {
     /// Creates a new `rows x columns` matrix, initially empty.
     pub fn new(num_rows: usize, num_columns: usize) -> BitMatrix<R, C> {
@@ -226,8 +221,8 @@ impl<
 
 impl<R, C> fmt::Debug for BitMatrix<R, C>
 where
-    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug + Debug,
-    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug + Debug,
+    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         /// Forces its contents to print in regular mode instead of alternate mode.
@@ -258,8 +253,8 @@ where
 #[derive(PartialEq, Eq)]
 pub struct SparseBitMatrix<R, C>
 where
-    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+    R: From<usize> + Into<usize>,
+    C: From<usize> + Into<usize>,
 {
     num_columns: usize,
     num_rows: usize,
@@ -269,8 +264,8 @@ where
 
 impl<R, C> Default for SparseBitMatrix<R, C>
 where
-    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+    R: From<usize> + Into<usize>,
+    C: From<usize> + Into<usize>,
 {
     fn default() -> Self {
         Self {
@@ -305,7 +300,7 @@ where
 
 impl<R, C> Debug for SparseBitMatrix<R, C>
 where
-    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug + Debug,
+    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
     C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -331,6 +326,12 @@ where
     pub fn new_square(n: usize) -> Self {
         Self { num_columns: n, num_rows: n, rows: Vec::new(), _row_ty: PhantomData }
     }
+
+    pub fn clear_square(&mut self, n: usize) {
+        self.num_rows = n;
+        self.num_columns = n;
+        self.rows.clear();
+    }
 }
 
 impl<R, C> SparseBitMatrix<R, C>
@@ -344,7 +345,7 @@ where
     }
 
     pub fn clear(&mut self, num_rows: usize, num_columns: usize) {
-        self.num_columns = num_rows;
+        self.num_rows = num_rows;
         self.num_columns = num_columns;
         self.rows.clear();
     }
@@ -357,6 +358,84 @@ where
             }
         }
         res
+    }
+
+    #[inline]
+    pub fn num_rows(&self) -> usize {
+        self.num_rows
+    }
+
+    #[inline]
+    pub fn num_columns(&self) -> usize {
+        self.num_columns
+    }
+
+    pub fn row(&self, row: R) -> Option<&HybridBitSet<C>> {
+        self.rows.get(row.into())
+    }
+
+    pub fn row_mut(&mut self, row: R) -> Option<&mut HybridBitSet<C>> {
+        self.rows.get_mut(row.into())
+    }
+
+    pub fn rows(&self) -> impl Iterator<Item = R> {
+        (0..self.rows.len()).map(R::from)
+    }
+
+    pub fn row_items(&self) -> impl Iterator<Item = (R, &HybridBitSet<C>)> {
+        self.rows.iter().enumerate().map(|(i, row)| (i.into(), row))
+    }
+
+    pub fn row_items_mut(&mut self) -> impl Iterator<Item = (R, &mut HybridBitSet<C>)> {
+        self.rows.iter_mut().enumerate().map(|(i, row)| (i.into(), row))
+    }
+
+    /// Iterates through all the columns set to true in a given row of
+    /// the matrix.
+    #[inline]
+    pub fn iter(&self, row: R) -> impl Iterator<Item = C> + '_ {
+        self.row(row).into_iter().flat_map(HybridBitSet::iter)
+    }
+
+    /// Do the bits from `row` contain `column`? Put another way, is
+    /// the matrix cell at `(row, column)` true?  Put yet another way,
+    /// if the matrix represents (transitive) reachability, can
+    /// `row` reach `column`?
+    #[inline]
+    pub fn contains(&self, row: R, column: C) -> bool {
+        self.row(row).is_some_and(|r| r.contains(column))
+    }
+
+    // pub fn take_row(&mut self, row: R) -> Option<HybridBitSet<C>> {
+    //     self.rows.get_mut(row.into()).map(mem::take)
+    // }
+}
+
+impl<R, C> SparseBitMatrix<R, C>
+where
+    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
+{
+    /// Sets the cell at `(row, column)` to true. Put another way, insert
+    /// `column` to the bitset for `row`.
+    ///
+    /// Returns `true` if this changed the matrix.
+    pub fn insert(&mut self, row: R, column: C) -> bool {
+        let ncol = self.num_columns;
+        self.ensure_row(row).insert(column, ncol)
+    }
+
+    /// Insert all bits in the given row.
+    pub fn insert_all_into_row(&mut self, row: R) {
+        let ncol = self.num_columns;
+        self.ensure_row(row).insert_all(ncol);
+    }
+
+    #[inline]
+    pub fn ensure_row(&mut self, row: R) -> &mut HybridBitSet<C> {
+        // Instantiate any missing rows up to and including row `row` with an empty HybridBitSet.
+        self.rows.ensure_contains_elem(row.into(), HybridBitSet::new_empty);
+        &mut self.rows[row.into()]
     }
 
     pub fn ensure_columns(&mut self, num_columns: usize) {
@@ -378,41 +457,6 @@ where
         self.rows.truncate(other.rows.len())
     }
 
-    #[inline]
-    pub fn ensure_row(&mut self, row: R) -> &mut HybridBitSet<C> {
-        // Instantiate any missing rows up to and including row `row` with an empty HybridBitSet.
-        self.rows.ensure_contains_elem(row.into(), HybridBitSet::new_empty);
-        &mut self.rows[row.into()]
-    }
-
-    /// Sets the cell at `(row, column)` to true. Put another way, insert
-    /// `column` to the bitset for `row`.
-    ///
-    /// Returns `true` if this changed the matrix.
-    pub fn insert(&mut self, row: R, column: C) -> bool {
-        let num_columns = self.num_columns;
-        self.ensure_row(row).insert(column, num_columns)
-    }
-
-    #[inline]
-    pub fn num_columns(&self) -> usize {
-        self.num_columns
-    }
-
-    #[inline]
-    pub fn num_rows(&self) -> usize {
-        self.num_rows
-    }
-
-    /// Do the bits from `row` contain `column`? Put another way, is
-    /// the matrix cell at `(row, column)` true?  Put yet another way,
-    /// if the matrix represents (transitive) reachability, can
-    /// `row` reach `column`?
-    #[inline]
-    pub fn contains(&self, row: R, column: C) -> bool {
-        self.row(row).is_some_and(|r| r.contains(column))
-    }
-
     /// Union a row, `from`, into the `into` row.
     #[inline]
     pub fn union_into_row(&mut self, into: R, from: &impl UnionIntoHybridBitSet<C>) -> bool {
@@ -420,49 +464,6 @@ where
         self.ensure_row(into).union(from, col)
     }
 
-    /// Insert all bits in the given row.
-    pub fn insert_all_into_row(&mut self, row: R) {
-        let col = self.num_columns;
-        self.ensure_row(row).insert_all(col);
-    }
-
-    pub fn row_data_mut(&mut self) -> impl Iterator<Item = (R, &mut HybridBitSet<C>)> {
-        self.rows.iter_mut().enumerate().map(|(i, row)| (i.into(), row))
-    }
-
-    pub fn rows(&self) -> impl Iterator<Item = R> {
-        (0..self.rows.len()).map(R::from)
-    }
-
-    pub fn row_data(&self) -> impl Iterator<Item = (R, &HybridBitSet<C>)> {
-        self.rows.iter().enumerate().map(|(i, row)| (i.into(), row))
-    }
-
-    /// Iterates through all the columns set to true in a given row of
-    /// the matrix.
-    #[inline]
-    pub fn iter(&self, row: R) -> impl Iterator<Item = C> + '_ {
-        self.row(row).into_iter().flat_map(HybridBitSet::iter)
-    }
-
-    pub fn row(&self, row: R) -> Option<&HybridBitSet<C>> {
-        self.rows.get(row.into())
-    }
-
-    pub fn row_mut(&mut self, row: R) -> Option<&mut HybridBitSet<C>> {
-        self.rows.get_mut(row.into())
-    }
-
-    pub fn take_row(&mut self, row: R) -> Option<HybridBitSet<C>> {
-        self.rows.get_mut(row.into()).map(mem::take)
-    }
-}
-
-impl<R, C> SparseBitMatrix<R, C>
-where
-    R: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug + PartialEq,
-    C: From<usize> + Into<usize> + Copy + PartialOrd + PartialEq + Debug,
-{
     /// Adds the bits from row `read` to the bits from row `write`, and
     /// returns `true` if anything changed.
     ///
@@ -474,7 +475,6 @@ where
         if read == write || self.row(read).is_none() {
             return false;
         }
-
         self.ensure_row(write);
         let (read_row, write_row) = self.rows.pick2_mut(read.into(), write.into());
         write_row.union(read_row, self.num_columns)

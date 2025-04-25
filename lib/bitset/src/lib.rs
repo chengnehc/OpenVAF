@@ -9,9 +9,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::{mem, slice};
 
-pub mod matrix;
-
 mod hybrid;
+mod matrix;
 mod sparse;
 #[cfg(test)]
 mod tests;
@@ -376,9 +375,9 @@ impl<T> Clone for BitSet<T> {
     }
 }
 
-impl<T> fmt::Debug for BitSet<T>
+impl<T> Debug for BitSet<T>
 where
-    T: From<usize> + Into<usize> + Copy + PartialEq + Debug + Debug,
+    T: From<usize> + Into<usize> + Copy + PartialEq + Debug,
 {
     fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
         w.debug_list().entries(self.iter()).finish()

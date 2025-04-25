@@ -22,6 +22,7 @@ fn bitset_iter_works() {
     bitset.insert(65);
     bitset.insert(66);
     bitset.insert(99);
+    println!("{}", &bitset);
     assert_eq!(bitset.iter().collect::<Vec<_>>(), [1, 10, 19, 62, 63, 64, 65, 66, 99]);
 }
 
@@ -232,8 +233,17 @@ fn matrix_iter() {
     assert_eq!(count, 100);
 
     if let Some(i) = matrix.iter(7).next() {
-        panic!("expected no elements in row, but contains element {:?}", i);
+        panic!("expected no elements in row, but contains element {i:?}");
     }
+}
+
+fn check(items: impl Iterator<Item = usize>, expected: &[usize]) {
+    let mut iter = expected.iter();
+    for i in items {
+        let j = *iter.next().unwrap();
+        assert_eq!(i, j);
+    }
+    assert!(iter.next().is_none());
 }
 
 #[test]
@@ -245,35 +255,13 @@ fn sparse_matrix_iter() {
     matrix.insert(4, 0);
     matrix.union_rows(3, 5);
 
-    let expected = [99];
-    let mut iter = expected.iter();
-    for i in matrix.iter(2) {
-        let j = *iter.next().unwrap();
-        assert_eq!(i, j);
-    }
-    assert!(iter.next().is_none());
+    dbg!(&matrix, std::mem::size_of_val(&matrix));
 
-    let expected = [22, 75];
-    let mut iter = expected.iter();
-    for i in matrix.iter(3) {
-        let j = *iter.next().unwrap();
-        assert_eq!(i, j);
-    }
-    assert!(iter.next().is_none());
+    assert!(matrix.contains(2, 99));
+    assert!(!matrix.contains(4, 15));
 
-    let expected = [0];
-    let mut iter = expected.iter();
-    for i in matrix.iter(4) {
-        let j = *iter.next().unwrap();
-        assert_eq!(i, j);
-    }
-    assert!(iter.next().is_none());
-
-    let expected = [22, 75];
-    let mut iter = expected.iter();
-    for i in matrix.iter(5) {
-        let j = *iter.next().unwrap();
-        assert_eq!(i, j);
-    }
-    assert!(iter.next().is_none());
+    check(matrix.iter(2), &[99]);
+    check(matrix.iter(3), &[22, 75]);
+    check(matrix.iter(4), &[0]);
+    check(matrix.iter(5), &[22, 75]);
 }
