@@ -162,7 +162,7 @@ impl DominatorTree {
     /// traversal and post-dominator tree.
     ///
     /// This operation will clear and reset the internal data structures.
-    pub fn compute<const DOM: bool, const PDOM: bool>(
+    fn compute<const DOM: bool, const PDOM: bool>(
         &mut self,
         func: &Function,
         cfg: &ControlFlowGraph,
@@ -334,7 +334,10 @@ impl DominatorTree {
 
         idom
     }
+}
 
+/// Compute (post-)dominator frontiers
+impl DominatorTree {
     /// Compute the dominance frontiers of each block in the CFG, using Keith D. Cooper's
     /// "Simple, Fast Dominator Algorithm."
     ///

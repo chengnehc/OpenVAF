@@ -56,8 +56,7 @@ fn check_num(src: &str, data_flow_result: Expect, args: &[f64], num: f64) {
 
     let unknowns = KnownDerivatives { unknowns, ddx_calls };
 
-    let mut dom_tree = DominatorTree::default();
-    dom_tree.compute::<true, false>(&func, &cfg);
+    let dom_tree = DominatorTree::with_func_and_cfg::<true, false>(&func, &cfg);
 
     auto_diff(&mut func, &dom_tree, &unknowns, &[]);
 

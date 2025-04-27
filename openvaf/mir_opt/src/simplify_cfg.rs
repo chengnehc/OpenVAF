@@ -68,7 +68,6 @@ impl SimplifyCtx<'_> {
             if !self.local_changed {
                 break;
             }
-            // dbg!(&self.func);
 
             changed = true
         }

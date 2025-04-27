@@ -23,8 +23,8 @@ pub enum ParamInfoKind {
 
 #[derive(Clone, Copy, Debug)]
 struct CmpOps {
-    lt: Option<Opcode>,
-    le: Option<Opcode>,
+    lt: Option<Opcode>, // strict less than
+    le: Option<Opcode>, // less than or equal
     eq: Opcode,
 }
 
@@ -70,7 +70,7 @@ impl HirInterner {
 
         let mut func_ctxt = FunctionBuilderContext::default();
         let (builder, term) = FunctionBuilder::edit(func, literals, &mut func_ctxt, false);
-        let mut ctxt = MainLowerContext::new(db, builder, true, self);
+        let mut ctxt = MainLowerContext::new(db, builder, self);
 
         for (i, param) in params.iter().copied().enumerate() {
             let mut param_val = ctxt.use_param(ParamKind::Param(param));

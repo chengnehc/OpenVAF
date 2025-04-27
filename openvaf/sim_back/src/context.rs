@@ -6,12 +6,12 @@ use hir_lower::{HirInterner, MirBuilder, PlaceKind};
 use lasso::Rodeo;
 use mir::{ControlFlowGraph, DominatorTree, Function, Inst, Value};
 use mir_opt::{
-    aggressive_dead_code_elimination, inst_combine, propagate_direct_taint, propagate_taint,
-    simplify_cfg, simplify_cfg_no_phi_merge, sparse_conditional_constant_propagation,
-    standard_dead_code_elimination, GVN,
+    aggressive_dead_code_elimination, global_value_numbering, inst_combine, propagate_direct_taint,
+    propagate_taint, simplify_cfg, simplify_cfg_no_phi_merge,
+    sparse_conditional_constant_propagation, standard_dead_code_elimination, GVN,
 };
 
-use crate::ModuleInfo;
+use crate::module_info::ModuleInfo;
 
 pub(crate) struct Context<'a> {
     pub(crate) db: &'a CompilationDB,
@@ -36,12 +36,18 @@ impl<'a> Context<'a> {
             _ => false,
         };
 
-        // for simulator backend, we need to lower equations and tag the writes for function splitting.
+        // for simulator backend, we need to lower equations and tag the writes
+        // in order to support function splitting and parameter caching.
         let (mut func, mut intern) =
             MirBuilder::new(db, module.module, &is_output, &mut module.op_vars.keys().copied())
                 .with_equations()
                 .with_write_tags()
                 .build(literals);
+
+        // std::fs::write(format!("/tmp/{}.mir-raw", module.module.name(db)), func.to_debug_string())
+        //   .unwrap();
+        //
+        // dbg!(&intern.params);
 
         intern.insert_var_init(db, &mut func, literals); // TODO hidden state
 
@@ -79,10 +85,10 @@ impl Context<'_> {
     ///
     /// # Note
     /// This will clear and overwrite any information already stored
-    pub fn compute_outputs<const CONTRIBUTES: bool>(&mut self) {
+    pub fn compute_outputs<const WITH_CONTRIB: bool>(&mut self) {
         self.output_values.clear();
         self.output_values.ensure(self.func.dfg.num_values() + 1);
-        if CONTRIBUTES {
+        if WITH_CONTRIB {
             self.output_values
                 .extend(self.intern.outputs.values().copied().filter_map(PackedOption::expand));
         } else {
@@ -97,41 +103,39 @@ impl Context<'_> {
         }
     }
 
-    // TODO(JW): make this function const generic over opt stage?
-    //
-    /// Optimization passes: DCE, SCCP, Inst combine, CFG simplify, GVN
+    /// Run pre-defined optimization passes at different compile stages.
     pub fn optimize(&mut self, stage: OptimizationStage) -> GVN {
+        let Self { func, cfg, .. } = self;
+
         if stage == OptimizationStage::Initial {
-            standard_dead_code_elimination(&mut self.func, &self.output_values);
+            standard_dead_code_elimination(func, &self.output_values);
         }
 
-        sparse_conditional_constant_propagation(&mut self.func, &self.cfg);
+        sparse_conditional_constant_propagation(func, cfg);
 
-        inst_combine(&mut self.func);
+        inst_combine(func);
 
         if stage == OptimizationStage::Final {
-            simplify_cfg(&mut self.func, &mut self.cfg);
+            simplify_cfg(func, cfg);
         } else {
-            simplify_cfg_no_phi_merge(&mut self.func, &mut self.cfg);
+            simplify_cfg_no_phi_merge(func, cfg);
         }
 
-        self.dom_tree.compute::<true, true>(&self.func, &self.cfg);
-
-        let mut gvn = GVN::default();
-        gvn.init(&self.func, &self.dom_tree, self.intern.params.len() as u32);
-        gvn.solve(&mut self.func);
-        gvn.remove_unnecessary_insts(&mut self.func, &self.dom_tree);
+        self.dom_tree = DominatorTree::with_func_and_cfg::<true, true>(func, cfg);
+        let gvn = global_value_numbering(func, &self.dom_tree, self.intern.params.len() as u32);
 
         if stage == OptimizationStage::Final {
             let mut control_dep = SparseBitMatrix::new_square(0);
-            self.dom_tree.compute_postdom_frontiers(&self.cfg, &mut control_dep);
+            self.dom_tree.compute_postdom_frontiers(cfg, &mut control_dep);
+
             aggressive_dead_code_elimination(
-                &mut self.func,
-                &mut self.cfg,
+                func,
+                cfg,
                 &|val, _| self.output_values.contains(val),
                 &control_dep,
             );
-            simplify_cfg(&mut self.func, &mut self.cfg);
+
+            simplify_cfg(func, cfg);
         }
 
         gvn

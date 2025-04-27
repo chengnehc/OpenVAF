@@ -43,8 +43,7 @@ impl FuncSpec {
 
         simplify_cfg(&mut func, &mut cfg);
 
-        let mut dom_tree = DominatorTree::default();
-        dom_tree.compute::<false, true>(&func, &cfg);
+        let dom_tree = DominatorTree::with_func_and_cfg::<false, true>(&func, &cfg);
         let mut control_dep = SparseBitMatrix::new(0, 0);
         dom_tree.compute_postdom_frontiers(&cfg, &mut control_dep);
 
@@ -111,8 +110,7 @@ pub fn build_module_mir(
 
     standard_dead_code_elimination(&mut func, &output_values);
 
-    let mut dom_tree = DominatorTree::default();
-    dom_tree.compute::<true, false>(&func, &cfg);
+    let dom_tree = DominatorTree::with_func_and_cfg::<true, false>(&func, &cfg);
     let derivatives = intern.derivative_info(&mut func, false);
     auto_diff(&mut func, &dom_tree, &derivatives, &[]);
     cfg.clear();

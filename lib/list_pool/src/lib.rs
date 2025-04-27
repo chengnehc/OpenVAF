@@ -304,7 +304,7 @@ impl<T: ReservedValue + Copy + Into<usize> + From<usize>> ListHandle<T> {
         self.as_mut_slice(pool).get_mut(index)
     }
 
-    /// Create a deep clone of the list, which does not alias the original list.
+    /// Create a deep clone of the list within the same `pool`, which does not alias the original list.
     pub fn deep_clone(&self, pool: &mut ListPool<T>) -> Self {
         match pool.len_of(self.clone()) {
             None => Self::new(),

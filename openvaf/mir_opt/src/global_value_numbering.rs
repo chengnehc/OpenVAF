@@ -28,6 +28,19 @@ mod tests;
 
 use expression::{ExprResult, GVNExpression};
 
+pub fn global_value_numbering(
+    func: &mut Function,
+    dom_tree: &DominatorTree,
+    num_params: u32,
+) -> GVN {
+    let mut gvn = GVN::default();
+    gvn.init(func, dom_tree, num_params);
+    gvn.solve(func);
+    gvn.remove_unnecessary_insts(func, dom_tree);
+
+    gvn
+}
+
 #[derive(Default)]
 pub struct GVN {
     dfs_map: DFSMapping,

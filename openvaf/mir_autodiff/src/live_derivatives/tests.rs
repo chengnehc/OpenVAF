@@ -64,10 +64,8 @@ fn check(src: &str, data_flow_result: Expect) {
     let derivative_info = KnownDerivatives { unknowns, ddx_calls };
     let mut unknowns = DerivativeIntern::new(&derivative_info);
 
-    let mut cfg = ControlFlowGraph::new();
-    cfg.compute(&func);
-    let mut dom_tree = DominatorTree::default();
-    dom_tree.compute::<true, false>(&func, &cfg);
+    let cfg = ControlFlowGraph::with_function(&func);
+    let dom_tree = DominatorTree::with_func_and_cfg::<true, false>(&func, &cfg);
 
     let res = LiveDerivatives::build(&func, &mut unknowns, &[], &dom_tree);
     let printer = DerivativeFmt { func: &func, derivatives: &res.mat };

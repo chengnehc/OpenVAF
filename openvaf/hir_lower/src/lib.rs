@@ -50,6 +50,13 @@ pub struct MirBuilder<'a> {
 }
 
 impl<'a> MirBuilder<'a> {
+    /// Create a new MIR builder. By default, it:
+    /// - uses default function builder context
+    /// - does not lower equations
+    /// - does not tag variable writes
+    /// - does not tag variable reads
+    ///
+    /// Use builder methods to configure the MIR builder for extended functions.
     pub fn new(
         db: &'a CompilationDB,
         module: Module,
@@ -59,32 +66,36 @@ impl<'a> MirBuilder<'a> {
         MirBuilder {
             module,
             db,
-            func_ctxt: None,
             is_output,
             required_vars,
+            func_ctxt: None,
             tagged_reads: AHashSet::new(),
             tag_writes: false,
             lower_equations: false,
         }
     }
 
+    pub fn with_func_builder_context(mut self, func_ctxt: &'a mut FunctionBuilderContext) -> Self {
+        self.func_ctxt = Some(func_ctxt);
+        self
+    }
+
     // pub fn add_tag_read(&mut self, var: Variable) -> bool {
     //     self.tagged_reads.insert(var)
     // }
+
     pub fn with_tagged_reads(mut self, vars: AHashSet<Variable>) -> Self {
         self.tagged_reads = vars;
         self
     }
+
     pub fn with_write_tags(mut self) -> Self {
         self.tag_writes = true;
         self
     }
+
     pub fn with_equations(mut self) -> Self {
         self.lower_equations = true;
-        self
-    }
-    pub fn with_func_builder_context(mut self, func_ctxt: &'a mut FunctionBuilderContext) -> Self {
-        self.func_ctxt = Some(func_ctxt);
         self
     }
 
@@ -97,9 +108,9 @@ impl<'a> MirBuilder<'a> {
         };
         let func_builder =
             FunctionBuilder::new(&mut function, literals, func_ctxt, self.tag_writes);
-        let mut ctxt =
-            MainLowerContext::new(self.db, func_builder, !self.lower_equations, &mut interner)
-                .with_tagged_reads(self.tagged_reads);
+        let mut ctxt = MainLowerContext::new(self.db, func_builder, &mut interner)
+            .with_equations(self.lower_equations)
+            .with_tagged_reads(self.tagged_reads);
 
         let path = self.module.name(self.db);
         let body = self.module.analog_initial_body(self.db);
@@ -109,17 +120,21 @@ impl<'a> MirBuilder<'a> {
         let body = self.module.analog_body(self.db);
         body_ctxt.with_body(body.borrow()).lower_entry_stmts();
 
-        // op variables
+        // declare places at entry block for op variables
         for var in self.required_vars {
             ctxt.dec_place(PlaceKind::Var(var));
         }
-        // other outputs
-        let is_output = self.is_output;
+
+        // ensure optbarriers for outputs
+        // after lowering, the function builder should now be positioned
+        // at the block before exit block, optbarriers are created here.
+        //
+        // dbg!(&ctxt.func.cursor().position());
         ctxt.intern.outputs = ctxt
             .places
             .iter_enumerated()
             .map(|(place, kind)| {
-                if is_output(*kind) {
+                if (self.is_output)(*kind) {
                     let val = ctxt.func.use_var(place);
                     let val = ctxt.func.ins().ensure_optbarrier(val);
                     (*kind, val.into())
@@ -153,7 +168,7 @@ pub struct HirInterner {
     /// Internal states induced by $limit
     /// Mapping from unknown value to (lim_val, negate_lim)
     pub lim_state: TiMap<LimitState, Value, Vec<(Value, bool)>>,
-    // JW: for VerilogAE(?)
+    // JW: for VerilogAE backend
     pub tagged_reads: IndexMap<Value, Variable, ahash::RandomState>,
 }
 

@@ -34,14 +34,13 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     pub fn new(
         db: &'a CompilationDB,
         func: FunctionBuilder<'c>,
-        no_equations: bool,
         intern: &'a mut HirInterner,
     ) -> Self {
         Self {
             db,
             func,
             intern,
-            no_equations,
+            no_equations: true,
             places: TiSet::default(),
             tagged_vars: AHashSet::default(),
             inside_lim: false,
@@ -49,9 +48,13 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         }
     }
 
-    /// A builder method to include tagged variables.
     pub fn with_tagged_reads(mut self, vars: AHashSet<Variable>) -> Self {
         self.tagged_vars = vars;
+        self
+    }
+
+    pub fn with_equations(mut self, lower_equations: bool) -> Self {
+        self.no_equations = !lower_equations;
         self
     }
 
@@ -94,8 +97,8 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 IsPotential(_) => FALSE,
                 BoundStep => INFINITY,
             };
-            let block = self.func.func.layout.entry_block().unwrap();
-            self.func.def_var_at(place, init_val, block);
+            let entry = self.func.func.layout.entry_block().unwrap();
+            self.func.def_var_at(place, init_val, entry);
         }
         place
     }

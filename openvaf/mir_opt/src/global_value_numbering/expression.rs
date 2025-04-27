@@ -22,8 +22,13 @@ impl ExprResult {
         }
     }
 
-    /// Generate the expression of `inst`, which is either create a new GVNExpression
+    /// Generate the expression id of `inst`, which is either create a new GVNExpression
     /// or reuse the previous simplified one.
+    ///
+    /// Returns `None` if the instruction is:
+    /// - optbarrier
+    /// - branch or jump
+    /// - callback with side-effects
     pub(super) fn from_inst(inst: Inst, gvn: &mut GVN, func: &mut Function) -> Option<ExprResult> {
         let (opcode, payload) = match func.dfg.insts[inst].clone() {
             InstructionData::Unary { opcode, mut arg } if opcode != Opcode::OptBarrier => {
@@ -144,9 +149,9 @@ impl Clone for GVNExpression {
 }
 
 impl GVNExpression {
+    // As we don't value number optbarrier instructions, this is a nice optimization.
     fn new_const(val: Value) -> GVNExpression {
         GVNExpression {
-            // we don't value number optbarrier instructions so this is a nice optimization
             opcode: Opcode::OptBarrier,
             payload: PayLoad { default: DefaultPayLoad { val1: val, val2: None.into() } },
         }
@@ -208,7 +213,8 @@ impl GVNExpression {
             }
             Opcode::Call => {
                 let CallPayLoad { func_ref: func_ref_1, args: args1 } = self.payload.call();
-                let CallPayLoad { func_ref: func_ref_2, args: args2 } = self.payload.call();
+                // JW: fixed from `self.payload` to `other.payload`, a typo that leads to weird test fails :(
+                let CallPayLoad { func_ref: func_ref_2, args: args2 } = other.payload.call();
                 if func_ref_1 != func_ref_2 {
                     return false;
                 }
