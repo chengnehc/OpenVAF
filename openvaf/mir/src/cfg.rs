@@ -215,7 +215,7 @@ impl ControlFlowGraph {
 
     fn invalidate_block_successors(&mut self, block: Block) {
         // Temporarily take ownership because we need mutable access to self.data inside the loop.
-        // Unfortunately borrowck cannot see that our mut accesses to predecessors don't alias
+        // Unfortunately borrow checker cannot see that our mut accesses to predecessors don't alias
         // our iteration over successors.
         let successors = std::mem::take(&mut self.data[block].successors);
         for succ in successors.iter() {

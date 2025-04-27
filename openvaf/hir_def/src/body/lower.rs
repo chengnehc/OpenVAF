@@ -46,9 +46,9 @@ impl Context<'_> {
             }
             ast::Expr::ParenExpr(e) => return self.collect_expr_opt(e.expr()),
             ast::Expr::PrefixExpr(e) => {
-                let expr = self.collect_expr_opt(e.expr());
+                let arg = self.collect_expr_opt(e.expr());
                 if let Some(op) = e.op_kind() {
-                    Expr::UnaryOp { expr, op }
+                    Expr::UnaryOp { arg, op }
                 } else {
                     Expr::Missing
                 }

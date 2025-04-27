@@ -31,7 +31,7 @@ pub enum Expr {
         port: bool,
     },
     UnaryOp {
-        expr: ExprId,
+        arg: ExprId,
         op: UnaryOp,
     },
     BinaryOp {
@@ -57,7 +57,7 @@ impl Expr {
     pub fn walk_child_exprs(&self, mut f: impl FnMut(ExprId)) {
         match *self {
             Expr::Missing | Expr::Path { .. } | Expr::Literal(_) => (),
-            Expr::UnaryOp { expr, .. } => f(expr),
+            Expr::UnaryOp { arg, .. } => f(arg),
             Expr::BinaryOp { lhs, rhs, .. } => {
                 f(lhs);
                 f(rhs);

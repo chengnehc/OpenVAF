@@ -305,8 +305,8 @@ impl Context<'_> {
                 }
             },
 
-            Expr::UnaryOp { expr: arg, op: UnaryOp::Identity } => self.infere_expr(stmt, arg)?,
-            Expr::UnaryOp { expr: arg, op: UnaryOp::Neg } => {
+            Expr::UnaryOp { arg, op: UnaryOp::Identity } => self.infere_expr(stmt, arg)?,
+            Expr::UnaryOp { arg, op: UnaryOp::Neg } => {
                 let ty = self.infere_expr(stmt, arg)?;
                 let which = self.expect::<false>(
                     arg,
@@ -324,7 +324,7 @@ impl Context<'_> {
                 };
                 Ty::Val(ty)
             }
-            Expr::UnaryOp { expr: arg, op: UnaryOp::BitNegate } => {
+            Expr::UnaryOp { arg, op: UnaryOp::BitNegate } => {
                 let ty = self.infere_expr(stmt, arg)?;
                 // TODO bool
                 self.expect::<false>(
@@ -335,7 +335,7 @@ impl Context<'_> {
                 );
                 Ty::Val(Type::Integer)
             }
-            Expr::UnaryOp { expr: arg, op: UnaryOp::Not } => {
+            Expr::UnaryOp { arg, op: UnaryOp::Not } => {
                 let ty = self.infere_expr(stmt, arg)?;
                 self.expect::<false>(
                     arg,

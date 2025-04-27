@@ -283,7 +283,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build_init_cache(&mut self, gvn: &GVN) {
-        // first run aggressive DCE on the main function to figure out which cached
+        // Run aggressive DCE first on the main function to figure out which cached
         // values are actually used
         self.dom_tree.compute_postdom_frontiers(self.cfg, &mut self.control_dep);
         mir_opt::aggressive_dead_code_elimination(
@@ -356,7 +356,7 @@ impl<'a> Builder<'a> {
     }
 
     fn optimize(&mut self) {
-        // first, simplify the eval function
+        // first, simplify CFG of the eval function
         mir_opt::simplify_cfg(self.func, self.cfg);
 
         // then, optimize init function

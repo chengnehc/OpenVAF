@@ -61,7 +61,7 @@ impl BodyLowerContext<'_, '_, '_> {
                     }
                 }
             },
-            Expr::UnaryOp { expr: arg, op } => self.lower_unary_op(expr, arg, op),
+            Expr::UnaryOp { arg, op } => self.lower_unary_op(expr, arg, op),
             Expr::BinaryOp { lhs, rhs, op } => self.lower_bin_op(expr, lhs, rhs, op),
             Expr::Select { cond, then_expr, else_expr } => {
                 let cond = self.lower_expr(cond);
@@ -131,15 +131,13 @@ impl BodyLowerContext<'_, '_, '_> {
                 return self.lower_select(lhs, |mut cx| cx.lower_expr(rhs), |_| FALSE);
             }
 
-            BinaryOp::EqualityTest => match_signature! {
-                signature:
+            BinaryOp::EqualityTest => match_signature! { signature:
                     BOOL_EQ => Opcode::Beq,
                     INT_EQ  => Opcode::Ieq,
                     REAL_EQ => Opcode::Feq,
                     STR_EQ  => Opcode::Seq
             },
-            BinaryOp::NegatedEqualityTest => match_signature! {
-                signature:
+            BinaryOp::NegatedEqualityTest => match_signature! { signature:
                     BOOL_EQ => Opcode::Bne,
                     INT_EQ  => Opcode::Ine,
                     REAL_EQ => Opcode::Fne,
@@ -380,7 +378,10 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             BuiltIn::max => {
                 // max(x, y)  <=>  if (x > y) then { x } else { y }
-                let comparison = match_signature!(signature: MAX_REAL => InstBuilder::fgt, MAX_INT => InstBuilder::igt);
+                let comparison = match_signature!(signature:
+                    MAX_REAL => InstBuilder::fgt,
+                    MAX_INT => InstBuilder::igt
+                );
                 let arg0 = self.lower_expr(args[0]);
                 let arg1 = self.lower_expr(args[1]);
                 let cond = comparison(self.ctxt.ins(), arg0, arg1);
@@ -388,7 +389,10 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             BuiltIn::min => {
                 // min(x, y)  <=>  if (x < y) then { x } else { y }
-                let comparison = match_signature!(signature: MAX_REAL => InstBuilder::flt, MAX_INT => InstBuilder::ilt);
+                let comparison = match_signature!(signature:
+                    MAX_REAL => InstBuilder::flt,
+                    MAX_INT => InstBuilder::ilt
+                );
                 let arg0 = self.lower_expr(args[0]);
                 let arg1 = self.lower_expr(args[1]);
                 let cond = comparison(self.ctxt.ins(), arg0, arg1);
@@ -397,20 +401,19 @@ impl BodyLowerContext<'_, '_, '_> {
 
             // Signal access functions
             BuiltIn::flow => {
-                match_signature! {
-                    signature:
-                        NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
-                            let hi = self.body.into_node(args[0]);
-                            let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                            self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Flow(FlowKind::Unnamed{hi, lo}))
-                        },
-                        NATURE_ACCESS_BRANCH => self.ctxt.use_param(ParamKind::Flow(
-                            FlowKind::Branch(self.body.into_branch(args[0]))
-                        )),
-                        NATURE_ACCESS_PORT_FLOW => self.ctxt.use_param(ParamKind::Flow(
-                            FlowKind::Port(self.body.into_port_flow(args[0]))
-                        ))
-                }
+                match_signature!(signature:
+                    NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
+                        let hi = self.body.into_node(args[0]);
+                        let lo = args.get(1).map(|&arg| self.body.into_node(arg));
+                        self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Flow(FlowKind::Unnamed{hi, lo}))
+                    },
+                    NATURE_ACCESS_BRANCH => self.ctxt.use_param(ParamKind::Flow(
+                        FlowKind::Branch(self.body.into_branch(args[0]))
+                    )),
+                    NATURE_ACCESS_PORT_FLOW => self.ctxt.use_param(ParamKind::Flow(
+                        FlowKind::Port(self.body.into_port_flow(args[0]))
+                    ))
+                )
                 // AB: Do not divide flow probe.
                 //     Flow unknowns correspond to the flow of a single parallel instance.
                 //     HIR equation describes a single parallel instance.
@@ -419,19 +422,18 @@ impl BodyLowerContext<'_, '_, '_> {
                 // return self.ctx.ins().fdiv(res, mfactor);
             }
             BuiltIn::potential => {
-                match_signature! {
-                    signature:
-                        NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
-                            let hi = self.body.into_node(args[0]);
-                            let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                            self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Potential{hi, lo})
-                        },
-                        NATURE_ACCESS_BRANCH => {
-                            let branch = self.body.into_branch(args[0]).kind(self.ctxt.db);
-                            self.ctxt.node_pair(branch.unwrap_hi_node(), branch.lo_node(),
-                            |hi, lo| ParamKind::Potential{hi, lo})
-                        }
-                }
+                match_signature!(signature:
+                    NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
+                        let hi = self.body.into_node(args[0]);
+                        let lo = args.get(1).map(|&arg| self.body.into_node(arg));
+                        self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Potential{hi, lo})
+                    },
+                    NATURE_ACCESS_BRANCH => {
+                        let branch = self.body.into_branch(args[0]).kind(self.ctxt.db);
+                        self.ctxt.node_pair(branch.unwrap_hi_node(), branch.lo_node(),
+                        |hi, lo| ParamKind::Potential{hi, lo})
+                    }
+                )
             }
 
             // Analog operators
@@ -439,7 +441,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 if self.ctxt.no_equations {
                     return F_ZERO;
                 }
-                // JW: tolerance is currently not supported
+                // we currently do not support tolerance
                 let arg = self.lower_expr(args[0]);
                 self.ctxt.call1(CallBackKind::TimeDerivative, &[arg])
             }
@@ -464,27 +466,25 @@ impl BodyLowerContext<'_, '_, '_> {
                 }
             }
             BuiltIn::idt => {
-                let kind = match_signature! {
-                    signature:
-                        IDT_NO_IC => IdtKind::Basic,
-                        IDT_IC => IdtKind::Ic,
-                        // we currently do not support tolerance
-                        IDT_IC_ASSERT | IDT_IC_ASSERT_TOL | IDT_IC_ASSERT_NATURE => IdtKind::Assert
-                };
+                let kind = match_signature!(signature:
+                    IDT_NO_IC => IdtKind::Basic,
+                    IDT_IC => IdtKind::Ic,
+                    // we currently do not support tolerance
+                    IDT_IC_ASSERT | IDT_IC_ASSERT_TOL | IDT_IC_ASSERT_NATURE => IdtKind::Assert
+                );
 
                 self.lower_integral(kind, args)
             }
             BuiltIn::idtmod => {
-                let kind = match_signature! {
-                    signature:
-                        IDTMOD_NO_IC => IdtKind::Basic,
-                        IDTMOD_IC => IdtKind::Ic,
-                        IDTMOD_IC_MODULUS => IdtKind::Modulus,
-                        // we currently do not support tolerance
-                        IDTMOD_IC_MODULUS_OFFSET
-                        | IDTMOD_IC_MODULUS_OFFSET_TOL
-                        | IDTMOD_IC_MODULUS_OFFSET_NATURE => IdtKind::ModulusOffset
-                };
+                let kind = match_signature!(signature:
+                    IDTMOD_NO_IC => IdtKind::Basic,
+                    IDTMOD_IC => IdtKind::Ic,
+                    IDTMOD_IC_MODULUS => IdtKind::Modulus,
+                    // we currently do not support tolerance
+                    IDTMOD_IC_MODULUS_OFFSET
+                    | IDTMOD_IC_MODULUS_OFFSET_TOL
+                    | IDTMOD_IC_MODULUS_OFFSET_NATURE => IdtKind::ModulusOffset
+                );
 
                 self.lower_integral(kind, args)
             }
@@ -627,13 +627,13 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             BuiltIn::simparam => {
                 let arg0 = self.lower_expr(args[0]);
-                match_signature! {signature:
+                match_signature! (signature:
                     SIMPARAM_NO_DEFAULT => self.ctxt.call1(CallBackKind::SimParam, &[arg0]),
                     SIMPARAM_DEFAULT => {
                         let arg1 = self.lower_expr(args[1]);
                         self.ctxt.call1(CallBackKind::SimParamOpt, &[arg0, arg1])
                     }
-                }
+                )
             }
             BuiltIn::simparam_str => {
                 let arg0 = self.lower_expr(args[0]);

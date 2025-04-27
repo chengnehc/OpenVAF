@@ -20,7 +20,7 @@ pub enum Type {
 
 use Type::*;
 impl_display! {
-    match Type{
+    match Type {
         Err => "[missing]";
         Void => "void";
         Bool => "integer";
@@ -28,7 +28,7 @@ impl_display! {
         Real => "real";
         String => "string";
         EmptyArray => "_[0:0]";
-        Array{ty,len} => "{}[0:{}]",ty,len;
+        Array {ty, len} => "{ty}[0:{len}]";
     }
 }
 

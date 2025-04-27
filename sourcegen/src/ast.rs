@@ -539,13 +539,12 @@ fn lower(grammar: &Grammar) -> AstSrc {
     res
 }
 
+/// Lower 'alterative' rule into rust `enum`.
 fn lower_enum(grammar: &Grammar, rule: &Rule) -> Option<(Vec<AstEnumVariant>, Option<String>)> {
-    let Rule::Alt(alts) = rule else {
-        return None;
-    };
+    let Rule::Alt(alts) = rule else { return None };
     let mut variants = Vec::new();
-    let mut nested = None;
-    let mut seen_non_token = false; // Don't generate enum when all alternatives are tokens
+    let mut nested = None; // do not generate multi-layered nested enum
+    let mut seen_non_token = false; // do not generate enum when all alternatives are tokens
     for alt in alts {
         match alt {
             Rule::Node(it) if matches!(grammar[*it].rule, Rule::Alt(_)) => {
@@ -566,6 +565,7 @@ fn lower_enum(grammar: &Grammar, rule: &Rule) -> Option<(Vec<AstEnumVariant>, Op
     seen_non_token.then_some((variants, nested))
 }
 
+/// Labels that are manually implemented rather than generated.
 const MANUAL_LABEL: [&str; 16] = [
     // PrefixExpr, BinExpr, Assign
     "op",

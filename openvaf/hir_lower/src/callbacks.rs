@@ -16,7 +16,6 @@ pub enum CallBackKind {
     TimeDerivative,       // ddt()
     NodeDerivative(Node), // ddx(expr, V(node)), special case when the unknown is node potential probe
     Derivative(Param),    // other types of ddx()
-    ParamInfo(ParamInfoKind, Parameter),
     CollapseHint(Node, Option<Node>),
     LimDiscontinuity,                           // $discontinuity (unimplemented)
     Analysis,                                   // analysis()
@@ -25,6 +24,7 @@ pub enum CallBackKind {
     WhiteNoise { name: Spur, idx: u32 },
     FlickerNoise { name: Spur, idx: u32 },
     NoiseTable(Box<NoiseTable>),
+    ParamInfo(ParamInfoKind, Parameter), // for paramter setup
 }
 
 impl CallBackKind {

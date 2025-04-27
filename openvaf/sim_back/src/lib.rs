@@ -220,11 +220,16 @@ impl<'a> CompiledModule<'a> {
             .filter_map(|(param, info)| info.is_instance.then_some(*param))
             .collect();
         init.intern.insert_param_init(db, &mut init.func, literals, false, true, &inst_params);
+        std::fs::write(
+            format!("/tmp/{}_setup_instance.mir", info.module.name(db)),
+            &init.func.to_debug_string(),
+        )
+        .unwrap();
 
         // create a utility function to set up all model parameters
         let mut model_param_setup = Function::default();
-        let model_params: Vec<_> = info.params.keys().copied().collect();
         let mut model_param_intern = HirInterner::default();
+        let model_params: Vec<_> = info.params.keys().copied().collect();
         model_param_intern.insert_param_init(
             db,
             &mut model_param_setup,
@@ -233,6 +238,12 @@ impl<'a> CompiledModule<'a> {
             true,
             &model_params,
         );
+
+        std::fs::write(
+            format!("/tmp/{}_setup_model.mir", info.module.name(db)),
+            &model_param_setup.to_debug_string(),
+        )
+        .unwrap();
 
         // optimize the model parameter setup utility function
         ctxt.cfg.compute(&model_param_setup);

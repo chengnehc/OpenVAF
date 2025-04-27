@@ -1,16 +1,25 @@
+//! Deal with parameter constraint check and error fallback.
+//!
+//! Refer to:
+//! - [LRM 3.4.2] Value range specification
+//! - [LRM A.2.5] Declaration ranges
+
 use std::mem;
 use stdx::packed_option::ReservedValue;
 
 use hir::{CompilationDB, ConstraintValue, ParamConstraint, Parameter, Type};
 use lasso::Rodeo;
 use mir::builder::InstBuilder;
-use mir::{Block, FuncRef, Function, Opcode, Value, FALSE, GRAVESTONE, INFINITY};
+use mir::{Block, FuncRef, Function, Opcode, Value, FALSE, GRAVESTONE};
 use mir_build::{FunctionBuilder, FunctionBuilderContext};
 use syntax::ast::ConstraintKind;
 
 use crate::body::BodyLowerContext;
 use crate::ctx::MainLowerContext;
 use crate::{CallBackKind, HirInterner, ParamKind, PlaceKind};
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub enum ParamInfoKind {
@@ -57,13 +66,13 @@ impl HirInterner {
         db: &CompilationDB,
         func: &mut Function,
         literals: &mut Rodeo,
-        build_min_max: bool,
-        build_stores: bool,
+        build_min_max: bool, // for parameter extraction backend
+        build_stores: bool,  // for simulator backend
         params: &[Parameter],
     ) {
         let mut default_vals = if build_stores { vec![GRAVESTONE; params.len()] } else { vec![] };
 
-        let f_inf = INFINITY;
+        let f_inf = mir::INFINITY;
         let f_neg_inf = func.dfg.fconst(f64::NEG_INFINITY.into());
         let i_inf = func.dfg.iconst(i32::MAX);
         let i_neg_inf = func.dfg.iconst(i32::MIN);
@@ -80,10 +89,9 @@ impl HirInterner {
             let new_val = ctxt.func.make_param(0u32.into());
             ctxt.dfg_mut().replace_uses(param_val, new_val);
 
-            let body = param.init(db);
+            let init = param.init(db);
             let ty = param.ty(db);
-            let bounds = param.bounds(db);
-
+            let constraints = param.constraints(db);
             let ops = CmpOps::from_ty(&ty);
             let invalid = ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::Invalid, param));
 
@@ -91,10 +99,10 @@ impl HirInterner {
                 if param_given {
                     if build_stores {
                         let exit = ctxt.create_block();
-                        let mut ctx = BodyLowerContext { ctxt, body: body.borrow(), path: "" };
+                        let mut ctx = BodyLowerContext { ctxt, body: init.borrow(), path: "" };
                         ctx.check_param(
                             param_val,
-                            &bounds,
+                            &constraints,
                             &[],
                             ConstraintKind::From,
                             ops,
@@ -103,7 +111,7 @@ impl HirInterner {
                         );
                         ctx.check_param(
                             param_val,
-                            &bounds,
+                            &constraints,
                             &[],
                             ConstraintKind::Exclude,
                             ops,
@@ -114,13 +122,13 @@ impl HirInterner {
                     }
                     param_val
                 } else {
-                    let default_val = ctxt.lower_expr_body(body.borrow(), 0);
+                    let default_val = ctxt.lower_expr_body(init.borrow(), 0);
                     if build_stores {
                         let exit = ctxt.create_block();
-                        let mut ctx = BodyLowerContext { ctxt, body: body.borrow(), path: "" };
+                        let mut ctx = BodyLowerContext { ctxt, body: init.borrow(), path: "" };
                         ctx.check_param(
                             default_val,
-                            &bounds,
+                            &constraints,
                             &[],
                             ConstraintKind::From,
                             ops,
@@ -129,7 +137,7 @@ impl HirInterner {
                         );
                         ctx.check_param(
                             default_val,
-                            &bounds,
+                            &constraints,
                             &[],
                             ConstraintKind::Exclude,
                             ops,
@@ -166,9 +174,9 @@ impl HirInterner {
                 let max_exclusive =
                     ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::MaxExclusive, param));
 
-                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: body.borrow(), path: "" };
+                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: init.borrow(), path: "" };
                 let mut lowered_bounds = None;
-                let precomputed_vals: Vec<_> = bounds
+                let precomputed_vals: Vec<_> = constraints
                     .iter()
                     .filter_map(|bound| {
                         if matches!(bound.kind, ConstraintKind::Exclude) {
@@ -210,11 +218,11 @@ impl HirInterner {
                                 (val, Value::reserved_value())
                             }
                             ConstraintValue::Range(range) => {
-                                let start = ctx.lower_expr(range.start);
-                                let end = ctx.lower_expr(range.end);
+                                let start = ctx.lower_expr(range.lower_bound);
+                                let end = ctx.lower_expr(range.upper_bound);
 
                                 if let Some((min, max)) = lowered_bounds {
-                                    let (op, call) = if range.start_inclusive {
+                                    let (op, call) = if range.lower_inclusive {
                                         (ops.le.unwrap(), min_inclusive)
                                     } else {
                                         (ops.lt.unwrap(), min_exclusive)
@@ -231,7 +239,7 @@ impl HirInterner {
                                             }
                                         });
 
-                                    let (op, call) = if range.end_inclusive {
+                                    let (op, call) = if range.upper_inclusive {
                                         (ops.le.unwrap(), max_inclusive)
                                     } else {
                                         (ops.lt.unwrap(), max_exclusive)
@@ -250,13 +258,13 @@ impl HirInterner {
 
                                     lowered_bounds = Some((min, max));
                                 } else {
-                                    if range.start_inclusive {
+                                    if range.lower_inclusive {
                                         ctx.ctxt.ins().call(min_inclusive, &[]);
                                     } else {
                                         ctx.ctxt.ins().call(min_exclusive, &[]);
                                     }
 
-                                    if range.end_inclusive {
+                                    if range.upper_inclusive {
                                         ctx.ctxt.ins().call(max_inclusive, &[]);
                                     } else {
                                         ctx.ctxt.ins().call(max_exclusive, &[]);
@@ -284,10 +292,10 @@ impl HirInterner {
 
                 // first from bounds (here we also get min/max from)
                 let exit = ctxt.create_block();
-                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: body.borrow(), path: "" };
+                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: init.borrow(), path: "" };
                 ctx.check_param(
                     param_val,
-                    &bounds,
+                    &constraints,
                     &precomputed_vals,
                     ConstraintKind::From,
                     ops,
@@ -296,7 +304,7 @@ impl HirInterner {
                 );
                 ctx.check_param(
                     param_val,
-                    &bounds,
+                    &constraints,
                     &precomputed_vals,
                     ConstraintKind::Exclude,
                     ops,
@@ -307,7 +315,8 @@ impl HirInterner {
             }
         }
         ctxt.ensure_sealed();
-        ctxt.func.func.layout.append_inst_to_block(term, ctxt.current_block());
+        let block = ctxt.current_block();
+        ctxt.layout_mut().append_inst_to_block(term, block);
 
         for (i, param) in params.iter().copied().enumerate() {
             let val = &mut self.params.raw[&ParamKind::Param(param)];
@@ -320,22 +329,21 @@ impl HirInterner {
 }
 
 impl BodyLowerContext<'_, '_, '_> {
-    /// Perform parameter bounds check
     #[allow(clippy::too_many_arguments)]
     fn check_param(
         &mut self,
         param_val: Value,
-        bounds: &[ParamConstraint],
-        precomputed_vals: &[(Value, Value)],
+        constraints: &[ParamConstraint],
+        precomputes: &[(Value, Value)],
         kind: ConstraintKind,
         ops: CmpOps,
         invalid: FuncRef,
         global_exit: Block,
     ) {
+        dbg!(global_exit);
         let mut exit = None;
-
-        for (i, bound) in bounds.iter().enumerate() {
-            if bound.kind != kind {
+        for (i, constraint) in constraints.iter().enumerate() {
+            if constraint.kind != kind {
                 continue;
             }
 
@@ -348,29 +356,29 @@ impl BodyLowerContext<'_, '_, '_> {
                 }
             };
 
-            match bound.val {
+            match constraint.val {
                 ConstraintValue::Value(val) => {
-                    let val = precomputed_vals
-                        .get(i)
-                        .map_or_else(|| self.lower_expr(val), |(val, _)| *val);
+                    let val =
+                        precomputes.get(i).map_or_else(|| self.lower_expr(val), |(val, _)| *val);
 
-                    let is_ok = self.ctxt.ins().binary1(ops.eq, val, param_val);
+                    // JW: renamed to `is_err`: param value that equals to excluded value is an error
+                    let is_err = self.ctxt.ins().binary1(ops.eq, val, param_val);
                     let next_bb = self.ctxt.create_block();
-                    self.ctxt.ins().br(is_ok, exit, next_bb);
+                    self.ctxt.ins().br(is_err, exit, next_bb);
                     self.ctxt.switch_to_block(next_bb);
                 }
                 ConstraintValue::Range(range) => {
-                    let (start, end) = precomputed_vals.get(i).map_or_else(
-                        || (self.lower_expr(range.start), self.lower_expr(range.end)),
-                        |(start, end)| (*start, *end),
+                    let (lower, upper) = precomputes.get(i).map_or_else(
+                        || (self.lower_expr(range.lower_bound), self.lower_expr(range.upper_bound)),
+                        |(lo, up)| (*lo, *up),
                     );
 
-                    let op = ops.in_bound(range.start_inclusive);
-                    let is_lo_ok = self.ctxt.ins().binary1(op, start, param_val);
-                    let is_ok = self.ctxt.make_select_expr(is_lo_ok, |builder, is_ok| {
-                        if is_ok {
-                            let op = ops.in_bound(range.end_inclusive);
-                            builder.ins().binary1(op, param_val, end)
+                    let op = ops.in_bound(range.lower_inclusive);
+                    let is_lo_ok = self.ctxt.ins().binary1(op, lower, param_val);
+                    let is_ok = self.ctxt.make_select_expr(is_lo_ok, |cx, is_lo_ok| {
+                        if is_lo_ok {
+                            let op = ops.in_bound(range.upper_inclusive);
+                            cx.ins().binary1(op, param_val, upper)
                         } else {
                             FALSE
                         }
@@ -383,10 +391,10 @@ impl BodyLowerContext<'_, '_, '_> {
             }
         }
 
+        // Error on fallthrough
         match kind {
             ConstraintKind::From => {
                 if let Some(exit) = exit {
-                    // error on fallthrough
                     self.ctxt.ins().call(invalid, &[]);
                     self.ctxt.ins().jump(global_exit);
                     self.ctxt.switch_to_block(exit);
@@ -396,7 +404,6 @@ impl BodyLowerContext<'_, '_, '_> {
                 self.ctxt.ins().jump(global_exit);
 
                 if let Some(exit) = exit {
-                    // error on fallthrough
                     self.ctxt.switch_to_block(exit);
                     self.ctxt.ins().call(invalid, &[]);
                     self.ctxt.ins().jump(global_exit);

@@ -3,7 +3,7 @@
 use ahash::AHashSet;
 use hir::{CompilationDB, Node, Type, Variable};
 use mir::builder::{InsertBuilder, InstBuilder};
-use mir::{Block, DataFlowGraph, FuncRef, Ieee64, Inst, Opcode, SourceLoc, Value};
+use mir::{Block, DataFlowGraph, FuncRef, Ieee64, Inst, Layout, Opcode, SourceLoc, Value};
 use mir::{FALSE, F_ZERO, INFINITY, TRUE};
 use mir_build::{FuncInstBuilder, FunctionBuilder, Place};
 use typed_indexmap::TiSet;
@@ -313,6 +313,10 @@ impl<'c> MainLowerContext<'_, 'c> {
     #[inline]
     pub(crate) fn dfg_mut(&mut self) -> &mut DataFlowGraph {
         &mut self.func.func.dfg
+    }
+    #[inline]
+    pub(crate) fn layout_mut(&mut self) -> &mut Layout {
+        &mut self.func.func.layout
     }
     #[inline]
     pub(crate) fn get_srcloc(&self) -> SourceLoc {

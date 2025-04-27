@@ -140,9 +140,9 @@ impl Printer<'_> {
                 }
                 self.pretty_print_expr(rhs)?;
             }
-            Expr::UnaryOp { expr, op } => {
+            Expr::UnaryOp { arg, op } => {
                 write!(self, "{}", op)?;
-                self.pretty_print_expr(expr)?;
+                self.pretty_print_expr(arg)?;
             }
             Expr::Select { cond, then_val, else_val } => {
                 self.pretty_print_expr(cond)?;

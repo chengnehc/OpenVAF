@@ -94,7 +94,7 @@ enum BlockStatus {
     Empty,
     /// Some instructions have been added, but no terminator.
     Partial,
-    /// A terminator instruction has been added; no further instruction may be added.
+    /// A terminator has been added; no further instructions should be added.
     Filled,
 }
 
@@ -121,11 +121,12 @@ impl<'short> InstInserterBase<'short> for FuncInstBuilder<'short, '_> {
     }
 
     fn insert_built_inst(self, inst: Inst) -> &'short mut DataFlowGraph {
-        // We only insert the block into layout when an instruction is added to it
+        // We only insert the block into layout when an instruction is added to it.
         self.builder.ensure_inserted_block();
         self.builder.func.layout.append_inst_to_block(inst, self.block);
         self.builder.func.srclocs.push(self.builder.srcloc);
 
+        // Special treatment for terminators: declare the block's successor(s) and mark it filled.
         match self.builder.func.dfg.insts[inst] {
             InstructionData::Branch { then_dst, else_dst, .. } => {
                 self.builder.declare_successor(then_dst);
@@ -212,7 +213,7 @@ impl<'a> FunctionBuilder<'a> {
         builder
     }
 
-    /// Edit an existing `Function`. Return the `FunctionBuilder` and the terminator instruction.
+    /// Edit an existing `Function`. Return the `FunctionBuilder` and the terminator of the entry block.
     pub fn edit(
         func: &'a mut Function,
         strlit: &'a mut Rodeo,

@@ -55,9 +55,9 @@ pub(super) struct Builder<'a> {
 impl Builder<'_> {
     /// Turn one (or multiple) linear contributions into a separate dimension.
     ///
-    /// This means the call instruction result:
-    /// 1. gets replaced with zero
-    /// 2. all calculations that depends on it will use the argument of the analog operator
+    /// This means:
+    /// (1) the call instruction's result gets replaced with zero
+    /// (2) all instructions that depends on it will turn to use its argument
     pub(super) fn create_dimension(&mut self, orig: Value, mapped: Value, postorder: &[Inst]) {
         self.val_map.clear();
         self.val_map.insert(orig, mapped);
@@ -77,13 +77,13 @@ impl Builder<'_> {
 
             use {InstructionData::*, Opcode::*};
             let val = match self.func.dfg.insts[inst] {
-                Unary { opcode: Fneg, arg } => {
-                    let Some(&val) = self.val_map.get(&arg) else { continue };
-                    ins!().fneg(val)
-                }
                 Unary { opcode: OptBarrier, arg } => {
                     let Some(&val) = self.val_map.get(&arg) else { continue };
                     val
+                }
+                Unary { opcode: Fneg, arg } => {
+                    let Some(&val) = self.val_map.get(&arg) else { continue };
+                    ins!().fneg(val)
                 }
                 Binary { opcode: Fadd, args } => {
                     match (self.val_map.get(&args[0]), self.val_map.get(&args[1])) {

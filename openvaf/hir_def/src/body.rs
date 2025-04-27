@@ -211,31 +211,31 @@ impl Body {
         let default = ctxt.collect_expr_opt(ast_node.default());
         let mut entry_stmts = vec![ctxt.alloc_stmt_desugared(Stmt::Expr(default))];
 
-        let bounds = ast_node
+        let constraints = ast_node
             .constraints()
             .filter_map(|constraint| {
                 let kind = constraint.kind()?;
                 let val = match constraint.val()? {
-                    ast::ConstraintValue::Val(val) => {
+                    ast::ConstraintValue::Value(val) => {
                         let val = ctxt.collect_expr(val);
                         let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(val));
                         entry_stmts.push(stmt);
                         ConstraintValue::Value(val)
                     }
                     ast::ConstraintValue::Range(range) => {
-                        let start = ctxt.collect_expr_opt(range.start());
-                        let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(start));
+                        let lower_bound = ctxt.collect_expr_opt(range.lower_bound());
+                        let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(lower_bound));
                         entry_stmts.push(stmt);
 
-                        let end = ctxt.collect_expr_opt(range.end());
-                        let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(end));
+                        let upper_bound = ctxt.collect_expr_opt(range.upper_bound());
+                        let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(upper_bound));
                         entry_stmts.push(stmt);
 
                         ConstraintValue::Range(Range {
-                            start,
-                            start_inclusive: range.start_inclusive(),
-                            end,
-                            end_inclusive: range.end_inclusive(),
+                            lower_bound,
+                            lower_inclusive: range.lower_inclusive(),
+                            upper_bound,
+                            upper_inclusive: range.upper_inclusive(),
                         })
                     }
                 };
@@ -244,14 +244,14 @@ impl Body {
             .collect();
         body.entry_stmts = Box::from(entry_stmts);
 
-        (Arc::new(body), Arc::new(src_map), ParamExprs { default, bounds })
+        (Arc::new(body), Arc::new(src_map), ParamExprs { default, constraints })
     }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct ParamExprs {
     pub default: ExprId,
-    pub bounds: Arc<[ParamConstraint]>,
+    pub constraints: Arc<[ParamConstraint]>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
@@ -268,8 +268,8 @@ pub enum ConstraintValue {
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub struct Range {
-    pub start: ExprId,
-    pub start_inclusive: bool,
-    pub end: ExprId,
-    pub end_inclusive: bool,
+    pub lower_bound: ExprId,
+    pub lower_inclusive: bool,
+    pub upper_bound: ExprId,
+    pub upper_inclusive: bool,
 }

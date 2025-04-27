@@ -1,0 +1,191 @@
+function %(v19, v20, v31, v32, v48, v49) {
+    inst0 = fn %set_Invalid(Parameter { id: ParamId(0) })(0) -> 0
+    inst1 = fn %set_Invalid(Parameter { id: ParamId(1) })(0) -> 0
+    inst2 = fn %set_Invalid(Parameter { id: ParamId(2) })(0) -> 0
+    // v1 = bconst false
+    v3 = fconst 0.0
+    v4 = iconst 0
+    v15 = fconst +Inf
+    v34 = iconst 20
+    v55 = fconst 0x1.2c00000000000p8
+
+                                block0:
+@0002                               br v20, block2, block3
+
+                                block2:
+                                    v22 = ifcast v4
+                                    v23 = fle v22, v19
+                                    br v23, block7, block8
+
+                                block7:
+                                    v24 = fle v19, v15
+                                    jmp block9
+
+                                block8:
+                                    jmp block9
+
+                                block9:
+                                    v25 = phi [v24, block7], [v1, block8]
+                                    br v25, block6, block10
+
+                                block10:
+                                    call inst0()
+                                    jmp block5
+
+                                block6:
+                                    jmp block5
+
+                                block5:
+@0002                               jmp block4
+
+                                block3:
+                                    v26 = ifcast v4
+                                    v27 = fle v26, v3
+                                    br v27, block13, block14
+
+                                block13:
+                                    v28 = fle v3, v15
+                                    jmp block15
+
+                                block14:
+                                    jmp block15
+
+                                block15:
+                                    v29 = phi [v28, block13], [v1, block14]
+                                    br v29, block12, block16
+
+                                block16:
+                                    call inst0()
+                                    jmp block11
+
+                                block12:
+                                    jmp block11
+
+                                block11:
+                                    v30 = optbarrier v3
+                                    jmp block4
+
+                                block4:
+                                    v21 = phi [v19, block5], [v3, block11]
+@0003                               br v32, block17, block18
+
+                                block17:
+@0003                               v35 = ineg v34
+@0004                               v36 = ifcast v35
+                                    v37 = ifcast v34
+                                    v38 = fle v36, v31
+                                    br v38, block22, block23
+
+                                block22:
+                                    v39 = fle v31, v37
+                                    jmp block24
+
+                                block23:
+                                    jmp block24
+
+                                block24:
+                                    v40 = phi [v39, block22], [v1, block23]
+                                    br v40, block21, block25
+
+                                block25:
+                                    call inst1()
+                                    jmp block20
+
+                                block21:
+                                    jmp block20
+
+                                block20:
+@0003                               jmp block19
+
+                                block18:
+@0003                               v41 = ineg v34
+@0004                               v42 = ifcast v41
+                                    v43 = ifcast v34
+                                    v44 = fle v42, v3
+                                    br v44, block28, block29
+
+                                block28:
+                                    v45 = fle v3, v43
+                                    jmp block30
+
+                                block29:
+                                    jmp block30
+
+                                block30:
+                                    v46 = phi [v45, block28], [v1, block29]
+                                    br v46, block27, block31
+
+                                block31:
+                                    call inst1()
+                                    jmp block26
+
+                                block27:
+                                    jmp block26
+
+                                block26:
+                                    v47 = optbarrier v3
+                                    jmp block19
+
+                                block19:
+                                    v33 = phi [v31, block20], [v3, block26]
+@0002                               br v49, block32, block33
+
+                                block32:
+                                    v51 = ifcast v4
+                                    v52 = fle v51, v48
+                                    br v52, block37, block38
+
+                                block37:
+                                    v53 = fle v48, v15
+                                    jmp block39
+
+                                block38:
+                                    jmp block39
+
+                                block39:
+                                    v54 = phi [v53, block37], [v1, block38]
+                                    br v54, block36, block40
+
+                                block40:
+                                    call inst2()
+                                    jmp block35
+
+                                block36:
+                                    jmp block35
+
+                                block35:
+@0002                               jmp block34
+
+                                block33:
+                                    v56 = ifcast v4
+                                    v57 = fle v56, v55
+                                    br v57, block43, block44
+
+                                block43:
+                                    v58 = fle v55, v15
+                                    jmp block45
+
+                                block44:
+                                    jmp block45
+
+                                block45:
+                                    v59 = phi [v58, block43], [v1, block44]
+                                    br v59, block42, block46
+
+                                block46:
+                                    call inst2()
+                                    jmp block41
+
+                                block42:
+                                    jmp block41
+
+                                block41:
+                                    v60 = optbarrier v55
+                                    jmp block34
+
+                                block34:
+                                    v50 = phi [v48, block35], [v55, block41]
+                                    jmp block1
+
+                                block1:
+}

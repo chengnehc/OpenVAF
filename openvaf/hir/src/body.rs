@@ -155,8 +155,8 @@ impl<'a> BodyRef<'a> {
             // Int literal
             hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
             // Int literal with `-` prefix
-            hir_def::Expr::UnaryOp { expr, op: UnaryOp::Neg } => {
-                self.as_int_literal(expr).map(|ii| -ii)
+            hir_def::Expr::UnaryOp { arg, op: UnaryOp::Neg } => {
+                self.as_int_literal(arg).map(|ii| -ii)
             }
             _ => None,
         }
@@ -165,7 +165,7 @@ impl<'a> BodyRef<'a> {
     pub fn get_expr(&self, expr: ExprId) -> Expr<'a> {
         match self.body.exprs[expr] {
             hir_def::Expr::Path { .. } => Expr::Read(self.resolve_path(expr)),
-            hir_def::Expr::UnaryOp { expr, op } => Expr::UnaryOp { expr, op },
+            hir_def::Expr::UnaryOp { arg, op } => Expr::UnaryOp { arg, op },
             hir_def::Expr::BinaryOp { lhs, rhs, op: Some(op) } => Expr::BinaryOp { lhs, rhs, op },
             hir_def::Expr::Select { cond, then_val, else_val } => {
                 Expr::Select { cond, then_expr: then_val, else_expr: else_val }
@@ -255,7 +255,7 @@ pub enum ContributeKind {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr<'a> {
     Read(Ref),
-    UnaryOp { expr: ExprId, op: UnaryOp },
+    UnaryOp { arg: ExprId, op: UnaryOp },
     BinaryOp { lhs: ExprId, rhs: ExprId, op: BinaryOp },
     Select { cond: ExprId, then_expr: ExprId, else_expr: ExprId },
     Call { fun: ResolvedFun, args: &'a [ExprId] },

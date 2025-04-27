@@ -203,7 +203,7 @@ impl ast::Constraint {
         if let Some(range) = self.range() {
             Some(ConstraintValue::Range(range))
         } else {
-            Some(ConstraintValue::Val(self.expr()?))
+            Some(ConstraintValue::Value(self.expr()?))
         }
     }
 }
@@ -217,25 +217,23 @@ pub enum ConstraintKind {
 #[derive(Debug, Eq, PartialEq)]
 pub enum ConstraintValue {
     Range(ast::Range),
-    Val(ast::Expr),
+    Value(ast::Expr), // a single value that should only be used by 'exclude'
 }
 
 impl ast::Range {
-    // if the range bound is missing, we just assume inclusive here
-
-    pub fn start_inclusive(&self) -> bool {
+    pub fn lower_inclusive(&self) -> bool {
         self.l_brack_token().is_some()
     }
 
-    pub fn end_inclusive(&self) -> bool {
+    pub fn upper_inclusive(&self) -> bool {
         self.r_brack_token().is_some()
     }
 
-    pub fn start(&self) -> Option<ast::Expr> {
+    pub fn lower_bound(&self) -> Option<ast::Expr> {
         support::children(self.syntax()).next()
     }
 
-    pub fn end(&self) -> Option<ast::Expr> {
+    pub fn upper_bound(&self) -> Option<ast::Expr> {
         support::children(self.syntax()).nth(1)
     }
 }

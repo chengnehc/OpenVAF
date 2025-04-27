@@ -66,12 +66,13 @@ impl BodyLowerContext<'_, '_, '_> {
         }
 
         // Define a place for the complement nature of contribution branch at current basic block.
+        // This is supposedly to be used by switch branches.
         self.ctxt.def_place(PlaceKind::Contribute { branch, is_potential: !is_potential }, F_ZERO);
 
         // Lower the RHS expression
         let rhs = self.lower_expr(rhs);
         if rhs == F_ZERO {
-            // if the RHS expression evalutes to 0 then this is a useless contribution
+            // if the RHS expression evalutes to 0 then this is a useless contribution,
             // there's no need to build instruction.
             return;
         }
@@ -116,11 +117,11 @@ impl BodyLowerContext<'_, '_, '_> {
                     is_potential,
                 };
                 if self.ctxt.places.contains(&inverted) {
-                    // If a inverted branch was defined earlier, just make use of it
+                    // If an inverted branch was defined earlier, just make use of it
                     *negate = true;
                     (lo, Some(hi))
                 } else {
-                    // If not, define a new param
+                    // TODO(JW): do we really need to define a parameter for contribute lhs?
                     let param = if is_potential {
                         ParamKind::Potential { hi, lo: Some(lo) }
                     } else {

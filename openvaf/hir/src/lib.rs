@@ -387,8 +387,8 @@ impl Parameter {
     pub fn default(self, db: &CompilationDB) -> ExprId {
         db.param_exprs(self.id).default
     }
-    pub fn bounds(self, db: &CompilationDB) -> Arc<[ParamConstraint]> {
-        db.param_exprs(self.id).bounds
+    pub fn constraints(self, db: &CompilationDB) -> Arc<[ParamConstraint]> {
+        db.param_exprs(self.id).constraints
     }
     pub fn init(self, db: &CompilationDB) -> Body {
         Body::new(self.id.into(), db)
