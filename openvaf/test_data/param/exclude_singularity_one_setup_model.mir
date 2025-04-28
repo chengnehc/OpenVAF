@@ -1,0 +1,57 @@
+function %(v19, v20) {
+    inst0 = fn %set_Invalid(Parameter { id: ParamId(0) })(0) -> 0
+    // v1 = bconst false
+    v4 = iconst 0
+    v5 = iconst 1
+    v30 = fconst 0x1.0000000000000p-1
+
+                                block0:
+@0003                               br v20, block2, block3
+
+                                block2:
+@0003                               v22 = ineg v5
+@0004                               v23 = ifcast v22
+                                    v24 = ifcast v5
+                                    v25 = flt v23, v19
+                                    br v25, block7, block8
+
+                                block7:
+                                    v26 = flt v19, v24
+                                    jmp block9
+
+                                block8:
+                                    jmp block9
+
+                                block9:
+                                    v27 = phi [v26, block7], [v1, block8]
+                                    br v27, block6, block10
+
+                                block10:
+                                    call inst0()
+@0005                               jmp block5
+
+                                block6:
+                                    v28 = ifcast v4
+                                    v29 = feq v28, v19
+                                    br v29, block11, block12
+
+                                block12:
+                                    jmp block5
+
+                                block11:
+                                    call inst0()
+                                    jmp block5
+
+                                block5:
+                                    jmp block4
+
+                                block3:
+                                    v31 = optbarrier v30
+                                    jmp block4
+
+                                block4:
+                                    v21 = phi [v30, block3], [v19, block5]
+                                    jmp block1
+
+                                block1:
+}

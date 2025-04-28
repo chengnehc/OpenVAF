@@ -61,7 +61,7 @@ impl Inference {
         ctxt.expr_stmt_ty = match id {
             DefWithBodyId::ParamId(param) => match &db.param_data(param).ty {
                 Some(ty) => Some(ty.clone()),
-                // parameter type is inferred if omitted
+                // parameter type is inferred if omitted. Refer to [LRM 3.4.1]
                 None => ctxt
                     .infere_expr(body.entry_stmts[0], db.param_exprs(param).default)
                     .and_then(|ty| ty.to_value()),

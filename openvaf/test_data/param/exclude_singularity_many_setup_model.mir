@@ -1,0 +1,62 @@
+function %(v19, v20) {
+    inst0 = fn %set_Invalid(Parameter { id: ParamId(0) })(0) -> 0
+    // v1 = bconst false
+    v4 = iconst 0
+    v5 = iconst 1
+    v15 = fconst +Inf
+    v16 = fconst -Inf
+
+                                block0:
+                                    br v20, block2, block3
+
+                                block2:
+                                    v22 = flt v16, v19
+                                    br v22, block7, block8
+
+                                block7:
+                                    v23 = flt v19, v15
+                                    jmp block9
+
+                                block8:
+                                    jmp block9
+
+                                block9:
+                                    v24 = phi [v23, block7], [v1, block8]
+                                    br v24, block6, block10
+
+                                block10:
+                                    call inst0()
+@0006                               jmp block5
+
+                                block6:
+@0006                               v25 = ineg v5
+                                    v26 = ifcast v25
+                                    v27 = feq v26, v19
+@0007                               br v27, block11, block12
+
+                                block12:
+                                    v28 = ifcast v5
+                                    v29 = feq v28, v19
+                                    br v29, block11, block13
+
+                                block13:
+                                    jmp block5
+
+                                block11:
+                                    call inst0()
+                                    jmp block5
+
+                                block5:
+@0001                               jmp block4
+
+                                block3:
+                                    v30 = ifcast v4
+                                    v31 = optbarrier v30
+                                    jmp block4
+
+                                block4:
+                                    v21 = phi [v30, block3], [v19, block5]
+                                    jmp block1
+
+                                block1:
+}

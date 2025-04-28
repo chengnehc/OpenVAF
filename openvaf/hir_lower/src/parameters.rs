@@ -61,6 +61,8 @@ impl CmpOps {
 }
 
 impl HirInterner {
+    // TODO(JW): Out-of-range parameter default value should be validated and reported
+    // earlier as a compile error. However, OpenVAF currently does not support this.
     pub fn insert_param_init(
         &mut self,
         db: &CompilationDB,
@@ -92,6 +94,7 @@ impl HirInterner {
             let init = param.init(db);
             let ty = param.ty(db);
             let constraints = param.constraints(db);
+
             let ops = CmpOps::from_ty(&ty);
             let invalid = ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::Invalid, param));
 
@@ -100,63 +103,39 @@ impl HirInterner {
                     if build_stores {
                         let exit = ctxt.create_block();
                         let mut ctx = BodyLowerContext { ctxt, body: init.borrow(), path: "" };
-                        ctx.check_param(
-                            param_val,
-                            &constraints,
-                            &[],
-                            ConstraintKind::From,
-                            ops,
-                            invalid,
-                            exit,
-                        );
-                        ctx.check_param(
-                            param_val,
-                            &constraints,
-                            &[],
-                            ConstraintKind::Exclude,
-                            ops,
-                            invalid,
-                            exit,
-                        );
-                        ctx.ctxt.switch_to_block(exit);
+                        ctx.check_constraints(param_val, &constraints, &[], ops, invalid, exit);
+                        ctxt.switch_to_block(exit);
                     }
                     param_val
                 } else {
                     let default_val = ctxt.lower_expr_body(init.borrow(), 0);
                     if build_stores {
-                        let exit = ctxt.create_block();
-                        let mut ctx = BodyLowerContext { ctxt, body: init.borrow(), path: "" };
-                        ctx.check_param(
-                            default_val,
-                            &constraints,
-                            &[],
-                            ConstraintKind::From,
-                            ops,
-                            invalid,
-                            exit,
-                        );
-                        ctx.check_param(
-                            default_val,
-                            &constraints,
-                            &[],
-                            ConstraintKind::Exclude,
-                            ops,
-                            invalid,
-                            exit,
-                        );
-                        ctx.ctxt.switch_to_block(exit);
-                        default_vals[i] = ctx.ctxt.ins().optbarrier(default_val);
+                        // Default value range check should be promoted to compile-time,
+                        // as default value is written in Verilog-A source code, instead of being
+                        // provided by the simulator. In other words, it is statically available.
+                        //
+                        // As is specified by LRM, "Range checking applies to the value of the parameter
+                        // for the instance and not against the default values specified in the device",
+                        // saying default value range check is simply not needed, but after all the
+                        // default should fall into the range specified by the constraints, shouldn't it?
+                        //
+                        // let exit = ctxt.create_block();
+                        // let mut ctx = BodyLowerContext { ctxt, body: init.borrow(), path: "" };
+                        // ctx.check_param(default_val, &constraints, &[], ops, invalid, exit);
+                        // ctxt.switch_to_block(exit);
+                        //
+                        default_vals[i] = ctxt.ins().optbarrier(default_val);
                     }
                     default_val
                 }
             });
-
-            // let last_inst = builder.func.layout.last_inst(else_src.0).unwrap();
             ctxt.ins().with_result(new_val).phi(&[then_src, else_src]);
 
-            // we purposefully insert these reversed here (new val into params and old val into
-            // outputs). This ensures that the code generated for other parameters uses the
-            // correct value. After code generation is complete we swap these two again
+            // JW: I suppose this is for setup_instance()
+            //
+            // Pascal: we purposefully insert these reversed here (new_val into params and old val into outputs).
+            // This ensures that the code generated for other parameters uses the correct value (the new_val).
+            // Once code generation is complete we swap these two again.
             ctxt.def_param(ParamKind::Param(param), new_val);
             ctxt.def_output(PlaceKind::Param(param), param_val);
             param_val = new_val;
@@ -176,7 +155,7 @@ impl HirInterner {
 
                 let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: init.borrow(), path: "" };
                 let mut lowered_bounds = None;
-                let precomputed_vals: Vec<_> = constraints
+                let precomputes: Vec<_> = constraints
                     .iter()
                     .filter_map(|bound| {
                         if matches!(bound.kind, ConstraintKind::Exclude) {
@@ -287,33 +266,17 @@ impl HirInterner {
                     _ => unreachable!(),
                 });
 
-                ctx.ctxt.intern.outputs.insert(PlaceKind::ParamMin(param), min.into());
-                ctx.ctxt.intern.outputs.insert(PlaceKind::ParamMax(param), max.into());
+                ctxt.intern.outputs.insert(PlaceKind::ParamMin(param), min.into());
+                ctxt.intern.outputs.insert(PlaceKind::ParamMax(param), max.into());
 
                 // first from bounds (here we also get min/max from)
                 let exit = ctxt.create_block();
                 let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: init.borrow(), path: "" };
-                ctx.check_param(
-                    param_val,
-                    &constraints,
-                    &precomputed_vals,
-                    ConstraintKind::From,
-                    ops,
-                    invalid,
-                    exit,
-                );
-                ctx.check_param(
-                    param_val,
-                    &constraints,
-                    &precomputed_vals,
-                    ConstraintKind::Exclude,
-                    ops,
-                    invalid,
-                    exit,
-                );
-                ctx.ctxt.switch_to_block(exit);
+                ctx.check_constraints(param_val, &constraints, &precomputes, ops, invalid, exit);
+                ctxt.switch_to_block(exit);
             }
         }
+
         ctxt.ensure_sealed();
         let block = ctxt.current_block();
         ctxt.layout_mut().append_inst_to_block(term, block);
@@ -329,85 +292,91 @@ impl HirInterner {
 }
 
 impl BodyLowerContext<'_, '_, '_> {
-    #[allow(clippy::too_many_arguments)]
-    fn check_param(
+    /// When multiple inclusion ranges are specified, we should use their union, not intersection.
+    /// That is to say, we should not call Invalid callback unless we have checked *all* the ranges
+    /// and still the parameter value fails to fall into any one of them.
+    ///
+    /// On the opposite, if the parameter value falls out of *any* exclusion range, call Invalid
+    /// callback instantly.
+    fn check_constraints(
         &mut self,
         param_val: Value,
         constraints: &[ParamConstraint],
         precomputes: &[(Value, Value)],
-        kind: ConstraintKind,
         ops: CmpOps,
         invalid: FuncRef,
         global_exit: Block,
     ) {
-        dbg!(global_exit);
+        let includes =
+            constraints.iter().filter(|it| it.kind == ConstraintKind::Include).enumerate();
+        let excludes =
+            constraints.iter().filter(|it| it.kind == ConstraintKind::Exclude).enumerate();
+
+        // check inclusions first
         let mut exit = None;
-        for (i, constraint) in constraints.iter().enumerate() {
-            if constraint.kind != kind {
-                continue;
-            }
-
-            let exit = match exit {
-                Some(exit) => exit,
-                None => {
-                    let bb = self.ctxt.create_block();
-                    exit = Some(bb);
-                    bb
-                }
-            };
-
-            match constraint.val {
-                ConstraintValue::Value(val) => {
-                    let val =
-                        precomputes.get(i).map_or_else(|| self.lower_expr(val), |(val, _)| *val);
-
-                    // JW: renamed to `is_err`: param value that equals to excluded value is an error
-                    let is_err = self.ctxt.ins().binary1(ops.eq, val, param_val);
-                    let next_bb = self.ctxt.create_block();
-                    self.ctxt.ins().br(is_err, exit, next_bb);
-                    self.ctxt.switch_to_block(next_bb);
-                }
-                ConstraintValue::Range(range) => {
-                    let (lower, upper) = precomputes.get(i).map_or_else(
-                        || (self.lower_expr(range.lower_bound), self.lower_expr(range.upper_bound)),
-                        |(lo, up)| (*lo, *up),
-                    );
-
-                    let op = ops.in_bound(range.lower_inclusive);
-                    let is_lo_ok = self.ctxt.ins().binary1(op, lower, param_val);
-                    let is_ok = self.ctxt.make_select_expr(is_lo_ok, |cx, is_lo_ok| {
-                        if is_lo_ok {
-                            let op = ops.in_bound(range.upper_inclusive);
-                            cx.ins().binary1(op, param_val, upper)
-                        } else {
-                            FALSE
-                        }
-                    });
-
-                    let next_bb = self.ctxt.create_block();
-                    self.ctxt.ins().br(is_ok, exit, next_bb);
-                    self.ctxt.switch_to_block(next_bb);
-                }
-            }
+        for (i, constraint) in includes {
+            let exit = exit.get_or_insert_with(|| self.ctxt.create_block());
+            self.check_constraints_inner(param_val, (i, constraint), precomputes, ops, *exit);
         }
 
-        // Error on fallthrough
-        match kind {
-            ConstraintKind::From => {
-                if let Some(exit) = exit {
-                    self.ctxt.ins().call(invalid, &[]);
-                    self.ctxt.ins().jump(global_exit);
-                    self.ctxt.switch_to_block(exit);
-                }
-            }
-            ConstraintKind::Exclude => {
-                self.ctxt.ins().jump(global_exit);
+        if let Some(exit) = exit {
+            self.ctxt.ins().call(invalid, &[]);
+            self.ctxt.ins().jump(global_exit);
+            self.ctxt.switch_to_block(exit);
+        }
 
-                if let Some(exit) = exit {
-                    self.ctxt.switch_to_block(exit);
-                    self.ctxt.ins().call(invalid, &[]);
-                    self.ctxt.ins().jump(global_exit);
-                }
+        // check exclusions then
+        let mut exit = None;
+        for (i, constraint) in excludes {
+            let exit = exit.get_or_insert_with(|| self.ctxt.create_block());
+            self.check_constraints_inner(param_val, (i, constraint), precomputes, ops, *exit);
+        }
+
+        self.ctxt.ins().jump(global_exit);
+        if let Some(exit) = exit {
+            self.ctxt.switch_to_block(exit);
+            self.ctxt.ins().call(invalid, &[]);
+            self.ctxt.ins().jump(global_exit);
+        }
+    }
+
+    fn check_constraints_inner(
+        &mut self,
+        param_val: Value,
+        (i, constraint): (usize, &ParamConstraint),
+        precomputes: &[(Value, Value)],
+        ops: CmpOps,
+        exit: Block,
+    ) {
+        match constraint.val {
+            ConstraintValue::Value(val) => {
+                let val = precomputes.get(i).map_or_else(|| self.lower_expr(val), |(val, _)| *val);
+
+                let is_err = self.ctxt.ins().binary1(ops.eq, val, param_val);
+                let next_bb = self.ctxt.create_block();
+                self.ctxt.ins().br(is_err, exit, next_bb);
+                self.ctxt.switch_to_block(next_bb);
+            }
+            ConstraintValue::Range(range) => {
+                let (lower, upper) = precomputes.get(i).map_or_else(
+                    || (self.lower_expr(range.lower_bound), self.lower_expr(range.upper_bound)),
+                    |(lo, up)| (*lo, *up),
+                );
+
+                let op = ops.in_bound(range.lower_inclusive);
+                let is_lo_ok = self.ctxt.ins().binary1(op, lower, param_val);
+                let is_ok = self.ctxt.make_select_expr(is_lo_ok, |cx, is_lo_ok| {
+                    if is_lo_ok {
+                        let op = ops.in_bound(range.upper_inclusive);
+                        cx.ins().binary1(op, param_val, upper)
+                    } else {
+                        FALSE
+                    }
+                });
+
+                let next_bb = self.ctxt.create_block();
+                self.ctxt.ins().br(is_ok, exit, next_bb);
+                self.ctxt.switch_to_block(next_bb);
             }
         }
     }

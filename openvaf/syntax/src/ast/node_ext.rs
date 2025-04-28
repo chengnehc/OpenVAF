@@ -191,7 +191,7 @@ pub enum BranchKind {
 impl ast::Constraint {
     pub fn kind(&self) -> Option<ConstraintKind> {
         if self.from_token().is_some() {
-            Some(ConstraintKind::From)
+            Some(ConstraintKind::Include)
         } else if self.exclude_token().is_some() {
             Some(ConstraintKind::Exclude)
         } else {
@@ -210,14 +210,14 @@ impl ast::Constraint {
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum ConstraintKind {
-    Exclude,
-    From,
+    Include, // inclusion range specified with `from [range]`
+    Exclude, // exclusion range or singularity specfied with `exclude [range]` or `exclude [singularity]`
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ConstraintValue {
     Range(ast::Range),
-    Value(ast::Expr), // a single value that should only be used by 'exclude'
+    Value(ast::Expr), // singularity that should only be used by 'exclude'
 }
 
 impl ast::Range {

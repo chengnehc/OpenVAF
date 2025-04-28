@@ -241,15 +241,22 @@ impl<'a> CompiledModule<'a> {
 
         std::fs::write(
             format!("/tmp/{}_setup_model.mir", info.module.name(db)),
-            &model_param_setup.to_debug_string(),
+            model_param_setup.to_debug_string(),
         )
         .unwrap();
 
-        // optimize the model parameter setup utility function
+        // simplify the model parameter setup utility function (with phi merge)
+        // Note that no DCE is performed.
         ctxt.cfg.compute(&model_param_setup);
         mir_opt::simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
         mir_opt::sparse_conditional_constant_propagation(&mut model_param_setup, &ctxt.cfg);
         mir_opt::simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
+
+        std::fs::write(
+            format!("/tmp/{}_setup_model_opt.mir", info.module.name(db)),
+            model_param_setup.to_debug_string(),
+        )
+        .unwrap();
 
         CompiledModule {
             info,

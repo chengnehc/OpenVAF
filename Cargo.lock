@@ -519,6 +519,7 @@ dependencies = [
  "expect-test",
  "hir",
  "indexmap",
+ "indoc",
  "lasso",
  "mini_harness",
  "mir",
