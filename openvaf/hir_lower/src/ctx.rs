@@ -124,13 +124,19 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         *self.intern.params.raw.entry(kind).or_insert_with(|| self.func.make_param(len.into()))
     }
 
-    /// Define a parameter with `val`. This will overwrite the previous value.
-    pub fn def_param(&mut self, kind: ParamKind, val: Value) {
+    /// Intern a parameter.
+    ///
+    /// # Note
+    /// This will overwrite the previous value if `ParamKind` already exists in the interner.
+    pub fn intern_param(&mut self, kind: ParamKind, val: Value) {
         self.intern.params.insert(kind, val);
     }
 
-    /// Define a output with `val`. This will overwrite the previous value.
-    pub fn def_output(&mut self, kind: PlaceKind, val: Value) {
+    /// Intern a output place.
+    ///
+    /// # Note
+    /// This will overwrite the previous value if `ParamKind` already exists in the interner.
+    pub fn intern_output(&mut self, kind: PlaceKind, val: Value) {
         self.intern.outputs.insert(kind, val.into());
     }
 

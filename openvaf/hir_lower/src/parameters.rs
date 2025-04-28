@@ -1,4 +1,4 @@
-//! Deal with parameter constraint check and error fallback.
+//! Deal with parameter constraint check and invalid value detection.
 //!
 //! Refer to:
 //! - [LRM 3.4.2] Value range specification
@@ -62,7 +62,7 @@ impl CmpOps {
 
 impl HirInterner {
     // TODO(JW): Out-of-range parameter default value should be validated and reported
-    // earlier as a compile error. However, OpenVAF currently does not support this.
+    // earlier as a compile error. However, OpenVAF currently does this at run-time.
     pub fn insert_param_init(
         &mut self,
         db: &CompilationDB,
@@ -91,6 +91,8 @@ impl HirInterner {
             let new_val = ctxt.func.make_param(0u32.into());
             ctxt.dfg_mut().replace_uses(param_val, new_val);
 
+            dbg!(new_val, param_val);
+
             let init = param.init(db);
             let ty = param.ty(db);
             let constraints = param.constraints(db);
@@ -110,7 +112,7 @@ impl HirInterner {
                 } else {
                     let default_val = ctxt.lower_expr_body(init.borrow(), 0);
                     if build_stores {
-                        // Default value range check should be promoted to compile-time,
+                        // JW: Default value range check should be promoted to compile-time,
                         // as default value is written in Verilog-A source code, instead of being
                         // provided by the simulator. In other words, it is statically available.
                         //
@@ -131,13 +133,14 @@ impl HirInterner {
             });
             ctxt.ins().with_result(new_val).phi(&[then_src, else_src]);
 
-            // JW: I suppose this is for setup_instance()
+            // Pascal: we purposefully insert these overrides here (new_val -> params, old val -> outputs).
+            // This ensures that the MIR generated for other parameters uses the correct value (new_val).
+            // Once MIR generation is complete we swap these two again.
             //
-            // Pascal: we purposefully insert these reversed here (new_val into params and old val into outputs).
-            // This ensures that the code generated for other parameters uses the correct value (the new_val).
-            // Once code generation is complete we swap these two again.
-            ctxt.def_param(ParamKind::Param(param), new_val);
-            ctxt.def_output(PlaceKind::Param(param), param_val);
+            // JW: I suppose this helps to deal with situations where parameters interact with each other,
+            // especially when building setup_instance()
+            ctxt.intern_param(ParamKind::Param(param), new_val);
+            ctxt.intern_output(PlaceKind::Param(param), param_val);
             param_val = new_val;
 
             // for verilog-ae
@@ -281,6 +284,7 @@ impl HirInterner {
         let block = ctxt.current_block();
         ctxt.layout_mut().append_inst_to_block(term, block);
 
+        // The MIR generation is complete and we swap param_val and output_val again. See the comments above.
         for (i, param) in params.iter().copied().enumerate() {
             let val = &mut self.params.raw[&ParamKind::Param(param)];
             let output_val = if build_stores { default_vals[i] } else { *val };
@@ -293,11 +297,11 @@ impl HirInterner {
 
 impl BodyLowerContext<'_, '_, '_> {
     /// When multiple inclusion ranges are specified, we should use their union, not intersection.
-    /// That is to say, we should not call Invalid callback unless we have checked *all* the ranges
-    /// and still the parameter value fails to fall into any one of them.
+    /// - exit once we find a range which the parameter falls into.
+    /// - call Invalid callback only if we have checked *all* the candidate ranges.
     ///
-    /// On the opposite, if the parameter value falls out of *any* exclusion range, call Invalid
-    /// callback instantly.
+    /// For exclusions, if the parameter value falls out of *any* exclusion range, Invalid callback
+    /// should be called.
     fn check_constraints(
         &mut self,
         param_val: Value,
@@ -312,7 +316,7 @@ impl BodyLowerContext<'_, '_, '_> {
         let excludes =
             constraints.iter().filter(|it| it.kind == ConstraintKind::Exclude).enumerate();
 
-        // check inclusions first
+        // check all include constraints first
         let mut exit = None;
         for (i, constraint) in includes {
             let exit = exit.get_or_insert_with(|| self.ctxt.create_block());
@@ -325,7 +329,7 @@ impl BodyLowerContext<'_, '_, '_> {
             self.ctxt.switch_to_block(exit);
         }
 
-        // check exclusions then
+        // Then, check all exclude constraints
         let mut exit = None;
         for (i, constraint) in excludes {
             let exit = exit.get_or_insert_with(|| self.ctxt.create_block());
@@ -334,6 +338,7 @@ impl BodyLowerContext<'_, '_, '_> {
 
         self.ctxt.ins().jump(global_exit);
         if let Some(exit) = exit {
+            // for exclusions, entering exit block means that parameter value is invalid
             self.ctxt.switch_to_block(exit);
             self.ctxt.ins().call(invalid, &[]);
             self.ctxt.ins().jump(global_exit);
@@ -352,9 +357,9 @@ impl BodyLowerContext<'_, '_, '_> {
             ConstraintValue::Value(val) => {
                 let val = precomputes.get(i).map_or_else(|| self.lower_expr(val), |(val, _)| *val);
 
-                let is_err = self.ctxt.ins().binary1(ops.eq, val, param_val);
+                let is_ok = self.ctxt.ins().binary1(ops.eq, val, param_val);
                 let next_bb = self.ctxt.create_block();
-                self.ctxt.ins().br(is_err, exit, next_bb);
+                self.ctxt.ins().br(is_ok, exit, next_bb);
                 self.ctxt.switch_to_block(next_bb);
             }
             ConstraintValue::Range(range) => {
@@ -373,7 +378,6 @@ impl BodyLowerContext<'_, '_, '_> {
                         FALSE
                     }
                 });
-
                 let next_bb = self.ctxt.create_block();
                 self.ctxt.ins().br(is_ok, exit, next_bb);
                 self.ctxt.switch_to_block(next_bb);

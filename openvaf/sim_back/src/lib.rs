@@ -220,11 +220,6 @@ impl<'a> CompiledModule<'a> {
             .filter_map(|(param, info)| info.is_instance.then_some(*param))
             .collect();
         init.intern.insert_param_init(db, &mut init.func, literals, false, true, &inst_params);
-        std::fs::write(
-            format!("/tmp/{}_setup_instance.mir", info.module.name(db)),
-            &init.func.to_debug_string(),
-        )
-        .unwrap();
 
         // create a utility function to set up all model parameters
         let mut model_param_setup = Function::default();
@@ -239,24 +234,12 @@ impl<'a> CompiledModule<'a> {
             &model_params,
         );
 
-        std::fs::write(
-            format!("/tmp/{}_setup_model.mir", info.module.name(db)),
-            model_param_setup.to_debug_string(),
-        )
-        .unwrap();
-
         // simplify the model parameter setup utility function (with phi merge)
         // Note that no DCE is performed.
         ctxt.cfg.compute(&model_param_setup);
         mir_opt::simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
         mir_opt::sparse_conditional_constant_propagation(&mut model_param_setup, &ctxt.cfg);
         mir_opt::simplify_cfg(&mut model_param_setup, &mut ctxt.cfg);
-
-        std::fs::write(
-            format!("/tmp/{}_setup_model_opt.mir", info.module.name(db)),
-            model_param_setup.to_debug_string(),
-        )
-        .unwrap();
 
         CompiledModule {
             info,

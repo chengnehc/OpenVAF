@@ -1,0 +1,45 @@
+function %(v19, v20) {
+    inst0 = fn %set_Invalid(Parameter { id: ParamId(0) })(0) -> 0
+    // v1 = bconst false
+    v4 = iconst 0
+    v5 = iconst 1
+    v18 = iconst -2147483648
+
+block0:
+    br v20, block2, block3
+
+block2:
+    v22 = ilt v18, v19
+    br v22, block7, block8
+
+block7:
+    v23 = ile v19, v4
+    jmp block9
+
+block8:
+    jmp block9
+
+block9:
+    v24 = phi [v23, block7], [v1, block8]
+    br v24, block6, block10
+
+block10:
+    jmp block5
+
+block6:
+    call inst0()
+    jmp block5
+
+block5:
+    jmp block4
+
+block3:
+    v25 = optbarrier v5
+    jmp block4
+
+block4:
+    v21 = phi [v5, block3], [v19, block5]
+    jmp block1
+
+block1:
+}

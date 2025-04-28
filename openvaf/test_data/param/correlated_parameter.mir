@@ -1,0 +1,78 @@
+function %(v19, v20, v26, v27) {
+    inst0 = fn %set_Invalid(Parameter { id: ParamId(0) })(0) -> 0
+    inst1 = fn %set_Invalid(Parameter { id: ParamId(1) })(0) -> 0
+    // v1 = bconst false
+    v3 = fconst 0.0
+    v15 = fconst +Inf
+
+block0:
+    br v20, block2, block3
+
+block2:
+    v22 = fle v3, v19
+    br v22, block7, block8
+
+block7:
+    v23 = flt v19, v15
+    jmp block9
+
+block8:
+    jmp block9
+
+block9:
+    v24 = phi [v23, block7], [v1, block8]
+    br v24, block6, block10
+
+block10:
+    call inst0()
+    jmp block5
+
+block6:
+    jmp block5
+
+block5:
+    jmp block4
+
+block3:
+    v25 = optbarrier v3
+    jmp block4
+
+block4:
+    v21 = phi [v3, block3], [v19, block5]
+    br v27, block11, block12
+
+block11:
+    v29 = fle v3, v26
+    br v29, block16, block17
+
+block16:
+    v30 = flt v26, v15
+    jmp block18
+
+block17:
+    jmp block18
+
+block18:
+    v31 = phi [v30, block16], [v1, block17]
+    br v31, block15, block19
+
+block19:
+    call inst1()
+    jmp block14
+
+block15:
+    jmp block14
+
+block14:
+    jmp block13
+
+block12:
+    v32 = optbarrier v21
+    jmp block13
+
+block13:
+    v28 = phi [v21, block12], [v26, block14]
+    jmp block1
+
+block1:
+}

@@ -9,7 +9,7 @@ use mir::Function;
 
 use crate::HirInterner;
 
-fn run_test(src: &str) {
+fn test_setup_model(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
     let cu = db.compilation_unit();
     let mut literals = Rodeo::new();
@@ -41,33 +41,44 @@ fn run_test(src: &str) {
     let name = module.name(&db);
     let actual = model_param_setup.to_debug_string();
 
-    // let _ = fs::write(test_dir.join(format!("{name}_setup_model.mir")), &actual);
-    expect_file![test_dir.join(format!("{name}_setup_model.mir"))].assert_eq(&actual);
+    // let _ = fs::write(test_dir.join(format!("{name}.mir")), &actual);
+    expect_file![test_dir.join(format!("{name}.mir"))].assert_eq(&actual);
 }
 
 #[test]
 fn diode() {
     let src = fs::read_to_string(integration_test_dir("DIODE").join("diode.va")).unwrap();
-    run_test(&src);
+    test_setup_model(&src);
 }
 
 #[test]
 fn resistor() {
     let src = fs::read_to_string(integration_test_dir("RESISTOR").join("resistor.va")).unwrap();
-    run_test(&src);
+    test_setup_model(&src);
 }
 
 #[test]
 fn include_range() {
     let src = indoc! {r#"
         module include_range;
-            parameter integer n = 1 from (0:10);
-            parameter real zeta = 0 from [-10:10];
-            parameter real R = 300.0 from [100.0:inf);
+            parameter integer n = 1 from (0:1];
+            parameter real m = 0 from [0:1);
         endmodule
     "#};
 
-    run_test(src);
+    test_setup_model(src);
+}
+
+#[test]
+fn infinity_bound() {
+    let src = indoc! {r#"
+        module infinity_bound;
+            parameter integer i = 1 from [0:inf);
+            parameter real f = -1.0 from (-inf:0];
+        endmodule
+    "#};
+
+    test_setup_model(src);
 }
 
 #[test]
@@ -78,7 +89,7 @@ fn include_range_union() {
         endmodule
     "#};
 
-    run_test(src);
+    test_setup_model(src);
 }
 
 #[test]
@@ -95,6 +106,36 @@ fn exclude_singularity() {
         endmodule
     "#};
 
-    run_test(one);
-    run_test(many);
+    test_setup_model(one);
+    test_setup_model(many);
+}
+
+/// Excluding a range is the same as including the complement range of it.
+/// Compact models seldom use this.
+#[test]
+fn exclude_range() {
+    let src = indoc! {r#"
+        module exclude_range;
+            parameter integer pos = 1 exclude (-inf:0]
+            // should be the same as 'from (0:inf)'
+        endmodule
+    "#};
+
+    test_setup_model(src);
+}
+
+/// Test parameter whose default value is correlated with another parameter's
+/// run-time value. This snap is taken from BSIM-CMG.
+#[test]
+fn correlated_parameter() {
+    let src = indoc! {r#"
+        `define BPRcz(nam, def, uni, des) (* units = uni, type = "instance", desc = des *) parameter real nam = def from[0.0 : inf);
+        `define MPRnb(nam, def, uni, des) (* units = uni, desc = des *) parameter real nam = def;
+        module correlated_parameter;
+            `BPRcz(COVS, 0.0, "F/m", "Constant gate-to-source overlap capacitance (CGEOMOD = 1)")
+            `BPRcz(COVD, COVS, "F/m", "Constant gate-to-drain overlap capacitance (CGEOMOD = 1)")
+        endmodule
+    "#};
+
+    test_setup_model(src);
 }
