@@ -336,7 +336,7 @@ fn validate_param(param_decl: ast::ParamDecl, errors: &mut Vec<SyntaxError>) {
     if range_allowed {
         return;
     }
-    for param in param_decl.paras() {
+    for param in param_decl.params() {
         for constraint in param.constraints() {
             if matches!(constraint.val(), Some(ConstraintValue::Range(_))) {
                 if let Some(name) = param.name() {

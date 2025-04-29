@@ -210,7 +210,7 @@ impl ParamDecl {
         support::token(&self.syntax, T![localparam])
     }
     pub fn ty(&self) -> Option<Type> { support::child(&self.syntax) }
-    pub fn paras(&self) -> AstChildren<Param> { support::children(&self.syntax) }
+    pub fn params(&self) -> AstChildren<Param> { support::children(&self.syntax) }
     pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
 }
 
@@ -439,10 +439,10 @@ pub struct PortDecl {
 impl ast::AttrsOwner for PortDecl {}
 impl PortDecl {
     pub fn direction(&self) -> Option<Direction> { support::child(&self.syntax) }
-    pub fn discipline(&self) -> Option<NameRef> { support::child(&self.syntax) }
     pub fn net_type_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, T![net_type])
     }
+    pub fn discipline(&self) -> Option<NameRef> { support::child(&self.syntax) }
     pub fn names(&self) -> AstChildren<Name> { support::children(&self.syntax) }
 }
 
@@ -471,10 +471,10 @@ pub struct NetDecl {
 }
 impl ast::AttrsOwner for NetDecl {}
 impl NetDecl {
-    pub fn discipline(&self) -> Option<NameRef> { support::child(&self.syntax) }
     pub fn net_type_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, T![net_type])
     }
+    pub fn discipline(&self) -> Option<NameRef> { support::child(&self.syntax) }
     pub fn names(&self) -> AstChildren<Name> { support::children(&self.syntax) }
     pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
 }

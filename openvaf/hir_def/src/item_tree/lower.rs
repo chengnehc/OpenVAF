@@ -392,7 +392,7 @@ impl Context {
 
     fn lower_param<T: From<ItemTreeId<Param>>>(&mut self, decl: ast::ParamDecl, dst: &mut Vec<T>) {
         let ty = decl.ty().map(|ty| ty.as_type());
-        for param in decl.paras() {
+        for param in decl.params() {
             let Some(name) = param.name() else { continue };
             let ast_id = self.ast_id_map.id_of(&param);
             let param = Param {
