@@ -91,8 +91,6 @@ impl HirInterner {
             let new_val = ctxt.func.make_param(0u32.into());
             ctxt.dfg_mut().replace_uses(param_val, new_val);
 
-            dbg!(new_val, param_val);
-
             let init = param.init(db);
             let ty = param.ty(db);
             let constraints = param.constraints(db);

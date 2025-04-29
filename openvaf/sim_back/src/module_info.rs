@@ -8,7 +8,7 @@ use hir::{
 };
 use indexmap::IndexMap;
 use smol_str::SmolStr;
-use syntax::ast::{self, Expr};
+use syntax::ast;
 use syntax::sourcemap::FileSpan;
 use syntax::AstNode;
 
@@ -23,22 +23,24 @@ pub fn collect_modules(
     let cu = db.compilation_unit();
     let name = cu.name(db);
 
-    // collect frontend diagnostics
+    // collect and report frontend diagnostics
     cu.collect_diagnostics(db, sink);
     if sink.summary(&name) {
         return None;
     }
 
-    let res = cu
+    let module_infos = cu
         .modules(db)
         .into_iter()
         .map(|module| ModuleInfo::collect(db, cu, module, all_vars_op, sink))
         .collect();
+
+    // report errors occurred during collecting module info
     if sink.summary(&name) {
         return None;
     }
 
-    Some(res)
+    Some(module_infos)
 }
 
 pub struct ModuleInfo {
@@ -68,6 +70,7 @@ impl ModuleInfo {
                 sink.add_diagnostic(diag, cu.root_file(), db)
             }
         };
+
         let ast = cu.ast_cache(db);
 
         while let Some((name, decl)) = decls.next() {
@@ -163,10 +166,7 @@ impl ModuleInfo {
                         Some("model") | None => false,
                         Some(found) => {
                             let attr = param.get_attr(db, &ast, "type").unwrap();
-                            add_diagnostic(
-                                attr.clone(),
-                                &UnknownType { expr: attr.val().unwrap(), found },
-                            );
+                            add_diagnostic(attr.clone(), &UnknownType { attr, found });
                             false
                         }
                     };
@@ -228,6 +228,7 @@ impl Diagnostic for IllegalAttr {
         let FileSpan { range, file } = db
             .parse(root_file)
             .to_file_span(self.attr.syntax().text_range(), &db.sourcemap(root_file));
+
         Report::error()
             .with_message(format!(
                 "illegal expression supplied to '{}' attribute; expected a string literal",
@@ -243,16 +244,16 @@ impl Diagnostic for IllegalAttr {
 }
 
 struct UnknownType<'a> {
-    expr: Expr,
+    attr: ast::Attr,
     found: &'a str,
 }
 
 impl Diagnostic for UnknownType<'_> {
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
-        let FileSpan { range, file } = db.parse(root_file).to_file_span(
-            self.expr.syntax().parent().unwrap().text_range(),
-            &db.sourcemap(root_file),
-        );
+        let FileSpan { range, file } = db
+            .parse(root_file)
+            .to_file_span(self.attr.syntax().text_range(), &db.sourcemap(root_file));
+
         Report::warning()
             .with_message(format!(
                 "unknown type \"{}\" expected \"model\" or \"instance\"",

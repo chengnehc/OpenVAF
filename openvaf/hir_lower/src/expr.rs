@@ -215,14 +215,15 @@ impl BodyLowerContext<'_, '_, '_> {
         }
     }
 
+    /// Refer to [LRM 4.7]: user-defined functions
     fn lower_user_fun_impl(
         &mut self,
         fun: hir::Function,
         args: &[ExprId],
         inside_lim: bool,
     ) -> Value {
-        // FIXME proper path for functions
         let mut path = self.path.to_owned();
+        path.push('.');
         path.push_str(&fun.name(self.ctxt.db));
 
         let mut args = zip(fun.args(self.ctxt.db), args);
@@ -231,6 +232,9 @@ impl BodyLowerContext<'_, '_, '_> {
             args.next();
             args.next();
         }
+
+        // Define and init arguments
+        // JW: string arguments are currently not supported
         for (arg, expr) in args.clone() {
             let init = if arg.is_input(self.ctxt.db) {
                 self.lower_expr(*expr)
@@ -244,6 +248,8 @@ impl BodyLowerContext<'_, '_, '_> {
             self.ctxt.def_place(PlaceKind::FunctionArg(arg), init);
         }
 
+        // Define and init return value
+        // JW: functions returning string are currently not supported
         let init = match &fun.return_ty(self.ctxt.db) {
             Type::Real => F_ZERO,
             Type::Integer => ZERO,
@@ -251,11 +257,12 @@ impl BodyLowerContext<'_, '_, '_> {
         };
         self.ctxt.def_place(PlaceKind::FunctionReturn(fun), init);
 
+        // Lower statements in function body
         let body = fun.body(self.ctxt.db);
         BodyLowerContext { body: body.borrow(), path: self.path, ctxt: self.ctxt }
             .lower_entry_stmts();
 
-        // write outputs back to original (including possibly required cast)
+        // Write outputs back to original (including possibly required cast)
         for (arg, &expr) in args {
             if arg.is_output(self.ctxt.db) {
                 let mut val = self.ctxt.use_place(PlaceKind::FunctionArg(arg));

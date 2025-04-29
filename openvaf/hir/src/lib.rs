@@ -33,17 +33,6 @@ pub use hir_ty::builtin;
 pub use rec_declarations::RecDeclarations;
 pub use syntax::name::Name;
 
-pub use crate::attributes::AstCache;
-pub use crate::body::{
-    AssignmentLhs, Body, BodyRef, ContributeKind, Expr, ExprId, Ref, ResolvedFun, Stmt, StmtId,
-};
-pub use crate::db::CompilationDB;
-
-mod attributes;
-mod body;
-mod db;
-mod rec_declarations;
-
 pub mod diagnostics;
 pub mod signatures {
     pub use hir_ty::builtin::{
@@ -55,6 +44,17 @@ pub mod signatures {
     };
     pub use hir_ty::types::{BOOL_EQ, INT_EQ, INT_OP, REAL_EQ, REAL_OP, STR_EQ};
 }
+
+mod attributes;
+mod body;
+mod db;
+mod rec_declarations;
+
+pub use attributes::AstCache;
+pub use body::{
+    AssignmentLhs, Body, BodyRef, ContributeKind, Expr, ExprId, Ref, ResolvedFun, Stmt, StmtId,
+};
+pub use db::CompilationDB;
 
 /// A compilation unit is represented by a root file (entry file).
 ///
@@ -90,7 +90,8 @@ impl CompilationUnit {
 
     pub fn modules(self, db: &CompilationDB) -> Vec<Module> {
         let root_def_map = db.root_def_map(self.root_file);
-        root_def_map[root_def_map.entry_scope()]
+        let entry = root_def_map.entry_scope();
+        root_def_map[entry]
             .declarations
             .iter()
             .filter_map(|(_, def)| {
@@ -167,9 +168,7 @@ pub struct Module {
     id: ModuleId,
 }
 impl_debug! {
-    match Module{
-        Module{ id } => "{id:?}";
-    }
+    match Module { Module { id } => "{id:?}"; }
 }
 impl Module {
     pub fn name(self, db: &CompilationDB) -> String {
@@ -257,9 +256,7 @@ pub struct Branch {
     id: BranchId,
 }
 impl_debug! {
-    match Branch{
-        Branch{ id } => "{id:?}";
-    }
+    match Branch { Branch { id } => "{id:?}"; }
 }
 impl Branch {
     pub fn name(self, db: &CompilationDB) -> String {
@@ -339,9 +336,7 @@ pub struct Block {
     id: BlockId,
 }
 impl_debug! {
-    match Block{
-        Block{ id } => "{id:?}";
-    }
+    match Block { Block{ id } => "{id:?}"; }
 }
 impl Block {
     pub fn name(self, db: &CompilationDB) -> String {
@@ -354,9 +349,7 @@ pub struct Variable {
     id: VarId,
 }
 impl_debug! {
-    match Variable{
-        Variable{ id } => "{id:?}";
-    }
+    match Variable { Variable { id } => "{id:?}"; }
 }
 impl Variable {
     pub fn name(self, db: &CompilationDB) -> SmolStr {
@@ -403,9 +396,7 @@ pub struct AliasParam {
     id: AliasParamId,
 }
 impl_debug! {
-    match AliasParam{
-        AliasParam{ id } => "{id:?}";
-    }
+    match AliasParam { AliasParam { id } => "{id:?}"; }
 }
 impl AliasParam {
     pub fn name(self, db: &CompilationDB) -> String {
@@ -431,9 +422,7 @@ pub struct Function {
     id: FunctionId,
 }
 impl_debug! {
-    match Function{
-        Function{ id } => "{id:?}";
-    }
+    match Function { Function { id } => "{id:?}"; }
 }
 impl Function {
     pub fn name(self, db: &CompilationDB) -> String {
@@ -493,7 +482,8 @@ impl Scope {
                 (loc.scope.local_id, loc.def_map(db))
             }
             Scope::Block(block) => {
-                let def_map = db.block_def_map(block.id).expect("block should be named");
+                let def_map =
+                    db.block_def_map(block.id).expect("block should be named to have scope");
                 (def_map.entry_scope(), def_map)
             }
             Scope::Function(func) => {

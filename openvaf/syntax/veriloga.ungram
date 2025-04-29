@@ -334,27 +334,18 @@ AliasParam =
 ParamRef =
   Path | SysFun
 
-// A.2.6
-// 
-// TODO: `return` is not supported
+// A.2.6 & A.2.8
+// # Note:
+// `return` statement is not supported
 Function =
   AttrList* 'analog' 'function' Type? Name ';'
   FunctionItem*
   'endfunction'
 
-// FunctionItem should not use:
-// * access functions
-// * contribution or event statements
-// * named blocks
-//
-// FunctionItem must contain:
-// * at least one argument
-// * data type declaration of all arguments (integer, real, string)
-// * argument direction specification (input, output, inout)
 FunctionItem =
   FunctionArg
-| ParamDecl 
-| VarDecl 
+| ParamDecl
+| VarDecl
 | Stmt
 
 FunctionArg =

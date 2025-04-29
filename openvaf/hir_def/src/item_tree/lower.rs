@@ -462,6 +462,8 @@ impl Context {
             }
         }
 
+        // de-duplicate corresponding FunctionArg and Variable and put the variable
+        // as the argument declaration.
         items.retain(|decl| {
             if let FunctionItem::Variable(var) = decl {
                 if let Some(arg) = args.iter_mut().find(|arg| arg.name == self.tree[*var].name) {
@@ -486,7 +488,7 @@ impl Context {
         }
     }
 
-    // TODO: fn lower_func_arg
+    // TODO: separate out lower_func_arg to a fn
 
     fn lower_stmt<T>(&mut self, stmt: ast::Stmt, dst: &mut Vec<T>)
     where

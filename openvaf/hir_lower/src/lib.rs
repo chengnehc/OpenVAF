@@ -368,7 +368,7 @@ pub enum PlaceKind {
     /// A flag indicating whether an implicit equation should be collapsed
     CollapseImplicitEquation(ImplicitEquation),
     BoundStep,
-    /// A parameter during initialization is mutable (write default in case not given)
+    /// A parameter during initialization is mutable: write default in case not given
     Param(Parameter),
     ParamMin(Parameter),
     ParamMax(Parameter),

@@ -9,8 +9,9 @@ use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, projec
 
 fn integration(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
-    let root_file = dir.join(name).with_extension("va").canonicalize().unwrap();
-    let db = CompilationDB::new_from_fs(AbsPathBuf::assert(root_file), &[], &[], &[]).unwrap();
+    let root_file = dir.join(name).with_extension("va").canonicalize()?;
+    let db = CompilationDB::new_from_fs(AbsPathBuf::assert(root_file), &[], &[], &[])?;
+
     let actual = db.compilation_unit().test_diagnostics(&db);
 
     //std::fs::write(dir.join("frontend.log"), actual)?;
@@ -20,9 +21,9 @@ fn integration(dir: &Path) -> Result {
 }
 
 fn ui(file: &Path) -> Result {
-    let db =
-        CompilationDB::new_from_fs(AbsPathBuf::assert(file.canonicalize().unwrap()), &[], &[], &[])
-            .unwrap();
+    let path = AbsPathBuf::assert(file.canonicalize()?);
+    let db = CompilationDB::new_from_fs(path, &[], &[], &[])?;
+
     let actual = db.compilation_unit().test_diagnostics(&db);
 
     expect_file![file.with_extension("log")].assert_eq(&actual);

@@ -1,0 +1,51 @@
+module test;
+    parameter real n = 1.0;
+    parameter real c = 0.5;
+    parameter real xmin = 0.1;
+    real T1 = 0.0, T2 = 0.0, T3 = 0.0, T4 = 0.0;
+
+    // ln(1 + exp(x))
+    // - only use input arguments
+    // - no explicit return statement, return value via the implicit analog function identifier
+    analog function real ln_one_plus_exp;
+        input x; real x;
+        if (x > 37) begin
+            ln_one_plus_exp = x;
+        end else if (x < -37) begin
+            ln_one_plus_exp = exp(x);
+        end else begin
+            ln_one_plus_exp = ln(1.0 + exp(x));
+        end
+    endfunction
+
+
+    // Hyperbolic Smoothing max Function
+    // - more than one input argument
+    // - local variable within function scope
+    analog function real hypmax;
+        input x, xmin, c;
+        real x, xmin, c, delta;
+        begin
+            delta = x - xmin - c;
+            hypmax = xmin + 0.5 * (delta + sqrt(delta * delta - 4.0 * xmin * c));
+        end
+    endfunction
+    
+    // use output arguments to return more than one value
+    // this form is seldomly used by compact models though
+    analog function real geomcalc;
+        input l, w;
+        output area, perim;
+        real l, w, area, perim;
+        begin
+            area = l * w;
+            perim = 2 * ( l + w );
+        end
+    endfunction
+
+    analog begin
+        T1 = ln_one_plus_exp(n);
+        T2 = hypmax(T1, xmin, c);
+        geomcalc(1e-6, 2e-6, T3, T4);
+    end
+endmodule

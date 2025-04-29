@@ -1,0 +1,61 @@
+function %(v16, v33, v34, v35, v38, v49, v57, v58) {
+    v6 = fconst 0x1.0000000000000p0
+    v17 = iconst 37
+    v39 = fconst 0x1.0000000000000p-1
+    v41 = fconst 0x1.0000000000000p2
+    v50 = fconst 0x1.0c6f7a0b5ed8dp-20
+    v51 = fconst 0x1.0c6f7a0b5ed8dp-19
+    v53 = iconst 2
+                                block0:
+@0002                               v18 = ifcast v17
+@0003                               v19 = fgt v16, v18
+@0003                               br v19, block2, block3
+
+                                block2:
+@0003                               jmp block4
+
+                                block3:
+@0008                               v22 = ineg v17
+@0008                               v23 = ifcast v22
+@0009                               v24 = flt v16, v23
+@0003                               br v24, block5, block6
+
+                                block5:
+@000c                               v26 = exp v16
+@0003                               jmp block7
+
+                                block6:
+@0010                               v28 = exp v16
+@0011                               v29 = fadd v6, v28
+@0012                               v30 = ln v29
+@0003                               jmp block7
+
+                                block7:
+@0004                               v32 = phi [v26, block5], [v30, block6]
+@0003                               jmp block4
+
+                                block4:
+@0006                               v31 = phi [v16, block2], [v32, block7]
+@000d                               v36 = fsub v31, v34
+@0010                               v37 = fsub v36, v35
+@0012                               v40 = fmul v37, v37
+@0013                               v42 = fmul v41, v34
+@0014                               v43 = fmul v42, v35
+@0015                               v44 = fsub v40, v43
+@0016                               v45 = sqrt v44
+@0017                               v46 = fadd v37, v45
+@0004                               v47 = fmul v39, v46
+@0006                               v48 = fadd v34, v47
+@0009                               v52 = fmul v50, v51
+@000a                               v54 = ifcast v53
+                                    v55 = fadd v50, v51
+                                    v56 = fmul v54, v55
+                                    v59 = optbarrier v31
+                                    v60 = optbarrier v37
+                                    v61 = optbarrier v48
+                                    v62 = optbarrier v52
+                                    v63 = optbarrier v56
+                                    jmp block1
+
+                                block1:
+}
