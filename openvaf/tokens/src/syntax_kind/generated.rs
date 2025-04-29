@@ -363,7 +363,7 @@ impl std::fmt::Display for SyntaxKind {
             Self::ANALOG_BEHAVIOUR => "analog procedural block",
             _ => return std::fmt::Debug::fmt(self, f),
         };
-        write!(f, "{}", pretty)
+        write!(f, "{pretty}")
     }
 }
 #[macro_export]

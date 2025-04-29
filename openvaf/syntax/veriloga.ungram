@@ -1,28 +1,24 @@
-//  Verilog-A Un-Grammar.
+// Verilog-A Un-Grammar.
 //
 // This grammar specifies the structure of Verilog-A's concrete syntax tree (CST).
-// 
 // It does NOT specify parsing rules (ambiguities, precedence, etc are out of scope).
 //
 // Legend:
 //
-//   //          -- comment
-//   Name =      -- non-terminal definition
-//   'ident'     -- token (terminal)
-//   A B         -- sequence
-//   A | B       -- alternation
-//   A*          -- option
-//   A?          -- zero or one repetition
-//   (A)         -- same as A
-//   label:A     -- suggested name for field of AST node
-
-// TODO: more accurate identifier type
-//        'ident'     -- keyword or punct token (terminal)
-//        '#ident'    -- generic token (terminal)
-//        '@ident'    -- literal token (terminal)
+//  //          -- comment
+//  Name =      -- non-terminal definition
+//  'ident'     -- token (terminal)
+//  A B         -- sequence
+//  A | B       -- alternation
+//  A*          -- option
+//  A?          -- zero or one repetition
+//  (A)         -- same as A
+//  label:A     -- suggested name for field of AST node
 //
-// Changelog:
-// - added paramset support
+// TODO: more accurate token type
+//  'ident'     -- keyword or punct token
+//  '#ident'    -- generic token
+//  '@ident'    -- literal token
 
 
 //**********************//
@@ -45,12 +41,12 @@ Attr =
   Name ('=' val:Expr)?
 
 Type =
-  ('integer' | 'real' | 'string')
+  'integer' | 'real' | 'string'
 
 
-//****************************//
-//  Statements & Expressions  //
-//****************************//
+//*********************//
+//     Statements      //
+//*********************//
 
 // A.6.4 Statements
 Stmt =
@@ -85,13 +81,14 @@ BlockScope =
 BlockItem =
   VarDecl | ParamDecl | Stmt
 
-// Usages:
+// Main usages for `ExprStmt` are:
 // - system task enable
 // - incr statement in `ForStmt`
+// - analog function
 ExprStmt =
   AttrList* Expr ';'?
 
-// A.6.2 analog_procedural_assignment
+// A.6.2
 // A.6.10 Contribution statements
 AssignStmt =
   AttrList* Assign ';'
@@ -100,6 +97,7 @@ Assign =
   lval:Expr op:('<+' | '=') rval:Expr
 
 // A.6.8 Looping statements
+// TODO: Check if `break` is allowed in analog while loop?
 WhileStmt =
   AttrList* 'while' '(' condition:Expr ')'
   body:Stmt
@@ -116,6 +114,8 @@ CaseStmt =
   Case*
   'endcase'
 
+// Case arm
+// The ':' can be elided for default arm
 Case =
   (Expr (',' Expr)* | 'default') ':'? Stmt
 
@@ -125,11 +125,13 @@ IfStmt =
   then_branch:Stmt
   ('else' else_branch:Stmt)?
 
-// # Note
-// Analog event should not be used by compact model
 EventStmt =
   AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases:('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
 
+
+//*********************//
+//     Expressions     //
+//*********************//
 
 // A.8 Expressions and Primaries
 Expr =
@@ -143,6 +145,7 @@ Expr =
 | PortFlow
 | Call
 
+// This is manually implemented
 Literal =
   'int_number' | 'std_real_number' | 'si_real_number' | 'str_lit' | 'inf'
 
@@ -158,11 +161,6 @@ Literal =
 // — [OK] parameter *access*
 // - [NO] parameter *declaration statements* (e.g., for setting default values)
 // — [NO] access and assignment to analog variable
-
-// TODO: rename this to reference
-// includes:
-// - variable/parameter/nature attribute reference
-// - branch/net/port/reference as arguments of access function call
 PathExpr =
   Path
 
@@ -185,37 +183,16 @@ BinExpr =
 SelectExpr =
   condition:Expr '?' then_val:Expr ':' else_val:Expr
 
-// port reference wrapped with `< >`, as port probe function call argument
 PortFlow =
   '<' port:Path '>'
 
 // A.8.2
-//
-// Zero/One/Multiple arguments:
-// * user-defined analog function call
-// * analog system function call
-// * analog builtin function call
-// * analog filter function call (analog operators)
-//
-// Strictly 2 arguments:
-// * branch probe function call =
-//      nature access attribute | 'flow' | 'potential'
-//    + branch reference | net reference (, net reference)?
-// 
-// Strictly 1 argument:
-// * port probe function call = 
-//      nature access attribute
-//    + '<' port reference '>'
-//
-// ? analog small-signal function call
-// ? analysis function call
 Call =
   FunctionRef ArgList?
 
 FunctionRef =
   Path | SysFun
 
-// generic token
 SysFun =
   'sysfun'
 
@@ -231,6 +208,7 @@ ArgList =
 SourceFile =
   Item*
 
+// Top level items
 Item =
   DisciplineDecl | NatureDecl | ModuleDecl //| ParamsetDecl
 
@@ -262,8 +240,6 @@ ModuleDecl =
 ModulePorts =
   '(' ports:(ModulePort (',' ModulePort)*)? ')'
 
-// TODO: simplify this by removing a layer of indirection:
-// let: ModulePort = PortDecl | Name
 ModulePort =
   kind:ModulePortKind
 
@@ -287,7 +263,6 @@ ModuleItem =
 | AliasParam
 | Function
 | AnalogBehaviour
-// Compact models do not need module instantiation
 
 BodyPortDecl =
   PortDecl ';'
@@ -306,7 +281,7 @@ VarDecl =
 
 // A.2.2.1
 Var =
-  Name ('=' default:Expr)?
+  Name ('=' initial:Expr)?
 
 // A.2.1.1
 ParamDecl =
@@ -321,10 +296,10 @@ Constraint =
   ('from' | 'exclude') (Expr | Range)
 
 Range =
-  ('(' | '[') start:Expr ':' end:Expr (')' | ']')
+  ('(' | '[') lower:Expr ':' upper:Expr (')' | ']')
 
 // A.2.1.1
-// according to LRM, aliasparam should not contain attributes, but it's OK as-is anyway.
+// according to LRM, aliasparam cannot contain attributes, but it's OK as-is anyway.
 AliasParam =
   AttrList* 'aliasparam' name:Name '=' src:ParamRef ';'
 
@@ -334,9 +309,10 @@ AliasParam =
 ParamRef =
   Path | SysFun
 
-// A.2.6 & A.2.8
+// A.2.6
+// A.2.8
 // # Note:
-// `return` statement is not supported
+// 'return' statement is currently not supported
 Function =
   AttrList* 'analog' 'function' Type? Name ';'
   FunctionItem*
@@ -356,9 +332,10 @@ FunctionArg =
 AnalogBehaviour =
   AttrList* 'analog' 'initial'? Stmt
 
-/////////
-// WIP //
-/////////
+
+//*************************//
+//        Paramset         //
+//*************************//
 
 // A.1.9
 // ParamsetDecl = 

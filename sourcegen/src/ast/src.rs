@@ -2,6 +2,11 @@
 
 use crate::to_upper_snake_case;
 
+// TODO(JW): more accurate token type
+// 'ident'     -- keyword or punct token
+// '#ident'    -- generic token
+// '@ident'    -- literal token
+
 /// `SyntaxKind` sources
 pub(crate) struct KindsSrc<'a> {
     pub(crate) punct: &'a [(&'a str, &'a str)],
@@ -102,12 +107,10 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
     nodes: &[
         "ALIAS_PARAM",
         "ANALOG_BEHAVIOUR",
-        // "ARG",
         "ARG_LIST",
         "ARRAY_EXPR",
         "ASSIGN",
         "ASSIGN_STMT",
-        // "ASSIGN_OR_EXPR",
         "ATTR",
         "ATTR_LIST",
         "BIN_EXPR",
@@ -138,7 +141,6 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
         "NATURE_DECL",
         "NATURE_ATTR",
         "NET_DECL",
-        // "NETS",
         "PARAM",
         "PARAM_DECL",
         "PAREN_EXPR",
@@ -146,7 +148,6 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
         "PATH_EXPR",
         "PORT_DECL",
         "PORT_FLOW",
-        // "PORTS",
         "PREFIX_EXPR",
         "RANGE",
         "SELECT_EXPR",
@@ -159,8 +160,8 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
     ],
 };
 
-/// The parsed ungrammar `Grammar` will be lowered into `AstSrc` for
-/// source code generation.
+/// After loweing the grammar, information can be retrieved such that
+/// a syntax node can be represented as either a struct or an enum.
 #[derive(Default, Debug)]
 pub(crate) struct AstSrc {
     pub(crate) tokens: Vec<String>,
@@ -174,6 +175,14 @@ pub(crate) struct AstNodeSrc {
     pub(crate) name: String,
     pub(crate) fields: Vec<Field>,
     pub(crate) traits: Vec<String>,
+}
+
+impl AstNodeSrc {
+    pub(crate) fn remove_field(&mut self, to_remove: Vec<usize>) {
+        to_remove.into_iter().rev().for_each(|idx| {
+            self.fields.remove(idx);
+        });
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -208,14 +217,14 @@ pub(crate) enum AstEnumVariant {
 impl AstEnumVariant {
     pub(crate) fn syntax_kind(&self) -> String {
         match self {
-            AstEnumVariant::Token(ref name) => format!("{}_KW", to_upper_snake_case(name)),
-            AstEnumVariant::Node(ref name) => to_upper_snake_case(name),
+            AstEnumVariant::Token(name) => format!("{}_KW", to_upper_snake_case(name)),
+            AstEnumVariant::Node(name) => to_upper_snake_case(name),
         }
     }
 
     pub(crate) fn name(&self) -> &str {
         match self {
-            AstEnumVariant::Node(ref name) | AstEnumVariant::Token(ref name) => name,
+            AstEnumVariant::Node(name) | AstEnumVariant::Token(name) => name,
         }
     }
 }

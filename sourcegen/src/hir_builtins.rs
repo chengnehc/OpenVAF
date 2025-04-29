@@ -365,7 +365,7 @@ fn generate_builtins() {
         use crate::nameres::ScopeItemDef;
     ";
     let hir_def = format!("{}\n{}", header, hir_def);
-    let hir_def = add_preamble("generate_builtins", reformat(hir_def));
+    let hir_def = add_preamble("sourcegen::hir_builtins::generate_builtins()", reformat(hir_def));
     let file = project_root().join("openvaf").join("hir_def").join("src").join("builtin.rs");
     ensure_file_contents(&file, &hir_def);
 
@@ -381,7 +381,7 @@ fn generate_builtins() {
         use crate::builtin::*;
     ";
     let hir_ty = format!("{}\n{}", header, hir_ty);
-    let hir_ty = add_preamble("generate_builtins", reformat(hir_ty));
+    let hir_ty = add_preamble("sourcegen::hir_builtins::generate_builtins()", reformat(hir_ty));
     let file = project_root()
         .join("openvaf")
         .join("hir_ty")

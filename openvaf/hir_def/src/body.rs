@@ -147,7 +147,7 @@ impl Body {
                     ast_id_map,
                     db,
                 };
-                let expr = if let Some(expr) = ast_node.default() {
+                let expr = if let Some(expr) = ast_node.initial() {
                     ctxt.collect_expr(expr)
                 } else {
                     let default_val = match db.var_data(id).ty {

@@ -237,7 +237,8 @@ fn gen_opcodes() {
         .join("generated.rs");
 
     let file_string = format!("{}\n{}", header, opcodes);
-    let file_string = add_preamble("gen_opcodes", reformat(file_string));
+    let file_string =
+        add_preamble("sourcegen::mir_instructions::gen_opcodes()", reformat(file_string));
     ensure_file_contents(&file, &file_string);
 }
 
@@ -406,6 +407,7 @@ fn gen_instr_builder() {
         project_root().join("openvaf").join("mir").join("src").join("builder").join("generated.rs");
 
     let file_string = format!("{}\n{}", header, builder);
-    let file_string = add_preamble("gen_instr_builder", reformat(file_string));
+    let file_string =
+        add_preamble("sourcegn::mir_instructions::gen_instr_builder()", reformat(file_string));
     ensure_file_contents(&file, &file_string);
 }
