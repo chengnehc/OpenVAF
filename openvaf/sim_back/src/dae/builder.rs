@@ -2,7 +2,7 @@
 // shall be divided by $mfactor.
 //
 // This means when `I(branch)` appears at the RHS of some expression, it should be divided by
-// $mfactor, but it seems that OpenVAF do not handle this for now.
+// $mfactor, but it seems that OpenVAF does not handle this for now.
 //
 // However, for compact models, `I(branch)` seldomly appears at RHS. One common exception is
 // that when modeling an inductor: `V(branch) <+ ddt(L * I(branch))`
@@ -70,6 +70,7 @@ pub(super) struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub(super) fn new(ctx: &'a mut Context) -> Self {
+        // clear and compute the outputs without considering contributes
         ctx.compute_outputs::<WITHOUT_CONTRIBUTES>();
 
         let mut builder = Self {

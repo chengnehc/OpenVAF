@@ -3,7 +3,7 @@
 use stdx::{impl_debug_display, impl_idx_from};
 
 use hir::{CompilationDB, Node};
-use hir_lower::{FlowKind, HirInterner, ImplicitEquation, ParamKind};
+use hir_lower::{FlowKind, HirInterner, ImplicitEquation};
 use lasso::Rodeo;
 use mir::Function;
 
@@ -101,94 +101,6 @@ impl<'a> CompiledModule<'a> {
 
         // TODO(JW): It seems that this has barely no effect on MIR and DAE
         dae.sparsify(&mut ctxt);
-
-        // For debugging purposes - print parameters
-        let debugging = false; //  && cfg!(debug_assertions);
-        if debugging {
-            println!("Parameters:");
-            ctxt.intern.params.iter().for_each(|(p, val)| {
-                print!("  {:?}", p);
-                match p {
-                    ParamKind::Param(param) | ParamKind::ParamGiven { param } => {
-                        println!(" .. {:?} -> {:?}", param.name(db), val);
-                    }
-                    ParamKind::Potential { hi, lo } => {
-                        if lo.is_some() {
-                            print!(" .. V({:?},{:?})", hi.name(db), lo.unwrap().name(db));
-                        } else {
-                            print!(" .. V({:?})", hi.name(db));
-                        }
-                        println!(" -> {:?}", val);
-                    }
-                    ParamKind::Flow(ck) => match ck {
-                        FlowKind::Branch(br) => {
-                            println!(" .. {:?} -> {:?}", br.name(db), val);
-                        }
-                        FlowKind::Unnamed { hi, lo } => {
-                            if lo.is_some() {
-                                print!(" .. I({:?},{:?})", hi.name(db), lo.unwrap().name(db));
-                            } else {
-                                print!(" .. I({:?})", hi.name(db));
-                            }
-                            println!(" -> {:?}", val);
-                        }
-                        FlowKind::Port(n) => {
-                            println!(" .. {:?} -> {:?}", n.name(db), val);
-                        }
-                    },
-                    ParamKind::HiddenState(var) => {
-                        println!(" .. {:?} -> {:?}", var.name(db), val);
-                    }
-                    // ParamKind::ImplicitUnknown
-                    ParamKind::PortConnected { port } => {
-                        println!(" .. {:?} -> {:?}", port.name(db), val);
-                    }
-                    _ => {
-                        println!(" -> {:?}", val);
-                    }
-                }
-            });
-            println!();
-
-            println!("Outputs:");
-            ctxt.intern.outputs.iter().for_each(|(p, val)| {
-                if val.is_some() {
-                    println!("  {:?} -> {:?}", p, val.unwrap());
-                } else {
-                    println!("  {:?} -> None", p);
-                }
-            });
-            println!();
-
-            println!("Tagged reads:");
-            ctxt.intern.tagged_reads.iter().for_each(|(val, var)| {
-                println!("  {:?} -> {:?}", val, var);
-            });
-            println!();
-
-            println!("Implicit equations:");
-            for (i, &iek) in ctxt.intern.implicit_equations.iter().enumerate() {
-                println!("  {:?} : {:?}", i, iek);
-            }
-            println!();
-
-            let cu = db.compilation_unit();
-            println!("Compilation unit: {}", cu.name(db));
-
-            let m = info.module;
-            println!("Module: {:?}", m.name(db));
-            println!("Ports: {:?}", m.ports(db));
-            println!("Internal nodes: {:?}", m.internal_nodes(db));
-
-            println!("DAE system");
-            let str = format!("{dae:#?}");
-            println!("{}", str);
-            println!();
-
-            println!("CX function");
-            println!("{:?}", ctxt.func);
-            println!();
-        }
 
         // After derivative insertion and post-derivative optimization, op-dependent
         // instruction set changes. Perform a full taint for function split.

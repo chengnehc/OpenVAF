@@ -120,6 +120,8 @@ impl<'a> MirBuilder<'a> {
         let body = self.module.analog_body(self.db);
         body_ctxt.with_body(body.borrow()).lower_entry_stmts();
 
+        // dbg!(body.borrow());
+
         // declare places at entry block for op variables
         for var in self.required_vars {
             ctxt.dec_place(PlaceKind::Var(var));

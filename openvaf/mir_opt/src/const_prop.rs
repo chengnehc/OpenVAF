@@ -98,17 +98,17 @@ pub fn sparse_conditional_constant_propagation(func: &mut Function, cfg: &Contro
 /// all possible values of `T`
 ///       \ \  / /
 ///        bottom
-///
+///```
 /// Rules:
 ///
 /// ``` text
-/// any ∘ Top = Top
-/// any ∘ Bottom = any
+/// any ∘ top = top
+/// any ∘ tottom = any
 /// T_i ∘ T_j = T_i,  where i == j
-/// T_i ∘ T_j = Top,  where i != j
+/// T_i ∘ T_j = top,  where i != j
 /// ```
-/// where `Top` means overdefined value, `Bottom` means undefined value
-/// `any` means any kind of value in the lattice
+/// where `top` means overdefined value, `bottom` means undefined value,
+/// `any` means any value in the lattice.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlatSet {
     /// Value is marked 'overdefined', since it can have multiple possible versions

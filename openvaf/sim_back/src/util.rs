@@ -6,7 +6,7 @@ use mir::builder::InstBuilder;
 use mir::cursor::{Cursor, FuncCursor};
 use mir::{Function, Inst, InstructionData, Opcode, Value, ValueDef, F_ZERO};
 
-/// Return whether given `val` is op dependent.
+/// Is this `val` op-dependent?
 pub fn is_op_dependent(
     val: Value,
     func: impl AsRef<Function>,
@@ -67,7 +67,7 @@ pub fn update_optbarrier(
     }
 }
 
-/// Create MIR instruction that adds or subtracts `val` to `dst`.
+/// Create instruction that adds or subtracts `val` to/from `dst`.
 ///
 /// `dst` will be set to the result value of this newly created instruction.
 pub fn add(cursor: &mut FuncCursor, dst: &mut Value, val: Value, negate: bool) {

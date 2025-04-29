@@ -39,7 +39,7 @@ pub struct DaeSystem {
     /// The Jacobian entries of the DAE system (resistive G, and reactive C)
     ///
     /// Jacobian entry at `i`'th row, `j`'th column is the symbolic derivative
-    /// of `i`'th residual with respect to `j`'s th simulation unknown.
+    /// of `i`'th residual with respect to `j`'th simulation unknown.
     ///
     /// `J_ij = (ddx(I_i, x_j), ddx(Q_i, x_j))`
     pub jacobian: TiVec<MatrixEntryId, MatrixEntry>,

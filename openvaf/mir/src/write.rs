@@ -32,7 +32,7 @@ pub trait FuncWriter {
         indent: usize,
     ) -> fmt::Result;
 
-    /// Write the preamble to `w`. By default, this uses `write_entity_definition`.
+    /// Write the preamble to `w`.
     fn write_preamble(
         &mut self,
         w: &mut dyn Write,
@@ -81,19 +81,8 @@ pub trait FuncWriter {
     }
 
     /// Write an entity definition defined in the preamble to `w`.
-    fn write_entity_definition(
-        &mut self,
-        w: &mut dyn Write,
-        func: &Function,
-        entity: AnyEntity,
-        value: &dyn fmt::Display,
-    ) -> fmt::Result {
-        self.super_entity_definition(w, func, entity, value)
-    }
-
-    /// Default impl of `write_entity_definition`
     #[allow(unused_variables)]
-    fn super_entity_definition(
+    fn write_entity_definition(
         &mut self,
         w: &mut dyn Write,
         func: &Function,

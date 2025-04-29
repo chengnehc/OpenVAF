@@ -118,8 +118,7 @@ pub type ItemTreeId<N> = Idx<N>;
 
 /// Trait implemented by all nodes in the item tree.
 pub trait ItemTreeNode: Clone {
-    // This means: the trait has an associative type `Source`
-    // and it must satisfy trait bound `AstNode`.
+    // This means trait has an associative type `Source` that must satisfy trait bound `AstNode`.
     type Source: AstNode;
 
     /// The name of this item.

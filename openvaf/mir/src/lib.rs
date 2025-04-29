@@ -29,11 +29,11 @@ use stdx::impl_display;
 
 use ahash::AHashMap;
 use bitset::HybridBitSet;
+use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
 pub use lasso::{Interner, Spur};
 pub use stdx::Ieee64;
-use typed_index_collections::TiVec;
 
 mod dfg;
 mod dominators;
@@ -196,7 +196,7 @@ impl Function {
     */
 }
 
-/// An oqaque 32-bit representation for source location of expressions.
+/// An opaque 32-bit representation for source location of expressions.
 /// Default value is used for those that can't be given a real source location.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct SourceLoc(i32);
@@ -235,20 +235,24 @@ impl fmt::Display for SourceLoc {
 /// Known symbolic (partial) derivatives explicitly specified by user: ddx() calls.
 ///
 /// `ddx(expr, unknown_quantity)`. According to LRM 4.5.6:
+/// - *expr* is the expression for which the symbolic derivative needs to be calculated.
+/// - *unknown_quantity* is the branch probe (voltage or current probe) with respect to
+///   which the derivative of the expression needs to be computed. Namely. the potential
+///   of a scalar net or port or the flow through a branch
 ///
-/// - `expr` is the expression for which the symbolic derivative needs to be calculated.
-/// - `unknown_quantity` is the potential of a scalar net or port or the flow through a
-///   branch -- the unknown variables in the system of equations for the analog solver.
-///
-/// ddx() calls should normally only be used to calculate output variables, as they are
-/// symbolic derivatives by nature.
+/// ddx() calls should normally only be used for output variable evaluations.
 #[derive(Debug, Clone, Default)]
 pub struct KnownDerivatives {
-    /// Mapping from user explicitly specified ddx() callback ID to its positive
-    /// and negative derivative unknown ID
+    /// Mapping from ddx() callback ID to its positive and negative derivative unknown ID
+    ///
+    /// # Note
+    /// Derivative `Unknown` is not to be confused with `SimUnknown`.
     pub ddx_calls: AHashMap<FuncRef, (HybridBitSet<Unknown>, HybridBitSet<Unknown>)>,
 
-    /// Mapping from derivative Unknown ID to its SSA value.
+    /// Mapping from derivative unknown ID to its SSA value.
     /// A set is used for de-duplication.
+    ///
+    /// # Note
+    /// Derivative `Unknown` is not to be confused with `SimUnknown`.
     pub unknowns: TiSet<Unknown, Value>,
 }
