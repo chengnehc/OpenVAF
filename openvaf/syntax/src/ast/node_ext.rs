@@ -137,14 +137,8 @@ impl ast::ModuleDecl {
     }
 }
 
-impl ast::ModulePort {
-    pub fn kind(&self) -> ast::ModulePortKind {
-        support::child(&self.syntax).unwrap()
-    }
-}
-
 impl ast::ModulePorts {
-    pub fn declarations(&self) -> AstChildren<ast::PortDecl> {
+    pub fn decls(&self) -> AstChildren<ast::PortDecl> {
         support::children(self.syntax())
     }
 

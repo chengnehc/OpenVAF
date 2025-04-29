@@ -239,21 +239,18 @@ impl Context {
     ) {
         for port in ports.ports() {
             let ast_id = self.ast_id_map.id_of(&port);
-            match port.kind() {
-                ast::ModulePortKind::PortDecl(decl) => {
-                    self.lower_port(decl, nodes, dst);
-                }
-                ast::ModulePortKind::Name(name) => {
-                    let name = name.as_name();
-                    if nodes.iter().all(|node| node.name != name) {
-                        let node = nodes.push_and_get_key(Node {
-                            name,
-                            is_port: true,
-                            decls: Vec::new(),
-                            ast_id: ast_id.into(),
-                        });
-                        dst.push(node.into())
-                    }
+            if let Some(decl) = port.decl() {
+                self.lower_port(decl, nodes, dst);
+            } else if let Some(name) = port.name() {
+                let name = name.as_name();
+                if nodes.iter().all(|node| node.name != name) {
+                    let node = nodes.push_and_get_key(Node {
+                        name,
+                        is_port: true,
+                        decls: Vec::new(),
+                        ast_id: ast_id.into(),
+                    });
+                    dst.push(node.into())
                 }
             }
         }

@@ -427,7 +427,10 @@ impl ModulePorts {
 pub struct ModulePort {
     pub(crate) syntax: SyntaxNode,
 }
-impl ModulePort {}
+impl ModulePort {
+    pub fn decl(&self) -> Option<PortDecl> { support::child(&self.syntax) }
+    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PortDecl {
@@ -647,12 +650,6 @@ pub enum ModuleItem {
     AliasParam(AliasParam),
     Function(Function),
     AnalogBehaviour(AnalogBehaviour),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ModulePortKind {
-    PortDecl(PortDecl),
-    Name(Name),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1520,34 +1517,6 @@ impl AstNode for ModuleItem {
         }
     }
 }
-impl From<PortDecl> for ModulePortKind {
-    fn from(node: PortDecl) -> ModulePortKind { ModulePortKind::PortDecl(node) }
-}
-impl From<Name> for ModulePortKind {
-    fn from(node: Name) -> ModulePortKind { ModulePortKind::Name(node) }
-}
-impl AstNode for ModulePortKind {
-    fn can_cast(kind: SyntaxKind) -> bool {
-        match kind {
-            PORT_DECL | NAME => true,
-            _ => false,
-        }
-    }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        let res = match syntax.kind() {
-            PORT_DECL => ModulePortKind::PortDecl(PortDecl { syntax }),
-            NAME => ModulePortKind::Name(Name { syntax }),
-            _ => return None,
-        };
-        Some(res)
-    }
-    fn syntax(&self) -> &SyntaxNode {
-        match self {
-            ModulePortKind::PortDecl(it) => &it.syntax,
-            ModulePortKind::Name(it) => &it.syntax,
-        }
-    }
-}
 impl From<Path> for ParamRef {
     fn from(node: Path) -> ParamRef { ParamRef::Path(node) }
 }
@@ -1639,11 +1608,6 @@ impl std::fmt::Display for Item {
     }
 }
 impl std::fmt::Display for ModuleItem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
-impl std::fmt::Display for ModulePortKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }

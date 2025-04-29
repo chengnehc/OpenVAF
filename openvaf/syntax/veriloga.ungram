@@ -241,10 +241,7 @@ ModulePorts =
   '(' ports:(ModulePort (',' ModulePort)*)? ')'
 
 ModulePort =
-  kind:ModulePortKind
-
-ModulePortKind =
-  PortDecl | Name
+  decl:PortDecl | name:Name
 
 // A.2.1.2
 PortDecl =

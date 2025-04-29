@@ -464,7 +464,7 @@ impl Diagnostic for SyntaxError {
                 let name_ranges: Vec<_> = ports
                     .names()
                     .map(|name| name.syntax().text_range())
-                    .chain(ports.declarations().map(|port| port.syntax().text_range()))
+                    .chain(ports.decls().map(|port| port.syntax().text_range()))
                     .collect();
 
                 let (file_id, ranges) = text_range_list_to_unified_spans(&sm, &parse, &name_ranges);

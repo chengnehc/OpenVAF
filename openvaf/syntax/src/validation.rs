@@ -4,7 +4,7 @@ use tokens::SyntaxKind::NET_TYPE;
 
 use crate::ast::{
     self, support, ArgListOwner, AttrsOwner, BlockItem, ConstraintValue, Expr, FunctionItem,
-    LiteralKind, ModulePortKind, ModulePorts, Name, PathSegmentKind,
+    LiteralKind, ModulePorts, Name, PathSegmentKind,
 };
 use crate::name::{kw, kw_comp};
 use crate::{match_ast, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr, T};
@@ -262,7 +262,7 @@ fn validate_module_ports(
     let mut names: Vec<Vec<ast::Name>> = Vec::new();
     let mut has_decl = false;
     for port in ports.ports() {
-        if let ModulePortKind::Name(name) = port.kind() {
+        if let Some(name) = port.name() {
             match names.binary_search_by(|locs| locs[0].text().cmp(&name.text())) {
                 Ok(pos) => names[pos].push(name.clone()),
                 Err(pos) => names.insert(pos, vec![name.clone()]),

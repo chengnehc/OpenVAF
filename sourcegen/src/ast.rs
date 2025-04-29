@@ -569,7 +569,7 @@ fn lower_enum(grammar: &Grammar, rule: &Rule) -> Option<(Vec<AstEnumVariant>, Op
 }
 
 /// Labels that are manually implemented rather than generated.
-const MANUAL_LABEL: [&str; 16] = [
+const MANUAL_LABEL: [&str; 15] = [
     // PrefixExpr, BinExpr, Assign
     "op",
     "lhs",
@@ -589,8 +589,6 @@ const MANUAL_LABEL: [&str; 16] = [
     // Range
     "lower",
     "upper",
-    // ModulePort
-    "kind",
     // EventStmt
     "sim_phases",
 ];
