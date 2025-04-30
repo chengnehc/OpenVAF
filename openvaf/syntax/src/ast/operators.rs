@@ -93,13 +93,8 @@ impl_display! {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum AssignOp {
     /// a contribute (<+) stmt
-    ///
-    /// lhs must be a branch access (example: `I(a,c) <+ V(a,c)/R;`)
     Contribute,
-
     /// a variable assignment (=) stmt
-    ///
-    /// lhs must be an identifier (example: `I = V(a,c)/R;`)
     Assign,
 }
 

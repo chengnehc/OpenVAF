@@ -3,10 +3,8 @@ use stdx::pretty::List;
 
 use drop_bomb::DropBomb;
 
-use crate::event::Event;
-use crate::token_set::TokenSet;
-use crate::Error;
 use crate::SyntaxKind::{self, EOF, ERROR, TOMBSTONE};
+use crate::{Error, Event, TokenSet};
 
 /// `Parser` struct provides the low-level API for
 /// navigating through the stream of tokens and

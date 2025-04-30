@@ -1,8 +1,7 @@
-use rowan::TextSize;
 use stdx::{impl_display, pretty};
 use text_size::TextRange;
 
-use crate::{ast, AstPtr, SyntaxKind, SyntaxNodePtr};
+use crate::{ast, AstPtr, SyntaxKind, SyntaxNodePtr, TextSize};
 
 #[derive(Eq, PartialEq, Debug, Clone, Hash)]
 pub enum SyntaxError {

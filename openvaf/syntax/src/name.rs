@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::ops::Deref;
 
 use smol_str::SmolStr;
@@ -56,7 +55,7 @@ impl Name {
     // }
 }
 
-impl Display for Name {
+impl std::fmt::Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }

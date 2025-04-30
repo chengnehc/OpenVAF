@@ -4,7 +4,7 @@
 use std::mem;
 
 use basedb::{AstIdMap, ErasedAstId, LintAttrs};
-use syntax::ast::{self, ArgListOwner, AttrIter, AttrsOwner, FunctionRef};
+use syntax::ast::{self, ArgListOwner, AttrsOwner, FunctionRef};
 use syntax::name::AsName;
 use syntax::AstPtr;
 
@@ -207,7 +207,12 @@ impl Context<'_> {
         id
     }
 
-    fn alloc_stmt(&mut self, stmt: Stmt, ptr: AstPtr<ast::Stmt>, attrs: AttrIter) -> StmtId {
+    fn alloc_stmt(
+        &mut self,
+        stmt: Stmt,
+        ptr: AstPtr<ast::Stmt>,
+        attrs: impl Iterator<Item = ast::Attr>,
+    ) -> StmtId {
         let registry = &self.db.lint_registry();
         let attrs =
             LintAttrs::resolve(registry, attrs, &mut self.src_map.diagnostics, self.curr_scope.1);

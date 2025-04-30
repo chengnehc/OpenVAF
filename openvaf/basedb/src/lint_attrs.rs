@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use syntax::ast::{self, AstToken, AttrIter, LiteralKind};
+use syntax::ast::{self, AstToken, LiteralKind};
 use syntax::{AstNode, TextRange};
 
 use crate::lints::{Lint, LintLevel, LintRegistry, LintSrc};
@@ -60,7 +60,7 @@ impl LintAttrTree {
 
 pub fn resolve_overwrites(
     registry: &LintRegistry,
-    attrs: AttrIter,
+    attrs: impl Iterator<Item = ast::Attr>,
     err: &mut Vec<AttrDiagnostic>,
     src: ErasedAstId,
 ) -> impl Iterator<Item = (Lint, LintLevel)> {
@@ -154,7 +154,7 @@ impl LintAttrs {
 
     pub fn resolve(
         registry: &LintRegistry,
-        attrs: AttrIter,
+        attrs: impl Iterator<Item = ast::Attr>,
         err: &mut Vec<AttrDiagnostic>,
         parent: ErasedAstId,
     ) -> LintAttrs {

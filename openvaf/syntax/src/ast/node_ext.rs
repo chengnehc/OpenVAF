@@ -33,7 +33,6 @@ fn text_of_first_token(node: &SyntaxNode) -> TokenText<'_> {
 }
 
 impl ast::Path {
-    // TODO(JW): this is not used
     #[must_use]
     pub fn first_qualifier(&self) -> ast::Path {
         successors(Some(self.clone()), ast::Path::qualifier).last().unwrap()
@@ -102,9 +101,6 @@ impl ast::Path {
     }
 }
 
-#[test]
-fn path() {}
-
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct PathSegment {
     pub token: SyntaxToken,
@@ -116,8 +112,6 @@ pub enum PathSegmentKind {
     Root,
     Name,
 }
-
-/* Items */
 
 impl ast::ModuleDecl {
     pub fn analog_behaviour(&self) -> impl Iterator<Item = ast::Stmt> {
@@ -204,14 +198,14 @@ impl ast::Constraint {
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum ConstraintKind {
-    Include, // inclusion range specified with `from [range]`
-    Exclude, // exclusion range or singularity specfied with `exclude [range]` or `exclude [singularity]`
+    Include,
+    Exclude,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ConstraintValue {
     Range(ast::Range),
-    Value(ast::Expr), // singularity that should only be used by 'exclude'
+    Value(ast::Expr),
 }
 
 impl ast::Range {

@@ -77,22 +77,23 @@ pub enum LiteralKind {
 
 impl ast::PrefixExpr {
     pub fn op_kind(&self) -> Option<UnaryOp> {
-        match self.op_token()?.kind() {
-            T![~] => Some(UnaryOp::BitNegate),
-            T![!] => Some(UnaryOp::Not),
-            T![-] => Some(UnaryOp::Neg),
-            T![+] => Some(UnaryOp::Identity),
-            _ => None,
-        }
+        let unary_op = match self.op_token()?.kind() {
+            T![~] => UnaryOp::BitNegate,
+            T![!] => UnaryOp::Not,
+            T![-] => UnaryOp::Neg,
+            T![+] => UnaryOp::Identity,
+            _ => return None,
+        };
+        Some(unary_op)
     }
 
-    pub fn op_token(&self) -> Option<SyntaxToken> {
+    fn op_token(&self) -> Option<SyntaxToken> {
         self.syntax().first_child_or_token()?.into_token()
     }
 }
 
 impl ast::BinExpr {
-    pub fn op_details(&self) -> Option<(SyntaxToken, BinaryOp)> {
+    fn op_details(&self) -> Option<(SyntaxToken, BinaryOp)> {
         self.syntax().children_with_tokens().filter_map(|it| it.into_token()).find_map(|c| {
             let bin_op = match c.kind() {
                 T![||] => BinaryOp::BooleanOr,
@@ -121,10 +122,12 @@ impl ast::BinExpr {
         })
     }
 
+    #[inline]
     pub fn op_kind(&self) -> Option<BinaryOp> {
         self.op_details().map(|t| t.1)
     }
 
+    #[inline]
     pub fn op_token(&self) -> Option<SyntaxToken> {
         self.op_details().map(|t| t.0)
     }

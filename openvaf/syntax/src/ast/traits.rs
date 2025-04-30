@@ -1,8 +1,6 @@
 //! Super traits `ArgListOwner` and `AttrsOwner` over `AstNode`
 
-use std::iter::FlatMap;
-
-use crate::ast::{self, support, AstNode, RevAstChildren};
+use crate::ast::{self, support, AstNode};
 use crate::SyntaxNode;
 
 pub trait ArgListOwner: AstNode {
@@ -11,19 +9,13 @@ pub trait ArgListOwner: AstNode {
     }
 }
 
-pub type AttrIter = FlatMap<
-    RevAstChildren<ast::AttrList>,
-    RevAstChildren<ast::Attr>,
-    fn(ast::AttrList) -> RevAstChildren<ast::Attr>,
->;
-
-pub fn attrs(syntax: &SyntaxNode) -> AttrIter {
+pub fn attrs(syntax: &SyntaxNode) -> impl Iterator<Item = ast::Attr> {
     support::rev_children::<ast::AttrList>(syntax)
         .flat_map(|list| support::rev_children::<ast::Attr>(list.syntax()))
 }
 
 pub trait AttrsOwner: AstNode {
-    fn attrs(&self) -> AttrIter {
+    fn attrs(&self) -> impl Iterator<Item = ast::Attr> {
         attrs(self.syntax())
     }
     fn has_attr(&self, name: &str) -> bool {

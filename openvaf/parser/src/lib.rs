@@ -13,7 +13,7 @@
 //! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/parser
 
 use stdx::pretty;
-pub(crate) use tokens::{SyntaxKind, T};
+use tokens::{SyntaxKind, T};
 
 mod event;
 mod grammar;
@@ -21,13 +21,19 @@ mod output;
 mod parser;
 mod token_set;
 
-pub use output::{Output, Step};
-pub(crate) use token_set::TokenSet;
+use event::Event;
+use output::Output;
+use parser::Parser;
+use token_set::TokenSet;
+
+pub use output::Step;
+
+type Token = SyntaxKind;
 
 /// Parse a stream of tokens. Unlike tokens produced by the lexer, the input
 /// `tokens` doesn't include trivia (whitespace and comments).
-pub fn parse(tokens: &[SyntaxKind]) -> Output {
-    let mut p = parser::Parser::new(tokens);
+pub fn parse(tokens: &[Token]) -> Output {
+    let mut p = Parser::new(tokens);
 
     // source file is the only entry point of the parser
     grammar::source_file(&mut p);
@@ -52,8 +58,6 @@ pub fn parse(tokens: &[SyntaxKind]) -> Output {
 
     output
 }
-
-type Token = crate::SyntaxKind;
 
 #[derive(Debug, Clone)]
 pub enum Error {

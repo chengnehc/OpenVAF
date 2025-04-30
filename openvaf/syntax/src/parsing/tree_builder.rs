@@ -1,17 +1,12 @@
-//! A syntax tree builder wraps rowan's `GreenNodeBuilder`, while it extracts
-//! richer information for diagnostics:
-//!
-//! 1. More detailed error messages for error nodes.
-//! 2. Context span and text ranges mapping of each node.
+//! A syntax tree builder that wraps rowan's `GreenNodeBuilder`.
+//! It extracts richer information for diagnostics.
 
 use std::mem;
 use std::sync::Arc;
 
-use preprocessor::sourcemap::{CtxSpan, SourceContextId, SourceMap};
-use preprocessor::{SourceProvider, Token};
-use rowan::{GreenNode, GreenNodeBuilder, Language};
-use vfs::FileId;
+use rowan::{GreenNodeBuilder, Language};
 
+use super::{CtxSpan, FileId, GreenNode, SourceContextId, SourceMap, SourceProvider, Token};
 use crate::syntax_node::VerilogALanguage;
 use crate::{SyntaxError, SyntaxKind, TextRange, TextSize, T};
 

@@ -95,7 +95,7 @@ fn sourcemap(db: &dyn BaseDB, root_file: FileId) -> Arc<SourceMap> {
 }
 
 fn parse(db: &dyn BaseDB, root_file: FileId) -> Parse<SourceFile> {
-    SourceFile::parse(&db.as_src_provider(), root_file, &db.preprocess(root_file))
+    syntax::parse(&db.as_src_provider(), root_file, &db.preprocess(root_file))
 }
 
 fn ast_id_map(db: &dyn BaseDB, root_file: FileId) -> Arc<AstIdMap> {

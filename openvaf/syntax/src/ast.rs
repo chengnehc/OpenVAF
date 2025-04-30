@@ -1,24 +1,49 @@
 use std::marker::PhantomData;
 
-use crate::syntax_node::{
-    RevSyntaxNodeChildren, SyntaxElementChildren, SyntaxNode, SyntaxNodeChildren, SyntaxToken,
-};
-use crate::SyntaxKind;
+use crate::syntax_node::{RevSyntaxNodeChildren, SyntaxElementChildren, SyntaxNodeChildren};
+use crate::{SyntaxKind, SyntaxNode, SyntaxToken};
+
+mod generated;
+pub use generated::{nodes::*, tokens::*};
 
 mod expr_ext;
-mod generated;
 mod node_ext;
-mod operators;
 mod token_ext;
+
+mod operators;
 mod traits;
 
-pub use self::expr_ext::{ArrayExprKind, LiteralKind};
-pub use self::generated::{nodes::*, tokens::*};
-pub use self::node_ext::{
-    BranchKind, ConstraintKind, ConstraintValue, PathSegment, PathSegmentKind,
-};
-pub use self::operators::{AssignOp, BinaryOp, UnaryOp};
-pub use self::traits::*;
+pub use expr_ext::{ArrayExprKind, LiteralKind};
+pub use node_ext::{BranchKind, ConstraintKind, ConstraintValue, PathSegment, PathSegmentKind};
+pub use operators::{AssignOp, BinaryOp, UnaryOp};
+pub use traits::*;
+
+/// Matches a `SyntaxNode` against a typed `AstNode`.
+///
+/// # Example:
+///
+/// ```ignore
+/// match_ast! {
+///     match node {
+///         ast::CallExpr(it) => { ... },
+///         ast::MethodCallExpr(it) => { ... },
+///         ast::MacroCall(it) => { ... },
+///         _ => None,
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! match_ast {
+    (match $node:ident { $($tt:tt)* }) => { match_ast!(match ($node) { $($tt)* }) };
+
+    (match ($node:expr) {
+        $( ast::$ast:ident($it:ident) => $res:expr, )*
+        _ => $catch_all:expr $(,)?
+    }) => {{
+        $( if let Some($it) = ast::$ast::cast($node.clone()) { $res } else )*
+        { $catch_all }
+    }};
+}
 
 /// The main trait to go from untyped `SyntaxNode` to a typed `AstNode`.
 ///
@@ -38,24 +63,6 @@ pub trait AstNode {
 
     /// Unwrap the typed `AstNode` to get inner untyped `SyntaxNode`.
     fn syntax(&self) -> &SyntaxNode;
-
-    /* JW: not used
-    #[must_use]
-    fn clone_for_update(&self) -> Self
-    where
-        Self: Sized,
-    {
-        Self::cast(self.syntax().clone_for_update()).unwrap()
-    }
-
-    #[must_use]
-    fn clone_subtree(&self) -> Self
-    where
-        Self: Sized,
-    {
-        Self::cast(self.syntax().clone_subtree()).unwrap()
-    }
-    */
 }
 
 /// Like `AstNode`, but wraps tokens rather than interior nodes.
