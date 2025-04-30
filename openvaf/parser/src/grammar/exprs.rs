@@ -1,6 +1,3 @@
-use crate::grammar::call::{call, sys_fun_call};
-use crate::grammar::paths::path;
-
 use super::*;
 
 const EXPR_EXPECTED: &[SyntaxKind] =
@@ -145,17 +142,16 @@ fn paren_expr(p: &mut Parser) -> CompletedMarker {
     p.bump(T!['(']);
 
     // JW: this is for tuple-like expressions: (expr1, expr2, ..)
-    // which is not described in VAMS LRM, to the best of my knowledge.
-    /*  while !p.at(EOF) && !p.at(T![')']) {
-        if expr(p).is_none() {
-            break;
-        }
-        if !p.at(T![')']) {
-            p.expect(T![,]);
-        }
-    } */
+    // which is not described in LRM, to the best of my knowledge.
+    // while !p.at(EOF) && !p.at(T![')']) {
+    //     if expr(p).is_none() {
+    //         break;
+    //     }
+    //     if !p.at(T![')']) {
+    //         p.expect(T![,]);
+    //     }
+    // }
 
-    // only this is allowed: (expr)
     expr(p);
     p.expect(T![')']);
     m.complete(p, PAREN_EXPR)
@@ -167,6 +163,38 @@ fn port_flow(p: &mut Parser) -> CompletedMarker {
     path(p);
     p.expect(T![>]);
     m.complete(p, PORT_FLOW)
+}
+
+fn call(p: &mut Parser, lhs: CompletedMarker) -> CompletedMarker {
+    let m = lhs.precede(p);
+    arg_list(p);
+    m.complete(p, CALL)
+}
+
+fn sys_fun_call(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+    let m2 = p.start();
+    p.bump(T![sysfun]);
+    m2.complete(p, SYS_FUN);
+    if p.at(T!('(')) {
+        arg_list(p);
+    }
+    m.complete(p, CALL)
+}
+
+pub(super) fn arg_list(p: &mut Parser) {
+    let m = p.start();
+    p.eat(T!['(']);
+    while !p.at(T![')']) && !p.at(EOF) {
+        if expr(p).is_none() {
+            break;
+        }
+        if !p.at(T![')']) && !p.expect(T![,]) {
+            break;
+        }
+    }
+    p.eat(T![')']);
+    m.complete(p, ARG_LIST);
 }
 
 // fn array_expr(p: &mut Parser) -> CompletedMarker {

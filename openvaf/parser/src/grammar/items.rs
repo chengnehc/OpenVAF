@@ -1,38 +1,62 @@
-use crate::grammar::paths::path;
+//! Top level items of Verilog-A source file.
 
 use super::*;
 
 mod module;
-use module::{module_items, module_ports, MODULE_ITEM_OR_ATTR_RECOVERY};
+
+use module::MODULE_ITEM_RECOVERY;
+use module::{module_items, module_ports};
 
 pub(super) const ITEM_RECOVERY: TokenSet =
     TokenSet::new(&[T![discipline], T![nature], T![module], EOF]);
 
-const DISCIPLINE_RECOVERY: TokenSet = ITEM_RECOVERY.union(TokenSet::unique(T![enddiscipline]));
-
-pub(super) fn discipline(p: &mut Parser, m: Marker) {
-    p.bump(T![discipline]);
-    name_r(p, TokenSet::unique(T![;]));
-    p.eat(T![;]);
-    while !p.at_ts(DISCIPLINE_RECOVERY) {
+/// The entry function of parser.
+pub(crate) fn source_file(p: &mut Parser) {
+    let m = p.start();
+    let mut error_range: Option<CompletedMarker> = None;
+    while !p.at(EOF) {
         let m = p.start();
-        path(p);
-        p.eat(T![=]);
-        expr(p);
-        if !p.eat(T![;]) {
-            let err = p.err_with_expected_syntax(T![;]);
-            p.err_recover(err, DISCIPLINE_RECOVERY.union(TokenSet::unique(T![ident])));
+        attrs(p, ITEM_RECOVERY);
+        match p.current() {
+            T![nature] => {
+                error_range.take();
+                items::nature(p, m)
+            }
+            T![discipline] => {
+                error_range.take();
+                items::discipline(p, m);
+            }
+            T![module] => {
+                error_range.take();
+                items::module(p, m)
+            }
+            _ => {
+                error_range = if let Some(error_range) = error_range {
+                    m.abandon(p);
+                    p.bump_any();
+                    while !p.at_ts(ITEM_RECOVERY) {
+                        p.bump_any();
+                    }
+                    Some(error_range.undo_completion(p).complete(p, ERROR))
+                } else {
+                    let err =
+                        p.err_with_expected_syntaxes(vec![T![discipline], T![nature], T![module]]);
+                    p.error(err);
+                    p.bump_any();
+                    while !p.at_ts(ITEM_RECOVERY) {
+                        p.bump_any();
+                    }
+                    Some(m.complete(p, ERROR))
+                }
+            }
         }
-        // p.expect_recover(T![;], DISCIPLINE_RECOVERY.union(TokenSet::unique(T![ident])));
-        m.complete(p, DISCIPLINE_ATTR);
     }
-    p.expect(T![enddiscipline]);
-    m.complete(p, DISCIPLINE_DECL);
+    m.complete(p, SOURCE_FILE);
 }
 
 const NATURE_RECOVERY: TokenSet = ITEM_RECOVERY.union(TokenSet::unique(T![endnature]));
 
-pub(super) fn nature(p: &mut Parser, m: Marker) {
+fn nature(p: &mut Parser, m: Marker) {
     p.bump(T![nature]);
     name_r(p, TokenSet::new(&[T![;], T![:]]));
     if p.eat(T![:]) {
@@ -54,7 +78,32 @@ pub(super) fn nature(p: &mut Parser, m: Marker) {
     m.complete(p, NATURE_DECL);
 }
 
-pub(super) fn module(p: &mut Parser, m: Marker) {
+const DISCIPLINE_RECOVERY: TokenSet = ITEM_RECOVERY.union(TokenSet::unique(T![enddiscipline]));
+
+fn discipline(p: &mut Parser, m: Marker) {
+    p.bump(T![discipline]);
+    name_r(p, TokenSet::unique(T![;]));
+    p.eat(T![;]);
+    while !p.at_ts(DISCIPLINE_RECOVERY) {
+        let m = p.start();
+        path(p);
+        p.eat(T![=]);
+        expr(p);
+        if !p.eat(T![;]) {
+            let err = p.err_with_expected_syntax(T![;]);
+            p.err_recover(err, DISCIPLINE_RECOVERY.union(TokenSet::unique(T![ident])));
+        }
+        // p.expect_recover(T![;], DISCIPLINE_RECOVERY.union(TokenSet::unique(T![ident])));
+        m.complete(p, DISCIPLINE_ATTR);
+    }
+    p.expect(T![enddiscipline]);
+    m.complete(p, DISCIPLINE_DECL);
+}
+
+pub(super) const MODULE_ITEM_OR_ATTR_RECOVERY: TokenSet =
+    MODULE_ITEM_RECOVERY.union(TokenSet::unique(T!["(*"]));
+
+fn module(p: &mut Parser, m: Marker) {
     p.bump(T![module]);
     name_r(p, TokenSet::new(&[T!['('], T![;]]));
     if p.eat(T!['(']) {
@@ -64,111 +113,4 @@ pub(super) fn module(p: &mut Parser, m: Marker) {
     module_items(p);
     p.expect(T![endmodule]);
     m.complete(p, MODULE_DECL);
-}
-
-pub(super) fn decl_list(
-    p: &mut Parser,
-    mut parse_entry: impl FnMut(&mut Parser) -> bool,
-    terminator: SyntaxKind,
-    recovery: TokenSet,
-) {
-    let recovery = recovery.union(TokenSet::unique(terminator));
-    if !p.at_ts(recovery) {
-        while !p.at_ts(recovery) && parse_entry(p) {
-            if !p.at(terminator) {
-                p.expect_with(T![,], vec![T![,], terminator]);
-            }
-        }
-    } else {
-        p.error(p.err_with_expected_syntax(T![ident]));
-    }
-}
-
-fn decl_name(p: &mut Parser) -> bool {
-    name_r(p, TokenSet::new(&[T![,], T![;]]));
-    true
-}
-
-pub(super) fn var_decl(p: &mut Parser, m: Marker) {
-    ty(p);
-    decl_list(p, variable, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
-    p.eat(T![;]);
-    m.complete(p, VAR_DECL);
-}
-
-fn variable(p: &mut Parser) -> bool {
-    let m = p.start();
-    name_r(p, TokenSet::new(&[T![,], T![=], T![;]]));
-    if p.eat(T![=]) {
-        expr(p);
-    }
-    m.complete(p, VAR);
-    true
-}
-
-pub(super) fn param_decl(p: &mut Parser, m: Marker) {
-    p.bump_any(); // bump the parameter/localparam keyword
-    eat_ty(p);
-    decl_list(p, parameter, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
-    p.eat(T![;]);
-    m.complete(p, PARAM_DECL);
-}
-
-const PARAM_RECOVERY: TokenSet = MODULE_ITEM_OR_ATTR_RECOVERY.union(TokenSet::new(&[T![,], T![;]]));
-
-fn parameter(p: &mut Parser) -> bool {
-    let m = p.start();
-    name_r(p, TokenSet::new(&[T![,], T![;]]));
-    p.expect(T![=]);
-    expr(p);
-    while !p.at_ts(PARAM_RECOVERY) {
-        constraint(p)
-    }
-    m.complete(p, PARAM);
-    true
-}
-
-fn constraint(p: &mut Parser) {
-    let m = p.start();
-    if !p.expect_ts_recover(TokenSet::new(&[T![from], T![exclude]]), PARAM_RECOVERY) {
-        m.abandon(p);
-        return;
-    }
-    if p.eat(T!["'{"]) || p.eat(T!['{']) {
-        // array range (for string parameters)
-        expr(p);
-        while p.eat(T![,]) {
-            expr(p);
-        }
-        p.expect(T!['}']);
-    } else {
-        range_or_expr(p);
-    }
-    m.complete(p, CONSTRAINT);
-}
-
-fn range_or_expr(p: &mut Parser) {
-    let m = p.start();
-
-    // while all branches parse an expr they need to eat [/( or nothing first
-    #[allow(clippy::branches_sharing_code)]
-    if p.eat(T!['(']) {
-        expr(p);
-        if !p.at(T![:]) {
-            p.expect(T![')']);
-            m.complete(p, PAREN_EXPR);
-            return;
-        }
-    } else if p.eat(T!['[']) {
-        expr(p);
-    } else {
-        expr(p);
-        m.abandon(p);
-        return;
-    }
-
-    p.expect(T![:]);
-    expr(p);
-    p.expect_ts(TokenSet::new(&[T![')'], T![']']]));
-    m.complete(p, RANGE);
 }

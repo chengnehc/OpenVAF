@@ -1,5 +1,3 @@
-use crate::grammar::expressions::expr;
-
 use super::*;
 
 pub(super) fn attrs(p: &mut Parser, recovery: TokenSet) {

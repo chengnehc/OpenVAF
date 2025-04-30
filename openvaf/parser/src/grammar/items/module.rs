@@ -1,65 +1,10 @@
-use crate::grammar::stmts::{STMT_RECOVERY, STMT_TS};
-
 use super::*;
+use exprs::arg_list;
+use params::{aliasparam_decl, param_decl};
+use stmts::{stmt, stmt_with_attrs, STMT_RECOVERY, STMT_TS};
+use vars::var_decl;
 
-const MODULE_PORTS_RECOVERY: TokenSet = TokenSet::new(&[T![;], T![')'], T![endmodule], EOF]);
-const DIRECTION_TS: TokenSet = TokenSet::new(&[T![inout], T![output], T![input]]);
-
-pub(super) fn module_ports(p: &mut Parser) {
-    let m = p.start();
-    while !p.at_ts(MODULE_PORTS_RECOVERY) {
-        let m = p.start();
-        if !eat_name(p) {
-            let m = p.start();
-            attrs(p, MODULE_PORTS_RECOVERY.union(DIRECTION_TS));
-            port_decl::<true>(p, m)
-        }
-        m.complete(p, MODULE_PORT);
-        if !p.at(T![')']) {
-            p.expect_with(T![,], vec![T![,], T![')']]);
-        }
-    }
-    p.expect(T![')']);
-    m.complete(p, MODULE_PORTS);
-}
-
-const MODULE_PORT_RECOVERY: TokenSet =
-    MODULE_PORTS_RECOVERY.union(DIRECTION_TS).union(TokenSet::unique(T!["(*"]));
-
-// using const generics here for compile-time evaluation and optimization
-fn port_decl<const MODULE_HEAD: bool>(p: &mut Parser, m: Marker) {
-    // port direction is always required
-    let direction = p.start();
-    p.bump_ts(DIRECTION_TS);
-    direction.complete(p, DIRECTION);
-
-    // discipline_ident and net_type are optional, as either one is required
-    if !p.nth_at_ts(1, MODULE_PORT_RECOVERY.union(TokenSet::unique(T![,]))) {
-        // discipline ident
-        eat_name_ref(p);
-    }
-    // net_type
-    p.eat(T![net_type]);
-
-    if MODULE_HEAD {
-        decl_list(p, module_port, T![')'], MODULE_PORT_RECOVERY);
-    } else {
-        net_dec_list(p);
-    }
-    let finished = m.complete(p, PORT_DECL);
-    if !MODULE_HEAD {
-        let m = finished.precede(p);
-        p.eat(T![;]);
-        m.complete(p, BODY_PORT_DECL);
-    }
-}
-
-fn module_port(p: &mut Parser) -> bool {
-    name_r(p, MODULE_PORT_RECOVERY.union(TokenSet::unique(T![,])));
-    !(p.at(T![,]) && p.nth_at_ts(1, MODULE_PORT_RECOVERY))
-}
-
-const MODULE_ITEM_RECOVERY: TokenSet = DIRECTION_TS.union(TokenSet::new(&[
+pub(super) const MODULE_ITEM_RECOVERY: TokenSet = DIRECTION_TS.union(TokenSet::new(&[
     T![net_type],
     T![analog],
     T![initial],
@@ -73,8 +18,6 @@ const MODULE_ITEM_RECOVERY: TokenSet = DIRECTION_TS.union(TokenSet::new(&[
     T![endmodule],
     EOF,
 ]));
-pub(super) const MODULE_ITEM_OR_ATTR_RECOVERY: TokenSet =
-    MODULE_ITEM_RECOVERY.union(TokenSet::unique(T!["(*"]));
 
 pub(super) fn module_items(p: &mut Parser) {
     let mut error_range: Option<CompletedMarker> = None;
@@ -126,8 +69,67 @@ pub(super) fn module_items(p: &mut Parser) {
     }
 }
 
+const MODULE_PORTS_RECOVERY: TokenSet = TokenSet::new(&[T![;], T![')'], T![endmodule], EOF]);
+const DIRECTION_TS: TokenSet = TokenSet::new(&[T![inout], T![output], T![input]]);
+
+pub(super) fn module_ports(p: &mut Parser) {
+    let m = p.start();
+    while !p.at_ts(MODULE_PORTS_RECOVERY) {
+        let m = p.start();
+        if !eat_name(p) {
+            let m = p.start();
+            attrs(p, MODULE_PORTS_RECOVERY.union(DIRECTION_TS));
+            port_decl::<true>(p, m)
+        }
+        m.complete(p, MODULE_PORT);
+        if !p.at(T![')']) {
+            p.expect_with(T![,], vec![T![,], T![')']]);
+        }
+    }
+    p.expect(T![')']);
+    m.complete(p, MODULE_PORTS);
+}
+
+const MODULE_PORT_RECOVERY: TokenSet =
+    MODULE_PORTS_RECOVERY.union(DIRECTION_TS).union(TokenSet::unique(T!["(*"]));
+
+// using const generics here for compile-time evaluation and optimization
+fn port_decl<const MODULE_HEAD: bool>(p: &mut Parser, m: Marker) {
+    // port direction is always required
+    let direction = p.start();
+    p.bump_ts(DIRECTION_TS);
+    direction.complete(p, DIRECTION);
+
+    // discipline_ident and net_type are optional, as either one is required
+    if !p.nth_at_ts(1, MODULE_PORT_RECOVERY.union(TokenSet::unique(T![,]))) {
+        // discipline ident
+        eat_name_ref(p);
+    }
+
+    p.eat(T![net_type]);
+
+    if MODULE_HEAD {
+        decl_list(p, module_port, T![')'], MODULE_PORT_RECOVERY);
+    } else {
+        decl_list(p, decl_name, T![;], NET_RECOVERY);
+    }
+    let finished = m.complete(p, PORT_DECL);
+    if !MODULE_HEAD {
+        let m = finished.precede(p);
+        p.eat(T![;]);
+        m.complete(p, BODY_PORT_DECL);
+    }
+
+    fn module_port(p: &mut Parser) -> bool {
+        name_r(p, MODULE_PORT_RECOVERY.union(TokenSet::unique(T![,])));
+        !(p.at(T![,]) && p.nth_at_ts(1, MODULE_PORT_RECOVERY))
+    }
+}
+
+const NET_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![endmodule]]);
+
 fn net_decl<const NET_TYPE_FIRST: bool>(p: &mut Parser, m: Marker) {
-    // discipline_ident and net_type are both optional, as either one is required
+    // discipline_ident and net_type are both optional
     if NET_TYPE_FIRST {
         p.bump(NET_TYPE);
         if !p.nth_at_ts(1, TokenSet::new(&[T![,], T![;]])) {
@@ -136,14 +138,9 @@ fn net_decl<const NET_TYPE_FIRST: bool>(p: &mut Parser, m: Marker) {
     } else {
         name_ref_r(p, MODULE_ITEM_OR_ATTR_RECOVERY.union(TokenSet::unique(T![;])))
     }
-    net_dec_list(p);
+    decl_list(p, decl_name, T![;], NET_RECOVERY);
     p.eat(T![;]);
     m.complete(p, NET_DECL);
-}
-
-const NET_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![endmodule]]);
-fn net_dec_list(p: &mut Parser) {
-    decl_list(p, decl_name, T![;], NET_RECOVERY);
 }
 
 fn branch_decl(p: &mut Parser, m: Marker) {
@@ -155,21 +152,6 @@ fn branch_decl(p: &mut Parser, m: Marker) {
     decl_list(p, decl_name, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
     p.eat(T![;]);
     m.complete(p, BRANCH_DECL);
-}
-
-fn aliasparam_decl(p: &mut Parser, m: Marker) {
-    p.bump(T![aliasparam]);
-    name_r(p, TokenSet::new(&[T![;], T![=]]));
-    p.expect(T![=]);
-    if p.at(T![sysfun]) {
-        let m = p.start();
-        p.bump_any();
-        m.complete(p, SYS_FUN);
-    } else {
-        path(p);
-    }
-    p.eat(T![;]);
-    m.complete(p, ALIAS_PARAM);
 }
 
 const FUNCTION_RECOVERY: TokenSet = TokenSet::new(&[EOF, T![endmodule], T![endfunction]]);

@@ -1,6 +1,6 @@
-use crate::grammar::items::{param_decl, var_decl};
-
 use super::*;
+use params::param_decl;
+use vars::var_decl;
 
 pub(super) const STMT_TS: TokenSet = TokenSet::new(&[
     T![if],
