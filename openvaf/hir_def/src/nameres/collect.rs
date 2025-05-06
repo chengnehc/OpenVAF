@@ -25,8 +25,9 @@ use crate::{
     Lookup, ModuleLoc, NatureAttrLoc, NatureLoc, NodeLoc, Scope,
 };
 
-use super::diagnostics::DefDiagnostic;
-use super::{DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItemDef, ScopeOrigin};
+use super::{
+    DefDiagnostic, DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItemDef, ScopeOrigin,
+};
 
 impl DefMap {
     pub fn root_query(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {

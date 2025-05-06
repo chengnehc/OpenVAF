@@ -23,8 +23,7 @@ impl Path {
         let segment = syntax.segment()?;
 
         match (prefix, segment.kind) {
-            // Error: `$root` is not the first segment
-            (Some(_), PathSegmentKind::Root) => None,
+            (Some(_), PathSegmentKind::Root) => None, // error: `$root` is not the first segment
             (Some(mut prefix), PathSegmentKind::Name) => {
                 prefix.segments.push(segment.as_name());
                 Some(prefix)

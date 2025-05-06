@@ -9,4 +9,7 @@ pub mod lower;
 pub mod types;
 pub mod validation;
 
+use builtin::BuiltinInfo;
+use db::HirTyDB;
+use inference::Inference;
 pub use lower::{BranchTy, DisciplineTy, NatureTy};

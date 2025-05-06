@@ -22,12 +22,13 @@ use syntax::{
 };
 use typed_index_collections::{TiSlice, TiVec};
 
+use crate::{BuiltinInfo, HirTyDB};
+
 use crate::builtin::{
-    BuiltinInfo, DDX_FLOW, DDX_POT, DDX_POT_DIFF, DDX_TEMP, LIMIT_BUILTIN_FUNCTION,
-    LIMIT_USER_FUNCTION, NATURE_ACCESS_BRANCH, NATURE_ACCESS_NODES, NATURE_ACCESS_NODE_GND,
-    NATURE_ACCESS_PORT_FLOW,
+    DDX_FLOW, DDX_POT, DDX_POT_DIFF, DDX_TEMP, LIMIT_BUILTIN_FUNCTION, LIMIT_USER_FUNCTION,
+    NATURE_ACCESS_BRANCH, NATURE_ACCESS_NODES, NATURE_ACCESS_NODE_GND, NATURE_ACCESS_PORT_FLOW,
 };
-use crate::db::{Alias, HirTyDB};
+use crate::db::Alias;
 use crate::lower::{BranchTy, DisciplineAccess};
 use crate::types::{Signature, SignatureData, Ty, TyRequirement};
 
@@ -56,8 +57,9 @@ impl Inference {
             expr_types: ArenaMap::from(vec![Ty::Val(Type::Err); body.exprs.len()]),
             ..Default::default()
         };
-
         let mut ctxt = Context { result, body: &body, db, expr_stmt_ty: None };
+        // Parameter and variable bodies only contain expressions, whose entry stmts
+        // are expr stmts, which shall be type checked properly.
         ctxt.expr_stmt_ty = match id {
             DefWithBodyId::ParamId(param) => match &db.param_data(param).ty {
                 Some(ty) => Some(ty.clone()),
@@ -117,8 +119,8 @@ struct Context<'a> {
     body: &'a Body,
     db: &'a dyn HirTyDB,
     /// A `Body` that only contains expressions have expr stmts as entry_stmts,
-    /// which shall be type checked properly. For behavioural (anlog body and
-    /// function) and untype (nature attr) bodies, this is simply none.
+    /// which shall be type checked properly. For behavioural (analog body and
+    /// function) and untyped (nature attr) bodies, this is simply None.
     expr_stmt_ty: Option<Type>,
 }
 
@@ -154,20 +156,20 @@ impl Context<'_> {
         self.body.stmts[stmt].walk_child_stmts(|stmt| self.infere_stmt(stmt));
     }
 
-    fn infere_assignment(&mut self, stmt: StmtId, val: ExprId, dst_ty: Option<Type>) {
-        if let Some(val_ty) = self.infere_expr(stmt, val) {
-            if let Some(value_ty) = val_ty.to_value() {
+    fn infere_assignment(&mut self, stmt: StmtId, expr: ExprId, dst_ty: Option<Type>) {
+        if let Some(ty) = self.infere_expr(stmt, expr) {
+            if let Some(rhs_ty) = ty.to_value() {
                 if let Some(dst_ty) = dst_ty {
-                    if dst_ty.is_assignable_to(&value_ty) {
-                        if dst_ty != value_ty {
-                            self.result.casts.insert(val, dst_ty);
+                    if dst_ty.is_assignable_to(&rhs_ty) {
+                        if dst_ty != rhs_ty {
+                            self.result.casts.insert(expr, dst_ty);
                         }
                     } else {
                         self.result.diagnostics.push(
                             TypeMismatch {
                                 expected: Cow::Owned(vec![TyRequirement::Val(dst_ty)]),
-                                found_ty: val_ty,
-                                expr: val,
+                                found_ty: ty,
+                                expr,
                             }
                             .into(),
                         );
@@ -176,18 +178,14 @@ impl Context<'_> {
             } else {
                 let expected = dst_ty.map_or(TyRequirement::AnyVal, TyRequirement::Val);
                 self.result.diagnostics.push(
-                    TypeMismatch {
-                        expected: Cow::Owned(vec![expected]),
-                        found_ty: val_ty,
-                        expr: val,
-                    }
-                    .into(),
+                    TypeMismatch { expected: Cow::Owned(vec![expected]), found_ty: ty, expr }
+                        .into(),
                 );
             }
         }
     }
 
-    pub fn infere_assignment_dst(
+    fn infere_assignment_dst(
         &mut self,
         stmt: StmtId,
         expr: ExprId,
@@ -494,7 +492,7 @@ impl Context<'_> {
         }
 
         let nature = access.0.lookup(self.db.upcast()).nature;
-        // Now that we know that the arguments are valid actually resolve whether this is flow or
+        // Now that we know that the arguments are valid, actually resolve whether this is flow or
         // pot access
         let access = self.infere_access_kind(nature, expr, args[0]);
 
@@ -543,30 +541,23 @@ impl Context<'_> {
         builtin: BuiltIn,
         args: &[ExprId],
     ) -> (Option<Ty>, bool) {
-        let info: BuiltinInfo = builtin.into();
+        let BuiltinInfo { signatures, min_args, max_args, .. } = builtin.into();
 
-        let exact = Some(info.min_args) == info.max_args;
-        if args.len() < info.min_args {
+        // argument count mismatch
+        let exact = Some(min_args) == max_args;
+        if args.len() < min_args || max_args.is_some_and(|it| it < args.len()) {
             self.result.diagnostics.push(InferDiagnostic::ArgCntMismatch {
-                expected: info.min_args,
+                expected: min_args,
                 found: args.len(),
                 expr,
                 exact,
             });
-            return (default_return_ty(info.signatures), false);
-        }
-        if info.max_args.is_some_and(|max_args| max_args < args.len()) {
-            self.result.diagnostics.push(InferDiagnostic::ArgCntMismatch {
-                expected: info.min_args,
-                found: args.len(),
-                expr,
-                exact,
-            });
-            return (default_return_ty(info.signatures), false);
+            return (default_return_ty(signatures), false);
         }
 
+        // signature mismatch
         let mut infere_args = args;
-        let signatures = match builtin {
+        let infere_signatures = match builtin {
             BuiltIn::ddx => {
                 self.infere_ddx(stmt, expr, args[0], args[1]);
                 return (Some(Ty::Val(Type::Real)), true);
@@ -575,26 +566,27 @@ impl Context<'_> {
                 if args.len() >= 2 {
                     infere_args = &args[0..2];
                 }
-                Cow::Borrowed(TiSlice::from_ref(info.signatures))
+                Cow::Borrowed(TiSlice::from_ref(signatures))
             }
-            _ if info.max_args.is_none() => {
-                let mut signatures = Vec::from(info.signatures);
+            _ if max_args.is_none() => {
+                // varargs functions
+                let mut signatures = Vec::from(signatures);
                 for sig in &mut signatures {
                     sig.args.to_mut().resize(args.len(), TyRequirement::AnyVal)
                 }
                 Cow::Owned(TiVec::from(signatures))
             }
-            _ => Cow::Borrowed(TiSlice::from_ref(info.signatures)),
+            _ => Cow::Borrowed(TiSlice::from_ref(signatures)),
         };
-        debug_assert_ne!(&signatures.raw, &[]);
+        debug_assert_ne!(&infere_signatures.raw, &[]);
 
-        let (Some(ty), valid) = self.infere_fun_args(stmt, expr, infere_args, signatures, None)
+        let (Some(ty), valid) =
+            self.infere_fun_args(stmt, expr, infere_args, infere_signatures, None)
         else {
-            return (default_return_ty(info.signatures), false);
+            return (default_return_ty(signatures), false);
         };
 
         match builtin {
-            BuiltIn::limit => self.infere_limit(stmt, expr, args),
             BuiltIn::write
             | BuiltIn::display
             | BuiltIn::strobe
@@ -604,7 +596,7 @@ impl Context<'_> {
             | BuiltIn::error
             | BuiltIn::info
             | BuiltIn::fatal => self.infere_display(stmt, args),
-
+            BuiltIn::limit => self.infere_limit(stmt, expr, args),
             _ => (),
         }
 
@@ -846,24 +838,26 @@ impl Context<'_> {
     }
 
     fn infere_ddx(&mut self, stmt: StmtId, expr: ExprId, val: ExprId, unknown: ExprId) {
+        // the first arg should be a real type
         if let Some(ty) = self.infere_expr(stmt, val) {
             self.expect::<false>(expr, None, ty, Cow::Borrowed(&[TyRequirement::Val(Type::Real)]));
         }
+        // [LRM 4.5.6]: The second argument of ddx() shall be the potential of a scalar
+        // net or port or the flow through a branch, because these are the unknown variables
+        // in the system of equations for the analog solver.
         let ty = self.infere_expr(stmt, unknown);
         if ty.is_some() {
-            let (call, signature) = if let (Some(ResolvedFun::BuiltIn(fun)), Some(signature)) = (
+            let (Some(ResolvedFun::BuiltIn(fun)), Some(signature)) = (
                 self.result.resolved_calls.get(&unknown),
                 self.result.resolved_signatures.get(&unknown),
-            ) {
-                (*fun, *signature)
-            } else {
+            ) else {
                 if !matches!(&self.body.exprs[expr], Expr::Call { .. }) {
                     self.result.diagnostics.push(InferDiagnostic::InvalidUnknown { e: unknown });
                 }
                 return;
             };
 
-            let signature = match (call, signature) {
+            let signature = match (*fun, *signature) {
                 (BuiltIn::potential, NATURE_ACCESS_NODES) => {
                     self.result
                         .diagnostics
@@ -1151,7 +1145,7 @@ impl Context<'_> {
     // }
 }
 
-pub fn default_return_ty(signatures: &[SignatureData]) -> Option<Ty> {
+fn default_return_ty(signatures: &[SignatureData]) -> Option<Ty> {
     let ty = &signatures.first()?.return_ty;
     signatures.iter().all(|sig| &sig.return_ty == ty).then(|| Ty::Val(ty.clone()))
 }

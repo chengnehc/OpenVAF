@@ -7,7 +7,7 @@ use hir_def::{
 };
 use syntax::name::{kw, Name};
 
-use crate::db::HirTyDB;
+use crate::HirTyDB;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct NatureTy {

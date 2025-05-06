@@ -1,11 +1,7 @@
 use std::fmt::{self, Write};
 
-use crate::db::HirDefDB;
+use super::*;
 use crate::expr::CaseCond;
-use crate::nameres::DefMapSource;
-use crate::{Expr, ExprId, Lookup, Stmt, StmtId};
-
-use super::Body;
 
 impl Body {
     pub fn dump(&self, db: &dyn HirDefDB) -> Result<String, fmt::Error> {

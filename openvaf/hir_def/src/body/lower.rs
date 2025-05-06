@@ -3,17 +3,14 @@
 
 use std::mem;
 
-use basedb::{AstIdMap, ErasedAstId, LintAttrs};
-use syntax::ast::{self, ArgListOwner, AttrsOwner, FunctionRef};
+use basedb::{AstIdMap, ErasedAstId};
+use syntax::ast::{ArgListOwner, AttrsOwner, FunctionRef};
 use syntax::name::AsName;
-use syntax::AstPtr;
 
-use crate::db::HirDefDB;
-use crate::expr::{CaseCond, Event, GlobalEvent};
-use crate::nameres::DefMapSource;
-use crate::{BlockLoc, Case, Expr, ExprId, Intern, Literal, Path, Scope, Stmt, StmtId};
+use super::*;
 
-use super::{Body, BodySourceMap};
+use crate::expr::{Case, CaseCond, Event, GlobalEvent};
+use crate::{BlockLoc, Intern, Path};
 
 pub(super) struct Context<'a> {
     pub(super) body: &'a mut Body,

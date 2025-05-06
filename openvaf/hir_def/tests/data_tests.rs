@@ -1,7 +1,6 @@
 use std::path::Path;
 
-use basedb::diagnostics::sink::Buffer;
-use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
+use basedb::diagnostics::{sink, ConsoleSink, DiagnosticSink};
 use basedb::{AbsPathBuf, BaseDB, FileId, SourceDatabase, Vfs, VfsEntry, VfsPath, VfsStorage};
 use hir_def::db::{HirDefDB, HirDefDatabase, InternDatabase};
 use hir_def::nameres::{DefMap, LocalScopeId, ScopeItemDef, ScopeOrigin};
@@ -48,7 +47,7 @@ impl TestDataBase {
     pub fn lower_and_check(&self) -> String {
         let root_file = self.root_file();
         let root_def_map = self.root_def_map(root_file);
-        let mut buf = Buffer::no_color();
+        let mut buf = sink::Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(self, &mut buf);
             sink.annonymize_paths();

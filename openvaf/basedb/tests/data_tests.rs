@@ -1,17 +1,16 @@
 use std::path::Path;
 
-use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
+use basedb::diagnostics::{sink, ConsoleSink, DiagnosticSink};
 use basedb::{BaseDB, SourceDatabase, VfsPath, VfsStorage};
-use codespan_reporting::term::termcolor::Buffer;
-use parking_lot::RwLock;
 use syntax::{Parse, SourceFile};
-use vfs::{AbsPathBuf, FileId, Vfs, VfsEntry};
 
 use expect_test::expect_file;
 use mini_harness::{harness, Result};
+use parking_lot::RwLock;
 use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
+use vfs::{AbsPathBuf, FileId, Vfs, VfsEntry};
 
-// TODO:(JW) make `TestDatabase` more general
+// TODO(JW) make `TestDatabase` more general
 #[salsa::database(SourceDatabase)]
 pub struct TestDataBase {
     storage: salsa::Storage<TestDataBase>,
@@ -50,7 +49,7 @@ impl TestDataBase {
         let parse = self.parse(root_file);
         let attr_tree = self.lint_attr_tree(root_file);
 
-        let mut buf = Buffer::no_color();
+        let mut buf = sink::Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(self, &mut buf);
             sink.annonymize_paths();

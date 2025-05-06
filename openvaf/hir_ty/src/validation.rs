@@ -22,10 +22,10 @@ use crate::builtin::{
     NATURE_ACCESS_NODE_GND, NATURE_ACCESS_PORT_FLOW, NOISE_TABLE_INLINE, NOISE_TABLE_INLINE_NAME,
     TRANSITION_DELAY_RISET_FALLT_TOL,
 };
-use crate::db::HirTyDB;
-use crate::inference::{BranchWrite, Inference, ResolvedFun};
+use crate::inference::{BranchWrite, ResolvedFun};
 use crate::lower::BranchKind;
 use crate::types::{Signature, Ty};
+use crate::{HirTyDB, Inference};
 
 mod body;
 mod diagnostics;

@@ -12,7 +12,7 @@ use generated::builtin_info;
 pub(crate) struct BuiltinInfo {
     pub signatures: &'static [SignatureData],
     pub min_args: usize,
-    pub max_args: Option<usize>,
+    pub max_args: Option<usize>, // None for varargs functions
     pub has_side_effects: bool,
 }
 
@@ -62,6 +62,7 @@ impl BuiltinInfo {
         BuiltinInfo::new(signatures, false)
     }
 
+    // for ddx()
     const fn special_pure_fn(min_args: usize, max_args: Option<usize>) -> BuiltinInfo {
         BuiltinInfo { signatures: &[], min_args, max_args, has_side_effects: false }
     }
@@ -84,7 +85,7 @@ impl BuiltinInfo {
             i += 1;
         }
         let min_args = match min_args {
-            Some(min_args) => min_args,
+            Some(val) => val,
             None => 0,
         };
 
@@ -96,7 +97,7 @@ use TyRequirement::*;
 use Type::*;
 
 macro_rules! builtin_info {
-    { // `BuiltinInfo`
+    {
         $name: ident = $($const: ident)? {
             $(fn $signature: ident($($args: expr),*) -> $ty: ident;)*
         }
@@ -107,13 +108,13 @@ macro_rules! builtin_info {
                 args: Cow::Borrowed(&[$($args),*]),
                 return_ty: Type::$ty,
             }),*],
-            builtin_info!(@is_pure $($const)?)
+            builtin_info!(@has_side_effects $($const)?)
         );
         builtin_info!(@SIGNATURES [$(stringify!($signature)),*].len(); $($signature),*);
         builtin_info!($($rem)*);
     };
 
-    { // impure func with possible side effects
+    { // impure functions with possible side effects
         fn $name: ident ($($args: expr),*) -> $ty: ident;
         $($rem: tt)*
     } => {
@@ -126,7 +127,7 @@ macro_rules! builtin_info {
         builtin_info!($($rem)*);
     };
 
-    { // pure func without side effects
+    { // pure function marked with `const` without side effects
         const fn $name: ident ($($args: expr),*) -> $ty: ident;
         $($rem: tt)*
     } => {
@@ -139,9 +140,8 @@ macro_rules! builtin_info {
         builtin_info!($($rem)*);
     };
 
-    // FIXME(JW) likely wrong here, but `has_side_effects` is not used
-    { @is_pure const } => { true };
-    { @is_pure } => { false };
+    { @has_side_effects const } => { false };
+    { @has_side_effects } => { true };
 
     { @SIGNATURES $cnt:expr; $name: ident $(,$rem:ident)+ } => {
         pub const $name: Signature = Signature(($cnt - [$(stringify!($rem)),*].len() - 1) as u32);
@@ -158,6 +158,7 @@ macro_rules! builtin_info {
 // ALWAYS ADD NEW SIGNATURES AT THE END!
 
 builtin_info! {
+    // signal access function
     FLOW = const {
         fn NATURE_ACCESS_BRANCH(Branch) -> Real;
         fn NATURE_ACCESS_NODES(Node,Node) -> Real;
@@ -165,6 +166,7 @@ builtin_info! {
         fn NATURE_ACCESS_PORT_FLOW(PortFlow) -> Real;
     }
 
+    // mathematical functions
     MAX = {
         fn MAX_INT(Val(Integer),Val(Integer)) -> Integer;
         fn MAX_REAL(Val(Real),Val(Real)) -> Real;
@@ -175,7 +177,13 @@ builtin_info! {
         fn ABS_REAL(Val(Real)) -> Real;
     }
 
-    // TODO(JW): `$analysis` should be able to a list of strings and return Bool type
+    const fn REAL_INFO() -> Real;
+    const fn REAL_MATH_1(Val(Real)) -> Real;
+    const fn REAL_MATH_2(Val(Real),Val(Real)) -> Real;
+    const fn INT_MATH_2(Val(Integer),Val(Integer)) -> Integer;
+
+    // analysis dependent functions
+    // TODO(JW): `$analysis` should take a list of strings and return bool
     ANALYSIS = const {
         fn ANALYSIS_SIG(Val(String)) -> Integer;
     }
@@ -187,24 +195,14 @@ builtin_info! {
         fn AC_STIM_NAME_MAG_PHASE(Val(String),Val(Real),Val(Real)) -> Real;
     }
 
-    const fn REAL_INFO() -> Real;
-    const fn REAL_MATH_1(Val(Real)) -> Real;
-    const fn REAL_MATH_2(Val(Real),Val(Real)) -> Real;
-    const fn INT_MATH_2(Val(Integer),Val(Integer)) -> Integer;
-
-    VT = const {
-        fn VT_TEMP() -> Real;
-        fn VT_ARG(Val(Real)) -> Real;
+    WHITE_NOISE = const {
+        fn WHITE_NOISE_NO_NAME(Val(Real)) -> Real;
+        fn WHITE_NOISE_NAME(Val(Real),Literal(String)) -> Real;
     }
 
     FLICKER_NOISE = const {
         fn FLICKER_NOISE_NO_NAME(Val(Real),Val(Real)) -> Real;
         fn FLICKER_NOISE_NAME(Val(Real),Val(Real),Literal(String)) -> Real;
-    }
-
-    WHITE_NOISE = const {
-        fn WHITE_NOISE_NO_NAME(Val(Real)) -> Real;
-        fn WHITE_NOISE_NAME(Val(Real),Literal(String)) -> Real;
     }
 
     NOISE_TABLE = const {
@@ -214,12 +212,12 @@ builtin_info! {
         fn NOISE_TABLE_FILE_NAME(Val(String),Literal(String)) -> Real;
     }
 
+    // analog operators
     DDT = const {
         fn DDT_NO_TOL(Val(Real)) -> Real;
         fn DDT_TOL(Val(Real),Val(Real)) -> Real;
         fn DDT_NATURE_TOL(Val(Real),Nature) -> Real;
     }
-
     IDT = const {
         fn IDT_NO_IC(Val(Real)) -> Real;
         fn IDT_IC(Val(Real),Val(Real)) -> Real;
@@ -227,7 +225,6 @@ builtin_info! {
         fn IDT_IC_ASSERT_TOL(Val(Real),Val(Real),Val(Real),Val(Real)) -> Real;
         fn IDT_IC_ASSERT_NATURE(Val(Real),Val(Real),Val(Real),Nature) -> Real;
     }
-
     IDTMOD = const {
         fn IDTMOD_NO_IC(Val(Real)) -> Real;
         fn IDTMOD_IC(Val(Real),Val(Real)) -> Real;
@@ -235,6 +232,30 @@ builtin_info! {
         fn IDTMOD_IC_MODULUS_OFFSET(Val(Real),Val(Real),Val(Real),Val(Real)) -> Real;
         fn IDTMOD_IC_MODULUS_OFFSET_TOL(Val(Real),Val(Real),Val(Real),Val(Real), Val(Real)) -> Real;
         fn IDTMOD_IC_MODULUS_OFFSET_NATURE(Val(Real),Val(Real),Val(Real),Val(Real), Val(Real)) -> Real;
+    }
+
+    ABSDELAY = const {
+        fn ABSDELAY_NO_MAX(Val(Real), Val(Real)) -> Real;
+        fn ABSDELAY_MAX(Val(Real), Val(Real), Val(Real)) -> Real;
+    }
+
+    TRANSITION = const {
+        fn TRANSITION_NO_ARGS(Val(Integer)) -> Real;
+        fn TRANSITION_DELAY(Val(Integer),Val(Real)) -> Real;
+        fn TRANSITION_DELAY_RISET(Val(Integer),Val(Real)) -> Real;
+        fn TRANSITION_DELAY_RISET_FALLT(Val(Integer),Val(Real),Val(Real)) -> Real;
+        fn TRANSITION_DELAY_RISET_FALLT_TOL(Val(Integer),Val(Real),Val(Real), Val(Real)) -> Real;
+    }
+
+    SLEW = const {
+        fn SLEW_NO_MAX(Val(Real)) -> Real;
+        fn SLEW_POS_MAX(Val(Real),Val(Real)) -> Real;
+        fn SLEW_NEG_MAX(Val(Real),Val(Real),Val(Real)) -> Real;
+    }
+
+    LAST_CROSSING = const {
+        fn LAST_CROSSING_NO_DIRECTION(Val(Real)) -> Real;
+        fn LAST_CROSSING_DIRECTION(Val(Real),Val(Integer)) -> Real;
     }
 
     // all laplace filters have the same signature
@@ -251,30 +272,9 @@ builtin_info! {
         fn ZI_NATURE_TOL(Val(Real),ArrayAnyLength{ty: Real},ArrayAnyLength{ty: Real}, Val(Real), Val(Real), Val(Real)) -> Real;
     }
 
-    ABSDELAY = const {
-        fn ABSDELAY_NO_MAX(Val(Real), Val(Real)) -> Real;
-        fn ABSDELAY_MAX(Val(Real), Val(Real), Val(Real)) -> Real;
-    }
+    // system functions and tasks
 
-    SLEW = const {
-        fn SLEW_NO_MAX(Val(Real)) -> Real;
-        fn SLEW_POS_MAX(Val(Real),Val(Real)) -> Real;
-        fn SLEW_NEG_MAX(Val(Real),Val(Real),Val(Real)) -> Real;
-    }
-
-    TRANSITION = const {
-        fn TRANSITION_NO_ARGS(Val(Integer)) -> Real;
-        fn TRANSITION_DELAY(Val(Integer),Val(Real)) -> Real;
-        fn TRANSITION_DELAY_RISET(Val(Integer),Val(Real)) -> Real;
-        fn TRANSITION_DELAY_RISET_FALLT(Val(Integer),Val(Real),Val(Real)) -> Real;
-        fn TRANSITION_DELAY_RISET_FALLT_TOL(Val(Integer),Val(Real),Val(Real), Val(Real)) -> Real;
-    }
-
-    LAST_CROSSING = const {
-        fn LAST_CROSSING_NO_DIRECTION(Val(Real)) -> Real;
-        fn LAST_CROSSING_DIRECTION(Val(Real),Val(Integer)) -> Real;
-    }
-
+    // Table 9-2
     fn BASIC_IO(Val(Integer)) -> Integer;
 
     FOPEN = {
@@ -297,15 +297,26 @@ builtin_info! {
         fn FINISH_NUM(Val(Integer)) -> Void;
     }
 
+    // Table 9-12
+    VT = const {
+        fn VT_TEMP() -> Real;
+        fn VT_ARG(Val(Real)) -> Real;
+    }
+
     SIMPARAM = const {
         fn SIMPARAM_NO_DEFAULT(Literal(String)) -> Real;
         fn SIMPARAM_DEFAULT(Literal(String),Val(Real)) -> Real;
     }
 
-    // Jw: changed the return type from `Real` to `String` according to LRM
-    // `cagro test` passed. Don't know if other bugs still exist.
+    // JW: changed the return type from `Real` to `String` according to LRM.
     const fn SIMPARAM_STR(Literal(String)) -> String;
 
+    SIMPROBE = const {
+        fn SIMPROBE_NO_DEFAULT(Val(String),Val(String))->Real;
+        fn SIMPROBE_DEFAULT(Val(String),Val(String),Val(Real))->Real;
+    }
+
+    // Table 9-10
     RANDOM = const {
         fn RANDOM_NO_SEED() -> Integer;
         fn RANDOM_SEED(Var(Integer)) -> Integer;
@@ -347,41 +358,35 @@ builtin_info! {
         fn DIST_2_ARG_CONST_SEED_NAME(Param(Integer),Val(Integer),Val(Integer),Literal(String)) -> Real;
     }
 
-    SIMPROBE = const {
-        fn SIMPROBE_NO_DEFAULT(Val(String),Val(String))->Real;
-        fn SIMPROBE_DEFAULT(Val(String),Val(String),Val(Real))->Real;
-    }
-
+    // Table 9-9
     const fn TEST_PLUSARGS(Val(String)) -> Bool;
     const fn VALUE_PLUSARGS(Val(String),Val(String))->Bool;
 
-    fn ANALOG_NODE_ALIAS(Node,Val(String)) -> Integer;
-
-    const fn PARAM_GIVEN(AnyParam) -> Bool;
-
-    const fn PORT_CONNECTED(Node) -> Bool;
-
+    // Table 9-14
     DISCONTINUITY = {
         fn DISCONTINUITY_NO_DEGREE() -> Void;
         fn DISCONTINUITY_DEGREE(Val(Integer)) -> Void;
     }
 
     fn BOUND_STEP(Val(Real)) -> Void;
+
+    // Table 9-16
+    const fn PARAM_GIVEN(AnyParam) -> Bool;
+    const fn PORT_CONNECTED(Node) -> Bool;
+
+    // Table 9-17
+    fn ANALOG_NODE_ALIAS(Node,Val(String)) -> Integer;
 }
 
 // TODO TABLE_MODEL
 
-// Builtins that need special treatment: `special_pure_fn` and `varargs`
-
+// Builtins that need special treatment
+const DDX: BuiltinInfo = BuiltinInfo::special_pure_fn(2, Some(2));
 pub const DDX_TEMP: Signature = Signature(0);
 pub const DDX_POT_DIFF: Signature = Signature(1);
 pub const DDX_POT: Signature = Signature(2);
 pub const DDX_FLOW: Signature = Signature(3);
-const DDX: BuiltinInfo = BuiltinInfo::special_pure_fn(2, Some(2));
 
-pub const LIMIT_BUILTIN_FUNCTION: Signature = Signature(0);
-pub const LIMIT_USER_FUNCTION: Signature = Signature(1);
-pub const LIMIT_NO_ARG: Signature = Signature(2);
 const LIMIT: BuiltinInfo = BuiltinInfo::varargs(
     &[
         SignatureData { args: Cow::Borrowed(&[Val(Real), Literal(String)]), return_ty: Type::Real },
@@ -390,6 +395,9 @@ const LIMIT: BuiltinInfo = BuiltinInfo::varargs(
     ],
     false,
 );
+pub const LIMIT_BUILTIN_FUNCTION: Signature = Signature(0);
+pub const LIMIT_USER_FUNCTION: Signature = Signature(1);
+pub const LIMIT_NO_ARG: Signature = Signature(2);
 
 const DISPLAY_FUN: BuiltinInfo = BuiltinInfo::varargs(
     &[SignatureData { args: Cow::Borrowed(&[]), return_ty: Type::Void }],
@@ -440,15 +448,18 @@ copy_builtin_info! {
     ASINH = REAL_MATH_1
     ACOSH = REAL_MATH_1
     ATANH = REAL_MATH_1
-    CLOG2 = INT_MATH_2
     LOG10 = REAL_MATH_1
     LIMEXP = REAL_MATH_1
+    CLOG2 = INT_MATH_2
 
     MIN = MAX
 
     POTENTIAL = FLOW
 
     NOISE_TABLE_LOG = NOISE_TABLE
+
+    ABSTIME = REAL_INFO
+    TEMPERATURE = REAL_INFO
 
     LAPLACE_ND = LAPLACE_FILTER
     LAPLACE_NP = LAPLACE_FILTER
@@ -483,9 +494,6 @@ copy_builtin_info! {
     FTELL = BASIC_IO
 
     STOP = FINISH
-
-    ABSTIME = REAL_INFO
-    TEMPERATURE = REAL_INFO
 
     RDIST_CHI_SQUARE = RDIST_1_ARG
     RDIST_EXPONENTIAL = RDIST_1_ARG

@@ -22,20 +22,17 @@ mod item_tree;
 mod path;
 mod types;
 
-pub use crate::builtin::{BuiltIn, ParamSysFun};
-pub use crate::data::FunctionArgData;
-pub use crate::expr::{Case, Expr, ExprId, Literal, Stmt, StmtId};
-pub use crate::item_tree::{
+pub use builtin::{BuiltIn, ParamSysFun};
+pub use expr::{Expr, ExprId, Literal, Stmt, StmtId};
+pub use item_tree::{
     AliasParam, Branch, BranchKind, Discipline, DisciplineAttr, Function, ItemTree, ItemTreeId,
     ItemTreeNode, Module, Nature, NatureAttr, NatureRef, NatureRefKind, NodeTypeDecl, Param, Var,
 };
-pub use crate::path::Path;
-pub use crate::types::Type;
+pub use path::Path;
+pub use types::Type;
 
-use crate::db::HirDefDB;
-use crate::nameres::{
-    DefMap, DefMapSource, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind,
-};
+use db::HirDefDB;
+use nameres::{DefMap, DefMapSource, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Scope {

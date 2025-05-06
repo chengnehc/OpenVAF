@@ -139,8 +139,6 @@ impl From<NatureAttrId> for NatureAccess {
 pub enum ScopeItemDef {
     NatureId(NatureId),
     NatureAttrId(NatureAttrId),
-    // Special treatment for nature access attribute(function)
-    NatureAccess(NatureAccess),
     DisciplineId(DisciplineId),
     ModuleId(ModuleId),
     BlockId(BlockId),
@@ -149,11 +147,10 @@ pub enum ScopeItemDef {
     VarId(VarId),
     ParamId(ParamId),
     AliasParamId(AliasParamId),
-    // Hierarchical system parameters
-    ParamSysFun(ParamSysFun),
-    // Buitlin math functions and sysfuns
-    BuiltIn(BuiltIn),
-    FunctionId(FunctionId),
+    ParamSysFun(ParamSysFun),   // Hierarchical system parameters
+    BuiltIn(BuiltIn),           // Builtin functions and sysfuns
+    NatureAccess(NatureAccess), // signal access function
+    FunctionId(FunctionId),     // user function
     FunctionReturn(FunctionId),
     FunctionArgId(FunctionArgId),
 }

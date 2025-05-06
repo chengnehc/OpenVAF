@@ -15,10 +15,31 @@ pub enum InferDiagnostic {
         err: PathResolveError,
         expr: ExprId,
     },
+    InvalidAssignDst {
+        e: ExprId,
+        op_kind: ast::AssignOp,
+        maybe_different_op: Option<ast::AssignOp>,
+    },
 
     /* Mismatch */
+    // type
     TypeMismatch(TypeMismatch),
+    ArrayTypeMismatch {
+        expected: Type,
+        found_ty: Type,
+        found_expr: ExprId,
+        expected_expr: ExprId,
+    },
+    // function call
+    ArgCntMismatch {
+        expected: usize,
+        found: usize,
+        expr: ExprId,
+        exact: bool,
+    },
     SignatureMismatch(SignatureMismatch),
+
+    /* ddx */
     InvalidUnknown {
         e: ExprId,
     },
@@ -26,19 +47,10 @@ pub enum InferDiagnostic {
         e: ExprId,
         stmt: StmtId,
     },
+
+    /* $limit */
     ExpectedProbe {
         e: ExprId,
-    },
-    InvalidAssignDst {
-        e: ExprId,
-        op_kind: ast::AssignOp,
-        maybe_different_op: Option<ast::AssignOp>,
-    },
-    ArgCntMismatch {
-        expected: usize,
-        found: usize,
-        expr: ExprId,
-        exact: bool,
     },
     InvalidLimitFunction {
         expr: ExprId,
@@ -47,12 +59,6 @@ pub enum InferDiagnostic {
         invalid_arg1: bool,
         invalid_ret: bool,
         output_args: Vec<LocalFunctionArgId>,
-    },
-    ArrayTypeMismatch {
-        expected: Type,
-        found_ty: Type,
-        found_expr: ExprId,
-        expected_expr: ExprId,
     },
 
     /* Format display */

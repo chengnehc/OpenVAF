@@ -8,7 +8,6 @@ use syntax::name::{kw, AsIdent, AsName};
 use syntax::{match_ast, AstNode, WalkEvent};
 use typed_index_collections::TiVec;
 
-// use tracing::trace;
 use crate::db::HirDefDB;
 use crate::path::Path;
 use crate::types::{AsType, Type};

@@ -74,11 +74,6 @@ impl Expr {
             }
         }
     }
-
-    pub fn unwrap_literal(&self) -> &Literal {
-        let Expr::Literal(lit) = self else { unreachable!("called unwrap_literal on {self:?}") };
-        lit
-    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -142,7 +137,6 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    // FIXME(JW): this is not used anywhere
     #[inline]
     pub fn walk_child_exprs(&self, mut f: impl FnMut(ExprId)) {
         match *self {
@@ -196,12 +190,12 @@ impl Stmt {
 
     #[inline]
     pub fn unwrap_expr(&self) -> ExprId {
-        let Stmt::Expr(e) = self else { unreachable!("Called unwrap_expr on {:?}", self) };
+        let Stmt::Expr(e) = self else { unreachable!("Called unwrap_expr on {self:?}") };
         *e
     }
 }
 
-/// A case arm
+/// Case arm
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Case {
     pub cond: CaseCond,

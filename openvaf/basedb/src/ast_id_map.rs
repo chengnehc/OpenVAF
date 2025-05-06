@@ -9,7 +9,6 @@
 //!
 //! https://github.com/rust-lang/rust-analyzer/blob/master/crates/span/src/ast_id.rs
 
-use std::any::type_name;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -85,7 +84,7 @@ impl<N: AstNode> Hash for AstId<N> {
 
 impl<N: AstNode> fmt::Debug for AstId<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AstId::<{}>({})", type_name::<N>(), RawIdx::from(self.raw))
+        write!(f, "AstId::<{}>({})", std::any::type_name::<N>(), RawIdx::from(self.raw))
     }
 }
 
@@ -96,37 +95,35 @@ pub(crate) fn has_map_entry(kind: SyntaxKind) -> bool {
         false
     } else {
         ast::Item::can_cast(kind)
-            || ast::Param::can_cast(kind)
-            || ast::Var::can_cast(kind)
-            || ast::FunctionArg::can_cast(kind)
             || ast::NatureAttr::can_cast(kind)
             || ast::DisciplineAttr::can_cast(kind)
-            || ast::ModuleItem::can_cast(kind)
             || ast::ModulePort::can_cast(kind)
             || ast::PortDecl::can_cast(kind)
+            || ast::ModuleItem::can_cast(kind)
+            || ast::Param::can_cast(kind)
+            || ast::Var::can_cast(kind)
             || ast::AnalogBehaviour::can_cast(kind)
             || ast::BlockStmt::can_cast(kind)
+            || ast::FunctionArg::can_cast(kind)
     }
 }
 
 impl AstIdMap {
-    /// Create a `AstIdMap` from source file CST node.
+    /// Create a `AstIdMap` from source file.
     pub(crate) fn from_source(node: &SyntaxNode) -> AstIdMap {
         assert!(node.parent().is_none());
-        let mut res = AstIdMap::default();
+        let mut ast_id_map = AstIdMap::default();
         // By walking the tree in breadth-first order we make sure that parents
         // get lower ids then children. That is, adding a new child does not
         // change parent's id. This means that, say, adding a new function to a
         // module does not change ids of top-level items, which helps caching.
         //
         // Compared to rust analyzer, the 'parent' mapping was added here for
-        // lint attribute resolution.
-        //
-        // TODO does this hurt caching in any way?
-        // Probably not: if the parent changes then something before changed
+        // lint attribute resolution, does this hurt caching in any way?
+        // - Probably not: if the parent changes then something before changed
         // as well and the item is moved anyway.
-        bdfs(node, |it, parent| has_map_entry(it.kind()).then(|| res.alloc(it, parent)));
-        res
+        bdfs(node, |it, parent| has_map_entry(it.kind()).then(|| ast_id_map.alloc(it, parent)));
+        ast_id_map
     }
 
     #[inline]
@@ -134,17 +131,52 @@ impl AstIdMap {
         self.arena.iter_enumerated()
     }
 
+    /// What is the ID of this `AstNode` in the map?
     pub fn id_of<N: AstNode>(&self, item: &N) -> AstId<N> {
         let raw = self.erased_ast_id(item.syntax());
         AstId { raw, _ty: PhantomData }
     }
 
+    /// Obtain a pointer to the AST node with the given AST ID.
     pub fn get<N: AstNode>(&self, id: AstId<N>) -> AstPtr<N> {
         self.arena[id.raw].syntax.cast::<N>().unwrap()
     }
 
+    /// Obtain a type-erased pointer to the AST node with the given AST ID.
     pub fn get_erased(&self, id: ErasedAstId) -> SyntaxNodePtr {
         self.arena[id].syntax
+    }
+
+    /// Get the position of attribute with `name` of AST node `id`, if any.
+    pub fn get_attr<N: AstNode>(&self, id: AstId<N>, name: &str) -> Option<usize> {
+        self.arena[id.raw].attrs.iter().position(|attr| attr.deref() == name)
+    }
+
+    #[inline]
+    pub(crate) fn get_parent(&self, id: ErasedAstId) -> Option<ErasedAstId> {
+        self.parents[id]
+    }
+
+    pub(crate) fn nearest_ast_id_to_ptr(
+        &self,
+        ptr: SyntaxNodePtr,
+        db: &dyn BaseDB,
+        root_file: FileId,
+    ) -> Option<ErasedAstId> {
+        if has_map_entry(ptr.syntax_kind()) {
+            Some(self.erased_ast_id_for_ptr(ptr))
+        } else {
+            let root = db.parse(root_file).tree();
+            let node = ptr.to_node(root.syntax());
+            self.nearest_ast_id_to_node(node)
+        }
+    }
+
+    fn nearest_ast_id_to_node(&self, mut node: SyntaxNode) -> Option<ErasedAstId> {
+        while !has_map_entry(node.kind()) {
+            node = node.parent()?;
+        }
+        Some(self.erased_ast_id(&node))
     }
 
     #[inline]
@@ -156,51 +188,23 @@ impl AstIdMap {
     #[inline]
     fn erased_ast_id_for_ptr(&self, ptr: SyntaxNodePtr) -> ErasedAstId {
         let Some((id, _)) = self.entries().find(|(_id, e)| e.syntax == ptr) else {
-            panic!("Can't find {:?} in AstIdMap", ptr)
+            panic!("Can't find {ptr:?} in AstIdMap")
         };
         id
     }
 
-    /// Get the position of attribute with `name` of AST node `id`, if any.
-    pub fn get_attr<N: AstNode>(&self, id: AstId<N>, name: &str) -> Option<usize> {
-        self.arena[id.raw].attrs.iter().position(|attr| attr.deref() == name)
-    }
-
-    pub(crate) fn get_parent(&self, id: ErasedAstId) -> Option<ErasedAstId> {
-        self.parents[id]
-    }
-
-    pub fn nearest_ast_id_to_ptr(
-        &self,
-        ptr: SyntaxNodePtr,
-        db: &dyn BaseDB,
-        root_file: FileId,
-    ) -> Option<ErasedAstId> {
-        if has_map_entry(ptr.syntax_kind()) {
-            Some(self.erased_ast_id_for_ptr(ptr))
-        } else {
-            let node = ptr.to_node(db.parse(root_file).tree().syntax());
-            self.nearest_ast_id_to_node(node)
-        }
-    }
-
-    pub(crate) fn nearest_ast_id_to_node(&self, mut node: SyntaxNode) -> Option<ErasedAstId> {
-        while !has_map_entry(node.kind()) {
-            node = node.parent()?;
-        }
-        Some(self.erased_ast_id(&node))
-    }
-
-    fn alloc(&mut self, item: &SyntaxNode, parent: Option<ErasedAstId>) -> ErasedAstId {
+    /// Allocate an entry for `node` in the AST ID map.
+    fn alloc(&mut self, node: &SyntaxNode, parent: Option<ErasedAstId>) -> ErasedAstId {
         let id1 = self.parents.push_and_get_key(parent);
-        let attrs = if ast::Param::can_cast(item.kind()) || ast::Var::can_cast(item.kind()) {
-            ast::attrs(&item.parent().unwrap())
+        let attrs = if ast::Param::can_cast(node.kind()) || ast::Var::can_cast(node.kind()) {
+            ast::attrs(&node.parent().unwrap())
         } else {
-            ast::attrs(item)
+            ast::attrs(node)
         };
         let attrs = attrs.filter_map(|attr| Some(attr.name()?.as_name())).collect();
-        let id2 = self.arena.push_and_get_key(MapEntry { syntax: SyntaxNodePtr::new(item), attrs });
+        let id2 = self.arena.push_and_get_key(MapEntry { syntax: SyntaxNodePtr::new(node), attrs });
         debug_assert_eq!(id1, id2);
+
         id2
     }
 }

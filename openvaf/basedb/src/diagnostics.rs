@@ -7,7 +7,7 @@ use syntax::{Parse, SourceFile, TextRange};
 use crate::lints::{Lint, LintData, LintLevel, LintSrc};
 use crate::{BaseDB, FileId};
 
-mod preprocessor_error;
+mod preprocess_error;
 mod syntax_error;
 
 pub mod sink;
