@@ -130,7 +130,6 @@ fn exclude_range() {
 fn correlated_parameter() {
     let src = indoc! {r#"
         `define BPRcz(nam, def, uni, des) (* units = uni, type = "instance", desc = des *) parameter real nam = def from[0.0 : inf);
-        `define MPRnb(nam, def, uni, des) (* units = uni, desc = des *) parameter real nam = def;
         module correlated_parameter;
             `BPRcz(COVS, 0.0, "F/m", "Constant gate-to-source overlap capacitance (CGEOMOD = 1)")
             `BPRcz(COVD, COVS, "F/m", "Constant gate-to-drain overlap capacitance (CGEOMOD = 1)")

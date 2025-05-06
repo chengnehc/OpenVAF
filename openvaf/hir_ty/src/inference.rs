@@ -516,8 +516,8 @@ impl Context<'_> {
         expr: ExprId,
         arg: ExprId,
     ) -> Option<DisciplineAccess> {
-        let signature = self.result.resolved_signatures.get(&expr);
-        let node = match *signature? {
+        let signature = self.result.resolved_signatures.get(&expr)?;
+        let node = match *signature {
             NATURE_ACCESS_BRANCH => {
                 let branch = self.result.expr_types[arg].unwrap_branch();
                 let branch_info = self.db.branch_info(branch)?;
@@ -527,7 +527,7 @@ impl Context<'_> {
                 self.result.expr_types[arg].unwrap_node()
             }
             NATURE_ACCESS_PORT_FLOW => self.result.expr_types[arg].unwrap_port_flow(),
-            var => unreachable!("{:?}", var),
+            _ => unreachable!(),
         };
 
         let discipline = self.db.node_discipline(node)?;
@@ -555,28 +555,34 @@ impl Context<'_> {
             return (default_return_ty(signatures), false);
         }
 
-        // signature mismatch
+        // ddx needs some special treatment
+        if let BuiltIn::ddx = builtin {
+            self.infere_ddx(stmt, expr, args[0], args[1]);
+            return (Some(Ty::Val(Type::Real)), true);
+        }
+
+        // function signature mismatch
         let mut infere_args = args;
         let infere_signatures = match builtin {
-            BuiltIn::ddx => {
-                self.infere_ddx(stmt, expr, args[0], args[1]);
-                return (Some(Ty::Val(Type::Real)), true);
-            }
             BuiltIn::limit => {
                 if args.len() >= 2 {
                     infere_args = &args[0..2];
                 }
                 Cow::Borrowed(TiSlice::from_ref(signatures))
             }
-            _ if max_args.is_none() => {
-                // varargs functions
-                let mut signatures = Vec::from(signatures);
-                for sig in &mut signatures {
-                    sig.args.to_mut().resize(args.len(), TyRequirement::AnyVal)
+            _ => {
+                if max_args.is_some() {
+                    // normal functions
+                    Cow::Borrowed(TiSlice::from_ref(signatures))
+                } else {
+                    // vararg functions
+                    let mut signatures = Vec::from(signatures);
+                    for sig in &mut signatures {
+                        sig.args.to_mut().resize(args.len(), TyRequirement::AnyVal)
+                    }
+                    Cow::Owned(TiVec::from(signatures))
                 }
-                Cow::Owned(TiVec::from(signatures))
             }
-            _ => Cow::Borrowed(TiSlice::from_ref(signatures)),
         };
         debug_assert_ne!(&infere_signatures.raw, &[]);
 
@@ -838,7 +844,7 @@ impl Context<'_> {
     }
 
     fn infere_ddx(&mut self, stmt: StmtId, expr: ExprId, val: ExprId, unknown: ExprId) {
-        // the first arg should be a real type
+        // the first arg should be real type
         if let Some(ty) = self.infere_expr(stmt, val) {
             self.expect::<false>(expr, None, ty, Cow::Borrowed(&[TyRequirement::Val(Type::Real)]));
         }
@@ -847,26 +853,29 @@ impl Context<'_> {
         // in the system of equations for the analog solver.
         let ty = self.infere_expr(stmt, unknown);
         if ty.is_some() {
-            let (Some(ResolvedFun::BuiltIn(fun)), Some(signature)) = (
+            let (fun, sig) = match (
                 self.result.resolved_calls.get(&unknown),
                 self.result.resolved_signatures.get(&unknown),
-            ) else {
-                if !matches!(&self.body.exprs[expr], Expr::Call { .. }) {
-                    self.result.diagnostics.push(InferDiagnostic::InvalidUnknown { e: unknown });
+            ) {
+                (Some(ResolvedFun::BuiltIn(fun)), Some(sig)) => (*fun, *sig),
+                (Some(ResolvedFun::BuiltIn(fun)), None) => (*fun, DDX_TEMP),
+                _ => {
+                    let diag = InferDiagnostic::InvalidUnknown { e: unknown };
+                    self.result.diagnostics.push(diag);
+                    return;
                 }
-                return;
             };
 
-            let signature = match (*fun, *signature) {
+            let signature = match (fun, sig) {
+                (BuiltIn::potential, NATURE_ACCESS_NODE_GND) => DDX_POT,
+                (BuiltIn::flow, NATURE_ACCESS_BRANCH | NATURE_ACCESS_NODES) => DDX_FLOW,
                 (BuiltIn::potential, NATURE_ACCESS_NODES) => {
                     self.result
                         .diagnostics
                         .push(InferDiagnostic::NonStandardUnknown { e: unknown, stmt });
                     DDX_POT_DIFF
                 }
-                (BuiltIn::potential, NATURE_ACCESS_NODE_GND) => DDX_POT,
-                (BuiltIn::flow, NATURE_ACCESS_BRANCH) => DDX_FLOW,
-                (BuiltIn::temperature, _) => {
+                (BuiltIn::temperature, DDX_TEMP) => {
                     self.result
                         .diagnostics
                         .push(InferDiagnostic::NonStandardUnknown { e: unknown, stmt });
