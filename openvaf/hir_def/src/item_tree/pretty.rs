@@ -96,7 +96,7 @@ impl Printer<'_> {
     fn print_module(&mut self, module: &Module) -> fmt::Result {
         for item in &module.items {
             match *item {
-                ModuleItem::Block(block) => self.print_block(block)?,
+                ModuleItem::ScopedBlock(block) => self.print_block(block)?,
                 ModuleItem::Parameter(param) => self.print_param(param)?,
                 ModuleItem::Variable(var) => self.print_var(var)?,
                 ModuleItem::Branch(branch) => {
@@ -150,7 +150,7 @@ impl Printer<'_> {
     fn print_block_items(&mut self, items: &[BlockItem]) -> fmt::Result {
         for item in items {
             match *item {
-                BlockItem::Block(block) => self.print_block(block)?,
+                BlockItem::ScopedBlock(block) => self.print_block(block)?,
                 BlockItem::Parameter(param) => self.print_param(param)?,
                 BlockItem::Variable(var) => self.print_var(var)?,
             }
@@ -162,7 +162,7 @@ impl Printer<'_> {
     fn print_function(&mut self, function: &Function) -> fmt::Result {
         for item in &function.items {
             match *item {
-                FunctionItem::Block(block) => self.print_block(block)?,
+                FunctionItem::ScopedBlock(block) => self.print_block(block)?,
                 FunctionItem::Parameter(param) => self.print_param(param)?,
                 FunctionItem::Variable(var) => self.print_var(var)?,
                 FunctionItem::FunctionArg(arg) => {

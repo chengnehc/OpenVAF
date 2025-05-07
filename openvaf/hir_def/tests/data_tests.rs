@@ -107,21 +107,21 @@ fn integration(dir: &Path) -> Result {
 
 fn body(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
-    let def_map = db.root_def_map(db.root_file());
-    dbg!(&def_map);
     let mut actual = String::new();
+
+    let def_map = db.root_def_map(db.root_file());
+    // dump analog behavior body of top-level modules
     for (_, scope) in &def_map[def_map.entry_scope()].children {
-        match def_map[*scope].origin {
-            // dump analog behavior body of the module
-            ScopeOrigin::Module(module) => {
-                let analog_block = DefWithBodyId::ModuleId { initial: false, id: module };
-                actual.push_str(&db.body(analog_block).dump(&db)?);
-            }
-            // dump user defined analog function body
-            ScopeOrigin::Function(fun) => {
+        if let ScopeOrigin::Module(module) = def_map[*scope].origin {
+            let module = DefWithBodyId::ModuleId { initial: false, id: module };
+            actual.push_str(&db.body(module).dump(&db)?);
+        }
+        // dump analog function bodies of this module
+        for (_, &def) in &def_map[*scope].declarations {
+            if let ScopeItemDef::FunctionId(fun) = def {
                 actual.push_str(&db.body(fun.into()).dump(&db)?);
+                actual.push_str("\n");
             }
-            _ => continue,
         }
     }
     // std::fs::write(file.with_extension("body"), actual)?;

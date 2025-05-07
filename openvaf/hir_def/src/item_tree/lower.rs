@@ -503,6 +503,9 @@ impl Context {
                             let ast_id = self.ast_id_map.id_of(&block);
                             let name = block.block_scope().and_then(|it| Some(it.name()?.as_name()));
                             let block_info = Block { name, block_items: Vec::new()};
+                            // # Note
+                            // - only register named blocks as ModuleItem/FunctionItem/BlockItem
+                            // - only insert block items when the it is named (has a scope)
                             if block.block_scope().is_some() {
                                 match block_scope_stack.last() {
                                     Some(block) => {

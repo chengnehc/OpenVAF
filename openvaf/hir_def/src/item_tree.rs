@@ -33,10 +33,12 @@ mod pretty;
 /// An item tree is a simplified AST that only contains items.
 #[derive(Debug, Eq, PartialEq, Default)]
 pub struct ItemTree {
-    pub top_level: Box<[RootItem]>,
-
+    pub(crate) top_level: Box<[RootItem]>,
+    /// The data storage for items.
     pub(crate) data: ItemTreeData,
-    /// mapping from block statement AstId to a block
+    /// Map from block statement AstId to the block's data. Special treatment required as
+    /// `BlockStmt` is not an AstNode.
+    // TODO(JW): currently all blocks (named and unnamed) are stored. Is that really necessary?
     pub(crate) blocks: AHashMap<AstId<BlockStmt>, Block>,
 }
 
@@ -91,8 +93,7 @@ pub enum RootItem {
 impl_from_typed! (
     Nature(ItemTreeId<Nature>),
     Discipline(ItemTreeId<Discipline>),
-    Module(ItemTreeId<Module>)
-    for RootItem
+    Module(ItemTreeId<Module>)  for RootItem
 );
 
 #[derive(Default, Debug, Eq, PartialEq)]
@@ -287,7 +288,7 @@ pub enum ModuleItem {
     Parameter(ItemTreeId<Param>),
     AliasParam(ItemTreeId<AliasParam>),
     Function(ItemTreeId<Function>),
-    Block(AstId<BlockStmt>),
+    ScopedBlock(AstId<BlockStmt>),
 }
 impl_from_typed! (
     Node(LocalNodeId),
@@ -296,7 +297,7 @@ impl_from_typed! (
     Parameter(ItemTreeId<Param>),
     AliasParam(ItemTreeId<AliasParam>),
     Function(ItemTreeId<Function>),
-    Block(AstId<BlockStmt>) for ModuleItem
+    ScopedBlock(AstId<BlockStmt>)   for ModuleItem
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -319,86 +320,10 @@ pub struct Net {
     pub ast_id: AstId<ast::NetDecl>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Branch {
-    pub name: Name,
-    pub name_idx: usize,
-    pub kind: BranchKind,
-    pub ast_id: AstId<ast::BranchDecl>,
-}
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum BranchKind {
-    Nodes(Path, Path),
-    NodeGnd(Path),
-    PortFlow(Path),
-    Missing,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Var {
-    pub name: Name,
-    pub ty: Type,
-    pub ast_id: AstId<ast::Var>,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Param {
-    pub name: Name,
-    pub ty: Option<Type>,
-    pub is_local: bool,
-    pub ast_id: AstId<ast::Param>,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct AliasParam {
-    pub name: Name,
-    pub src: Option<Path>,
-    pub ast_id: AstId<ast::AliasParam>,
-}
-
-/// [LRM 4.7] A user-defined function can be used to return a value
-/// (for an expression). All functions are defined within modules.
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Function {
-    pub name: Name,
-    pub ty: Type,
-    pub args: TiVec<LocalFunctionArgId, FunctionArg>,
-    pub items: Vec<FunctionItem>,
-    pub ast_id: AstId<ast::Function>,
-}
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum FunctionItem {
-    Block(AstId<BlockStmt>),
-    Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>),
-    FunctionArg(LocalFunctionArgId),
-}
-impl_from_typed! (
-    Block(AstId<BlockStmt>),
-    Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>),
-    FunctionArg(LocalFunctionArgId) for FunctionItem
-);
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct FunctionArg {
-    pub name: Name,
-    pub name_idx: usize,
-    pub is_input: bool,
-    pub is_output: bool,
-    pub declarations: Vec<ItemTreeId<Var>>,
-    pub ast_ids: Vec<AstId<ast::FunctionArg>>,
-}
-impl FunctionArg {
-    pub fn ty(&self, tree: &ItemTree) -> Type {
-        self.declarations.first().map_or(Type::Err, |decl| tree[*decl].ty.clone())
-    }
-}
-
 /// `Node` is an abstraction over `Net` and `Port`. A `Node` may be defined multiple
 /// times as `Port` or `Net` (abstracted by `NodeTypeDecl`).
 ///
-/// `NodeTypeDecl` cannot be mapped to a concrete ast node, so `ErasedAstId` is used.
+/// Since `NodeTypeDecl` cannot be mapped to a concrete ast node, so `ErasedAstId` is used.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub name: Name,
@@ -485,6 +410,82 @@ impl NodeTypeDecl {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Branch {
+    pub name: Name,
+    pub name_idx: usize,
+    pub kind: BranchKind,
+    pub ast_id: AstId<ast::BranchDecl>,
+}
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum BranchKind {
+    Nodes(Path, Path),
+    NodeGnd(Path),
+    PortFlow(Path),
+    Missing,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Var {
+    pub name: Name,
+    pub ty: Type,
+    pub ast_id: AstId<ast::Var>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Param {
+    pub name: Name,
+    pub ty: Option<Type>,
+    pub is_local: bool,
+    pub ast_id: AstId<ast::Param>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct AliasParam {
+    pub name: Name,
+    pub src: Option<Path>,
+    pub ast_id: AstId<ast::AliasParam>,
+}
+
+/// [LRM 4.7] A user-defined function can be used to return a value
+/// (for an expression). All functions are defined within modules.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Function {
+    pub name: Name,
+    pub ty: Type,
+    pub args: TiVec<LocalFunctionArgId, FunctionArg>,
+    pub items: Vec<FunctionItem>,
+    pub ast_id: AstId<ast::Function>,
+}
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum FunctionItem {
+    FunctionArg(LocalFunctionArgId),
+    Parameter(ItemTreeId<Param>),
+    Variable(ItemTreeId<Var>),
+    ScopedBlock(AstId<BlockStmt>),
+}
+impl_from_typed! (
+    FunctionArg(LocalFunctionArgId),
+    Parameter(ItemTreeId<Param>),
+    Variable(ItemTreeId<Var>),
+    ScopedBlock(AstId<BlockStmt>)   for FunctionItem
+);
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct FunctionArg {
+    pub name: Name,
+    pub name_idx: usize,
+    pub is_input: bool,
+    pub is_output: bool,
+    pub declarations: Vec<ItemTreeId<Var>>,
+    pub ast_ids: Vec<AstId<ast::FunctionArg>>,
+}
+impl FunctionArg {
+    pub fn ty(&self, tree: &ItemTree) -> Type {
+        self.declarations.first().map_or(Type::Err, |decl| tree[*decl].ty.clone())
+    }
+}
+
 /// [LRM 5.3] Block Statements
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Block {
@@ -493,14 +494,14 @@ pub struct Block {
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum BlockItem {
-    Block(AstId<BlockStmt>),
+    ScopedBlock(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
     Variable(ItemTreeId<Var>),
 }
 impl_from_typed! (
-    Block(AstId<BlockStmt>),
+    ScopedBlock(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>) for BlockItem
+    Variable(ItemTreeId<Var>)   for BlockItem
 );
 
 impl Index<AstId<BlockStmt>> for ItemTree {

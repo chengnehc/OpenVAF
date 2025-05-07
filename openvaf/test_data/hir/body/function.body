@@ -1,11 +1,21 @@
-analog begin: BlockId(0) (Scope { root_file: FileId(0), src: Root, local_id: Idx::<ScopeData>(1) })
-    x;
-    c;
-    y;
-    z;
-    m;
-    l;
-    begin: BlockId(0) (Scope { root_file: FileId(0), src: Root, local_id: Idx::<ScopeData>(1) })
-        hypsmooth = 0.5 * x + sqrt(x * x + 4 * c * c, );
-    end
+analog begin: (Function(FunctionId(0)))
+    hypsmooth = 0.5 * x + sqrt(x * x + 4 * c * c);
 end
+
+analog if x > 37
+    begin: (Function(FunctionId(1)))
+        ln_one_plus_exp = x;
+    end
+else if x < -37
+    begin: (Function(FunctionId(1)))
+        ln_one_plus_exp = exp(x);
+    end
+else begin: (Function(FunctionId(1)))
+    ln_one_plus_exp = ln(1 + exp(x));
+end
+
+analog begin: (Function(FunctionId(2)))
+    delta = x - xmin - c;
+    hypmax = xmin + 0.5 * delta + sqrt(delta * delta - 4 * xmin * c);
+end
+

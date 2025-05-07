@@ -1,6 +1,0 @@
-analog begin: (Root)
-    $strobe("<literal>", potential(p, ) / V, );
-end
-analog begin: (Root)
-    V(res, ) <+ R * I(res, );
-end

@@ -125,7 +125,7 @@ const DISCIPLINCES_SRC: &str = r#"
 // Natures and Disciplines
 //
 
-discipline \logic ;
+discipline \logic;
   domain discrete;
 enddiscipline
 

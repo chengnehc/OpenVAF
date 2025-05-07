@@ -392,7 +392,7 @@ impl_intern!(BlockId, BlockLoc, intern_block, lookup_intern_block);
 pub enum DefWithBodyId {
     NatureAttrId(NatureAttrId),
     DisciplineAttrId(DisciplineAttrId),
-    ModuleId { initial: bool, id: ModuleId },
+    ModuleId { initial: bool, id: ModuleId }, // analog behavior blocks are concatenated
     VarId(VarId),
     ParamId(ParamId),
     FunctionId(FunctionId),

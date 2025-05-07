@@ -13,14 +13,14 @@ use crate::expr::{Case, CaseCond, Event, GlobalEvent};
 use crate::{BlockLoc, Intern, Path};
 
 pub(super) struct Context<'a> {
+    // mutates
     pub(super) body: &'a mut Body,
     pub(super) src_map: &'a mut BodySourceMap,
-
-    // for collecting statements defined within a body (e.g. named block, param expression)
-    pub(super) curr_scope: (Scope, ErasedAstId),
+    // reads
     pub(super) ast_id_map: &'a AstIdMap,
-
     pub(super) db: &'a dyn HirDefDB,
+    // states
+    pub(super) curr_scope: (Scope, ErasedAstId),
 }
 
 impl Context<'_> {

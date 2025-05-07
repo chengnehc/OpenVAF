@@ -85,7 +85,7 @@ impl Diagnostic for DefDiagnosticWrapped<'_> {
                         style: LabelStyle::Secondary,
                         file_id: file,
                         range: range.into(),
-                        message: format!("help: '{}' was first declared here", name),
+                        message: format!("help: '{name}' was first declared here"),
                     })
                 }
 

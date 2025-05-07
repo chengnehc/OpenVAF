@@ -10,4 +10,24 @@ module test();
             hypsmooth = 0.5 * (x + sqrt(x*x + 4.0*c*c));
         end
     endfunction
+
+    analog function real ln_one_plus_exp;
+        input x; real x;
+        if (x > 37) begin
+            ln_one_plus_exp = x;
+        end else if (x < -37) begin
+            ln_one_plus_exp = exp(x);
+        end else begin
+            ln_one_plus_exp = ln(1.0 + exp(x));
+        end
+    endfunction
+
+    analog function real hypmax;
+        input x, xmin, c;
+        real x, xmin, c, delta;
+        begin
+            delta = x - xmin - c;
+            hypmax = xmin + 0.5 * (delta + sqrt(delta * delta - 4.0 * xmin * c));
+        end
+    endfunction
 endmodule

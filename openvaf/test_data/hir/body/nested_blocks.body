@@ -1,6 +1,10 @@
-analog begin: (Root)
-    begin: BlockId(0) (Scope { root_file: FileId(0), src: Root, local_id: Idx::<ScopeData>(1) })
-        x = 0;
-        y = exp(x + 1, );
+analog begin: BlockId(0) (test)
+    begin: BlockId(0) (test)
+        begin: BlockId(2) (test_nested)
+            ;
+        end
     end
+end
+analog begin: BlockId(1) (test2)
+    bar = 1;
 end

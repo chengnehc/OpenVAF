@@ -78,7 +78,7 @@ impl Inference {
         for stmt in &body.entry_stmts {
             ctxt.infere_stmt(*stmt);
         }
-        //        dbg!(&ctxt.result);
+
         Arc::new(ctxt.result)
     }
 }

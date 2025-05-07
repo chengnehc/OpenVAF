@@ -8,7 +8,7 @@ use super::ScopeItemDef;
 impl DefMap {
     pub fn dump(&self, db: &dyn HirDefDB) -> Result<String, fmt::Error> {
         let mut p = Printer { db, buf: String::new(), indent_level: 0, needs_indent: true };
-        p.print_def_map_root(self)?;
+        p.print_root_def_map(self)?;
         p.buf.push('\n');
 
         Ok(p.buf)
@@ -33,7 +33,7 @@ impl Printer<'_> {
         Ok(())
     }
 
-    fn print_def_map_root(&mut self, map: &DefMap) -> fmt::Result {
+    fn print_root_def_map(&mut self, map: &DefMap) -> fmt::Result {
         self.print_scope(map, map.root_scope())
     }
 
@@ -41,9 +41,9 @@ impl Printer<'_> {
         self.print_scope(map, map.entry_scope())
     }
 
-    fn print_scope(&mut self, map: &DefMap, local_scope: LocalScopeId) -> fmt::Result {
+    fn print_scope(&mut self, map: &DefMap, scope: LocalScopeId) -> fmt::Result {
         let mut declarations: Vec<_> =
-            map[local_scope].declarations.iter().map(|(name, def)| (name.clone(), *def)).collect();
+            map[scope].declarations.iter().map(|(name, def)| (name.clone(), *def)).collect();
         declarations.sort_unstable_by_key(|(name, _)| name.clone());
         for (name, def) in declarations {
             write!(self, "{name} = {};", def.item_kind())?;
@@ -58,7 +58,7 @@ impl Printer<'_> {
                     self.indented(|s| s.print_def_map(&def_map))?;
                 }
                 _ => {
-                    if let Some(child) = map[local_scope].children.get(&name) {
+                    if let Some(child) = map[scope].children.get(&name) {
                         self.indented(|s| s.print_scope(map, *child))?;
                     } else {
                         writeln!(self)?;

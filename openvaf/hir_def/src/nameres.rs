@@ -53,18 +53,20 @@ impl IndexMut<LocalScopeId> for DefMap {
 }
 
 impl DefMap {
-    /// the first local scope within this `DefMap`
+    /// The first local scope within this `DefMap`.
     #[inline(always)]
     pub fn entry_scope(&self) -> LocalScopeId {
         LocalScopeId::from(0u32)
     }
 
+    /// The root scope of the entire Verilog-A source file.
     #[inline(always)]
     pub fn root_scope(&self) -> LocalScopeId {
         self.root_scope
     }
 
-    pub fn open_new_scope(
+    /// Declare a visible scope within this `DefMap`.
+    pub fn declare_scope(
         &mut self,
         origin: ScopeOrigin,
         parent: Option<LocalScopeId>,
@@ -107,10 +109,10 @@ pub struct ScopeData {
 /// See: LRM 3.13 Namespace and 6.8 Scope rules
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum ScopeOrigin {
-    Root,
-    Module(ModuleId),
-    Block(BlockId), // named block
-    Function(FunctionId),
+    Root,                 // Root scope, where natures and disciplines are defined.
+    Module(ModuleId),     // scopes created by modules
+    Block(BlockId),       // scopes created by named blocks
+    Function(FunctionId), // scopes created by analog functions
 }
 impl_from_typed! {
     Module(ModuleId),

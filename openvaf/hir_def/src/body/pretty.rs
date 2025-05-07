@@ -53,8 +53,8 @@ impl Printer<'_> {
                 write!(self, "begin")?;
                 if let Some(first) = body.iter().next() {
                     if let DefMapSource::Block(block) = self.body.stmt_scopes[*first].src {
-                        let parent = block.lookup(self.db).parent;
-                        write!(self, ": {block:?} ({parent:?})")?;
+                        let name = block.lookup(self.db).name(self.db);
+                        write!(self, ": {block:?} ({name})")?;
                     } else {
                         write!(self, ": ({:?})", self.body.stmt_scopes[s].src)?;
                     }
@@ -70,9 +70,11 @@ impl Printer<'_> {
             Stmt::If { cond, then_branch, else_branch } => {
                 write!(self, "if ")?;
                 self.pretty_print_expr(cond)?;
-                writeln!(self)?;
-                self.pretty_print_stmt(then_branch)?;
-                writeln!(self, "else")?;
+                self.indented(|sel| {
+                    sel.pretty_print_stmt(then_branch)?;
+                    Ok(())
+                })?;
+                write!(self, "else ")?;
                 self.pretty_print_stmt(else_branch)?;
             }
             Stmt::ForLoop { init, cond, incr, body } => {
@@ -154,11 +156,14 @@ impl Printer<'_> {
                     None => write!(self, "<missing>")?,
                 }
                 write!(self, "(")?;
-                for arg in args {
-                    self.pretty_print_expr(*arg)?;
-                    write!(self, ", ")?;
+                if let Some((first, rest)) = args.split_first() {
+                    self.pretty_print_expr(*first)?;
+                    for arg in rest {
+                        write!(self, ", ")?;
+                        self.pretty_print_expr(*arg)?;
+                    }
+                    write!(self, ")")?;
                 }
-                write!(self, ")")?;
             }
             Expr::Array(ref vals) => {
                 write!(self, "'{{")?;
