@@ -156,16 +156,16 @@ pub enum ScopeItemDef {
 }
 
 impl_from! {
-    NatureId, NatureAttrId, NatureAccess,
+    NatureId, NatureAttrId,
     DisciplineId,
     ModuleId,
     BlockId,
     NodeId,
     BranchId,
     VarId,
-    ParamId, AliasParamId,
+    ParamId, AliasParamId, ParamSysFun,
     FunctionId, FunctionArgId, // FunctionReturn
-    BuiltIn, ParamSysFun    for ScopeItemDef
+    NatureAccess, BuiltIn     for ScopeItemDef
 }
 
 impl ScopeItemDef {

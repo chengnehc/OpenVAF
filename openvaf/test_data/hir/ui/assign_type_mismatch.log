@@ -1,0 +1,42 @@
+error: type mismatch: expected string value but found real variable reference
+   --> /assign_type_mismatch.va:20:15
+   |
+20 |         qux = foo;
+   |               ^^^ expected string value
+
+error: type mismatch: expected real value but found nature reference
+   --> /assign_type_mismatch.va:24:15
+   |
+24 |         foo = Voltage;
+   |               ^^^^^^^ expected real value
+
+error: type mismatch: expected integer value but found discipline reference
+   --> /assign_type_mismatch.va:25:15
+   |
+25 |         bar = electrical;
+   |               ^^^^^^^^^^ expected integer value
+
+error: type mismatch: expected string value but found scope
+   --> /assign_type_mismatch.va:26:15
+   |
+26 |         qux = test;
+   |               ^^^^ expected string value
+
+error: type mismatch: expected real value but found branch reference
+   --> /assign_type_mismatch.va:27:15
+   |
+27 |         foo = br_A_B;
+   |               ^^^^^^ expected real value
+
+error: type mismatch: expected integer value but found (builtin) function
+   --> /assign_type_mismatch.va:28:15
+   |
+28 |         bar = sin;
+   |               ^^^ expected integer value
+
+error: type mismatch: expected string value but found (user-defined) function
+   --> /assign_type_mismatch.va:29:15
+   |
+29 |         qux = lln;
+   |               ^^^ expected string value
+

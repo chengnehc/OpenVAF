@@ -43,13 +43,9 @@ impl Printer<'_> {
                 self.pretty_print_expr(e)?;
                 writeln!(self, ";")?;
             }
-            Stmt::EventControl { ref event, body } => {
-                writeln!(self, "@({:?})", event)?;
-                self.pretty_print_stmt(body)?;
-            }
             Stmt::Assignment { dst, val, op_kind } => {
                 self.pretty_print_expr(dst)?;
-                write!(self, " {:?} ", op_kind)?;
+                write!(self, " {op_kind:?} ")?;
                 self.pretty_print_expr(val)?;
                 writeln!(self, ";")?;
             }
@@ -58,7 +54,7 @@ impl Printer<'_> {
                 if let Some(first) = body.iter().next() {
                     if let DefMapSource::Block(block) = self.body.stmt_scopes[*first].src {
                         let parent = block.lookup(self.db).parent;
-                        write!(self, ": {:?} ({:?})", block, parent)?;
+                        write!(self, ": {block:?} ({parent:?})")?;
                     } else {
                         write!(self, ": ({:?})", self.body.stmt_scopes[s].src)?;
                     }
@@ -118,6 +114,10 @@ impl Printer<'_> {
                 })?;
                 writeln!(self, "endcase")?;
             }
+            Stmt::EventControl { ref event, body } => {
+                writeln!(self, "@({event:?})")?;
+                self.pretty_print_stmt(body)?;
+            }
         }
 
         Ok(())
@@ -126,19 +126,20 @@ impl Printer<'_> {
     pub fn pretty_print_expr(&mut self, e: ExprId) -> fmt::Result {
         match self.body.exprs[e] {
             Expr::Missing => write!(self, "<missing>")?,
-            Expr::Path { ref path, port: false } => write!(self, "{:?}", path)?,
-            Expr::Path { ref path, port: true } => write!(self, "<{:?}>", path)?,
+            Expr::Literal(ref lit) => write!(self, "{lit:?}")?,
+            Expr::Path { ref path, port: false } => write!(self, "{path:?}")?,
+            Expr::Path { ref path, port: true } => write!(self, "<{path:?}>")?,
+            Expr::UnaryOp { arg, op } => {
+                write!(self, "{op}")?;
+                self.pretty_print_expr(arg)?;
+            }
             Expr::BinaryOp { lhs, rhs, op } => {
                 self.pretty_print_expr(lhs)?;
                 match op {
-                    Some(op) => write!(self, " {} ", op)?,
+                    Some(op) => write!(self, " {op} ")?,
                     None => write!(self, " <invalid> ")?,
                 }
                 self.pretty_print_expr(rhs)?;
-            }
-            Expr::UnaryOp { arg, op } => {
-                write!(self, "{}", op)?;
-                self.pretty_print_expr(arg)?;
             }
             Expr::Select { cond, then_val, else_val } => {
                 self.pretty_print_expr(cond)?;
@@ -149,7 +150,7 @@ impl Printer<'_> {
             }
             Expr::Call { ref fun, ref args } => {
                 match fun {
-                    Some(path) => write!(self, "{:?}", path)?,
+                    Some(path) => write!(self, "{path:?}")?,
                     None => write!(self, "<missing>")?,
                 }
                 write!(self, "(")?;
@@ -166,7 +167,6 @@ impl Printer<'_> {
                 }
                 write!(self, "}}")?;
             }
-            Expr::Literal(ref lit) => write!(self, "{:?}", lit)?,
         }
 
         Ok(())

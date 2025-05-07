@@ -12,4 +12,4 @@ pub mod validation;
 use builtin::BuiltinInfo;
 use db::HirTyDB;
 use inference::Inference;
-pub use lower::{BranchTy, DisciplineTy, NatureTy};
+// use lower::{BranchTy, DisciplineTy, NatureTy};

@@ -1,0 +1,3 @@
+module test;
+    parameter a = 1.0 from (0:inf);
+endmodule

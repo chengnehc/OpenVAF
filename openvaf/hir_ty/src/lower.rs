@@ -9,6 +9,29 @@ use syntax::name::{kw, Name};
 
 use crate::HirTyDB;
 
+/// Look up the base nature of a nature, or the nature reference of a discipline.
+pub fn lookup_nature(
+    def_map: &DefMap,
+    nature_ref: &NatureRef,
+    db: &dyn HirTyDB,
+) -> Result<NatureId, PathResolveError> {
+    let root_scope = def_map.root_scope();
+    let (nature, attr) = match nature_ref.kind {
+        NatureRefKind::Nature => return def_map.resolve_item_name(root_scope, &nature_ref.name),
+        NatureRefKind::DisciplinePotential => {
+            let discipline = def_map.resolve_item_name(root_scope, &nature_ref.name)?;
+            (db.discipline_info(discipline).potential, kw::potential)
+        }
+        NatureRefKind::DisciplineFlow => {
+            let discipline = def_map.resolve_item_name(root_scope, &nature_ref.name)?;
+            (db.discipline_info(discipline).flow, kw::flow)
+        }
+    };
+
+    nature
+        .ok_or_else(|| PathResolveError::NotFoundIn { name: attr, scope: nature_ref.name.clone() })
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct NatureTy {
     pub parent_nature: Option<NatureId>,
@@ -76,7 +99,7 @@ impl NatureTy {
     /// - Non-Existent Binding Rule: A nature is compatible with a non-existent discipline binding.
     /// - Base Nature Rule: A derived nature is compatible with its base nature.
     /// - Derived Nature Rule: Two natures are compatible if they are derived from the same base nature.
-    /// - Units Value Rule: Two natures are compatible if they have the same value for the units attribute
+    /// - [✓] Units Value Rule: Two natures are compatible if they have the same value for the units attribute
     fn compatible(db: &dyn HirTyDB, nature1: NatureId, nature2: NatureId) -> bool {
         let nature1_info = db.nature_info(nature1);
         let nature2_info = db.nature_info(nature2);
@@ -122,28 +145,6 @@ impl NatureTy {
             scope: db.nature_data(nature).name.clone(),
         })
     }
-}
-
-pub fn lookup_nature(
-    def_map: &DefMap,
-    nature_ref: &NatureRef,
-    db: &dyn HirTyDB,
-) -> Result<NatureId, PathResolveError> {
-    let root_scope = def_map.root_scope();
-    let (nature, attr) = match nature_ref.kind {
-        NatureRefKind::Nature => return def_map.resolve_item_name(root_scope, &nature_ref.name),
-        NatureRefKind::DisciplinePotential => {
-            let discipline = def_map.resolve_item_name(root_scope, &nature_ref.name)?;
-            (db.discipline_info(discipline).potential, kw::potential)
-        }
-        NatureRefKind::DisciplineFlow => {
-            let discipline = def_map.resolve_item_name(root_scope, &nature_ref.name)?;
-            (db.discipline_info(discipline).flow, kw::flow)
-        }
-    };
-
-    nature
-        .ok_or_else(|| PathResolveError::NotFoundIn { name: attr, scope: nature_ref.name.clone() })
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -242,11 +243,7 @@ impl BranchKind {
                     (None, res) | (res, None) => return res,
                     (Some(d1), Some(d2)) => (d1, d2),
                 };
-                if db.discipline_info(discipline1).compatible(discipline2, db) {
-                    Some(discipline1)
-                } else {
-                    None
-                }
+                db.discipline_info(discipline1).compatible(discipline2, db).then_some(discipline1)
             }
         }
     }

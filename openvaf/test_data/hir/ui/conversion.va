@@ -1,0 +1,34 @@
+// Refer to LRM 4.2.1.1 ~ 4.2.1.3
+
+`include "disciplines.vams"
+
+module test(A, B);
+    inout electrical A, B;
+    parameter alpha = 1.0;
+    real foo = 3.14;
+    integer bar = 0;
+    // real bar = 1.0 + foo;
+    // string qux;
+    real a, b, c, d;
+
+    analog begin
+        // implicit conversion
+        bar = foo;  // real to integer
+                    // Real numbers are converted to integers by rounding it
+                    // to the nearest integer, rather than by truncating it.
+        
+        foo = bar;  // integer to real
+                    // Integers are converted to real numbers
+
+        // arithmetic conversion
+        a = 3 + 5.0;
+        // The expression 3 + 5.0 is evaluated by “casting” the integer 3 to the real 3.0, and the result of the expression is 8.0.
+        b = 1 / 2;
+        // The above is integer division and the result is 0.
+        c = 8.0 + (1/2);
+        // (1/2) is treated as integer division, but the result is cast to a real (0.0) during the addition, and the
+        // result of the expression is 8.0.
+        d = 1 / 2.0;
+
+    end
+endmodule

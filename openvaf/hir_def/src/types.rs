@@ -103,7 +103,7 @@ impl Type {
         curr
     }
 
-    /// dimension of Array
+    /// Obtain the dimensions of a (nested) array.
     pub fn dim(&self) -> Vec<u32> {
         if let Type::Array { ref ty, len } = *self {
             let mut dims: Vec<_> = successors(Some((ty, len)), |(ty, _)| {

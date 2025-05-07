@@ -33,5 +33,5 @@ fn ui(file: &Path) -> Result {
 
 harness! {
     Test::from_dir_filtered("integration", &integration, &Path::is_dir, &ignore_dev_tests, &project_root().join("integration_tests")),
-    Test::from_dir_filtered("ui", &ui, &is_va_file, &ignore_never, &openvaf_test_data("ui"))
+    Test::from_dir_filtered("ui", &ui, &is_va_file, &ignore_never, &openvaf_test_data("hir/ui"))
 }

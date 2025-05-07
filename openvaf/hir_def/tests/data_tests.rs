@@ -108,18 +108,22 @@ fn integration(dir: &Path) -> Result {
 fn body(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let def_map = db.root_def_map(db.root_file());
-
+    dbg!(&def_map);
     let mut actual = String::new();
     for (_, scope) in &def_map[def_map.entry_scope()].children {
-        let ScopeOrigin::Module(module) = def_map[*scope].origin else { continue };
-        let analog_block = DefWithBodyId::ModuleId { initial: false, id: module };
-        actual.push_str(&db.body(analog_block).dump(&db)?);
-        for (_, scope) in &def_map[*scope].children {
-            let ScopeOrigin::Function(func) = def_map[*scope].origin else { continue };
-            actual.push_str(&db.body(func.into()).dump(&db)?)
+        match def_map[*scope].origin {
+            // dump analog behavior body of the module
+            ScopeOrigin::Module(module) => {
+                let analog_block = DefWithBodyId::ModuleId { initial: false, id: module };
+                actual.push_str(&db.body(analog_block).dump(&db)?);
+            }
+            // dump user defined analog function body
+            ScopeOrigin::Function(fun) => {
+                actual.push_str(&db.body(fun.into()).dump(&db)?);
+            }
+            _ => continue,
         }
     }
-
     // std::fs::write(file.with_extension("body"), actual)?;
     expect_file![file.with_extension("body")].assert_eq(&actual);
 
@@ -148,7 +152,7 @@ fn def_map(file: &Path) -> Result {
 
 harness! {
     Test::from_dir_filtered("integration", &integration, &Path::is_dir, &ignore_dev_tests, &project_root().join("integration_tests")),
-    Test::from_dir_filtered("body", &body, &is_va_file, &ignore_never, &openvaf_test_data("body")),
-    Test::from_dir_filtered("item_tree", &item_tree, &is_va_file, &ignore_never, &openvaf_test_data("item_tree")),
-    Test::from_dir_filtered("def_map", &def_map, &is_va_file, &ignore_never, &openvaf_test_data("item_tree"))
+    Test::from_dir_filtered("body", &body, &is_va_file, &ignore_never, &openvaf_test_data("hir/body")),
+    Test::from_dir_filtered("item_tree", &item_tree, &is_va_file, &ignore_never, &openvaf_test_data("hir/def")),
+    Test::from_dir_filtered("def_map", &def_map, &is_va_file, &ignore_never, &openvaf_test_data("hir/def"))
 }

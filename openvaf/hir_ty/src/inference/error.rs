@@ -16,13 +16,12 @@ pub enum InferDiagnostic {
         expr: ExprId,
     },
     InvalidAssignDst {
-        e: ExprId,
+        expr: ExprId,
         op_kind: ast::AssignOp,
         maybe_different_op: Option<ast::AssignOp>,
     },
 
     /* Mismatch */
-    // type
     TypeMismatch(TypeMismatch),
     ArrayTypeMismatch {
         expected: Type,
@@ -41,16 +40,16 @@ pub enum InferDiagnostic {
 
     /* ddx */
     InvalidUnknown {
-        e: ExprId,
+        expr: ExprId,
     },
     NonStandardUnknown {
-        e: ExprId,
+        expr: ExprId,
         stmt: StmtId,
     },
 
     /* $limit */
     ExpectedProbe {
-        e: ExprId,
+        expr: ExprId,
     },
     InvalidLimitFunction {
         expr: ExprId,

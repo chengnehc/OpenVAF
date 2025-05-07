@@ -1,0 +1,36 @@
+error: invalid destination for assignment
+   --> /assign_dst.va:19:9
+   |
+19 |         I(a, b) = foo;
+   |         ^^^^^^^ invalid destination
+   |
+   = help: expected a variable
+   = help: found a branch access
+     perhaps you mean to contribute (<+)
+
+error: invalid destination for branch contribution
+   --> /assign_dst.va:20:9
+   |
+20 |         foo <+ bar;
+   |         ^^^ invalid destination
+   |
+   = help: expected nature access such as V(foo) or I(foo)
+   = help: found a variable
+     perhaps you meant to assign (=) a value
+
+error: invalid destination for branch contribution
+   --> /assign_dst.va:21:9
+   |
+21 |         I(<a>) <+ foo;  // port flow can't receive contribution
+   |         ^^^^^^ invalid destination
+   |
+   = help: expected nature access such as V(foo) or I(foo)
+
+error: invalid destination for assignment
+   --> /assign_dst.va:22:9
+   |
+22 |         alpha = 2.0;    // parameter can't be assigned
+   |         ^^^^^ invalid destination
+   |
+   = help: expected a variable
+

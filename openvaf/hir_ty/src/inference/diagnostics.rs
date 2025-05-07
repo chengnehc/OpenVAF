@@ -52,7 +52,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     .with_message(err.to_string())
             }
 
-            InferDiagnostic::InvalidAssignDst { e, op_kind, maybe_different_op } => {
+            InferDiagnostic::InvalidAssignDst { expr: e, op_kind, maybe_different_op } => {
                 let src = parse.to_file_span(
                     self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
                     &sm,
@@ -235,9 +235,9 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     .with_notes(vec!["help: all array elements must have the same type".to_owned()])
             }
 
-            InferDiagnostic::InvalidUnknown { e } => {
+            InferDiagnostic::InvalidUnknown { expr } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
                     &sm,
                 );
 
@@ -254,9 +254,9 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     ])
             }
 
-            InferDiagnostic::NonStandardUnknown { e, .. } => {
+            InferDiagnostic::NonStandardUnknown { expr, .. } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
                     &sm,
                 );
 
@@ -274,9 +274,9 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     ])
             }
 
-            InferDiagnostic::ExpectedProbe { e } => {
+            InferDiagnostic::ExpectedProbe { expr } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
+                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
                     &sm,
                 );
 

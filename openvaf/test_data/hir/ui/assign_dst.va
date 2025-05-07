@@ -1,0 +1,24 @@
+`include "disciplines.vams"
+
+module test(inout a, b);
+    electrical a, b;
+    branch (a, b) br_a_b;
+    real foo, bar;
+    parameter real alpha = 1.0;
+
+    analog begin
+        // OK
+        foo = sin(bar);
+        bar = V(a, b);
+        I(a, b) <+ foo;
+        V(a, b) <+ 0;
+        I(br_a_b) <+ V(br_a_b) / bar;
+        V(a) <+ foo;
+
+        // Invalid
+        I(a, b) = foo;
+        foo <+ bar;
+        I(<a>) <+ foo;  // port flow can't receive contribution
+        alpha = 2.0;    // parameter can't be assigned
+    end
+endmodule

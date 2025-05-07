@@ -1,0 +1,8 @@
+analog begin: BlockId(0) (Scope { root_file: FileId(0), src: Root, local_id: Idx::<ScopeData>(1) })
+    begin: BlockId(0) (Scope { root_file: FileId(0), src: Root, local_id: Idx::<ScopeData>(1) })
+        begin
+        end
+    end
+end
+analog begin
+end

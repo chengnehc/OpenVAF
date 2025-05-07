@@ -86,8 +86,7 @@ impl Body {
                 };
                 let expr = ctxt.collect_expr_opt(ast_node.val());
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
-
-                body.entry_stmts = Box::from([stmt])
+                body.entry_stmts = Box::from([stmt]);
             }
             DefWithBodyId::DisciplineAttrId(attr) => {
                 let root = db.parse(root_file).syntax_node();
@@ -110,8 +109,7 @@ impl Body {
                 };
                 let expr = ctxt.collect_expr_opt(ast_node.val());
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
-
-                body.entry_stmts = Box::from([stmt])
+                body.entry_stmts = Box::from([stmt]);
             }
             DefWithBodyId::ModuleId { initial, id } => {
                 let module = id.lookup(db);
@@ -125,7 +123,6 @@ impl Body {
                     ast_id_map,
                     db,
                 };
-
                 body.entry_stmts = if initial {
                     ast_node
                         .analog_initial_behaviour()
@@ -148,18 +145,21 @@ impl Body {
                     db,
                 };
                 let expr = if let Some(expr) = ast_node.initial() {
+                    // the variable is explicitly initialized
                     ctxt.collect_expr(expr)
                 } else {
+                    // initialize the variable with zero if it is not initialized
                     let default_val = match db.var_data(id).ty {
                         Type::Real => Literal::Float(Ieee64::with_float(0.0)),
                         Type::Integer => Literal::Int(0),
+                        Type::String => Literal::String(String::new().into_boxed_str()),
                         _ => unreachable!("invalid var type (TODO arrays)"),
                     };
                     ctxt.alloc_expr_desugared(Expr::Literal(default_val))
                 };
+                // allocate an expr stmt as the entry stmt of variable body
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
-
-                body.entry_stmts = Box::from([stmt])
+                body.entry_stmts = Box::from([stmt]);
             }
             DefWithBodyId::ParamId(param) => {
                 let (body, sm, _) = db.param_body_with_srcmap(param);
@@ -181,7 +181,6 @@ impl Body {
                     ast_id_map,
                     db,
                 };
-
                 body.entry_stmts = ast_node.body().map(|stmt| ctxt.collect_stmt(stmt)).collect();
             }
         }
@@ -242,6 +241,7 @@ impl Body {
                 Some(ParamConstraint { kind, val })
             })
             .collect();
+        // entry stmts contain parameter default value and constexprs of contraints
         body.entry_stmts = Box::from(entry_stmts);
 
         (Arc::new(body), Arc::new(src_map), ParamExprs { default, constraints })

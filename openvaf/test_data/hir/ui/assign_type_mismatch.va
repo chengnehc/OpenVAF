@@ -1,0 +1,31 @@
+`include "disciplines.vams"
+
+module test(A, B);
+    inout electrical A, B;
+    branch (A, B) br_A_B;
+    real foo;
+    integer bar = 1;
+    string qux;
+
+    analog function real lln;
+       input x; real x;
+
+       begin
+          lln = ln(max(x, 34));
+       end
+    endfunction
+
+    analog begin
+        // type mismatch
+        qux = foo;
+        bar = V(A, B);  // Check in the LRM to see if this is actually problematic?
+
+        // random fuzz
+        foo = Voltage;
+        bar = electrical;
+        qux = test;
+        foo = br_A_B;
+        bar = sin;
+        qux = lln;
+    end
+endmodule

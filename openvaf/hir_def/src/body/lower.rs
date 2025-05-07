@@ -190,6 +190,7 @@ impl Context<'_> {
         id
     }
 
+    /// By 'desugared', it means that the expression has no corresponding node in the AST.
     pub(super) fn alloc_expr_desugared(&mut self, expr: Expr) -> ExprId {
         self.make_expr(expr, None)
     }
@@ -218,6 +219,7 @@ impl Context<'_> {
         id
     }
 
+    /// By 'desugared', it means that the statement has no corresponding node in the AST.
     pub(super) fn alloc_stmt_desugared(&mut self, stmt: Stmt) -> StmtId {
         self.make_stmt(stmt, None, LintAttrs::empty(self.curr_scope.1))
     }

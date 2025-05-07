@@ -10,7 +10,6 @@ use ahash::AHashMap;
 use arena::ArenaMap;
 use hir_def::{
     body::Body,
-    db::HirDefDB,
     expr::{CaseCond, Literal},
     nameres::{NatureAccess, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind},
     BranchId, BuiltIn, DefWithBodyId, Expr, ExprId, FunctionArgLoc, FunctionId, LocalFunctionArgId,
@@ -59,15 +58,19 @@ impl Inference {
         };
         let mut ctxt = Context { result, body: &body, db, expr_stmt_ty: None };
         // Parameter and variable bodies only contain expressions, whose entry stmts
-        // are expr stmts, which shall be type checked properly.
+        // are expr stmts which shall be type checked properly.
         ctxt.expr_stmt_ty = match id {
             DefWithBodyId::ParamId(param) => match &db.param_data(param).ty {
                 Some(ty) => Some(ty.clone()),
-                // parameter type is inferred if omitted. Refer to [LRM 3.4.1]
-                None => ctxt
-                    .infere_expr(body.entry_stmts[0], db.param_exprs(param).default)
-                    .and_then(|ty| ty.to_value()),
+                // If the type of a parameter is omitted, it shall be inferred through
+                // the parameter's default value. Refer to [LRM 3.4.1]
+                None => {
+                    let stmt = body.entry_stmts[0];
+                    let expr = db.param_exprs(param).default;
+                    ctxt.infere_expr(stmt, expr).and_then(|ty| ty.to_value())
+                }
             },
+            // the type of a variable can not be omitted
             DefWithBodyId::VarId(var) => Some(db.var_data(var).ty.clone()),
             _ => None,
         };
@@ -75,7 +78,7 @@ impl Inference {
         for stmt in &body.entry_stmts {
             ctxt.infere_stmt(*stmt);
         }
-
+        //        dbg!(&ctxt.result);
         Arc::new(ctxt.result)
     }
 }
@@ -94,18 +97,6 @@ pub enum AssignDst {
     FunVar { fun: FunctionId, arg: Option<LocalFunctionArgId> },
     Flow(BranchWrite),
     Potential(BranchWrite),
-}
-
-impl AssignDst {
-    pub fn ty(&self, db: &dyn HirDefDB) -> Type {
-        if let AssignDst::Var(var) = *self {
-            let var = var.lookup(db);
-            let tree = var.item_tree(db);
-            tree[var.id].ty.clone()
-        } else {
-            Type::Real
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
@@ -157,31 +148,29 @@ impl Context<'_> {
     }
 
     fn infere_assignment(&mut self, stmt: StmtId, expr: ExprId, dst_ty: Option<Type>) {
-        if let Some(ty) = self.infere_expr(stmt, expr) {
-            if let Some(rhs_ty) = ty.to_value() {
-                if let Some(dst_ty) = dst_ty {
-                    if dst_ty.is_assignable_to(&rhs_ty) {
-                        if dst_ty != rhs_ty {
-                            self.result.casts.insert(expr, dst_ty);
-                        }
-                    } else {
-                        self.result.diagnostics.push(
-                            TypeMismatch {
-                                expected: Cow::Owned(vec![TyRequirement::Val(dst_ty)]),
-                                found_ty: ty,
-                                expr,
-                            }
-                            .into(),
-                        );
+        let Some(ty) = self.infere_expr(stmt, expr) else { return };
+        if let Some(rhs_ty) = ty.to_value() {
+            if let Some(dst_ty) = dst_ty {
+                if rhs_ty.is_assignable_to(&dst_ty) {
+                    if dst_ty != rhs_ty {
+                        self.result.casts.insert(expr, dst_ty);
                     }
-                }
-            } else {
-                let expected = dst_ty.map_or(TyRequirement::AnyVal, TyRequirement::Val);
-                self.result.diagnostics.push(
-                    TypeMismatch { expected: Cow::Owned(vec![expected]), found_ty: ty, expr }
+                } else {
+                    self.result.diagnostics.push(
+                        TypeMismatch {
+                            expected: Cow::Owned(vec![TyRequirement::Val(dst_ty)]),
+                            found_ty: ty,
+                            expr,
+                        }
                         .into(),
-                );
+                    );
+                }
             }
+        } else {
+            let expected = dst_ty.map_or(TyRequirement::AnyVal, TyRequirement::Val);
+            self.result.diagnostics.push(
+                TypeMismatch { expected: Cow::Owned(vec![expected]), found_ty: ty, expr }.into(),
+            );
         }
     }
 
@@ -193,13 +182,14 @@ impl Context<'_> {
     ) -> Option<Type> {
         let (dst, ty) = match self.infere_expr(stmt, expr)? {
             Ty::Var(ty, var) => (AssignDst::Var(var), ty),
-            Ty::FunctionVar { fun, ty, arg } => (AssignDst::FunVar { fun, arg }, ty),
+            Ty::FunctionVar { ty, fun, arg } => (AssignDst::FunVar { fun, arg }, ty),
             Ty::Val(Type::Real)
                 if matches!(
                     self.result.resolved_calls.get(&expr),
                     Some(ResolvedFun::BuiltIn(BuiltIn::potential | BuiltIn::flow))
                 ) =>
             {
+                // deal with contribution LHS
                 let mut args = Vec::new();
                 self.body.exprs[expr].walk_child_exprs(|e| args.push(&self.result.expr_types[e]));
                 let kind = match *self.result.resolved_signatures.get(&expr)? {
@@ -212,8 +202,10 @@ impl Context<'_> {
                         BranchWrite::Unnamed { hi: args[0].unwrap_node(), lo: None }
                     }
                     NATURE_ACCESS_PORT_FLOW => {
+                        // The port access function shall not be used on the left side
+                        // of a contribution operator <+.
                         self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
-                            e: expr,
+                            expr,
                             op_kind,
                             maybe_different_op: None,
                         });
@@ -231,7 +223,7 @@ impl Context<'_> {
             }
             _ => {
                 self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
-                    e: expr,
+                    expr,
                     op_kind,
                     maybe_different_op: None,
                 });
@@ -243,14 +235,14 @@ impl Context<'_> {
         match (&dst, op_kind) {
             (AssignDst::Var(_) | AssignDst::FunVar { .. }, ast::AssignOp::Contribute) => {
                 self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
-                    e: expr,
+                    expr,
                     op_kind,
                     maybe_different_op: Some(ast::AssignOp::Assign),
                 });
             }
             (AssignDst::Flow(_) | AssignDst::Potential(_), ast::AssignOp::Assign) => {
                 self.result.diagnostics.push(InferDiagnostic::InvalidAssignDst {
-                    e: expr,
+                    expr,
                     op_kind,
                     maybe_different_op: Some(ast::AssignOp::Contribute),
                 });
@@ -344,7 +336,8 @@ impl Context<'_> {
                 Ty::Val(Type::Bool)
             }
 
-            // JW: this should have been checked during ast validation
+            // TODO(JW): properly deal with this, maybe this
+            // should have been handled during ast validation
             Expr::BinaryOp { lhs, rhs, op: None } => {
                 self.infere_expr(stmt, lhs);
                 self.infere_expr(stmt, rhs);
@@ -666,7 +659,7 @@ impl Context<'_> {
                 Some(ResolvedFun::BuiltIn(BuiltIn::potential | BuiltIn::flow))
             )
         {
-            self.result.diagnostics.push(InferDiagnostic::ExpectedProbe { e: probe })
+            self.result.diagnostics.push(InferDiagnostic::ExpectedProbe { expr: probe })
         }
 
         if args.len() == 1 {
@@ -860,7 +853,7 @@ impl Context<'_> {
                 (Some(ResolvedFun::BuiltIn(fun)), Some(sig)) => (*fun, *sig),
                 (Some(ResolvedFun::BuiltIn(fun)), None) => (*fun, DDX_TEMP),
                 _ => {
-                    let diag = InferDiagnostic::InvalidUnknown { e: unknown };
+                    let diag = InferDiagnostic::InvalidUnknown { expr: unknown };
                     self.result.diagnostics.push(diag);
                     return;
                 }
@@ -872,17 +865,17 @@ impl Context<'_> {
                 (BuiltIn::potential, NATURE_ACCESS_NODES) => {
                     self.result
                         .diagnostics
-                        .push(InferDiagnostic::NonStandardUnknown { e: unknown, stmt });
+                        .push(InferDiagnostic::NonStandardUnknown { expr: unknown, stmt });
                     DDX_POT_DIFF
                 }
                 (BuiltIn::temperature, DDX_TEMP) => {
                     self.result
                         .diagnostics
-                        .push(InferDiagnostic::NonStandardUnknown { e: unknown, stmt });
+                        .push(InferDiagnostic::NonStandardUnknown { expr: unknown, stmt });
                     DDX_TEMP
                 }
                 _ => {
-                    self.result.diagnostics.push(InferDiagnostic::InvalidUnknown { e: unknown });
+                    self.result.diagnostics.push(InferDiagnostic::InvalidUnknown { expr: unknown });
                     return;
                 }
             };

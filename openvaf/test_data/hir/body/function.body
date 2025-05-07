@@ -1,0 +1,11 @@
+analog begin: BlockId(0) (Scope { root_file: FileId(0), src: Root, local_id: Idx::<ScopeData>(1) })
+    x;
+    c;
+    y;
+    z;
+    m;
+    l;
+    begin: BlockId(0) (Scope { root_file: FileId(0), src: Root, local_id: Idx::<ScopeData>(1) })
+        hypsmooth = 0.5 * x + sqrt(x * x + 4 * c * c, );
+    end
+end
