@@ -1,0 +1,100 @@
+SOURCE_FILE@0..184
+  MODULE_DECL@0..168
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    VAR_DECL@17..27
+      TYPE@17..21
+        REAL_KW@17..21 "real"
+      WHITESPACE@21..22 " "
+      VAR@22..23
+        NAME@22..23
+          IDENT@22..23 "x"
+      COMMA@23..24 ","
+      WHITESPACE@24..25 " "
+      VAR@25..26
+        NAME@25..26
+          IDENT@25..26 "y"
+      SEMICOLON@26..27 ";"
+    WHITESPACE@27..32 "\n    "
+    ANALOG_BEHAVIOR@32..158
+      ANALOG_KW@32..38 "analog"
+      WHITESPACE@38..39 " "
+      BLOCK_STMT@39..158
+        BEGIN_KW@39..44 "begin"
+        WHITESPACE@44..53 "\n        "
+        COMMENT@53..58 "// OK"
+        WHITESPACE@58..67 "\n        "
+        ASSIGN_STMT@67..78
+          ASSIGN@67..77
+            PATH_EXPR@67..68
+              PATH@67..68
+                IDENT@67..68 "x"
+            WHITESPACE@68..69 " "
+            EQ@69..70 "="
+            WHITESPACE@70..71 " "
+            BIN_EXPR@71..77
+              PATH_EXPR@71..72
+                PATH@71..72
+                  IDENT@71..72 "x"
+              WHITESPACE@72..73 " "
+              POW@73..75 "**"
+              WHITESPACE@75..76 " "
+              PATH_EXPR@76..77
+                PATH@76..77
+                  IDENT@76..77 "y"
+          SEMICOLON@77..78 ";"
+        WHITESPACE@78..87 "\n        "
+        COMMENT@87..110 "// TODO(JW): should err"
+        WHITESPACE@110..119 "\n        "
+        ASSIGN_STMT@119..130
+          ASSIGN@119..129
+            PATH_EXPR@119..120
+              PATH@119..120
+                IDENT@119..120 "x"
+            WHITESPACE@120..121 " "
+            EQ@121..122 "="
+            WHITESPACE@122..123 " "
+            BIN_EXPR@123..129
+              PATH_EXPR@123..124
+                PATH@123..124
+                  IDENT@123..124 "x"
+              WHITESPACE@124..125 " "
+              PLUS@125..126 "+"
+              PREFIX_EXPR@126..129
+                PLUS@126..127 "+"
+                WHITESPACE@127..128 " "
+                PATH_EXPR@128..129
+                  PATH@128..129
+                    IDENT@128..129 "y"
+          SEMICOLON@129..130 ";"
+        WHITESPACE@130..139 "\n        "
+        ASSIGN_STMT@139..150
+          ASSIGN@139..149
+            PATH_EXPR@139..140
+              PATH@139..140
+                IDENT@139..140 "x"
+            WHITESPACE@140..141 " "
+            EQ@141..142 "="
+            WHITESPACE@142..143 " "
+            BIN_EXPR@143..149
+              PATH_EXPR@143..144
+                PATH@143..144
+                  IDENT@143..144 "x"
+              WHITESPACE@144..145 " "
+              MINUS@145..146 "-"
+              PREFIX_EXPR@146..149
+                MINUS@146..147 "-"
+                WHITESPACE@147..148 " "
+                PATH_EXPR@148..149
+                  PATH@148..149
+                    IDENT@148..149 "y"
+          SEMICOLON@149..150 ";"
+        WHITESPACE@150..155 "\n    "
+        END_KW@155..158 "end"
+    WHITESPACE@158..159 "\n"
+    ENDMODULE_KW@159..168 "endmodule"
+  WHITESPACE@168..184 "\n               "

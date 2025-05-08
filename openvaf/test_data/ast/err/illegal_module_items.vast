@@ -1,18 +1,20 @@
-SOURCE_FILE@0..36
-  MODULE_DECL@0..35
-    MODULE_KW@0..6 "module"
-    WHITESPACE@6..7 " "
-    NAME@7..11
-      IDENT@7..11 "test"
-    SEMICOLON@11..12 ";"
-    WHITESPACE@12..17 "\n    "
-    NET_DECL@17..25
-      NAME_REF@17..20
-        IDENT@17..20 "foo"
-      WHITESPACE@20..21 " "
-      NAME@21..24
-        IDENT@21..24 "baz"
-      SEMICOLON@24..25 ";"
-    WHITESPACE@25..26 "\n"
-    ENDMODULE_KW@26..35 "endmodule"
-  WHITESPACE@35..36 "\n"
+SOURCE_FILE@0..60
+  COMMENT@0..23 "// TODO(JW): should err"
+  WHITESPACE@23..24 "\n"
+  MODULE_DECL@24..59
+    MODULE_KW@24..30 "module"
+    WHITESPACE@30..31 " "
+    NAME@31..35
+      IDENT@31..35 "test"
+    SEMICOLON@35..36 ";"
+    WHITESPACE@36..41 "\n    "
+    NET_DECL@41..49
+      NAME_REF@41..44
+        IDENT@41..44 "foo"
+      WHITESPACE@44..45 " "
+      NAME@45..48
+        IDENT@45..48 "baz"
+      SEMICOLON@48..49 ";"
+    WHITESPACE@49..50 "\n"
+    ENDMODULE_KW@50..59 "endmodule"
+  WHITESPACE@59..60 "\n"

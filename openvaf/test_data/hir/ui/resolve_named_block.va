@@ -1,0 +1,68 @@
+// Rules: [LRM 6.8]
+//
+// If an identifier is referenced directly (without a hierarchical path) within a named block, it
+// shall be declared within the named block locally or within a module, or within a named block that
+// is higher in the same branch of the name tree containing the named block.
+//
+// If it is declared locally, the local item shall be used; if not, the search shall continue upward
+// until an item by that name is found or until a module boundary is encountered.
+// If the item is a variable, it shall stop at a module boundary; if the item is a named block, 
+// it continues to search higher level modules until found.
+
+// This case is taken from LRM 5.3.2
+module example;
+    parameter integer p1 = 1;
+    real moduleVar;
+
+    analog begin
+        begin: myscope
+            parameter real p2 = p1;
+            real localVar = 1.5 * p2;
+        end
+        // OK: local var can be accessed outside the scope in which it is defined
+        moduleVar = myscope.localVar;
+        // TODO(JW) Should err: local var can NOT be assigned outside the scope in which it is defined
+        myscope.localVar = 1;
+    end
+endmodule
+
+
+module test;
+    parameter real foo = 1;
+    real v_module;
+
+    analog begin: outer
+        parameter real foo = 1.0;
+        real v_outer;
+        begin
+            begin: inner
+                real v_inner;
+                // OK
+                foo;        // <=> outer.foo
+                v_outer;    // <=> outer.v_outer
+                v_module;   // <=> test.v_module
+                // Err
+                outer;
+                another;
+                v_another;
+
+                // OK
+                test.v_module;
+                test.foo;   // explicitly specify hierarchial path for disambiguation
+                outer.foo;
+                outer.v_outer;
+                another.v_another;
+            end
+        end
+        // OK
+        inner.v_inner;
+        another.v_another;
+        // Err
+        v_inner;
+        foo.v;
+
+        begin: another
+            real v_another;
+        end
+    end
+endmodule

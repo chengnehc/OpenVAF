@@ -7,7 +7,7 @@
 
 use std::str::CharIndices;
 
-use hir_def::ExprId;
+use hir_def::body::ExprId;
 use syntax::{TextRange, TextSize};
 
 use crate::inference::InferDiagnostic;

@@ -101,7 +101,7 @@ pub enum SyntaxKind {
     WHITESPACE,
     COMMENT,
     ALIAS_PARAM,
-    ANALOG_BEHAVIOUR,
+    ANALOG_BEHAVIOR,
     ARG_LIST,
     ARRAY_EXPR,
     ASSIGN,
@@ -360,7 +360,7 @@ impl std::fmt::Display for SyntaxKind {
             Self::BRANCH_DECL => "branch decl.",
             Self::VAR_DECL => "variable decl.",
             Self::PARAM_DECL => "parameter decl.",
-            Self::ANALOG_BEHAVIOUR => "analog procedural block",
+            Self::ANALOG_BEHAVIOR => "analog procedural block",
             _ => return std::fmt::Debug::fmt(self, f),
         };
         write!(f, "{pretty}")

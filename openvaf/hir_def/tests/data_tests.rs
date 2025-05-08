@@ -105,6 +105,26 @@ fn integration(dir: &Path) -> Result {
     Ok(())
 }
 
+fn item_tree(file: &Path) -> Result {
+    let db = TestDataBase::new_from_fs(file);
+    let actual = db.item_tree(db.root_file()).dump()?;
+
+    // std::fs::write(file.with_extension("item_tree"), actual)?;
+    expect_file![file.with_extension("item_tree")].assert_eq(&actual);
+
+    Ok(())
+}
+
+fn def_map(file: &Path) -> Result {
+    let db = TestDataBase::new_from_fs(file);
+    let actual = db.root_def_map(db.root_file()).dump(&db)?;
+
+    // std::fs::write(file.with_extension("def_map"), actual)?;
+    expect_file![file.with_extension("def_map")].assert_eq(&actual);
+
+    Ok(())
+}
+
 fn body(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
     let mut actual = String::new();
@@ -126,26 +146,6 @@ fn body(file: &Path) -> Result {
     }
     // std::fs::write(file.with_extension("body"), actual)?;
     expect_file![file.with_extension("body")].assert_eq(&actual);
-
-    Ok(())
-}
-
-fn item_tree(file: &Path) -> Result {
-    let db = TestDataBase::new_from_fs(file);
-    let actual = db.item_tree(db.root_file()).dump()?;
-
-    // std::fs::write(file.with_extension("item_tree"), actual)?;
-    expect_file![file.with_extension("item_tree")].assert_eq(&actual);
-
-    Ok(())
-}
-
-fn def_map(file: &Path) -> Result {
-    let db = TestDataBase::new_from_fs(file);
-    let actual = db.root_def_map(db.root_file()).dump(&db)?;
-
-    // std::fs::write(file.with_extension("def_map"), actual)?;
-    expect_file![file.with_extension("def_map")].assert_eq(&actual);
 
     Ok(())
 }

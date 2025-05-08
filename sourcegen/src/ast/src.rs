@@ -106,7 +106,7 @@ pub(crate) const KINDS_SRC: KindsSrc = KindsSrc {
     tokens: &["ERROR", "IDENT", "SYSFUN", "NET_TYPE", "WHITESPACE", "COMMENT"],
     nodes: &[
         "ALIAS_PARAM",
-        "ANALOG_BEHAVIOUR",
+        "ANALOG_BEHAVIOR",
         "ARG_LIST",
         "ARRAY_EXPR",
         "ASSIGN",

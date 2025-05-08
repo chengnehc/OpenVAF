@@ -25,10 +25,9 @@ use smol_str::SmolStr;
 use syntax::ast;
 
 pub use basedb::diagnostics::DiagnosticSink;
-pub use hir_def::body::{ConstraintValue, ParamConstraint};
-pub use hir_def::expr::{Case, CaseCond};
+pub use hir_def::body::{Case, CaseCond, ConstraintValue, Literal, ParamConstraint};
 pub use hir_def::nameres::PathResolveError;
-pub use hir_def::{BuiltIn, Literal, ParamSysFun, Path, Type};
+pub use hir_def::{BuiltIn, ParamSysFun, Path, Type};
 pub use hir_ty::builtin;
 pub use rec_declarations::RecDeclarations;
 pub use syntax::name::Name;

@@ -144,7 +144,7 @@ impl Printer<'_> {
     fn print_block(&mut self, block: AstId<ast::BlockStmt>) -> fmt::Result {
         let block = &self.tree[block];
         write!(self, "block {:?}", block.name)?;
-        self.indented(|s| s.print_block_items(&block.block_items))
+        self.indented(|s| s.print_block_items(&block.items))
     }
 
     fn print_block_items(&mut self, items: &[BlockItem]) -> fmt::Result {

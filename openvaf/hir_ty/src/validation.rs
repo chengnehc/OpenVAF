@@ -4,11 +4,10 @@ use stdx::impl_display;
 use ahash::{HashMap, HashSet};
 use basedb::FileId;
 use hir_def::{
-    body::Body,
+    body::{Body, Expr, ExprId, Literal, Stmt, StmtId},
     nameres::{DefMap, PathResolveError, ScopeItemDef},
-    AliasParamId, Branch, BranchId, BuiltIn, DefWithBodyId, DisciplineId, Expr, ExprId,
-    FunctionArgLoc, ItemLoc, ItemTree, Literal, Lookup, ModuleId, ModuleLoc, NatureId, NodeId,
-    NodeTypeDecl, Path, Scope, Stmt, StmtId,
+    AliasParamId, Branch, BranchId, BuiltIn, DefWithBodyId, DisciplineId, FunctionArgLoc, ItemLoc,
+    ItemTree, Lookup, ModuleId, ModuleLoc, NatureId, NodeId, NodeTypeDecl, Path, Scope,
 };
 use syntax::{
     ast::{ArgListOwner, AssignOp},

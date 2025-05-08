@@ -4,11 +4,8 @@
 
 module test(A, B);
     inout electrical A, B;
-    parameter alpha = 1.0;
     real foo = 3.14;
     integer bar = 0;
-    // real bar = 1.0 + foo;
-    // string qux;
     real a, b, c, d;
 
     analog begin

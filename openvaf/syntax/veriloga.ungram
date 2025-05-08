@@ -259,7 +259,7 @@ ModuleItem =
 | ParamDecl
 | AliasParam
 | Function
-| AnalogBehaviour
+| AnalogBehavior
 
 BodyPortDecl =
   PortDecl ';'
@@ -326,7 +326,7 @@ FunctionArg =
 
 // 5.2 analog procedural block
 // A.6.2
-AnalogBehaviour =
+AnalogBehavior =
   AttrList* 'analog' 'initial'? Stmt
 
 

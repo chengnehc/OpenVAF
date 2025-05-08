@@ -1,5 +1,7 @@
 module test
     node a = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
-    node c = {is_input: false, is_output:false, gnd: false , discipline Some(Name("electrical"))}
-    branch br_ac = Nodes(a, c)
-    branch br_a_port = PortFlow(a)
+    node b = {is_input: true, is_output:false, gnd: false , discipline Some(Name("electrical"))}
+    branch ab1 = Nodes(a, b)
+    branch ab2 = Nodes(a, b)
+    branch a_gnd = NodeGnd(a)
+    branch port_flow_b = PortFlow($root.test.b)

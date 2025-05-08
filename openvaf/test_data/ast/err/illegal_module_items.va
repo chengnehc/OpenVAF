@@ -1,3 +1,4 @@
+// TODO(JW): should err
 module test;
     foo baz;
 endmodule

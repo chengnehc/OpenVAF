@@ -1,0 +1,30 @@
+error: type mismatch: expected value but found scope
+   --> /resolve_named_block.va:45:17
+   |
+45 |                 outer;
+   |                 ^^^^^ expected value
+
+error: type mismatch: expected value but found scope
+   --> /resolve_named_block.va:46:17
+   |
+46 |                 another;
+   |                 ^^^^^^^ expected value
+
+error: 'v_another' was not found in the current scope
+   --> /resolve_named_block.va:47:17
+   |
+47 |                 v_another;
+   |                 ^^^^^^^^^ not found
+
+error: 'v_inner' was not found in the current scope
+   --> /resolve_named_block.va:61:9
+   |
+61 |         v_inner;
+   |         ^^^^^^^ not found
+
+error: expected a scope but found parameter 'foo'
+   --> /resolve_named_block.va:62:9
+   |
+62 |         foo.v;
+   |         ^^^^^ failed to resolve path
+

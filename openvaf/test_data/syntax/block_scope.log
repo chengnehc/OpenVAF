@@ -1,0 +1,10 @@
+error: declarations in blocks require an explicit scope
+  --> /block_scope.va:6:9
+  |
+5 |     analog begin
+  |                - help: add ':<scope>' here
+6 |         parameter bar = 2;
+  |         ^^^^^^^^^^^^^^^^^^ parameter decl.s require a scope
+7 |         real v_local;
+  |         ^^^^^^^^^^^^^ variable decl.s require a scope
+

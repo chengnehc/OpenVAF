@@ -9,11 +9,10 @@ use std::sync::Arc;
 use ahash::AHashMap;
 use arena::ArenaMap;
 use hir_def::{
-    body::Body,
-    expr::{CaseCond, Literal},
-    nameres::{NatureAccess, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind},
-    BranchId, BuiltIn, DefWithBodyId, Expr, ExprId, FunctionArgLoc, FunctionId, LocalFunctionArgId,
-    Lookup, NatureId, NodeId, ParamSysFun, Path, Stmt, StmtId, Type, VarId,
+    body::{Body, CaseCond, Expr, ExprId, Literal, Stmt, StmtId},
+    nameres::{PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind},
+    BranchId, BuiltIn, DefWithBodyId, FunctionArgLoc, FunctionId, LocalFunctionArgId, Lookup,
+    NatureAccess, NatureId, NodeId, ParamSysFun, Path, Type, VarId,
 };
 use syntax::{
     ast::{self, BinaryOp, UnaryOp},

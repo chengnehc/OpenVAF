@@ -1,0 +1,13 @@
+module test;
+    real x, y;
+    analog begin
+        // OK
+        x = x ** y;
+        // Err
+        x = x # y;
+        // TODO(JW): should err
+        x = x ++ y;
+        x = x -- y;
+    end
+endmodule
+               

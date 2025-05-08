@@ -47,13 +47,13 @@ impl DefMap {
     pub fn block_query(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
         let BlockLoc { parent, ast_id } = block.lookup(db);
         let tree = &db.item_tree(parent.root_file);
-        let items = &tree[ast_id].block_items;
+        let items = &tree[ast_id].items;
         if items.is_empty() {
             return None;
         }
         let def_map = DefMap {
             src: DefMapSource::Block(block),
-            scopes: Arena::with_capacity(1), // the root scope
+            scopes: Arena::with_capacity(1), // the block scope itself
             root_scope: LocalScopeId::from(0u32),
             diagnostics: Vec::new(),
         };
@@ -106,19 +106,19 @@ impl Collector<'_> {
                 RootItem::Nature(id) => {
                     let name = self.tree[id].name.clone();
                     let nature_def = NatureLoc { root_file, id }.intern(self.db);
-                    self.insert_def(root_scope, name, nature_def);
+                    self.insert_def(nature_def, root_scope, name);
                     if let Some((name, attr_id)) = self.tree[id].access.clone() {
                         // special treatment for nature access function
                         let attr_def =
                             NatureAttrLoc { nature: nature_def, id: attr_id }.intern(self.db);
                         let access_def = ScopeItemDef::NatureAccess(attr_def.into());
-                        self.insert_def(root_scope, name, access_def)
+                        self.insert_def(access_def, root_scope, name)
                     }
                 }
                 RootItem::Discipline(id) => {
                     let name = self.tree[id].name.clone();
                     let def = DisciplineLoc { root_file, id }.intern(self.db);
-                    self.insert_def(root_scope, name, def);
+                    self.insert_def(def, root_scope, name);
                 }
                 RootItem::Module(id) => self.collect_module(id, root_scope),
             }
@@ -139,7 +139,7 @@ impl Collector<'_> {
             self.def_map.declare_scope(ScopeOrigin::Module(module_def), Some(parent_scope));
 
         // insert module def into parent scope
-        self.insert_def(parent_scope, module_name.clone(), module_def);
+        self.insert_def(module_def, parent_scope, module_name.clone());
         // update children scope for parent
         self.def_map[parent_scope].children.entry(module_name).or_insert(module_scope);
 
@@ -156,37 +156,28 @@ impl Collector<'_> {
                 Node(id) => {
                     let name = module.nodes[id].name.clone();
                     let node = NodeLoc { module: module_def, id }.intern(self.db);
-                    self.insert_def(module_scope, name, node)
+                    self.insert_def(node, module_scope, name)
                 }
-                Branch(branch) => {
-                    self.insert_item(module_scope, self.tree[branch].name.clone(), branch)
+                Branch(br) => {
+                    self.intern_and_insert_item(br, module_scope, self.tree[br].name.clone())
                 }
                 Variable(var) => {
-                    self.insert_item(module_scope, self.tree[var].name.clone(), var);
+                    self.intern_and_insert_item(var, module_scope, self.tree[var].name.clone());
                 }
                 Parameter(param) => {
-                    self.insert_item(module_scope, self.tree[param].name.clone(), param)
+                    self.intern_and_insert_item(param, module_scope, self.tree[param].name.clone())
                 }
                 AliasParam(alias) => {
-                    self.insert_item(module_scope, self.tree[alias].name.clone(), alias)
+                    self.intern_and_insert_item(alias, module_scope, self.tree[alias].name.clone())
                 }
                 Function(fun) => {
-                    self.insert_item(module_scope, self.tree[fun].name.clone(), fun);
+                    self.intern_and_insert_item(fun, module_scope, self.tree[fun].name.clone());
                 }
                 ScopedBlock(block) => {
-                    self.insert_block_def(module_scope, block);
+                    self.intern_and_insert_block_def(block, module_scope);
                 }
             }
         }
-    }
-
-    /// Intern and insert the definition of a named block into current scope.
-    fn insert_block_def(&mut self, scope_id: LocalScopeId, block: AstId<ast::BlockStmt>) {
-        let name =
-            self.tree[block].name.clone().expect("should only create DefMap for named blocks");
-        let parent = Scope::from(self.root_file, self.def_map.src, scope_id);
-        let block = BlockLoc { parent, ast_id: block }.intern(self.db);
-        self.insert_def(scope_id, name, block);
     }
 
     /// Collect the def map of a named block.
@@ -196,15 +187,16 @@ impl Collector<'_> {
         for item in items {
             match *item {
                 BlockItem::Variable(var) => {
-                    self.insert_item(scope, self.tree[var].name.clone(), var)
+                    self.intern_and_insert_item(var, scope, self.tree[var].name.clone())
                 }
                 BlockItem::Parameter(param) => {
-                    self.insert_item(scope, self.tree[param].name.clone(), param)
+                    self.intern_and_insert_item(param, scope, self.tree[param].name.clone())
                 }
-                BlockItem::ScopedBlock(block) => self.insert_block_def(scope, block),
+                BlockItem::ScopedBlock(block) => self.intern_and_insert_block_def(block, scope),
             }
         }
 
+        // dbg!(&self.def_map);
         Arc::new(self.def_map)
     }
 
@@ -228,15 +220,17 @@ impl Collector<'_> {
             match *item {
                 FunctionItem::FunctionArg(arg) => {
                     let def = FunctionArgLoc { fun: fun_def, id: arg }.intern(self.db);
-                    self.insert_def(fun_scope, fun.args[arg].name.clone(), def)
+                    self.insert_def(def, fun_scope, fun.args[arg].name.clone())
                 }
                 FunctionItem::Variable(var) => {
-                    self.insert_item(fun_scope, self.tree[var].name.clone(), var)
+                    self.intern_and_insert_item(var, fun_scope, self.tree[var].name.clone())
                 }
                 FunctionItem::Parameter(param) => {
-                    self.insert_item(fun_scope, self.tree[param].name.clone(), param)
+                    self.intern_and_insert_item(param, fun_scope, self.tree[param].name.clone())
                 }
-                FunctionItem::ScopedBlock(block) => self.insert_block_def(fun_scope, block),
+                FunctionItem::ScopedBlock(block) => {
+                    self.intern_and_insert_block_def(block, fun_scope)
+                }
             }
         }
 
@@ -290,10 +284,11 @@ impl Collector<'_> {
             "parent module was not among the root modules"
         );
 
+        // dbg!(&self.def_map);
         Arc::new(self.def_map)
     }
 
-    fn insert_item<N>(&mut self, dst: LocalScopeId, name: Name, item: ItemTreeId<N>)
+    fn intern_and_insert_item<N>(&mut self, item: ItemTreeId<N>, dst: LocalScopeId, name: Name)
     where
         N: ItemTreeNode,
         ItemLoc<N>: Intern,
@@ -301,10 +296,23 @@ impl Collector<'_> {
     {
         let scope = Scope::from(self.root_file, self.def_map.src, dst);
         let def = ItemLoc { scope, id: item }.intern(self.db);
-        self.insert_def(dst, name, def)
+        self.insert_def(def, dst, name)
     }
 
-    fn insert_def(&mut self, dst: LocalScopeId, name: Name, def: impl Into<ScopeItemDef>) {
+    /// Intern a named block and insert its definition into the given parent scope.
+    fn intern_and_insert_block_def(
+        &mut self,
+        block: AstId<ast::BlockStmt>,
+        parent_scope: LocalScopeId,
+    ) {
+        let name =
+            self.tree[block].name.clone().expect("should only create DefMap for named blocks");
+        let parent = Scope::from(self.root_file, self.def_map.src, parent_scope);
+        let block = BlockLoc { parent, ast_id: block }.intern(self.db);
+        self.insert_def(block, parent_scope, name);
+    }
+
+    fn insert_def(&mut self, def: impl Into<ScopeItemDef>, dst: LocalScopeId, name: Name) {
         let def = def.into();
         if let Some(old) = self.def_map[dst].declarations.insert(name.clone(), def) {
             let diag = DefDiagnostic::AlreadyDeclared { old, new: def, name };

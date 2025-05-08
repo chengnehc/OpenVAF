@@ -1,0 +1,6 @@
+module test;
+    analog x = 1;
+    analog begin
+        x = 2;
+    end
+endmodule

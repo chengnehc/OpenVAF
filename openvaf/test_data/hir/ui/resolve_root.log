@@ -1,0 +1,6 @@
+error: 'bar' was not found in '$root'
+  --> /resolve_root.va:8:13
+  |
+8 |     branch (<$root.bar.a>) port_flow_a;  // Err
+  |             ^^^^^^^^^^^^^ not found
+

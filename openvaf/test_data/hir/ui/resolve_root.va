@@ -1,0 +1,9 @@
+`include "disciplines.vams"
+
+module test(a, b);
+    inout electrical a, b;
+    branch (a, b) ab1, ab2;
+    branch (a) a_gnd;
+    branch (<$root.test.b>) port_flow_b; // OK
+    branch (<$root.bar.a>) port_flow_a;  // Err
+endmodule

@@ -6,3 +6,17 @@ module test
         arg Integer z = { is_input = false, is_output = true}
         arg Integer m = { is_input = true, is_output = true}
         arg String l = { is_input = true, is_output = true}
+    function hypmax
+        arg Real x = { is_input = true, is_output = false}
+        arg Real xmin = { is_input = true, is_output = false}
+        arg Real c = { is_input = true, is_output = false}
+        var real delta
+    function geomcalc
+        arg Real l = { is_input = true, is_output = false}
+        arg Real w = { is_input = true, is_output = false}
+        arg Real area = { is_input = false, is_output = true}
+        arg Real perim = { is_input = false, is_output = true}
+        param real p1
+        block Some(Name("myscope"))
+            param real p2
+            var real tmp

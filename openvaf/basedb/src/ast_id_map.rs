@@ -102,7 +102,7 @@ pub(crate) fn has_map_entry(kind: SyntaxKind) -> bool {
             || ast::ModuleItem::can_cast(kind)
             || ast::Param::can_cast(kind)
             || ast::Var::can_cast(kind)
-            || ast::AnalogBehaviour::can_cast(kind)
+            || ast::AnalogBehavior::can_cast(kind)
             || ast::BlockStmt::can_cast(kind)
             || ast::FunctionArg::can_cast(kind)
     }

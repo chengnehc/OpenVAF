@@ -1,5 +1,4 @@
-//! Transform AST expressions and statements into HIR representation.
-//! and collect them into `Body`.
+//! Lower AST expressions and statements into HIR representation and collect them into `Body`.
 
 use std::mem;
 
@@ -9,7 +8,6 @@ use syntax::name::AsName;
 
 use super::*;
 
-use crate::expr::{Case, CaseCond, Event, GlobalEvent};
 use crate::{BlockLoc, Intern, Path};
 
 pub(super) struct Context<'a> {
@@ -24,6 +22,8 @@ pub(super) struct Context<'a> {
 }
 
 impl Context<'_> {
+    /* Expressions */
+
     pub fn collect_expr_opt(&mut self, expr: Option<ast::Expr>) -> ExprId {
         match expr {
             Some(expr) => self.collect_expr(expr),
@@ -37,6 +37,13 @@ impl Context<'_> {
             ast::Expr::PathExpr(path) => {
                 if let Some(path) = path.path().and_then(Path::resolve) {
                     Expr::Path { path, port: false }
+                } else {
+                    return self.missing_expr();
+                }
+            }
+            ast::Expr::PortFlow(port_flow) => {
+                if let Some(path) = port_flow.port().and_then(Path::resolve) {
+                    Expr::Path { path, port: true }
                 } else {
                     return self.missing_expr();
                 }
@@ -77,17 +84,37 @@ impl Context<'_> {
                 };
                 Expr::Call { fun, args }
             }
-            ast::Expr::PortFlow(port_flow) => {
-                if let Some(path) = port_flow.port().and_then(Path::resolve) {
-                    Expr::Path { path, port: true }
-                } else {
-                    return self.missing_expr();
-                }
-            }
         };
 
         self.alloc_expr(e, AstPtr::new(&expr))
     }
+
+    /// By 'desugared', it means that the expression has no corresponding node in the AST.
+    #[inline]
+    pub(super) fn alloc_expr_desugared(&mut self, expr: Expr) -> ExprId {
+        self.make_expr(expr, None)
+    }
+
+    #[inline]
+    fn missing_expr(&mut self) -> ExprId {
+        self.alloc_expr_desugared(Expr::Missing)
+    }
+
+    #[inline]
+    fn alloc_expr(&mut self, expr: Expr, ptr: AstPtr<ast::Expr>) -> ExprId {
+        let id = self.make_expr(expr, Some(ptr.clone()));
+        self.src_map.expr_map.insert(ptr, id);
+        id
+    }
+
+    #[inline]
+    fn make_expr(&mut self, expr: Expr, src: Option<AstPtr<ast::Expr>>) -> ExprId {
+        let id = self.body.exprs.push_and_get_key(expr);
+        self.src_map.expr_map_back.insert(id, src);
+        id
+    }
+
+    /* Statements */
 
     pub fn collect_stmt_opt(&mut self, stmt: Option<ast::Stmt>) -> StmtId {
         match stmt {
@@ -100,7 +127,7 @@ impl Context<'_> {
         let s = match &stmt {
             ast::Stmt::EmptyStmt(_) => Stmt::Empty,
             ast::Stmt::ExprStmt(stmt) => Stmt::Expr(self.collect_expr_opt(stmt.expr())),
-            ast::Stmt::BlockStmt(stmt) => self.collect_block(stmt),
+            ast::Stmt::BlockStmt(stmt) => self.collect_block_stmt(stmt),
             ast::Stmt::AssignStmt(stmt) => match stmt.assign() {
                 Some(a) => Stmt::Assignment {
                     dst: self.collect_expr_opt(a.lval()),
@@ -134,16 +161,21 @@ impl Context<'_> {
         self.alloc_stmt(s, AstPtr::new(&stmt), stmt.attrs())
     }
 
-    fn collect_block(&mut self, block: &ast::BlockStmt) -> Stmt {
+    fn collect_block_stmt(&mut self, block: &ast::BlockStmt) -> Stmt {
         let ast_id = self.ast_id_map.id_of(block);
         let (curr, _) = self.curr_scope;
-        let id = BlockLoc { ast_id, parent: curr }.intern(self.db);
-        let next = if let Some(def_map) = self.db.block_def_map(id) {
+        // Fixed(JW): no need to intern unnamed blocks, intern scoped blocks only.
+        let next = if block.block_scope().is_some() {
+            let id = BlockLoc { parent: curr, ast_id }.intern(self.db);
+            let def_map = self.db.block_def_map(id).unwrap();
             Scope::from(curr.root_file, DefMapSource::Block(id), def_map.entry_scope())
         } else {
             curr
         };
-        let parent_scope = mem::replace(&mut self.curr_scope, (next, ast_id.into()));
+        // Be careful of the order: enter the block scope first, then collect the
+        // body statements and switch back to parent scope.
+        let next_scope = (next, ast_id.into());
+        let parent_scope = mem::replace(&mut self.curr_scope, next_scope);
         let body = block.body().map(|stmt| self.collect_stmt(stmt)).collect();
         self.curr_scope = parent_scope;
 
@@ -184,27 +216,6 @@ impl Context<'_> {
         Stmt::EventControl { event, body }
     }
 
-    fn alloc_expr(&mut self, expr: Expr, ptr: AstPtr<ast::Expr>) -> ExprId {
-        let id = self.make_expr(expr, Some(ptr.clone()));
-        self.src_map.expr_map.insert(ptr, id);
-        id
-    }
-
-    /// By 'desugared', it means that the expression has no corresponding node in the AST.
-    pub(super) fn alloc_expr_desugared(&mut self, expr: Expr) -> ExprId {
-        self.make_expr(expr, None)
-    }
-
-    fn missing_expr(&mut self) -> ExprId {
-        self.alloc_expr_desugared(Expr::Missing)
-    }
-
-    fn make_expr(&mut self, expr: Expr, src: Option<AstPtr<ast::Expr>>) -> ExprId {
-        let id = self.body.exprs.push_and_get_key(expr);
-        self.src_map.expr_map_back.insert(id, src);
-        id
-    }
-
     fn alloc_stmt(
         &mut self,
         stmt: Stmt,
@@ -220,10 +231,12 @@ impl Context<'_> {
     }
 
     /// By 'desugared', it means that the statement has no corresponding node in the AST.
+    #[inline]
     pub(super) fn alloc_stmt_desugared(&mut self, stmt: Stmt) -> StmtId {
         self.make_stmt(stmt, None, LintAttrs::empty(self.curr_scope.1))
     }
 
+    #[inline]
     fn missing_stmt(&mut self) -> StmtId {
         self.alloc_stmt_desugared(Stmt::Missing)
     }

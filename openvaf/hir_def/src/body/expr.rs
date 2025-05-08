@@ -14,7 +14,7 @@
 use stdx::{impl_debug, Ieee64};
 
 use arena::Idx;
-use syntax::ast::{self, BinaryOp, LiteralKind, UnaryOp};
+use syntax::ast;
 
 use crate::Path;
 
@@ -32,12 +32,12 @@ pub enum Expr {
     },
     UnaryOp {
         arg: ExprId,
-        op: UnaryOp,
+        op: ast::UnaryOp,
     },
     BinaryOp {
         lhs: ExprId,
         rhs: ExprId,
-        op: Option<BinaryOp>,
+        op: Option<ast::BinaryOp>,
     },
     Select {
         cond: ExprId,
@@ -92,9 +92,9 @@ impl_debug! {
     }
 }
 
-use LiteralKind::*;
+use ast::LiteralKind::*;
 impl Literal {
-    pub fn new(ast: LiteralKind) -> Literal {
+    pub fn new(ast: ast::LiteralKind) -> Literal {
         match ast {
             StrLit(lit) => Literal::String(lit.unescaped_value().into_boxed_str()),
             IntNumber(lit) => Literal::Int(lit.value()),

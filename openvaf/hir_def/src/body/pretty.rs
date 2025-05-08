@@ -1,7 +1,6 @@
 use std::fmt::{self, Write};
 
 use super::*;
-use crate::expr::CaseCond;
 
 impl Body {
     pub fn dump(&self, db: &dyn HirDefDB) -> Result<String, fmt::Error> {

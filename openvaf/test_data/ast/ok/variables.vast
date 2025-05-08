@@ -66,7 +66,7 @@ SOURCE_FILE@0..144
     WHITESPACE@88..90 "  "
     COMMENT@90..112 "// this is problematic"
     WHITESPACE@112..117 "\n    "
-    ANALOG_BEHAVIOUR@117..133
+    ANALOG_BEHAVIOR@117..133
       ANALOG_KW@117..123 "analog"
       WHITESPACE@123..124 " "
       ASSIGN_STMT@124..133

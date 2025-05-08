@@ -1,4 +1,4 @@
-module test();
+module test;
     analog function real hypsmooth;
         input x , c;
         output y , z;
@@ -8,6 +8,28 @@ module test();
         string l , y;
         begin
             hypsmooth = 0.5 * (x + sqrt(x*x + 4.0*c*c));
+        end
+    endfunction
+
+    analog function real hypmax;
+        input x, xmin, c;
+        real x, xmin, c, delta;
+        begin
+            delta = x - xmin - c;
+            hypmax = xmin + 0.5 * (delta + sqrt(delta * delta - 4.0 * xmin * c));
+        end
+    endfunction
+
+    analog function real geomcalc;
+        input l, w;
+        output area, perim;
+        real l, w, area, perim;
+        parameter real p1 = 1.0;
+        begin: myscope
+            parameter real p2 = 1.0;
+            real tmp;
+            area = l * w;
+            perim = 2 * ( l + w );
         end
     endfunction
 endmodule

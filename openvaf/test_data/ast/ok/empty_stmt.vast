@@ -6,13 +6,13 @@ SOURCE_FILE@0..71
       IDENT@7..11 "test"
     SEMICOLON@11..12 ";"
     WHITESPACE@12..17 "\n    "
-    ANALOG_BEHAVIOUR@17..25
+    ANALOG_BEHAVIOR@17..25
       ANALOG_KW@17..23 "analog"
       WHITESPACE@23..24 " "
       EMPTY_STMT@24..25
         SEMICOLON@24..25 ";"
     WHITESPACE@25..30 "\n    "
-    ANALOG_BEHAVIOUR@30..61
+    ANALOG_BEHAVIOR@30..61
       ANALOG_KW@30..36 "analog"
       WHITESPACE@36..37 " "
       BLOCK_STMT@37..61

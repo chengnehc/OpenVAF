@@ -1,0 +1,9 @@
+module test1;
+    parameter real foo = 1;
+    real v_module;
+
+    analog begin
+        parameter bar = 2;
+        real v_local;
+    end
+endmodule

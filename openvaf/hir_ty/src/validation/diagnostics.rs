@@ -2,10 +2,9 @@ use basedb::diagnostics::{Diagnostic, Label, LabelStyle, Report};
 use basedb::lints::builtin::{const_simparam, trivial_probe, variant_const_simparam};
 use basedb::lints::{self, Lint, LintSrc};
 use basedb::{AstIdMap, BaseDB, FileId};
-use hir_def::body::BodySourceMap;
+use hir_def::body::{BodySourceMap, ExprId};
 use hir_def::{
-    DisciplineAttr, ExprId, ItemLoc, ItemTree, ItemTreeNode, Lookup, NatureAttr, NodeId,
-    NodeTypeDecl,
+    DisciplineAttr, ItemLoc, ItemTree, ItemTreeNode, Lookup, NatureAttr, NodeId, NodeTypeDecl,
 };
 use syntax::name::Name;
 use syntax::sourcemap::{FileSpan, SourceMap};

@@ -31,7 +31,7 @@ pub(super) fn module_items(p: &mut Parser) {
                 p.bump(T![analog]);
                 p.eat(T![initial]);
                 stmt_with_attrs(p);
-                m.complete(p, ANALOG_BEHAVIOUR);
+                m.complete(p, ANALOG_BEHAVIOR);
             }
             T![input] | T![output] | T![inout] => port_decl::<false>(p, m),
             T![net_type] => net_decl::<true>(p, m),
@@ -55,7 +55,7 @@ pub(super) fn module_items(p: &mut Parser) {
                         VAR_DECL,
                         PARAM_DECL,
                         FUNCTION,
-                        ANALOG_BEHAVIOUR,
+                        ANALOG_BEHAVIOR,
                     ]);
                     p.error(err);
                     p.bump_any();

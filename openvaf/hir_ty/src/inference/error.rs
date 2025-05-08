@@ -2,8 +2,9 @@ use std::borrow::Cow;
 use std::ops::Deref;
 use stdx::{impl_display, impl_from, pretty};
 
+use hir_def::body::{ExprId, StmtId};
 use hir_def::nameres::PathResolveError;
-use hir_def::{ExprId, FunctionId, LocalFunctionArgId, StmtId, Type};
+use hir_def::{FunctionId, LocalFunctionArgId, Type};
 use syntax::{ast, TextRange};
 use typed_index_collections::TiSlice;
 

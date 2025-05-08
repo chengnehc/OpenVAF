@@ -1,10 +1,8 @@
 //use stdx::impl_display;
 
 use ahash::{HashMap, HashSet};
-use hir_def::{
-    BranchId, BuiltIn, DefWithBodyId, ExprId, FunctionArgLoc, NatureId, NodeId, ParamId, StmtId,
-    VarId,
-};
+use hir_def::body::{ExprId, StmtId};
+use hir_def::{BranchId, BuiltIn, DefWithBodyId, FunctionArgLoc, NatureId, NodeId, ParamId, VarId};
 use syntax::name::Name;
 
 use crate::db::HirTyDB;

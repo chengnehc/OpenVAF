@@ -13,7 +13,6 @@ use syntax::{ast, AstNode, AstPtr, SyntaxNodePtr};
 
 pub mod body;
 pub mod db;
-pub mod expr;
 pub mod nameres;
 
 mod builtin;
@@ -22,8 +21,8 @@ mod item_tree;
 mod path;
 mod types;
 
+pub use body::{Expr, Stmt};
 pub use builtin::{BuiltIn, ParamSysFun};
-pub use expr::{Expr, ExprId, Literal, Stmt, StmtId};
 pub use item_tree::{
     AliasParam, Branch, BranchKind, Discipline, DisciplineAttr, Function, ItemTree, ItemTreeId,
     ItemTreeNode, Module, Nature, NatureAttr, NatureRef, NatureRefKind, NodeTypeDecl, Param, Var,
@@ -244,6 +243,22 @@ impl NatureAttrLoc {
 }
 impl_intern!(NatureAttrId, NatureAttrLoc, intern_nature_attr, lookup_intern_nature_attr);
 
+/// Nature access function is a special kind of nature attribute.
+///
+/// Each access function defined before a module is parsed is automatically
+/// added to that module’s namespace, unless there is another identifier defined
+/// with the same name as the access function in that module’s namespace.
+///
+/// See: LRM 3.13.2 Access functions
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+pub struct NatureAccess(pub NatureAttrId);
+
+impl From<NatureAttrId> for NatureAccess {
+    fn from(id: NatureAttrId) -> NatureAccess {
+        NatureAccess(id)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DisciplineId(salsa::InternId);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -392,7 +407,7 @@ impl_intern!(BlockId, BlockLoc, intern_block, lookup_intern_block);
 pub enum DefWithBodyId {
     NatureAttrId(NatureAttrId),
     DisciplineAttrId(DisciplineAttrId),
-    ModuleId { initial: bool, id: ModuleId }, // analog behavior blocks are concatenated
+    ModuleId { initial: bool, id: ModuleId }, // multiple analog behavior blocks are concatenated
     VarId(VarId),
     ParamId(ParamId),
     FunctionId(FunctionId),

@@ -6,8 +6,8 @@ use hir_ty::db::HirTyDB;
 use hir_ty::inference;
 use hir_ty::types::{Signature, Ty};
 
-pub use hir_def::expr::{Case, Event};
-pub use hir_def::{BuiltIn, ExprId, Literal, ParamSysFun, StmtId, Type};
+pub use hir_def::body::{Case, Event, ExprId, Literal, StmtId};
+pub use hir_def::{BuiltIn, ParamSysFun, Type};
 pub use syntax::ast::{BinaryOp, UnaryOp};
 
 use crate::{Branch, CompilationDB, Node};

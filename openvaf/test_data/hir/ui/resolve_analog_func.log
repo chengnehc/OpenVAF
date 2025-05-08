@@ -1,0 +1,6 @@
+error: 'foo' was not found in the current scope
+   --> /resolve_analog_func.va:17:13
+   |
+17 |             foo = p_local;
+   |             ^^^ not found
+

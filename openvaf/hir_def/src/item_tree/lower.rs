@@ -1,3 +1,5 @@
+//! Lower AST items and store them in item tree.
+
 use std::mem;
 use std::sync::Arc;
 
@@ -5,7 +7,7 @@ use arena::IdxRange;
 use basedb::{AstId, AstIdMap, FileId};
 use syntax::ast::{self, ParamRef, PathSegmentKind};
 use syntax::name::{kw, AsIdent, AsName};
-use syntax::{match_ast, AstNode, WalkEvent};
+use syntax::{AstNode, WalkEvent};
 use typed_index_collections::TiVec;
 
 use crate::db::HirDefDB;
@@ -226,8 +228,8 @@ impl Context {
         let num_ports = nodes.len() as u32;
         self.lower_module_items(decl, &mut nodes, &mut items);
 
-        let res = Module { name, num_ports, nodes, items, ast_id };
-        Some(self.tree.data.modules.push_and_get_key(res))
+        let module = Module { name, num_ports, nodes, items, ast_id };
+        Some(self.tree.data.modules.push_and_get_key(module))
     }
 
     fn lower_module_ports(
@@ -268,7 +270,7 @@ impl Context {
                         self.lower_port(port, nodes, dst);
                     }
                 }
-                ast::ModuleItem::AnalogBehaviour(behaviour) => {
+                ast::ModuleItem::AnalogBehavior(behaviour) => {
                     if let Some(stmt) = behaviour.stmt() {
                         self.lower_stmt(stmt, dst);
                     }
@@ -410,10 +412,7 @@ impl Context {
         decl: ast::AliasParam,
         dst: &mut Vec<T>,
     ) {
-        let name = decl.name();
-        let src = decl.src();
-
-        if let (Some(name), Some(src)) = (name, src) {
+        if let (Some(name), Some(src)) = (decl.name(), decl.src()) {
             let ast_id = self.ast_id_map.id_of(&decl);
             let src = match src {
                 ParamRef::Path(path) => Path::resolve(path),
@@ -426,6 +425,8 @@ impl Context {
     }
 
     fn lower_func(&mut self, fun: ast::Function, dst: &mut Vec<ModuleItem>) {
+        let Some(name) = fun.name() else { return };
+
         let mut items = Vec::new();
         let mut args: TiVec<LocalFunctionArgId, FunctionArg> = TiVec::new();
 
@@ -435,117 +436,112 @@ impl Context {
                 ast::FunctionItem::VarDecl(var) => self.lower_var(var, &mut items),
                 ast::FunctionItem::Stmt(stmt) => self.lower_stmt(stmt, &mut items),
                 ast::FunctionItem::FunctionArg(arg) => {
-                    let ast_id = self.ast_id_map.id_of(&arg);
-                    let is_input = is_input(&arg.direction());
-                    let is_output = is_output(&arg.direction());
-                    for (name_idx, name) in arg.names().enumerate() {
-                        let name = name.as_name();
-                        if let Some(arg) = args.iter_mut().find(|arg| arg.name == name) {
-                            // TODO validation
-                            arg.ast_ids.push(ast_id)
-                        }
-                        let arg = args.push_and_get_key(FunctionArg {
-                            name,
-                            name_idx,
-                            is_input,
-                            is_output,
-                            declarations: Vec::new(),
-                            ast_ids: vec![ast_id],
-                        });
-                        items.push(arg.into());
-                    }
+                    self.lower_func_arg(arg, &mut args, &mut items)
                 }
             }
         }
-
-        // de-duplicate corresponding FunctionArg and Variable and put the variable
-        // as the argument declaration.
+        // de-duplicate correlated function argument and local variable:
+        // - set the variable as the argument's declaration.
+        // - remove the variable from the function item set.
         items.retain(|decl| {
             if let FunctionItem::Variable(var) = decl {
                 if let Some(arg) = args.iter_mut().find(|arg| arg.name == self.tree[*var].name) {
-                    // TODO validation
-                    arg.declarations.push(*var);
+                    arg.declarations.push(*var); // TODO validation
                     return false;
                 }
-            };
+            }
             true
         });
 
-        if let Some(name) = fun.name() {
-            let fun = Function {
-                name: name.as_name(),
-                ty: fun.ty().map_or(Type::Real, |ty| ty.as_type()),
-                args,
-                items,
-                ast_id: self.ast_id_map.id_of(&fun),
-            };
-            let fun = self.tree.data.functions.push_and_get_key(fun);
-            dst.push(fun.into())
-        }
+        let fun = Function {
+            name: name.as_name(),
+            ty: fun.ty().map_or(Type::Real, |ty| ty.as_type()), // return is real by default if omitted.
+            args,
+            items,
+            ast_id: self.ast_id_map.id_of(&fun),
+        };
+        let fun = self.tree.data.functions.push_and_get_key(fun);
+        dst.push(fun.into())
     }
 
-    // TODO: separate out lower_func_arg to a fn
+    fn lower_func_arg(
+        &mut self,
+        arg: ast::FunctionArg,
+        args: &mut TiVec<LocalFunctionArgId, FunctionArg>,
+        dst: &mut Vec<FunctionItem>,
+    ) {
+        let ast_id = self.ast_id_map.id_of(&arg);
+        for (name_idx, name) in arg.names().enumerate() {
+            let name = name.as_name();
+            if let Some(arg) = args.iter_mut().find(|arg| arg.name == name) {
+                arg.ast_ids.push(ast_id) // TODO validation
+            }
+            let arg = args.push_and_get_key(FunctionArg {
+                name,
+                name_idx,
+                is_input: is_input(&arg.direction()),
+                is_output: is_output(&arg.direction()),
+                declarations: Vec::new(),
+                ast_ids: vec![ast_id],
+            });
+            dst.push(arg.into());
+        }
+    }
 
     fn lower_stmt<T>(&mut self, stmt: ast::Stmt, dst: &mut Vec<T>)
     where
         T: From<ItemTreeId<Param>> + From<ItemTreeId<Var>> + From<AstId<ast::BlockStmt>>,
     {
         let mut block_stack = Vec::new();
-        let mut block_scope_stack = Vec::new();
+        let mut scoped_block_stack = Vec::new();
         let mut blocks = mem::take(&mut self.tree.blocks);
 
         for event in stmt.syntax().preorder() {
             match event {
                 WalkEvent::Enter(node) => {
-                    match_ast! {
-                    match node {
-                        ast::BlockStmt(block) => {
-                            let ast_id = self.ast_id_map.id_of(&block);
-                            let name = block.block_scope().and_then(|it| Some(it.name()?.as_name()));
-                            let block_info = Block { name, block_items: Vec::new()};
-                            // # Note
-                            // - only register named blocks as ModuleItem/FunctionItem/BlockItem
-                            // - only insert block items when the it is named (has a scope)
-                            if block.block_scope().is_some() {
-                                match block_scope_stack.last() {
-                                    Some(block) => {
-                                        let block_info = blocks.get_mut(block).unwrap();
-                                        block_info.block_items.push(ast_id.into());
-                                    }
-                                    None => dst.push(ast_id.into()),
-                                };
-                                block_scope_stack.push(ast_id);
-                            }
-                            blocks.insert(ast_id, block_info);
-                            block_stack.push(ast_id);
-                        },
-                        ast::VarDecl(var) => {
-                            match block_stack.last() {
+                    if let Some(block) = ast::BlockStmt::cast(node.clone()) {
+                        let ast_id = self.ast_id_map.id_of(&block);
+                        let name = block.block_scope().and_then(|it| Some(it.name()?.as_name()));
+                        let block_info = Block { name, items: Vec::new() };
+                        if block.block_scope().is_some() {
+                            // only named blocks are counted as items, this include ModuleItem
+                            // FunctionItem and BlockItem
+                            match scoped_block_stack.last() {
                                 Some(block) => {
-                                    let block = blocks.get_mut(block).unwrap();
-                                    self.lower_var(var, &mut block.block_items)
+                                    let block_info = blocks.get_mut(block).unwrap();
+                                    block_info.items.push(ast_id.into());
                                 }
-                                None => self.lower_var(var, dst),
-                            }
-                        },
-                        ast::ParamDecl(param) => {
-                            match block_stack.last() {
-                                Some(block) => {
-                                    let block = blocks.get_mut(block).unwrap();
-                                    self.lower_param(param, &mut block.block_items)
-                                }
-                                None => self.lower_param(param, dst),
-                            }
-                        },
-                        _ => ()
+                                None => dst.push(ast_id.into()),
+                            };
+                            scoped_block_stack.push(ast_id);
+                        }
+                        blocks.insert(ast_id, block_info);
+                        block_stack.push(ast_id);
                     }
+                    // variable and parameter declarations are only allowed in named blocks
+                    else if let Some(var) = ast::VarDecl::cast(node.clone()) {
+                        match block_stack.last() {
+                            Some(block) => {
+                                let block = blocks.get_mut(block).unwrap();
+                                self.lower_var(var, &mut block.items)
+                            }
+                            None => self.lower_var(var, dst),
+                        }
+                    } else if let Some(param) = ast::ParamDecl::cast(node.clone()) {
+                        match block_stack.last() {
+                            Some(block) => {
+                                let block = blocks.get_mut(block).unwrap();
+                                self.lower_param(param, &mut block.items)
+                            }
+                            None => self.lower_param(param, dst),
+                        }
                     }
                 }
                 WalkEvent::Leave(node) => {
                     if let Some(block) = ast::BlockStmt::cast(node) {
                         block_stack.pop();
                         if block.block_scope().is_some() {
-                            block_scope_stack.pop();
+                            scoped_block_stack.pop();
                         }
                     }
                 }

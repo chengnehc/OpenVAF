@@ -526,11 +526,11 @@ impl Function {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AnalogBehaviour {
+pub struct AnalogBehavior {
     pub(crate) syntax: SyntaxNode,
 }
-impl ast::AttrsOwner for AnalogBehaviour {}
-impl AnalogBehaviour {
+impl ast::AttrsOwner for AnalogBehavior {}
+impl AnalogBehavior {
     pub fn analog_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![analog]) }
     pub fn initial_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![initial]) }
     pub fn stmt(&self) -> Option<Stmt> { support::child(&self.syntax) }
@@ -649,7 +649,7 @@ pub enum ModuleItem {
     ParamDecl(ParamDecl),
     AliasParam(AliasParam),
     Function(Function),
-    AnalogBehaviour(AnalogBehaviour),
+    AnalogBehavior(AnalogBehavior),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1172,8 +1172,8 @@ impl AstNode for Function {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for AnalogBehaviour {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == ANALOG_BEHAVIOUR }
+impl AstNode for AnalogBehavior {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == ANALOG_BEHAVIOR }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1479,14 +1479,14 @@ impl From<AliasParam> for ModuleItem {
 impl From<Function> for ModuleItem {
     fn from(node: Function) -> ModuleItem { ModuleItem::Function(node) }
 }
-impl From<AnalogBehaviour> for ModuleItem {
-    fn from(node: AnalogBehaviour) -> ModuleItem { ModuleItem::AnalogBehaviour(node) }
+impl From<AnalogBehavior> for ModuleItem {
+    fn from(node: AnalogBehavior) -> ModuleItem { ModuleItem::AnalogBehavior(node) }
 }
 impl AstNode for ModuleItem {
     fn can_cast(kind: SyntaxKind) -> bool {
         match kind {
             BODY_PORT_DECL | NET_DECL | BRANCH_DECL | VAR_DECL | PARAM_DECL | ALIAS_PARAM
-            | FUNCTION | ANALOG_BEHAVIOUR => true,
+            | FUNCTION | ANALOG_BEHAVIOR => true,
             _ => false,
         }
     }
@@ -1499,7 +1499,7 @@ impl AstNode for ModuleItem {
             PARAM_DECL => ModuleItem::ParamDecl(ParamDecl { syntax }),
             ALIAS_PARAM => ModuleItem::AliasParam(AliasParam { syntax }),
             FUNCTION => ModuleItem::Function(Function { syntax }),
-            ANALOG_BEHAVIOUR => ModuleItem::AnalogBehaviour(AnalogBehaviour { syntax }),
+            ANALOG_BEHAVIOR => ModuleItem::AnalogBehavior(AnalogBehavior { syntax }),
             _ => return None,
         };
         Some(res)
@@ -1513,7 +1513,7 @@ impl AstNode for ModuleItem {
             ModuleItem::ParamDecl(it) => &it.syntax,
             ModuleItem::AliasParam(it) => &it.syntax,
             ModuleItem::Function(it) => &it.syntax,
-            ModuleItem::AnalogBehaviour(it) => &it.syntax,
+            ModuleItem::AnalogBehavior(it) => &it.syntax,
         }
     }
 }
@@ -1852,7 +1852,7 @@ impl std::fmt::Display for Function {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for AnalogBehaviour {
+impl std::fmt::Display for AnalogBehavior {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }

@@ -11,14 +11,17 @@ use crate::db::HirDefDB;
 use crate::item_tree::{DisciplineAttr, ItemTreeId, NatureAttr};
 use crate::nameres::{DefMapSource, LocalScopeId};
 use crate::{
-    DefWithBodyId, DisciplineAttrLoc, DisciplineLoc, Expr, ExprId, Literal, Lookup, NatureAttrLoc,
-    NatureLoc, ParamId, Scope, Stmt, StmtId, Type,
+    DefWithBodyId, DisciplineAttrLoc, DisciplineLoc, Lookup, NatureAttrLoc, NatureLoc, ParamId,
+    Scope, Type,
 };
 
+mod expr;
 mod lower;
 mod pretty;
 
-/// The body of an item (functions, analog block, etc.)
+pub use expr::{Case, CaseCond, Event, Expr, ExprId, GlobalEvent, Literal, Stmt, StmtId};
+
+/// The body of an item that contains HIR-level expressions and statements.
 #[derive(Debug, Eq, PartialEq, Default)]
 pub struct Body {
     pub exprs: Arena<Expr>,
@@ -36,9 +39,13 @@ pub struct Body {
 /// whenever some whitespace is typed.
 #[derive(Default, Debug, Eq, PartialEq)]
 pub struct BodySourceMap {
+    /// from AST to HIR
     pub expr_map: HashMap<AstPtr<ast::Expr>, ExprId>,
+    /// from HIR to AST, for desugared expr, the value is `None`
     pub expr_map_back: ArenaMap<Expr, Option<AstPtr<ast::Expr>>>,
+    /// from AST to HIR
     pub stmt_map: HashMap<AstPtr<ast::Stmt>, StmtId>,
+    /// from HIR to AST, for desugared stmt, the value is `None`
     pub stmt_map_back: ArenaMap<Stmt, Option<AstPtr<ast::Stmt>>>,
     /// for user-defined lint attributes
     lint_map: ArenaMap<Stmt, LintAttrs>,
@@ -125,11 +132,11 @@ impl Body {
                 };
                 body.entry_stmts = if initial {
                     ast_node
-                        .analog_initial_behaviour()
+                        .analog_initial_behaviors()
                         .map(|stmt| ctxt.collect_stmt(stmt))
                         .collect()
                 } else {
-                    ast_node.analog_behaviour().map(|stmt| ctxt.collect_stmt(stmt)).collect()
+                    ast_node.analog_behaviors().map(|stmt| ctxt.collect_stmt(stmt)).collect()
                 };
             }
             DefWithBodyId::VarId(id) => {

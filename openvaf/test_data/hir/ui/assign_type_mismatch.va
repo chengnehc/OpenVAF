@@ -18,7 +18,7 @@ module test(A, B);
     analog begin
         // type mismatch
         qux = foo;
-        bar = V(A, B);  // Check in the LRM to see if this is actually problematic?
+        bar = V(A, B);  // TODO(JW): Check in the LRM to see if this is actually problematic?
 
         // random fuzz
         foo = Voltage;
