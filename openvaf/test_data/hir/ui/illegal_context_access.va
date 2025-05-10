@@ -1,0 +1,45 @@
+// LRM 4.5.15
+// Analog operators can only be used inside an analog block; they can not be
+// used inside an initial or always block, or inside a user-defined function.
+//
+// Analog operators shall not be used inside conditional (if, case, or ?:)
+// statements unless the conditional expression controlling the statement
+// consists of terms which can not change their value during simulation.
+
+// LRM 4.7.1
+// Analog functions
+// - shall not use access functions;
+// - shall not use analog filter functions (analog operators);
+// - shall not use contribution statements or event control statements;
+
+// LRM 5.2.1
+// Analog initial block shall not contain the following statements:
+// - statements with access functions or analog operators;
+// - contribution statements;
+// - event control statements.
+
+`include "disciplines.va"
+
+module test(a, b);
+    inout electrical a, b;
+    real x;
+
+    analog initial begin
+        I(a, b) <+ ddt(V(a));
+    end
+
+    analog begin
+        if (x < 0) begin
+            x = ddt(V(a));
+        end
+    end
+
+    analog function real myfunc;
+        input x;
+        real x;
+        begin
+            I(a, b) <+ V(a);
+            myfunc = ddt(x);
+        end
+    endfunction
+endmodule

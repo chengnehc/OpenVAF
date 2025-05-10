@@ -174,11 +174,10 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         "help: found ({})",
                         pretty::List::new(&*err.found).with_final_separator(", ")
                     )];
-
-                    notes.extend(err.signatures.iter().map(|sig| format!("expected {}", sig)));
+                    notes.extend(err.signatures.iter().map(|sig| format!("expected {sig}")));
 
                     Report::error()
-                        .with_message("typed mismatch invalid function arguments".to_owned())
+                        .with_message("type mismatch: invalid function arguments".to_owned())
                         .with_labels(labels)
                         .with_notes(notes)
                 };
@@ -192,7 +191,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         style: LabelStyle::Secondary,
                         file_id: span.file,
                         range: span.range.into(),
-                        message: format!("info: '{}' was declared here", name),
+                        message: format!("info: '{name}' was declared here"),
                     })
                 }
 

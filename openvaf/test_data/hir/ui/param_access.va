@@ -1,0 +1,4 @@
+module test;
+    parameter real foo = bar;
+    parameter real bar = 1.0;
+endmodule

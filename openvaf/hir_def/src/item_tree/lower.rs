@@ -504,8 +504,8 @@ impl Context {
                         let name = block.block_scope().and_then(|it| Some(it.name()?.as_name()));
                         let block_info = Block { name, items: Vec::new() };
                         if block.block_scope().is_some() {
-                            // only named blocks are counted as items, this include ModuleItem
-                            // FunctionItem and BlockItem
+                            // only named blocks are counted as items
+                            // only named blocks have items
                             match scoped_block_stack.last() {
                                 Some(block) => {
                                     let block_info = blocks.get_mut(block).unwrap();

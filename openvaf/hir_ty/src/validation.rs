@@ -11,7 +11,7 @@ use hir_def::{
 };
 use syntax::{
     ast::{ArgListOwner, AssignOp},
-    name::AsIdent,
+    name::{AsIdent, Name},
     {AstNode, SyntaxNodePtr},
 };
 use typed_index_collections::TiSlice;
@@ -38,14 +38,17 @@ pub use diagnostics::{BodyDiagnosticWrapped, TypeDiagnosticWrapped};
 pub use types::TypeDiagnostic;
 
 struct BodyValidator<'a> {
+    def: DefWithBodyId,
+    // reads
     db: &'a dyn HirTyDB,
     infer: &'a Inference,
-    owner: DefWithBodyId,
     body: &'a Body,
+    // states
     ctxt: BodyContext,
     non_const_dominator: Box<[ExprId]>,
     non_trivial_branches: HashSet<BranchWrite>,
     trivial_probes: HashMap<BranchWrite, Vec<(StmtId, ExprId)>>,
+    // output
     diagnostics: Vec<BodyDiagnostic>,
 }
 
@@ -53,7 +56,7 @@ impl BodyValidator<'_> {
     fn validate_stmt(&mut self, stmt: StmtId) {
         match self.body.stmts[stmt] {
             Stmt::Missing | Stmt::Empty => (),
-            Stmt::Expr(e) => self.validate_expr(e, stmt),
+            Stmt::Expr(expr) => self.validate_expr(expr, stmt),
             Stmt::Block { ref body } => body.iter().for_each(|stmt| self.validate_stmt(*stmt)),
             Stmt::Assignment { dst, val, op_kind } => {
                 self.validate_expr(val, stmt);
@@ -75,8 +78,9 @@ impl BodyValidator<'_> {
             | Stmt::ForLoop { cond, .. }
             | Stmt::WhileLoop { cond, .. }
             | Stmt::Case { discr: cond, .. } => {
-                self.validate_condition(cond, stmt, |s| {
-                    s.body.stmts[stmt].walk_child_stmts(|stmt| s.validate_stmt(stmt))
+                self.validate_condition(cond, stmt, |validator| {
+                    validator.body.stmts[stmt]
+                        .walk_child_stmts(|stmt| validator.validate_stmt(stmt))
                 });
             }
         }
@@ -96,12 +100,12 @@ impl BodyValidator<'_> {
         stmt: StmtId,
         f: impl FnOnce(&mut Self),
     ) -> Option<Box<[ExprId]>> {
-        if self.ctxt == BodyContext::AnalogBlock || self.ctxt == BodyContext::Conditional {
+        if matches!(self.ctxt, BodyContext::AnalogBlock | BodyContext::Conditional) {
             let mut non_const_access = Vec::new();
             ExprValidator {
                 parent: self,
-                is_write: false,
                 stmt,
+                is_write: false,
                 sink: Some(&mut non_const_access),
             }
             .validate_expr(cond);
@@ -128,19 +132,37 @@ impl BodyValidator<'_> {
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum BodyContext {
     AnalogBlock,
+    // LRM 5.2.1
+    // analog initial block shall not contain the following statements:
+    // - statements with access functions or analog operators;
+    // - contribution statements;
+    // - event control statements.
+    // This is similar to the restrictions on the statements in analog functions.
     AnalogInitialBlock,
-    Conditional, // if, case, or ?:
-    EventControl,
+    // LRM 4.7.1
+    // analog functions
+    // - shall not use access functions;
+    // - shall not use analog filter functions (analog operators);
+    // - shall not use contribution statements or event control statements;
     Function,
+    Conditional, // if, case, or ?:
     Const,
+    // not fully implemented
+    EventControl,
     ConstOrAnalysis,
 }
 
-// analog initial block shall not contain the following statements:
-// — statements with access functions or analog operators;
-// — contribution statements;
-// — event control statements.
-// This is similar to the restrictions on the statements in analog functions.
+impl_display! {
+    match BodyContext{
+       BodyContext::AnalogBlock => "analog block";
+       BodyContext::AnalogInitialBlock => "analog initial block";
+       BodyContext::Function => "analog functions";
+       BodyContext::Conditional => "conditions";
+       BodyContext::Const => "constants";
+       BodyContext::EventControl => "events";
+       BodyContext::ConstOrAnalysis => "constant or analysis";
+    }
+}
 
 impl BodyContext {
     fn nature_access_allowed(self) -> bool {
@@ -149,14 +171,17 @@ impl BodyContext {
     fn contribute_allowed(self) -> bool {
         matches!(self, Self::AnalogBlock | Self::Conditional)
     }
-    /// [LRM 4.5.15] Restrictions on analog operators
-    ///
     /// Analog operators can only be used inside an analog block; they can not be
     /// used inside an initial or always block, or inside a user-defined function.
+    ///
+    /// Analog operators shall not be used inside conditional (if, case, or ?:)
+    /// statements unless the conditional expression controlling the statement
+    /// consists of terms which can not change their value during simulation.
+    ///
+    /// Refer to [LRM 4.5.15]: Restrictions on analog operators
     fn analog_operator_allowed(self) -> bool {
         matches!(self, Self::AnalogBlock)
     }
-    // FIXME(JW) likely wrong
     fn analysis_fun_allowed(self) -> bool {
         !matches!(self, Self::Const)
     }
@@ -165,23 +190,11 @@ impl BodyContext {
     }
 }
 
-impl_display! {
-    match BodyContext{
-       BodyContext::AnalogBlock => "analog block";
-       BodyContext::AnalogInitialBlock => "analog initial block";
-       BodyContext::Conditional => "conditions";
-       BodyContext::EventControl => "events";
-       BodyContext::Function => "analog functions";
-       BodyContext::Const => "constants";
-       BodyContext::ConstOrAnalysis => "constant or analysis";
-    }
-}
-
 struct ExprValidator<'a, 'b> {
     parent: &'a mut BodyValidator<'b>,
-    stmt: StmtId,
-    is_write: bool,
     sink: Option<&'a mut Vec<ExprId>>,
+    stmt: StmtId,
+    is_write: bool, // Is this expression a assigment dst?
 }
 
 impl ExprValidator<'_, '_> {
@@ -189,8 +202,17 @@ impl ExprValidator<'_, '_> {
         match self.parent.body.exprs[expr] {
             Expr::Path { port: false, .. } => {
                 match self.parent.infer.expr_types[expr] {
+                    Ty::Param(_, param) => {
+                        if let DefWithBodyId::ParamId(def) = self.parent.def {
+                            if def.lookup(self.parent.db.upcast()).id
+                                < param.lookup(self.parent.db.upcast()).id
+                            {
+                                self.report(BodyDiagnostic::IllegalParamAccess { def, expr, param })
+                            }
+                        }
+                    }
                     Ty::Var(_, var) => {
-                        self.check_access(
+                        self.check_context_access(
                             |_| IllegalCtxtAccessKind::Var(var),
                             expr,
                             self.parent.ctxt.var_ref_allowed(),
@@ -205,15 +227,6 @@ impl ExprValidator<'_, '_> {
                             })
                         }
                     }
-                    Ty::Param(_, param) => {
-                        if let DefWithBodyId::ParamId(def) = self.parent.owner {
-                            if def.lookup(self.parent.db.upcast()).id
-                                < param.lookup(self.parent.db.upcast()).id
-                            {
-                                self.report(BodyDiagnostic::IllegalParamAccess { def, expr, param })
-                            }
-                        }
-                    }
                     _ => (),
                 };
                 return;
@@ -221,8 +234,9 @@ impl ExprValidator<'_, '_> {
             Expr::Call { ref fun, ref args, .. } => {
                 match self.parent.infer.resolved_calls.get(&expr) {
                     Some(ResolvedFun::BuiltIn(builtin)) => {
+                        let name = fun.as_ref().and_then(|p| p.as_ident()).unwrap();
                         let signature = self.parent.infer.resolved_signatures.get(&expr);
-                        self.validate_builtin(fun, expr, args, *builtin, signature.cloned());
+                        self.validate_builtin(*builtin, args, name, expr, signature.cloned());
                         return;
                     }
                     Some(ResolvedFun::InvalidNatureAccess(nature)) => {
@@ -234,9 +248,9 @@ impl ExprValidator<'_, '_> {
             }
             Expr::Select { cond, then_val, else_val } => {
                 if let Some(non_const_dominators) =
-                    self.parent.validate_condition(cond, self.stmt, |s| {
+                    self.parent.validate_condition(cond, self.stmt, |body_validator| {
                         let mut validator = ExprValidator {
-                            parent: s,
+                            parent: body_validator,
                             sink: self.sink.as_deref_mut(),
                             is_write: false,
                             stmt: self.stmt,
@@ -303,7 +317,7 @@ impl ExprValidator<'_, '_> {
                                 access_expr,
                             )
                         } else {
-                            self.report(BodyDiagnostic::IncompatibleImplicitBranch {
+                            self.report(BodyDiagnostic::IncompatibleUnnamedBranch {
                                 access_expr,
                                 node1,
                                 node2,
@@ -328,12 +342,37 @@ impl ExprValidator<'_, '_> {
         };
     }
 
+    fn report_illegal_nature_access(
+        &mut self,
+        branch: String,
+        discipline: DisciplineId,
+        access_nature: Option<NatureId>,
+        access_expr: ExprId,
+    ) {
+        let db = self.parent.db;
+        let discipline = db.discipline_info(discipline);
+
+        let nature_info = |nature: NatureId| {
+            let nature = nature.lookup(db.upcast());
+            let nature = &nature.item_tree(db.upcast())[nature.id];
+            Some((nature.name.clone(), nature.access.clone()?.0))
+        };
+        let pot = discipline.potential.and_then(nature_info);
+        let flow = discipline.flow.and_then(nature_info);
+        self.parent.diagnostics.push(BodyDiagnostic::IncompatibleNatureAccess {
+            candidates: [pot, flow],
+            access_nature,
+            access_expr,
+            branch,
+        })
+    }
+
     fn validate_builtin(
         &mut self,
-        path: &Option<Path>,
-        expr: ExprId,
-        mut args: &[ExprId],
         builtin: BuiltIn,
+        args: &[ExprId],
+        name: Name,
+        expr: ExprId,
         signature: Option<Signature>,
     ) {
         match builtin {
@@ -342,7 +381,7 @@ impl ExprValidator<'_, '_> {
                 .diagnostics
                 .push(BodyDiagnostic::UnsupportedFunction { expr, func: builtin }),
 
-            BuiltIn::potential | BuiltIn::flow => self.check_access(
+            BuiltIn::potential | BuiltIn::flow => self.check_context_access(
                 |_| IllegalCtxtAccessKind::NatureAccess,
                 expr,
                 self.parent.ctxt.nature_access_allowed(),
@@ -357,9 +396,9 @@ impl ExprValidator<'_, '_> {
                 // vec![].into_boxed_slice()
                 // };
 
-                self.check_access(
+                self.check_context_access(
                     |validator| IllegalCtxtAccessKind::AnalogOperator {
-                        name: path.as_ref().and_then(|p| p.as_ident()).unwrap(),
+                        name,
                         is_standard: builtin.is_analog_operator(),
                         non_const_dominator: validator.parent.non_const_dominator.clone(),
                     },
@@ -368,17 +407,17 @@ impl ExprValidator<'_, '_> {
                 )
             }
 
-            _ if builtin.is_analysis_fun() && !self.parent.ctxt.analysis_fun_allowed() => self
-                .report_illegal_access(
-                    IllegalCtxtAccessKind::AnalysisFun {
-                        name: path.as_ref().and_then(|p| p.as_ident()).unwrap(),
-                    },
+            _ if builtin.is_analysis_fun() && !self.parent.ctxt.analysis_fun_allowed() => {
+                self.report(BodyDiagnostic::IllegalCtxtAccess {
+                    kind: IllegalCtxtAccessKind::AnalysisFun { name },
+                    ctxt: self.parent.ctxt,
                     expr,
-                ),
-
+                });
+            }
             _ => (),
         }
 
+        let mut args = args;
         match (builtin, signature) {
             (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_NODES)) => {
                 let hi = self.parent.infer.expr_types[args[0]].unwrap_node();
@@ -389,7 +428,7 @@ impl ExprValidator<'_, '_> {
                     BranchWrite::Unnamed { hi: lo, lo: Some(hi) }
                 };
                 self.lint_trivial_branch(branch, builtin, expr);
-                if let Some(discipline) = self.validate_implicit_branch(expr, hi, lo) {
+                if let Some(discipline) = self.validate_unnamed_branch(expr, hi, lo) {
                     self.validate_flow_or_pot(expr, builtin, discipline)
                 }
             }
@@ -508,8 +547,8 @@ impl ExprValidator<'_, '_> {
             | (BuiltIn::ddt, Some(DDT_TOL))
             | (BuiltIn::idt | BuiltIn::idtmod, Some(IDT_IC_ASSERT_TOL)) => {
                 if let [other_args @ .., const_expr] = args {
-                    args = other_args; // Do not type check const expr twice
                     self.validate_const_expr(*const_expr);
+                    args = other_args; // Do not type check const expr twice
                 };
             }
 
@@ -549,6 +588,7 @@ impl ExprValidator<'_, '_> {
         self.parent.ctxt = old;
     }
 
+    /// Trivial branches are those probed but do not receive any contributions.
     fn lint_trivial_branch(&mut self, branch: BranchWrite, call: BuiltIn, expr: ExprId) {
         let is_flow = call == BuiltIn::flow;
         if self.is_write {
@@ -567,7 +607,7 @@ impl ExprValidator<'_, '_> {
         }
     }
 
-    fn validate_implicit_branch(
+    fn validate_unnamed_branch(
         &mut self,
         expr: ExprId,
         node1: NodeId,
@@ -577,7 +617,7 @@ impl ExprValidator<'_, '_> {
             if let Some(discipline2) = self.parent.db.node_discipline(node2) {
                 let discipline2 = self.parent.db.discipline_info(discipline2);
                 if !discipline2.compatible(discipline1, self.parent.db) {
-                    self.report(BodyDiagnostic::IncompatibleImplicitBranch {
+                    self.report(BodyDiagnostic::IncompatibleUnnamedBranch {
                         access_expr: expr,
                         node1,
                         node2,
@@ -591,7 +631,7 @@ impl ExprValidator<'_, '_> {
         None
     }
 
-    fn check_access(
+    fn check_context_access(
         &mut self,
         kind: impl FnOnce(&Self) -> IllegalCtxtAccessKind,
         expr: ExprId,
@@ -601,44 +641,19 @@ impl ExprValidator<'_, '_> {
             sink.push(expr)
         }
         if !allowed {
-            self.report_illegal_access(kind(self), expr)
+            self.report(BodyDiagnostic::IllegalCtxtAccess {
+                kind: kind(self),
+                ctxt: self.parent.ctxt,
+                expr,
+            });
         }
-    }
-
-    fn report_illegal_access(&mut self, kind: IllegalCtxtAccessKind, expr: ExprId) {
-        let err = BodyDiagnostic::IllegalCtxtAccess { kind, ctxt: self.parent.ctxt, expr };
-        self.report(err);
-    }
-
-    fn report_illegal_nature_access(
-        &mut self,
-        branch: String,
-        discipline: DisciplineId,
-        access_nature: Option<NatureId>,
-        access_expr: ExprId,
-    ) {
-        let db = self.parent.db;
-        let discipline = db.discipline_info(discipline);
-
-        let nature_info = |nature: NatureId| {
-            let nature = nature.lookup(db.upcast());
-            let nature = &nature.item_tree(db.upcast())[nature.id];
-            Some((nature.name.clone(), nature.access.clone()?.0))
-        };
-        let pot = discipline.potential.and_then(nature_info);
-        let flow = discipline.flow.and_then(nature_info);
-        self.parent.diagnostics.push(BodyDiagnostic::IncompatibleNatureAccess {
-            candidates: [pot, flow],
-            access_nature,
-            access_expr,
-            branch,
-        })
     }
 
     fn report(&mut self, diagnostic: BodyDiagnostic) {
         self.parent.diagnostics.push(diagnostic)
     }
 }
+// End of BodyValidator
 
 struct TypeValidator<'a> {
     db: &'a dyn HirTyDB,

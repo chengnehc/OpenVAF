@@ -158,8 +158,8 @@ impl LintAttrs {
         err: &mut Vec<AttrDiagnostic>,
         parent: ErasedAstId,
     ) -> LintAttrs {
-        let overwrites = resolve_overwrites(registry, attrs, err, parent);
-        LintAttrs { parent, overwrites: overwrites.collect() }
+        let overwrites = resolve_overwrites(registry, attrs, err, parent).collect();
+        LintAttrs { parent, overwrites }
     }
 
     pub fn lint_src(&self, lint: Lint) -> LintSrc {

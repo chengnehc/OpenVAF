@@ -1,0 +1,22 @@
+error: write to input function argument 'area'
+  --> /function_arg.va:7:13
+  |
+4 |         input area, perim;
+  |         ------------------ help: 'area' is defined here
+  .
+7 |             area = l * w;
+  |             ^^^^ write to input argument
+  |
+  = help: change direction of 'area' to inout
+
+error: write to input function argument 'perim'
+  --> /function_arg.va:8:13
+  |
+4 |         input area, perim;
+  |         ------------------ help: 'perim' is defined here
+  .
+8 |             perim = 2 * ( l + w );
+  |             ^^^^^ write to input argument
+  |
+  = help: change direction of 'perim' to inout
+

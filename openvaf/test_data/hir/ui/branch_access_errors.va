@@ -1,0 +1,22 @@
+`include "disciplines.va"
+
+module test (inout a, input b);
+    electrical a, b, c, d;
+    thermal t;
+    current e, f;
+    real foo;
+
+    analog begin
+        // potential probe of port flow
+        I(a) <+ V(<b>);
+        // incompatible branch disciplines
+        V(a, t) <+ 0;
+        // trivial branch probe
+        V(a, b) <+ 10 * I(c, d);
+        // illegal nature access
+        foo = potential(e, f);
+        I(a, b) <+ V(e);
+        V(a, b) <+ V(t);
+    end
+
+endmodule

@@ -12,7 +12,7 @@
 //! - https://github.com/rust-lang/rfcs/pull/2256
 //! - https://github.com/apple/swift/blob/13d593df6f359d0cb2fc81cfaac273297c539455/lib/Syntax/README.md
 
-pub use preprocessor::diagnostics::PreprocessError;
+pub use preprocessor::errors::PreprocessError;
 pub use preprocessor::sourcemap::{self, SourceMap};
 pub use preprocessor::{preprocess, Preprocess, SourceProvider};
 pub use rowan::{Direction, GreenNode, NodeOrToken, TextRange, TextSize, WalkEvent};

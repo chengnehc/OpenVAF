@@ -1,0 +1,64 @@
+error: analog operator 'ddt' is not allowed in analog initial block
+   --> /illegal_context_access.va:28:20
+   |
+28 |         I(a, b) <+ ddt(V(a));
+   |                    ^^^^^^^^^ not allowed here
+   |
+   = help: analog operators are only allowed in module-level analog blocks
+
+error: nature access is not allowed in analog initial block
+   --> /illegal_context_access.va:28:24
+   |
+28 |         I(a, b) <+ ddt(V(a));
+   |                        ^^^^ not allowed here
+   |
+   = help: nature access is only allowed in module-level analog blocks
+
+error: branch contributions are not allowed in analog initial block
+   --> /illegal_context_access.va:28:9
+   |
+28 |         I(a, b) <+ ddt(V(a));
+   |         --------------------- not allowed here
+   |
+   = help: branch contributions are only allowed in module-level analog blocks
+
+error: analog operator 'ddt' is not allowed in conditions
+   --> /illegal_context_access.va:33:17
+   |
+32 |         if (x < 0) begin
+   |             - help: this condition is not a constant
+33 |             x = ddt(V(a));
+   |                 ^^^^^^^^^ not allowed here
+   |
+   = help: analog operators shall not be used inside conditional (if, case, or ?:) 
+     statements unless the conditional expression controlling the statement consists
+     of terms which can not change their value during simulation
+
+error: 'I' was not found in the current scope
+   --> /illegal_context_access.va:41:13
+   |
+41 |             I(a, b) <+ V(a);
+   |             ^^^^^^^ not found
+
+error: 'V' was not found in the current scope
+   --> /illegal_context_access.va:41:24
+   |
+41 |             I(a, b) <+ V(a);
+   |                        ^^^^ not found
+
+error: branch contributions are not allowed in analog functions
+   --> /illegal_context_access.va:41:13
+   |
+41 |             I(a, b) <+ V(a);
+   |             ---------------- not allowed here
+   |
+   = help: branch contributions are only allowed in module-level analog blocks
+
+error: analog operator 'ddt' is not allowed in analog functions
+   --> /illegal_context_access.va:42:22
+   |
+42 |             myfunc = ddt(x);
+   |                      ^^^^^^ not allowed here
+   |
+   = help: analog operators are only allowed in module-level analog blocks
+

@@ -761,7 +761,13 @@ impl Context<'_> {
                     let candidate_types: Vec<TyRequirement> = candidates
                         .iter()
                         .filter_map(|candidate| signatures[*candidate].args.get(i).cloned())
-                        .collect();
+                        .fold(Vec::new(), |mut acc, x| {
+                            // JW: dedup candidate types for better UI
+                            if !acc.contains(&x) {
+                                acc.push(x);
+                            }
+                            acc
+                        });
                     debug_assert_ne!(&candidate_types, &[]);
                     errors.push(TypeMismatch {
                         expected: Cow::from(candidate_types),

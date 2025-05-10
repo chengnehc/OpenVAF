@@ -99,29 +99,28 @@ pub struct ItemLoc<N: ItemTreeNode> {
 }
 
 impl<N: ItemTreeNode> ItemLoc<N> {
+    #[inline]
     pub fn item_tree(&self, db: &dyn HirDefDB) -> Arc<ItemTree> {
         db.item_tree(self.scope.root_file)
     }
-
+    #[inline]
+    pub fn def_map(&self, db: &dyn HirDefDB) -> Arc<DefMap> {
+        self.scope.def_map(db)
+    }
+    #[inline]
+    pub fn name(&self, db: &dyn HirDefDB) -> Name {
+        N::lookup(&self.item_tree(db), self.id).name().clone()
+    }
+    #[inline]
     pub fn ast_id(&self, db: &dyn HirDefDB) -> AstId<N::Source> {
         N::lookup(&self.item_tree(db), self.id).ast_id()
     }
-
     pub fn ast_ptr(&self, db: &dyn HirDefDB) -> AstPtr<N::Source> {
         let ast_id = self.ast_id(db);
         db.ast_id_map(self.scope.root_file).get(ast_id)
     }
-
     pub fn source(&self, db: &dyn HirDefDB) -> N::Source {
         self.ast_ptr(db).to_node(db.parse(self.scope.root_file).tree().syntax())
-    }
-
-    pub fn name(&self, db: &dyn HirDefDB) -> Name {
-        N::lookup(&self.item_tree(db), self.id).name().clone()
-    }
-
-    pub fn def_map(&self, db: &dyn HirDefDB) -> Arc<DefMap> {
-        self.scope.def_map(db)
     }
 }
 

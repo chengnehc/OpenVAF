@@ -32,7 +32,8 @@ use super::{
 impl DefMap {
     pub fn root_query(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {
         let tree = &db.item_tree(root_file);
-        let scope_cnt = tree.data.modules.len(); // Fixed(JW): nature/discipline would not create scopes
+        // Fixed(JW): nature/discipline would not create scopes
+        let scope_cnt = tree.data.modules.len();
         let def_map = DefMap {
             src: DefMapSource::Root,
             scopes: Arena::with_capacity(scope_cnt),
@@ -49,6 +50,7 @@ impl DefMap {
         let tree = &db.item_tree(parent.root_file);
         let items = &tree[ast_id].items;
         if items.is_empty() {
+            // fast path for block scopes containing no items
             return None;
         }
         let def_map = DefMap {
@@ -124,7 +126,6 @@ impl Collector<'_> {
             }
         }
 
-        // dbg!(&self.def_map);
         Arc::new(self.def_map)
     }
 
@@ -174,7 +175,7 @@ impl Collector<'_> {
                     self.intern_and_insert_item(fun, module_scope, self.tree[fun].name.clone());
                 }
                 ScopedBlock(block) => {
-                    self.intern_and_insert_block_def(block, module_scope);
+                    self.intern_and_insert_scoped_block(block, module_scope);
                 }
             }
         }
@@ -182,21 +183,22 @@ impl Collector<'_> {
 
     /// Collect the def map of a named block.
     fn collect_block_map(mut self, block: BlockId, items: &[BlockItem]) -> Arc<DefMap> {
-        let scope = self.def_map.declare_scope(ScopeOrigin::Block(block), None);
-        debug_assert_eq!(scope, self.def_map.entry_scope());
+        let block_scope = self.def_map.declare_scope(ScopeOrigin::Block(block), None);
+        debug_assert_eq!(block_scope, self.def_map.entry_scope());
         for item in items {
             match *item {
                 BlockItem::Variable(var) => {
-                    self.intern_and_insert_item(var, scope, self.tree[var].name.clone())
+                    self.intern_and_insert_item(var, block_scope, self.tree[var].name.clone())
                 }
                 BlockItem::Parameter(param) => {
-                    self.intern_and_insert_item(param, scope, self.tree[param].name.clone())
+                    self.intern_and_insert_item(param, block_scope, self.tree[param].name.clone())
                 }
-                BlockItem::ScopedBlock(block) => self.intern_and_insert_block_def(block, scope),
+                BlockItem::ScopedBlock(block) => {
+                    self.intern_and_insert_scoped_block(block, block_scope)
+                }
             }
         }
 
-        // dbg!(&self.def_map);
         Arc::new(self.def_map)
     }
 
@@ -229,7 +231,7 @@ impl Collector<'_> {
                     self.intern_and_insert_item(param, fun_scope, self.tree[param].name.clone())
                 }
                 FunctionItem::ScopedBlock(block) => {
-                    self.intern_and_insert_block_def(block, fun_scope)
+                    self.intern_and_insert_scoped_block(block, fun_scope)
                 }
             }
         }
@@ -284,7 +286,6 @@ impl Collector<'_> {
             "parent module was not among the root modules"
         );
 
-        // dbg!(&self.def_map);
         Arc::new(self.def_map)
     }
 
@@ -300,7 +301,7 @@ impl Collector<'_> {
     }
 
     /// Intern a named block and insert its definition into the given parent scope.
-    fn intern_and_insert_block_def(
+    fn intern_and_insert_scoped_block(
         &mut self,
         block: AstId<ast::BlockStmt>,
         parent_scope: LocalScopeId,

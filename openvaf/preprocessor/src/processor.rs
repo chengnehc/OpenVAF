@@ -9,9 +9,7 @@ use tokens::SyntaxKind::{self, L_PAREN, R_PAREN};
 use typed_index_collections::{TiSlice, TiVec};
 use vfs::{FileId, VfsPath};
 
-use crate::diagnostics::PreprocessError::{
-    self, MacroArgCountMismatch, MacroNotFound, UnexpectedToken,
-};
+use crate::errors::PreprocessError::{self, MacroArgCountMismatch, MacroNotFound, UnexpectedToken};
 use crate::grammar::{parse_condition, parse_define, parse_include, parse_macro_call};
 use crate::parser::{CompilerDirective, Parser, PreprocessorToken};
 use crate::sourcemap::{CtxSpan, FileSpan, SourceContextId, SourceMap};

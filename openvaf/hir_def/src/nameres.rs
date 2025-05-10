@@ -159,7 +159,7 @@ impl_from! {
 }
 
 impl ScopeItemDef {
-    fn text_range(&self, db: &dyn HirDefDB) -> Option<TextRange> {
+    fn text_range(self, db: &dyn HirDefDB) -> Option<TextRange> {
         use ScopeItemDef::*;
 
         let res = match self {

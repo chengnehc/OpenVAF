@@ -1,0 +1,13 @@
+error: definition of 'foo' references parameter 'bar' defined afterwards
+  --> /param_access.va:2:26
+  |
+2 |     parameter real foo = bar;
+  |                    ------^^^
+  |                    |     |
+  |                    |     illegal reference
+  |                    help: 'foo' is defined here
+3 |     parameter real bar = 1.0;
+  |                    --------- .. to parameter 'bar' defined here
+  |
+  = help: parameters may only refer to parameters (textually) defined before them
+

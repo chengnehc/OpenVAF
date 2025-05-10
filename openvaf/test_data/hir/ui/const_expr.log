@@ -1,0 +1,17 @@
+error: constant expressions must not contain variable references
+  --> /const_expr.va:5:26
+  |
+5 |     parameter real foo = x;
+  |                          ^ not allowed here
+6 |     
+7 |     real x = 0;
+  |          ----- help: 'x' was declared here
+
+error: constant expressions must not contain variable references
+  --> /const_expr.va:8:14
+  |
+7 |     real x = 0;
+  |          ----- help: 'x' was declared here
+8 |     real y = x + 1;
+  |              ^ not allowed here
+

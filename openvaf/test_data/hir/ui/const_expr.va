@@ -1,0 +1,10 @@
+// Variable initialization and parameter default value should only 
+// use constant expressions and should not reference other variables.
+
+module test;
+    parameter real foo = x;
+    
+    real x = 0;
+    real y = x + 1;
+    
+endmodule

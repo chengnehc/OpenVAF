@@ -60,6 +60,29 @@ fn collect_type_diagnostics(
     }
 }
 
+fn collect_body_diagnostics(
+    db: &dyn HirDB,
+    root_file: FileId,
+    def: DefWithBodyId,
+    sink: &mut impl DiagnosticSink,
+) {
+    let body_sm = db.body_srcmap(def);
+
+    // Inference
+    let diagnostics = &db.inference_result(def).diagnostics;
+    for diag in diagnostics {
+        let diag = InferDiagnosticWrapped { db, diag, body_sm: &body_sm };
+        sink.add_diagnostic(&diag, root_file, db.upcast())
+    }
+
+    // Body
+    let diagnostics = BodyDiagnostic::validate_and_collect(db, def);
+    for diag in &diagnostics {
+        let diag = BodyDiagnosticWrapped { db, diag, body_sm: &body_sm };
+        sink.add_diagnostic(&diag, root_file, db.upcast())
+    }
+}
+
 fn collect_scope_diagnostics(
     db: &CompilationDB,
     root_file: FileId,
@@ -71,7 +94,6 @@ fn collect_scope_diagnostics(
         if let Ok(body) = def.try_into() {
             collect_body_diagnostics(db, root_file, body, sink);
         }
-
         let def_map = match def {
             ScopeItemDef::BlockId(block) => {
                 let Some(def_map) = db.block_def_map(block) else { continue };
@@ -80,29 +102,7 @@ fn collect_scope_diagnostics(
             ScopeItemDef::FunctionId(fun) => db.function_def_map(fun),
             _ => continue,
         };
-
         collect_scope_diagnostics(db, root_file, &def_map, def_map.entry_scope(), sink);
         collect_def_diagnostics(db, root_file, &def_map, sink);
-    }
-}
-
-fn collect_body_diagnostics(
-    db: &dyn HirDB,
-    root_file: FileId,
-    def: DefWithBodyId,
-    sink: &mut impl DiagnosticSink,
-) {
-    let body_sm = db.body_srcmap(def);
-
-    let diagnostics = &db.inference_result(def).diagnostics;
-    for diag in diagnostics {
-        let diag = InferDiagnosticWrapped { db, diag, body_sm: &body_sm };
-        sink.add_diagnostic(&diag, root_file, db.upcast())
-    }
-
-    let diagnostics = BodyDiagnostic::validate_and_collect(db, def);
-    for diag in &diagnostics {
-        let diag = BodyDiagnosticWrapped { db, diag, body_sm: &body_sm };
-        sink.add_diagnostic(&diag, root_file, db.upcast())
     }
 }

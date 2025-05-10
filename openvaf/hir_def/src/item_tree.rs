@@ -123,7 +123,7 @@ pub trait ItemTreeNode: Clone {
     fn name(&self) -> &Name;
     /// The `AstId` of this item, allowing to map it back to its surface syntax.
     fn ast_id(&self) -> AstId<Self::Source>;
-    /// Looks up an item with this type in the tree.
+    /// Looks up an item of this type in the item tree.
     fn lookup(tree: &ItemTree, index: ItemTreeId<Self>) -> &Self;
 }
 

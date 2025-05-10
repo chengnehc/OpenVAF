@@ -116,6 +116,8 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                             .to_owned(),
                     ])
             }
+
+            /* Branch access */
             BodyDiagnostic::PotentialOfPortFlow { expr, branch } => {
                 let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
 
@@ -178,7 +180,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     format!("info: branches are open circuted by default: I({branch_probe}) <+ 0"),
                 ])
             }
-            BodyDiagnostic::IncompatibleImplicitBranch { access_expr, node1, node2 } => {
+            BodyDiagnostic::IncompatibleUnnamedBranch { access_expr, node1, node2 } => {
                 let name1 = &self.db.node_data(node1).name;
                 let name2 = &self.db.node_data(node2).name;
 
@@ -189,190 +191,6 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     node2,
                 }
                 .into_report(self.db, &parse, &ast_id_map, &sm)
-            }
-            BodyDiagnostic::IllegalContribute { stmt, ctxt } => {
-                let range = self.body_sm.stmt_map_back[stmt].as_ref().unwrap().text_range();
-                let FileSpan { range, file } = parse.to_file_span(range, &sm);
-
-                Report::error()
-                    .with_message(format!("branch contributions are not allowed in {}", ctxt))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "not allowed here".to_owned(),
-                    }])
-                    .with_notes(vec![
-                        "help: branch contributions are only allowed in module-level analog blocks"
-                            .to_owned(),
-                    ])
-            }
-            BodyDiagnostic::IllegalParamAccess { def, expr, param } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
-                let (def_name, def_src) = self.lookup(def);
-                let (ref_name, ref_src) = self.lookup(param);
-                let def_span = parse.to_file_span(def_src, &sm);
-                let ref_span = parse.to_file_span(ref_src, &sm);
-
-                Report::error()
-                    .with_message(format!(
-                        "definition of '{def_name}' references parameter '{ref_name}' defined afterwards",
-                    ))
-                    .with_labels(vec![
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: def_span.file,
-                            range: def_span.range.into(),
-                            message: format!("help: '{def_name}' is defined here"),
-                        },
-                        Label {
-                            style: LabelStyle::Primary,
-                            file_id: file,
-                            range: range.into(),
-                            message: "illegal reference".to_owned(),
-                        },
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: ref_span.file,
-                            range: ref_span.range.into(),
-                            message: format!(".. to parameter '{ref_name}' defined here"),
-                        }
-                    ])
-                    .with_notes(vec![
-                            "help: parameters may only refer to parameters (textually) defined before them"
-                            .to_owned(),
-                    ])
-            }
-            BodyDiagnostic::IllegalCtxtAccess { ref kind, ctxt, expr } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
-
-                let mut res = Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "not allowed here".to_owned(),
-                }]);
-
-                match kind {
-                    IllegalCtxtAccessKind::NatureAccess => res
-                        .with_message(format!("nature access is not allowed in {ctxt}"))
-                        .with_notes(vec![
-                            "help: nature access is only allowed in module-level analog blocks"
-                                .to_owned(),
-                        ]),
-                    IllegalCtxtAccessKind::AnalogOperator {
-                        name,
-                        is_standard: _, // TODO add a note?
-                        non_const_dominator,
-                    } => {
-                        let notes = if ctxt == BodyContext::Conditional {
-                            vec![
-                                "help: analog operators are only allowed in non-conditional behaviour".to_owned(),
-                                "help: only constant and analysis functions are allowed in conditions".to_owned()
-                            ]
-                        } else {
-                            vec!["help: analog operators are only allowed in the main-analog block"
-                                .to_owned()]
-                        };
-
-                        res.labels.extend(non_const_dominator.iter().map(|&expr| {
-                            let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
-                            Label {
-                                style: LabelStyle::Secondary,
-                                file_id: file,
-                                range: range.into(),
-                                message: "help: this condition is not a constant".to_owned(),
-                            }
-                        }));
-
-                        res.with_message(format!(
-                            "analog operator '{name}' is not allowed in {ctxt}",
-                        ))
-                        .with_notes(notes)
-                    }
-                    IllegalCtxtAccessKind::AnalysisFun { name } => res.with_message(format!(
-                        "analysis function '{name}' is not allowed in constants",
-                    )),
-                    IllegalCtxtAccessKind::Var(var) => {
-                        let name = var.lookup(self.db.upcast()).name(self.db.upcast());
-                        let def =
-                            var.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).text_range();
-                        let FileSpan { range, file } = parse.to_file_span(def, &sm);
-                        res.labels.push(Label {
-                            style: LabelStyle::Secondary,
-                            file_id: file,
-                            range: range.into(),
-                            message: format!("help: '{name}' was declared here"),
-                        });
-                        res.with_message(
-                            "constant expressions must not contain variable references".to_owned(),
-                        )
-                    }
-                }
-            }
-            BodyDiagnostic::WriteToInputArg { expr, arg } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
-                let arg_name = arg.name(self.db.upcast());
-                let arg_src = arg.ast_ptr(self.db.upcast()).text_range();
-                let arg_src = parse.to_file_span(arg_src, &sm);
-
-                Report::error()
-                    .with_message(format!("write to input function argument '{}'", arg_name))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: arg_src.file,
-                        range: arg_src.range.into(),
-                        message: format!("help: '{}' is defined here", arg_name),
-                    }])
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "write to input argument".to_owned(),
-                    }])
-                    .with_notes(vec![format!("help: change direction of '{}' to inout", arg_name)])
-            }
-            BodyDiagnostic::ConstSimparam { known, expr, .. } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
-
-                let mut report = Report::warning()
-                    .with_message(
-                        "call to $simparam in a constant is evaluated before simulation starts"
-                            .to_owned(),
-                    )
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "call to $simparam in a constant".to_owned(),
-                    }]);
-                if !known {
-                    report = report.with_notes(vec![
-                        "help: the value of paramaeters like \"gmin\' or \"sourceScaleFactor\" may vary between iterations"
-                            .to_owned(),
-                    ])
-                }
-
-                report
-            }
-            BodyDiagnostic::UnsupportedFunction { expr, func } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
-
-                Report::error()
-                    .with_message(format!(
-                        "function '{func:?}' is currently not supported by OpenVAF"
-                    ))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unsupported function".to_owned(),
-                    }])
-                    .with_notes(vec![
-                        "This function is part of the Verilog-A standard but currently not implemented by OpenVAF\n\
-                        If this function is important to your application, create an issue:\n\
-                        https://github.com/pascalkuthe/openvaf/issues/new".to_owned()
-                    ])
             }
             BodyDiagnostic::IncompatibleNatureAccess {
                 ref candidates,
@@ -416,6 +234,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
                 Report::error().with_labels(labels).with_message(msg).with_notes(vec![help_msg])
             }
+            // this is for potential() or flow() access functions
             BodyDiagnostic::IllegalNatureAccess { is_pot, access_expr } => {
                 let name = if is_pot { "potential" } else { "flow" };
                 let span = self.expr_span(access_expr, &sm, &parse);
@@ -431,6 +250,194 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     .with_notes(vec![format!(
                         "help: this branch belongs to a discipline without '{name}' attribute"
                     )])
+            }
+
+            /* Context violation */
+            BodyDiagnostic::IllegalContribute { stmt, ctxt } => {
+                let range = self.body_sm.stmt_map_back[stmt].as_ref().unwrap().text_range();
+                let FileSpan { range, file } = parse.to_file_span(range, &sm);
+
+                Report::error()
+                    .with_message(format!("branch contributions are not allowed in {ctxt}"))
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Secondary,
+                        file_id: file,
+                        range: range.into(),
+                        message: "not allowed here".to_owned(),
+                    }])
+                    .with_notes(vec![
+                        "help: branch contributions are only allowed in module-level analog blocks"
+                            .to_owned(),
+                    ])
+            }
+            BodyDiagnostic::IllegalCtxtAccess { ref kind, ctxt, expr } => {
+                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+
+                let mut res = Report::error().with_labels(vec![Label {
+                    style: LabelStyle::Primary,
+                    file_id: file,
+                    range: range.into(),
+                    message: "not allowed here".to_owned(),
+                }]);
+
+                match kind {
+                    IllegalCtxtAccessKind::NatureAccess => res
+                        .with_message(format!("nature access is not allowed in {ctxt}"))
+                        .with_notes(vec![
+                            "help: nature access is only allowed in module-level analog blocks"
+                                .to_owned(),
+                        ]),
+                    IllegalCtxtAccessKind::AnalogOperator {
+                        name,
+                        is_standard: _, // TODO add a note?
+                        non_const_dominator,
+                    } => {
+                        let notes = if ctxt == BodyContext::Conditional {
+                            vec![
+                                "help: analog operators shall not be used inside conditional (if, case, or ?:) \n\
+                                statements unless the conditional expression controlling the statement consists\n\
+                                of terms which can not change their value during simulation".to_owned(),
+                            ]
+                        } else {
+                            vec!["help: analog operators are only allowed in module-level analog blocks"
+                                .to_owned()]
+                        };
+                        res.labels.extend(non_const_dominator.iter().map(|&expr| {
+                            let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                            Label {
+                                style: LabelStyle::Secondary,
+                                file_id: file,
+                                range: range.into(),
+                                message: "help: this condition is not a constant".to_owned(),
+                            }
+                        }));
+                        res.with_message(format!(
+                            "analog operator '{name}' is not allowed in {ctxt}",
+                        ))
+                        .with_notes(notes)
+                    }
+                    IllegalCtxtAccessKind::AnalysisFun { name } => res.with_message(format!(
+                        "analysis function '{name}' is not allowed in constants",
+                    )),
+                    IllegalCtxtAccessKind::Var(var) => {
+                        let name = var.lookup(self.db.upcast()).name(self.db.upcast());
+                        let def =
+                            var.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).text_range();
+                        let FileSpan { range, file } = parse.to_file_span(def, &sm);
+                        res.labels.push(Label {
+                            style: LabelStyle::Secondary,
+                            file_id: file,
+                            range: range.into(),
+                            message: format!("help: '{name}' was declared here"),
+                        });
+                        res.with_message(
+                            "constant expressions must not contain variable references".to_owned(),
+                        )
+                    }
+                }
+            }
+
+            /* Parameter */
+            BodyDiagnostic::IllegalParamAccess { def, expr, param } => {
+                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let (def_name, def_src) = self.lookup(def);
+                let (ref_name, ref_src) = self.lookup(param);
+                let def_span = parse.to_file_span(def_src, &sm);
+                let ref_span = parse.to_file_span(ref_src, &sm);
+
+                Report::error()
+                    .with_message(format!(
+                        "definition of '{def_name}' references parameter '{ref_name}' defined afterwards",
+                    ))
+                    .with_labels(vec![
+                        Label {
+                            style: LabelStyle::Primary,
+                            file_id: file,
+                            range: range.into(),
+                            message: "illegal reference".to_owned(),
+                        },
+                        Label {
+                            style: LabelStyle::Secondary,
+                            file_id: def_span.file,
+                            range: def_span.range.into(),
+                            message: format!("help: '{def_name}' is defined here"),
+                        },
+                        Label {
+                            style: LabelStyle::Secondary,
+                            file_id: ref_span.file,
+                            range: ref_span.range.into(),
+                            message: format!(".. to parameter '{ref_name}' defined here"),
+                        }
+                    ])
+                    .with_notes(vec![
+                            "help: parameters may only refer to parameters (textually) defined before them"
+                            .to_owned(),
+                    ])
+            }
+
+            /* Function */
+            BodyDiagnostic::WriteToInputArg { expr, arg } => {
+                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let arg_name = arg.name(self.db.upcast());
+                let arg_src = arg.ast_ptr(self.db.upcast()).text_range();
+                let arg_src = parse.to_file_span(arg_src, &sm);
+
+                Report::error()
+                    .with_message(format!("write to input function argument '{arg_name}'"))
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Secondary,
+                        file_id: arg_src.file,
+                        range: arg_src.range.into(),
+                        message: format!("help: '{arg_name}' is defined here"),
+                    }])
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Primary,
+                        file_id: file,
+                        range: range.into(),
+                        message: "write to input argument".to_owned(),
+                    }])
+                    .with_notes(vec![format!("help: change direction of '{arg_name}' to inout")])
+            }
+            BodyDiagnostic::UnsupportedFunction { expr, func } => {
+                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+
+                Report::error()
+                    .with_message(format!(
+                        "function '{func:?}' is currently not supported by OpenVAF"
+                    ))
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Primary,
+                        file_id: file,
+                        range: range.into(),
+                        message: "unsupported function".to_owned(),
+                    }])
+                    .with_notes(vec![
+                        "This function is part of the Verilog-A standard but currently not implemented by OpenVAF\n\
+                        If this function is important to your application, create an issue:\n\
+                        https://github.com/pascalkuthe/openvaf/issues/new".to_owned()
+                    ])
+            }
+            BodyDiagnostic::ConstSimparam { known, expr, .. } => {
+                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+
+                let mut report = Report::warning()
+                    .with_message(
+                        "call to $simparam in a constant is evaluated before simulation starts"
+                            .to_owned(),
+                    )
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Primary,
+                        file_id: file,
+                        range: range.into(),
+                        message: "call to $simparam in a constant".to_owned(),
+                    }]);
+                if !known {
+                    report = report.with_notes(vec![
+                        "help: the value of parameters like \"gmin\" or \"sourceScaleFactor\" may vary between iterations"
+                            .to_owned(),
+                    ])
+                }
+                report
             }
         }
     }
@@ -694,7 +701,7 @@ impl IncompatibleBranchDiagnostic {
         let node2 = db.node_data(node2);
 
         let msg = format!(
-            "nodes '{}' and '{}' of branch '{}' have incompatible disciplines!",
+            "nodes '{}' and '{}' of branch '{}' have incompatible disciplines",
             node1.name, node2.name, branch_name
         );
 
@@ -705,7 +712,7 @@ impl IncompatibleBranchDiagnostic {
                     style: LabelStyle::Primary,
                     file_id: branch_span.file,
                     range: branch_span.range.into(),
-                    message: format!("'{}' has mismatched disciplines", branch_name),
+                    message: format!("branch '{}' has mismatched disciplines", branch_name),
                 },
                 Label {
                     style: LabelStyle::Secondary,

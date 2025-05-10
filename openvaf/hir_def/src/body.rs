@@ -19,7 +19,7 @@ mod expr;
 mod lower;
 mod pretty;
 
-pub use expr::{Case, CaseCond, Event, Expr, ExprId, GlobalEvent, Literal, Stmt, StmtId};
+pub use expr::*;
 
 /// The body of an item that contains HIR-level expressions and statements.
 #[derive(Debug, Eq, PartialEq, Default)]
@@ -85,11 +85,11 @@ impl Body {
                 let ast_node = ast_id_map.get(attr.ast_id).to_node(&root);
                 let curr_scope = (Scope::root(root_file), attr.ast_id.into());
                 let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
                     body: &mut body,
-                    curr_scope,
-                    ast_id_map,
+                    src_map: &mut src_map,
                     db,
+                    ast_id_map,
+                    curr_scope,
                 };
                 let expr = ctxt.collect_expr_opt(ast_node.val());
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
@@ -108,11 +108,11 @@ impl Body {
                 let ast_node = ast_id_map.get(attr.ast_id).to_node(&root);
                 let curr_scope = (Scope::root(root_file), attr.ast_id.into());
                 let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
                     body: &mut body,
-                    curr_scope,
-                    ast_id_map,
+                    src_map: &mut src_map,
                     db,
+                    ast_id_map,
+                    curr_scope,
                 };
                 let expr = ctxt.collect_expr_opt(ast_node.val());
                 let stmt = ctxt.alloc_stmt_desugared(Stmt::Expr(expr));
@@ -122,14 +122,14 @@ impl Body {
                 let module = id.lookup(db);
                 let ast_id = module.ast_id(db);
                 let ast_node = module.source(db);
-                let curr_scope = (module.scope, ast_id.into());
                 let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
                     body: &mut body,
-                    curr_scope,
-                    ast_id_map,
+                    src_map: &mut src_map,
                     db,
+                    ast_id_map,
+                    curr_scope: (module.scope, ast_id.into()),
                 };
+                // concatenate all the analog behavioral blocks
                 body.entry_stmts = if initial {
                     ast_node
                         .analog_initial_behaviors()
@@ -143,13 +143,12 @@ impl Body {
                 let var = id.lookup(db);
                 let ast_id = var.ast_id(db);
                 let ast_node = var.source(db);
-                let curr_scope = (var.scope, ast_id.into());
                 let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
                     body: &mut body,
-                    curr_scope,
-                    ast_id_map,
+                    src_map: &mut src_map,
                     db,
+                    ast_id_map,
+                    curr_scope: (var.scope, ast_id.into()),
                 };
                 let expr = if let Some(expr) = ast_node.initial() {
                     // the variable is explicitly initialized
@@ -180,13 +179,12 @@ impl Body {
                 let fun = id.lookup(db);
                 let ast_id = fun.ast_id(db);
                 let ast_node = fun.source(db);
-                let curr_scope = (scope, ast_id.into());
                 let mut ctxt = lower::Context {
-                    src_map: &mut src_map,
                     body: &mut body,
-                    curr_scope,
-                    ast_id_map,
+                    src_map: &mut src_map,
                     db,
+                    ast_id_map,
+                    curr_scope: (scope, ast_id.into()),
                 };
                 body.entry_stmts = ast_node.body().map(|stmt| ctxt.collect_stmt(stmt)).collect();
             }
@@ -209,9 +207,9 @@ impl Body {
         let mut ctxt = lower::Context {
             body: &mut body,
             src_map: &mut src_map,
+            db,
             ast_id_map: &ast_id_map,
             curr_scope: (param.scope, ast_id.into()),
-            db,
         };
 
         let default = ctxt.collect_expr_opt(ast_node.default());
@@ -248,7 +246,7 @@ impl Body {
                 Some(ParamConstraint { kind, val })
             })
             .collect();
-        // entry stmts contain parameter default value and constexprs of contraints
+        // entry stmts contain constexprs of parameter default values and contraints
         body.entry_stmts = Box::from(entry_stmts);
 
         (Arc::new(body), Arc::new(src_map), ParamExprs { default, constraints })

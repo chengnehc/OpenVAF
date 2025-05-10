@@ -2,7 +2,6 @@
 //! representation.
 //!
 //! See Also:
-//!
 //! - https://github.com/rust-lang/rust-analyzer/tree/master/lib/line-index
 //! - https://docs.rs/line-index/0.1.2/line_index/
 

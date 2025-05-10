@@ -83,10 +83,6 @@ impl CompilationUnit {
         attributes::AstCache::new(db, self.root_file)
     }
 
-    pub fn collect_diagnostics(self, db: &CompilationDB, sink: &mut impl DiagnosticSink) {
-        diagnostics::collect(db, self.root_file, sink)
-    }
-
     pub fn modules(self, db: &CompilationDB) -> Vec<Module> {
         let root_def_map = db.root_def_map(self.root_file);
         let entry = root_def_map.entry_scope();
@@ -101,6 +97,10 @@ impl CompilationUnit {
                 }
             })
             .collect()
+    }
+
+    pub fn collect_diagnostics(self, db: &CompilationDB, sink: &mut impl DiagnosticSink) {
+        diagnostics::collect(db, self.root_file, sink)
     }
 
     pub fn test_diagnostics(&self, db: &CompilationDB) -> String {

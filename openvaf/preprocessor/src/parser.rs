@@ -9,7 +9,7 @@ use vfs::VfsPath;
 
 // use tracing::debug;
 
-use crate::diagnostics::PreprocessError;
+use crate::errors::PreprocessError;
 use crate::processor::ParsedToken;
 use crate::sourcemap::{CtxSpan, SourceContextId};
 

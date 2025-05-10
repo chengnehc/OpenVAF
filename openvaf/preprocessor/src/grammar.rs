@@ -12,7 +12,7 @@ use text_size::TextRange;
 // use tracing::{debug, trace, trace_span};
 use typed_index_collections::TiVec;
 
-use crate::diagnostics::PreprocessError::{self, UnexpectedEof};
+use crate::errors::PreprocessError::{self, UnexpectedEof};
 use crate::parser::{CompilerDirective, FullTokenIdx, Parser, PreprocessorToken};
 use crate::processor::{Macro, MacroArg, MacroCall, ParsedToken, ParsedTokenKind, Processor};
 use crate::sourcemap::{CtxSpan, SourceMap};

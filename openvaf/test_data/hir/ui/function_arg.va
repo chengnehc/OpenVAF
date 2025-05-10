@@ -1,0 +1,11 @@
+module test;
+    analog function real geomcalc;
+        input l, w;
+        input area, perim;
+        real l, w, area, perim;
+        begin
+            area = l * w;
+            perim = 2 * ( l + w );
+        end
+    endfunction
+endmodule

@@ -12,10 +12,10 @@ mod parser;
 mod processor;
 mod scoped_arc_arena;
 
-pub mod diagnostics;
+pub mod errors;
 pub mod sourcemap;
 
-use diagnostics::PreprocessError;
+use errors::PreprocessError;
 use processor::Processor;
 use scoped_arc_arena::ScopedArena;
 use sourcemap::{CtxSpan, SourceMap};

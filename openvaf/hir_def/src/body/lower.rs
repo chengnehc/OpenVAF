@@ -15,8 +15,8 @@ pub(super) struct Context<'a> {
     pub(super) body: &'a mut Body,
     pub(super) src_map: &'a mut BodySourceMap,
     // reads
-    pub(super) ast_id_map: &'a AstIdMap,
     pub(super) db: &'a dyn HirDefDB,
+    pub(super) ast_id_map: &'a AstIdMap,
     // states
     pub(super) curr_scope: (Scope, ErasedAstId),
 }
@@ -164,16 +164,16 @@ impl Context<'_> {
     fn collect_block_stmt(&mut self, block: &ast::BlockStmt) -> Stmt {
         let ast_id = self.ast_id_map.id_of(block);
         let (curr, _) = self.curr_scope;
-        // Fixed(JW): no need to intern unnamed blocks, intern scoped blocks only.
-        let next = if block.block_scope().is_some() {
+        let mut next = curr;
+        if block.block_scope().is_some() {
+            // Fixed(JW): no need to intern unnamed blocks, intern scoped blocks only.
             let id = BlockLoc { parent: curr, ast_id }.intern(self.db);
-            let def_map = self.db.block_def_map(id).unwrap();
-            Scope::from(curr.root_file, DefMapSource::Block(id), def_map.entry_scope())
-        } else {
-            curr
-        };
-        // Be careful of the order: enter the block scope first, then collect the
-        // body statements and switch back to parent scope.
+            if let Some(def_map) = self.db.block_def_map(id) {
+                next = Scope::from(curr.root_file, DefMapSource::Block(id), def_map.entry_scope());
+            }
+        }
+        // JW: Be careful of the order: we enter the block's scope first, then we
+        // collect body statements, after that we switch back to parent scope.
         let next_scope = (next, ast_id.into());
         let parent_scope = mem::replace(&mut self.curr_scope, next_scope);
         let body = block.body().map(|stmt| self.collect_stmt(stmt)).collect();

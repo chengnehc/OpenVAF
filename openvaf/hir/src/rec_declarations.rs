@@ -125,7 +125,7 @@ mod tests {
                     parameter real inner_param = Rd;
                     real inner_var = 1.5 * inner;
                 end
-                outer_val = myscope.inner_val;
+                outer_var = myscope.inner_var;
             end
         endmodule
         "#;

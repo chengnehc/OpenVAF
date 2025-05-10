@@ -24,15 +24,15 @@ use PreprocessError::*;
 impl_display! {
     match PreprocessError {
         MacroArgCountMismatch { expected, found, .. } => "argument mismatch expected {} but found {}!", expected, found;
-        MacroNotFound{ name, .. } =>  "macro '`{}' has not been declared", name;
-        MacroNotDefined{ name, .. } =>  "cannot undefine macro '`{}'", name;
-        MacroRecursion { name, .. } => "macro '`{}' was called recursively", name;
-        UnsupportedCompDir { name,.. } => "unsupported compiler directive {}", name;
-        FileNotFound { file, error, .. } => "failed to read '{}': {}", file, std::io::Error::from(*error);
-        InvalidTextFormat { file, .. } => "failed to read {}: file contents are not valid text", file;
+        MacroNotFound{ name, .. } =>  "macro '`{name}' has not been declared";
+        MacroNotDefined{ name, .. } =>  "cannot undefine macro '`{name}'";
+        MacroRecursion { name, .. } => "macro '`{name}' was called recursively";
+        UnsupportedCompDir { name,.. } => "unsupported compiler directive {name}";
+        FileNotFound { file, error, .. } => "failed to read '{file}': {}", std::io::Error::from(*error);
+        InvalidTextFormat { file, .. } => "failed to read {file}: file contents are not valid text";
         UnexpectedEof { expected, .. } => "unexpected EOF, expected {}", expected;
         MissingOrUnexpectedToken { expected, .. } => "unexpected token, expected '{}'", expected;
         UnexpectedToken(_) => "encountered unexpected token!";
-        MacroOverwritten { name, .. } => "macro '`{}' was overwritten", name;
+        MacroOverwritten { name, .. } => "macro '`{name}' was overwritten";
     }
 }

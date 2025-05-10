@@ -16,7 +16,7 @@ mod traits;
 pub use expr_ext::{ArrayExprKind, LiteralKind};
 pub use node_ext::{BranchKind, ConstraintKind, ConstraintValue, PathSegment, PathSegmentKind};
 pub use operators::{AssignOp, BinaryOp, UnaryOp};
-pub use traits::*;
+pub use traits::{attrs, ArgListOwner, AttrsOwner};
 
 /// Matches a `SyntaxNode` against a typed `AstNode`.
 ///

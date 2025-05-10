@@ -152,7 +152,7 @@ fn body(file: &Path) -> Result {
 
 harness! {
     Test::from_dir_filtered("integration", &integration, &Path::is_dir, &ignore_dev_tests, &project_root().join("integration_tests")),
-    Test::from_dir_filtered("body", &body, &is_va_file, &ignore_never, &openvaf_test_data("hir/body")),
     Test::from_dir_filtered("item_tree", &item_tree, &is_va_file, &ignore_never, &openvaf_test_data("hir/def")),
-    Test::from_dir_filtered("def_map", &def_map, &is_va_file, &ignore_never, &openvaf_test_data("hir/def"))
+    Test::from_dir_filtered("def_map", &def_map, &is_va_file, &ignore_never, &openvaf_test_data("hir/def")),
+    Test::from_dir_filtered("body", &body, &is_va_file, &ignore_never, &openvaf_test_data("hir/body"))
 }

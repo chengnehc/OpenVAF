@@ -28,26 +28,38 @@ pub enum BodyDiagnostic {
         expr: ExprId,
         stmt: StmtId,
     },
-    IncompatibleImplicitBranch {
+    IncompatibleUnnamedBranch {
         access_expr: ExprId,
         node1: NodeId,
         node2: NodeId,
     },
+    IllegalNatureAccess {
+        is_pot: bool,
+        access_expr: ExprId,
+    },
+    IncompatibleNatureAccess {
+        candidates: [Option<(Name, Name)>; 2],
+        access_nature: Option<NatureId>,
+        access_expr: ExprId,
+        branch: String,
+    },
 
-    /* Scope rule violation */
+    /* Context violation */
     IllegalContribute {
         stmt: StmtId,
         ctxt: BodyContext,
-    },
-    IllegalParamAccess {
-        def: ParamId,
-        expr: ExprId,
-        param: ParamId,
     },
     IllegalCtxtAccess {
         kind: IllegalCtxtAccessKind,
         ctxt: BodyContext,
         expr: ExprId,
+    },
+
+    /* Parameter */
+    IllegalParamAccess {
+        def: ParamId,
+        expr: ExprId,
+        param: ParamId,
     },
 
     /* Function */
@@ -63,18 +75,6 @@ pub enum BodyDiagnostic {
         known: bool,
         expr: ExprId,
         stmt: StmtId,
-    },
-
-    /* Nature access */
-    IllegalNatureAccess {
-        is_pot: bool,
-        access_expr: ExprId,
-    },
-    IncompatibleNatureAccess {
-        candidates: [Option<(Name, Name)>; 2],
-        access_nature: Option<NatureId>,
-        access_expr: ExprId,
-        branch: String,
     },
 }
 
@@ -97,8 +97,8 @@ impl BodyDiagnostic {
             _ => BodyContext::Const,
         };
         let mut validator = BodyValidator {
+            def,
             db,
-            owner: def,
             body,
             infer,
             ctxt: body_ctxt,
