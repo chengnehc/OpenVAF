@@ -23,9 +23,10 @@ pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl Dia
     // HirDB
     let item_tree = db.item_tree(root_file);
     let def_map = db.root_def_map(root_file);
-    let root_scope = def_map.root_scope();
     collect_def_diagnostics(db, root_file, &def_map, sink);
     collect_type_diagnostics(db, root_file, &item_tree, sink);
+
+    let root_scope = def_map.root_scope();
     for child in def_map[root_scope].children.values() {
         if let ScopeOrigin::Module(id) = def_map[*child].origin {
             collect_body_diagnostics(db, root_file, ModuleId { initial: true, id }, sink);
@@ -66,19 +67,18 @@ fn collect_body_diagnostics(
     def: DefWithBodyId,
     sink: &mut impl DiagnosticSink,
 ) {
-    let body_sm = db.body_srcmap(def);
+    let body_sm = &db.body_srcmap(def);
 
     // Inference
-    let diagnostics = &db.inference_result(def).diagnostics;
-    for diag in diagnostics {
-        let diag = InferDiagnosticWrapped { db, diag, body_sm: &body_sm };
+    for diag in &db.inference_result(def).diagnostics {
+        let diag = InferDiagnosticWrapped { db, diag, body_sm };
         sink.add_diagnostic(&diag, root_file, db.upcast())
     }
 
     // Body
     let diagnostics = BodyDiagnostic::validate_and_collect(db, def);
     for diag in &diagnostics {
-        let diag = BodyDiagnosticWrapped { db, diag, body_sm: &body_sm };
+        let diag = BodyDiagnosticWrapped { db, diag, body_sm };
         sink.add_diagnostic(&diag, root_file, db.upcast())
     }
 }

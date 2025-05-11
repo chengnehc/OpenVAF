@@ -5,11 +5,9 @@
 pub mod builtin;
 pub mod db;
 pub mod inference;
-pub mod lower;
 pub mod types;
 pub mod validation;
 
-use builtin::BuiltinInfo;
-use db::HirTyDB;
-use inference::Inference;
-// use lower::{BranchTy, DisciplineTy, NatureTy};
+mod lower;
+
+pub use lower::BranchKind;

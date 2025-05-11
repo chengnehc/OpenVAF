@@ -30,6 +30,7 @@ pub mod name;
 
 pub use ast::{AstNode, SourceFile};
 pub use error::SyntaxError;
+pub use name::{AsIdent, AsName, Name};
 pub use parsing::{parse, Parse};
 pub use ptr::{AstPtr, SyntaxNodePtr};
 pub use syntax_node::{SyntaxNode, SyntaxToken};

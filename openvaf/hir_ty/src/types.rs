@@ -58,19 +58,19 @@ impl_display! {
 
 impl Ty {
     pub fn unwrap_node(&self) -> NodeId {
-        let Ty::Node(id) = *self else { unreachable!("expected node, found {:?}", self) };
+        let Ty::Node(id) = *self else { unreachable!("expected node, found {self:?}") };
         id
     }
     pub fn unwrap_branch(&self) -> BranchId {
-        let Ty::Branch(id) = *self else { unreachable!("expected branch, found {:?}", self) };
+        let Ty::Branch(id) = *self else { unreachable!("expected branch, found {self:?}") };
         id
     }
     pub fn unwrap_port_flow(&self) -> NodeId {
-        let Ty::PortFlow(id) = *self else { unreachable!("expected port, found {:?}", self) };
+        let Ty::PortFlow(id) = *self else { unreachable!("expected port, found {self:?}") };
         id
     }
     pub fn unwrap_param(&self) -> ParamId {
-        let Ty::Param(_, id) = *self else { unreachable!("expected parameter, found {:?}", self) };
+        let Ty::Param(_, id) = *self else { unreachable!("expected parameter, found {self:?}") };
         id
     }
     pub fn unwrap_func(&self) -> FunctionId {

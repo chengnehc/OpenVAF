@@ -20,13 +20,12 @@ use syntax::{
 };
 use typed_index_collections::{TiSlice, TiVec};
 
-use crate::{BuiltinInfo, HirTyDB};
-
 use crate::builtin::{
-    DDX_FLOW, DDX_POT, DDX_POT_DIFF, DDX_TEMP, LIMIT_BUILTIN_FUNCTION, LIMIT_USER_FUNCTION,
-    NATURE_ACCESS_BRANCH, NATURE_ACCESS_NODES, NATURE_ACCESS_NODE_GND, NATURE_ACCESS_PORT_FLOW,
+    BuiltinInfo, DDX_FLOW, DDX_POT, DDX_POT_DIFF, DDX_TEMP, LIMIT_BUILTIN_FUNCTION,
+    LIMIT_USER_FUNCTION, NATURE_ACCESS_BRANCH, NATURE_ACCESS_NODES, NATURE_ACCESS_NODE_GND,
+    NATURE_ACCESS_PORT_FLOW,
 };
-use crate::db::Alias;
+use crate::db::{Alias, HirTyDB};
 use crate::lower::{BranchTy, DisciplineAccess};
 use crate::types::{Signature, SignatureData, Ty, TyRequirement};
 

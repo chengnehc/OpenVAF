@@ -267,9 +267,9 @@ impl Branch {
     }
     pub fn kind(self, db: &CompilationDB) -> BranchKind {
         match db.branch_info(self.id).unwrap().kind {
-            hir_ty::lower::BranchKind::PortFlow(node) => BranchKind::PortFlow(Node { id: node }),
-            hir_ty::lower::BranchKind::NodeGnd(node) => BranchKind::NodeGnd(Node { id: node }),
-            hir_ty::lower::BranchKind::Nodes(hi, lo) => {
+            hir_ty::BranchKind::PortFlow(node) => BranchKind::PortFlow(Node { id: node }),
+            hir_ty::BranchKind::NodeGnd(node) => BranchKind::NodeGnd(Node { id: node }),
+            hir_ty::BranchKind::Nodes(hi, lo) => {
                 BranchKind::Nodes(Node { id: hi }, Node { id: lo })
             }
         }

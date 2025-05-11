@@ -302,6 +302,9 @@ impl_intern!(ModuleId, ModuleLoc, intern_module, lookup_intern_module);
 // We only intern nodes, rather than ports or nets.
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub struct NodeId(salsa::InternId);
+impl_debug_display!(match NodeId{ NodeId(id) => "node{id:?}";});
+
+// The Node Id that is local to a module.
 pub type LocalNodeId = Idx<item_tree::Node>;
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NodeLoc {
@@ -326,7 +329,6 @@ impl NodeLoc {
         node.decls.iter().find(|decl| decl.discipline(&tree).is_some()).map(|it| it.ast_id(&tree))
     }
 }
-impl_debug_display!(match NodeId{ NodeId(id) => "node{:?}", id;});
 impl_intern!(NodeId, NodeLoc, intern_node, lookup_intern_node);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

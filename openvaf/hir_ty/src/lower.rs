@@ -7,7 +7,7 @@ use hir_def::{
 };
 use syntax::name::{kw, Name};
 
-use crate::HirTyDB;
+use crate::db::HirTyDB;
 
 /// Look up the base nature of a nature, or the nature reference of a discipline.
 pub fn lookup_nature(

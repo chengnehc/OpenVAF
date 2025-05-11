@@ -1,5 +1,5 @@
-SOURCE_FILE@0..184
-  MODULE_DECL@0..168
+SOURCE_FILE@0..218
+  MODULE_DECL@0..202
     MODULE_KW@0..6 "module"
     WHITESPACE@6..7 " "
     NAME@7..11
@@ -20,10 +20,10 @@ SOURCE_FILE@0..184
           IDENT@25..26 "y"
       SEMICOLON@26..27 ";"
     WHITESPACE@27..32 "\n    "
-    ANALOG_BEHAVIOR@32..158
+    ANALOG_BEHAVIOR@32..192
       ANALOG_KW@32..38 "analog"
       WHITESPACE@38..39 " "
-      BLOCK_STMT@39..158
+      BLOCK_STMT@39..192
         BEGIN_KW@39..44 "begin"
         WHITESPACE@44..53 "\n        "
         COMMENT@53..58 "// OK"
@@ -48,53 +48,78 @@ SOURCE_FILE@0..184
                   IDENT@76..77 "y"
           SEMICOLON@77..78 ";"
         WHITESPACE@78..87 "\n        "
-        COMMENT@87..110 "// TODO(JW): should err"
-        WHITESPACE@110..119 "\n        "
-        ASSIGN_STMT@119..130
-          ASSIGN@119..129
-            PATH_EXPR@119..120
-              PATH@119..120
-                IDENT@119..120 "x"
-            WHITESPACE@120..121 " "
-            EQ@121..122 "="
-            WHITESPACE@122..123 " "
-            BIN_EXPR@123..129
-              PATH_EXPR@123..124
-                PATH@123..124
-                  IDENT@123..124 "x"
-              WHITESPACE@124..125 " "
-              PLUS@125..126 "+"
-              PREFIX_EXPR@126..129
-                PLUS@126..127 "+"
-                WHITESPACE@127..128 " "
-                PATH_EXPR@128..129
-                  PATH@128..129
-                    IDENT@128..129 "y"
-          SEMICOLON@129..130 ";"
-        WHITESPACE@130..139 "\n        "
-        ASSIGN_STMT@139..150
-          ASSIGN@139..149
-            PATH_EXPR@139..140
-              PATH@139..140
-                IDENT@139..140 "x"
-            WHITESPACE@140..141 " "
-            EQ@141..142 "="
-            WHITESPACE@142..143 " "
-            BIN_EXPR@143..149
-              PATH_EXPR@143..144
-                PATH@143..144
-                  IDENT@143..144 "x"
-              WHITESPACE@144..145 " "
-              MINUS@145..146 "-"
-              PREFIX_EXPR@146..149
-                MINUS@146..147 "-"
-                WHITESPACE@147..148 " "
-                PATH_EXPR@148..149
-                  PATH@148..149
-                    IDENT@148..149 "y"
-          SEMICOLON@149..150 ";"
-        WHITESPACE@150..155 "\n    "
-        END_KW@155..158 "end"
-    WHITESPACE@158..159 "\n"
-    ENDMODULE_KW@159..168 "endmodule"
-  WHITESPACE@168..184 "\n               "
+        COMMENT@87..93 "// Err"
+        WHITESPACE@93..102 "\n        "
+        ASSIGN_STMT@102..107
+          ASSIGN@102..107
+            PATH_EXPR@102..103
+              PATH@102..103
+                IDENT@102..103 "x"
+            WHITESPACE@103..104 " "
+            EQ@104..105 "="
+            WHITESPACE@105..106 " "
+            PATH_EXPR@106..107
+              PATH@106..107
+                IDENT@106..107 "x"
+          ERROR@107..107
+        ERROR@107..109
+          WHITESPACE@107..108 " "
+          POUND@108..109 "#"
+        WHITESPACE@109..110 " "
+        EXPR_STMT@110..112
+          PATH_EXPR@110..111
+            PATH@110..111
+              IDENT@110..111 "y"
+          SEMICOLON@111..112 ";"
+        WHITESPACE@112..121 "\n        "
+        COMMENT@121..144 "// TODO(JW): should err"
+        WHITESPACE@144..153 "\n        "
+        ASSIGN_STMT@153..164
+          ASSIGN@153..163
+            PATH_EXPR@153..154
+              PATH@153..154
+                IDENT@153..154 "x"
+            WHITESPACE@154..155 " "
+            EQ@155..156 "="
+            WHITESPACE@156..157 " "
+            BIN_EXPR@157..163
+              PATH_EXPR@157..158
+                PATH@157..158
+                  IDENT@157..158 "x"
+              WHITESPACE@158..159 " "
+              PLUS@159..160 "+"
+              PREFIX_EXPR@160..163
+                PLUS@160..161 "+"
+                WHITESPACE@161..162 " "
+                PATH_EXPR@162..163
+                  PATH@162..163
+                    IDENT@162..163 "y"
+          SEMICOLON@163..164 ";"
+        WHITESPACE@164..173 "\n        "
+        ASSIGN_STMT@173..184
+          ASSIGN@173..183
+            PATH_EXPR@173..174
+              PATH@173..174
+                IDENT@173..174 "x"
+            WHITESPACE@174..175 " "
+            EQ@175..176 "="
+            WHITESPACE@176..177 " "
+            BIN_EXPR@177..183
+              PATH_EXPR@177..178
+                PATH@177..178
+                  IDENT@177..178 "x"
+              WHITESPACE@178..179 " "
+              MINUS@179..180 "-"
+              PREFIX_EXPR@180..183
+                MINUS@180..181 "-"
+                WHITESPACE@181..182 " "
+                PATH_EXPR@182..183
+                  PATH@182..183
+                    IDENT@182..183 "y"
+          SEMICOLON@183..184 ";"
+        WHITESPACE@184..189 "\n    "
+        END_KW@189..192 "end"
+    WHITESPACE@192..193 "\n"
+    ENDMODULE_KW@193..202 "endmodule"
+  WHITESPACE@202..218 "\n               "
+error : unexpected token '#'; expected ';'
