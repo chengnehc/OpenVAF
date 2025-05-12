@@ -48,7 +48,7 @@ impl BodyLowerContext<'_, '_, '_> {
             let (hi, lo) = self.lower_node_pair(&mut negate, (hi, lo), is_potential);
             branch = BranchWrite::Unnamed { hi, lo }
         };
-        // Define a supportive variable indicating whether a contribution branch is
+        // Define a supportive variable indicating whether a contribution branch is a
         // potential source. This variable can help deal with switch branches, which
         // dynamically switches between potential and flow source branch according to
         // run-time parameters.

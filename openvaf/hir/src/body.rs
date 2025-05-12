@@ -90,52 +90,13 @@ impl<'a> BodyRef<'a> {
     }
 
     pub fn get_nth_entry_expr(&self, n: usize) -> ExprId {
-        self.get_stmt(self.entry_stmts()[n]).unwrap().unwrap_expr()
+        let Stmt::Expr(id) = self.get_stmt(self.entry_stmts()[n]).unwrap() else { panic!() };
+        id
     }
 }
 
 /// Expression
 impl<'a> BodyRef<'a> {
-    /* Inference-related */
-
-    /// Returns the type that was inferred for this expression
-    pub fn expr_type(&self, expr: ExprId) -> Type {
-        self.infere.expr_types[expr].to_value().unwrap()
-    }
-
-    pub fn into_node(&self, expr: ExprId) -> Node {
-        let id = self.infere.expr_types[expr].unwrap_node();
-        Node { id }
-    }
-
-    pub fn into_branch(&self, expr: ExprId) -> Branch {
-        let id = self.infere.expr_types[expr].unwrap_branch();
-        Branch { id }
-    }
-
-    pub fn into_port_flow(&self, expr: ExprId) -> Node {
-        let id = self.infere.expr_types[expr].unwrap_port_flow();
-        Node { id }
-    }
-
-    pub fn into_parameter(&self, expr: ExprId) -> Parameter {
-        let id = self.infere.expr_types[expr].unwrap_param();
-        Parameter { id }
-    }
-
-    /// Returns whether the result of an expression needs to be cast to a
-    /// different type before use.
-    pub fn need_type_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
-        let dst = self.infere.casts.get(&expr)?;
-        let src = self.expr_type(expr);
-        debug_assert_ne!(&src, dst, "cast types must be different");
-        Some((src, dst))
-    }
-
-    pub fn get_call_signature(&self, expr: ExprId) -> Signature {
-        self.infere.resolved_signatures.get(&expr).copied().unwrap_or(Signature(u32::MAX))
-    }
-
     /* Body-related */
 
     pub fn as_literal(&self, expr: ExprId) -> Option<&'a Literal> {
@@ -145,17 +106,16 @@ impl<'a> BodyRef<'a> {
         }
     }
 
-    // AB: get integer literal
-    pub fn as_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
-        match &self.body.exprs[expr1] {
-            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii), // Int literal
-            _ => None, // not a literal or other literals
+    pub fn as_int_literal(&self, &expr: &ExprId) -> Option<i32> {
+        match &self.body.exprs[expr] {
+            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
+            _ => None,
         }
     }
 
     // AB: get integer literal with optional negative sign
-    pub fn as_signed_int_literal(&self, &expr1: &ExprId) -> Option<i32> {
-        match &self.body.exprs[expr1] {
+    pub fn as_signed_int_literal(&self, &expr: &ExprId) -> Option<i32> {
+        match &self.body.exprs[expr] {
             // Int literal
             hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
             // Int literal with `-` prefix
@@ -220,5 +180,45 @@ impl<'a> BodyRef<'a> {
                 Ref::ParamSysFun(param)
             }
         }
+    }
+
+    /* Inference-related */
+
+    /// Returns the type that was inferred for this expression
+    pub fn expr_type(&self, expr: ExprId) -> Type {
+        self.infere.expr_types[expr].to_value().unwrap()
+    }
+
+    pub fn into_node(&self, expr: ExprId) -> Node {
+        let id = self.infere.expr_types[expr].unwrap_node();
+        Node { id }
+    }
+
+    pub fn into_branch(&self, expr: ExprId) -> Branch {
+        let id = self.infere.expr_types[expr].unwrap_branch();
+        Branch { id }
+    }
+
+    pub fn into_port_flow(&self, expr: ExprId) -> Node {
+        let id = self.infere.expr_types[expr].unwrap_port_flow();
+        Node { id }
+    }
+
+    pub fn into_parameter(&self, expr: ExprId) -> Parameter {
+        let id = self.infere.expr_types[expr].unwrap_param();
+        Parameter { id }
+    }
+
+    /// Returns whether the result of an expression needs to be cast to a
+    /// different type before use.
+    pub fn need_type_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
+        let dst = self.infere.casts.get(&expr)?;
+        let src = self.expr_type(expr);
+        debug_assert_ne!(&src, dst, "cast types must be different");
+        Some((src, dst))
+    }
+
+    pub fn get_call_signature(&self, expr: ExprId) -> Signature {
+        self.infere.resolved_signatures.get(&expr).copied().unwrap_or(Signature(u32::MAX))
     }
 }

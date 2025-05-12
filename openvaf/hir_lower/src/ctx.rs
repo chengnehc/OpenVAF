@@ -179,10 +179,9 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
         }
     }
 
-    pub fn node_pair(
+    pub fn lower_node_pair(
         &mut self,
-        hi: Node,
-        lo: Option<Node>,
+        (hi, lo): (Node, Option<Node>),
         kind: impl Fn(Node, Option<Node>) -> ParamKind,
     ) -> Value {
         let hi = self.justify_node(hi);

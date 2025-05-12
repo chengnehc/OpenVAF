@@ -78,7 +78,7 @@ impl CompilationUnit {
         db.preprocess(self.root_file)
     }
 
-    /// Create an ast cache to extract information of attributes, used by simulator backend
+    /// Create an ast cache to extract the information of attributes
     pub fn ast_cache(&self, db: &CompilationDB) -> attributes::AstCache {
         attributes::AstCache::new(db, self.root_file)
     }
@@ -286,21 +286,16 @@ pub enum BranchKind {
     Nodes(Node, Node),
 }
 impl BranchKind {
-    pub fn unwrap_hi_node(self) -> Node {
+    pub fn node_pair(self) -> (Node, Option<Node>) {
         match self {
-            BranchKind::NodeGnd(hi) | BranchKind::Nodes(hi, _) => hi,
+            BranchKind::Nodes(hi, lo) => (hi, Some(lo)),
+            BranchKind::NodeGnd(node) => (node, None),
             BranchKind::PortFlow(_) => unreachable!(),
-        }
-    }
-    pub fn lo_node(self) -> Option<Node> {
-        match self {
-            BranchKind::Nodes(_, lo) => Some(lo),
-            _ => None,
         }
     }
 }
 
-/// Namely `branch_lvalue` as specified in [LRM 5.6.1]
+/// Branch write destination. Refer to `branch_lvalue` described in [LRM 5.6.1].
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum BranchWrite {
     Named(Branch),
@@ -309,11 +304,7 @@ pub enum BranchWrite {
 impl BranchWrite {
     pub fn node_pair(self, db: &CompilationDB) -> (Node, Option<Node>) {
         match self {
-            BranchWrite::Named(branch) => match branch.kind(db) {
-                BranchKind::Nodes(hi, lo) => (hi, Some(lo)),
-                BranchKind::NodeGnd(hi) => (hi, None),
-                BranchKind::PortFlow(_) => unreachable!(),
-            },
+            BranchWrite::Named(branch) => branch.kind(db).node_pair(),
             BranchWrite::Unnamed { hi, lo } => (hi, lo),
         }
     }

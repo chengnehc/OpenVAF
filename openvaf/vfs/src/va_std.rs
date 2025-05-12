@@ -104,7 +104,7 @@ const CONSTANTS_SRC: &str = r#"
 "#;
 
 /// The `constants.vams` file. (LRM Annex D.2)
-const DISCIPLINCES_SRC: &str = r#"
+const DISCIPLINES_SRC: &str = r#"
 // Copyright(c) 2009-2014 Accellera Systems Initiative Inc.
 // 1370 Trancas Street #163, Napa, CA 94558, USA.
 //
@@ -401,7 +401,7 @@ impl Vfs {
             self.add_virt_file(&format!("/std/{}", name), CONSTANTS_SRC.to_owned().into());
         }
         for name in DISCIPLINES_PATHS {
-            self.add_virt_file(&format!("/std/{}", name), DISCIPLINCES_SRC.to_owned().into());
+            self.add_virt_file(&format!("/std/{}", name), DISCIPLINES_SRC.to_owned().into());
         }
     }
 }

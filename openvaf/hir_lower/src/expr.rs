@@ -406,38 +406,39 @@ impl BodyLowerContext<'_, '_, '_> {
                 self.lower_select(cond, |_| arg0, |_| arg1)
             }
 
-            // Signal access functions
+            // Nature access functions: signal probes
             BuiltIn::flow => {
                 match_signature!(signature:
                     NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                         let hi = self.body.into_node(args[0]);
                         let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                        self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Flow(FlowKind::Unnamed{hi, lo}))
+                        self.ctxt.lower_node_pair((hi, lo), |hi, lo| ParamKind::Flow(FlowKind::Unnamed{hi, lo}))
                     },
+                    // JW: unlike potential probes, for flow probes, we do not try breaking into internal node pairs
                     NATURE_ACCESS_BRANCH => self.ctxt.use_param(ParamKind::Flow(
                         FlowKind::Branch(self.body.into_branch(args[0]))
                     )),
                     NATURE_ACCESS_PORT_FLOW => self.ctxt.use_param(ParamKind::Flow(
                         FlowKind::Port(self.body.into_port_flow(args[0]))
                     ))
+                    // AB: Do not divide flow probe.
+                    //     Flow unknowns correspond to the flow of a single parallel instance.
+                    //     HIR equation describes a single parallel instance.
+                    //     Handle $mfactor at a lower level.
+                    // let mfactor = self.ctx.use_param(ParamKind::ParamSysFun(ParamSysFun::mfactor));
+                    // return self.ctx.ins().fdiv(res, mfactor);
                 )
-                // AB: Do not divide flow probe.
-                //     Flow unknowns correspond to the flow of a single parallel instance.
-                //     HIR equation describes a single parallel instance.
-                //     Handle $mfactor at a lower level.
-                // let mfactor = self.ctx.use_param(ParamKind::ParamSysFun(ParamSysFun::mfactor));
-                // return self.ctx.ins().fdiv(res, mfactor);
             }
             BuiltIn::potential => {
                 match_signature!(signature:
                     NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
                         let hi = self.body.into_node(args[0]);
                         let lo = args.get(1).map(|&arg| self.body.into_node(arg));
-                        self.ctxt.node_pair(hi, lo, |hi, lo| ParamKind::Potential{hi, lo})
+                        self.ctxt.lower_node_pair((hi, lo), |hi, lo| ParamKind::Potential{hi, lo})
                     },
                     NATURE_ACCESS_BRANCH => {
                         let branch = self.body.into_branch(args[0]).kind(self.ctxt.db);
-                        self.ctxt.node_pair(branch.unwrap_hi_node(), branch.lo_node(),
+                        self.ctxt.lower_node_pair(branch.node_pair(),
                         |hi, lo| ParamKind::Potential{hi, lo})
                     }
                 )
@@ -459,7 +460,9 @@ impl BodyLowerContext<'_, '_, '_> {
                 let kind = match signature {
                     DDX_POT => {
                         let (kind, _) = self.ctxt.intern.params.get_index(param).unwrap();
-                        let node = kind.unwrap_potential_node();
+                        let ParamKind::Potential { hi: node, lo: None } = *kind else {
+                            unreachable!("{kind:?} is not a node potential probe")
+                        };
                         CallBackKind::NodeDerivative(node)
                     }
                     _ => CallBackKind::Derivative(param),

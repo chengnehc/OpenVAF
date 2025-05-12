@@ -120,16 +120,14 @@ impl<'a> MirBuilder<'a> {
         let body = self.module.analog_body(self.db);
         body_ctxt.with_body(body.borrow()).lower_entry_stmts();
 
-        // dbg!(body.borrow());
-
         // declare places at entry block for op variables
         for var in self.required_vars {
             ctxt.dec_place(PlaceKind::Var(var));
         }
 
         // ensure optbarriers for outputs
-        // after lowering, the function builder should now be positioned
-        // at the block before exit block, optbarriers are created here.
+        // after lowering, the function builder should be positioned at
+        // the block before exit block, optbarriers are created here.
         //
         // dbg!(&ctxt.func.cursor().position());
         ctxt.intern.outputs = ctxt
@@ -253,8 +251,7 @@ impl HirInterner {
         Self::ensure_param_(&mut self.params, func, kind)
     }
 
-    // FIXME(JW) this is to work around borrow checker,
-    // try find another more idiomatic way
+    // FIXME(JW) this is to work around borrow checker, maybe there's more idiomatic way doing this.
     pub fn ensure_param_(
         params: &mut TiMap<Param, ParamKind, Value>,
         func: &mut impl AsMut<Function>,
@@ -269,8 +266,7 @@ impl HirInterner {
         self.params.get(kind).is_some_and(|val| !func.as_ref().dfg.value_dead(*val))
     }
 
-    /// Return an iterator over the function parameters that are alive,
-    /// i.e., still used by some instruction.
+    /// Return an iterator over the function parameters that are alive, i.e., used by some instruction.
     pub fn live_params<'a>(
         &'a self,
         dfg: &'a DataFlowGraph,
@@ -281,7 +277,7 @@ impl HirInterner {
     }
 }
 
-/// Different kinds of parameters of MIR function
+/// Different kinds of MIR function parameters
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ParamKind {
     Potential { hi: Node, lo: Option<Node> },
@@ -295,19 +291,12 @@ pub enum ParamKind {
     Abstime,
     EnableIntegration,
     EnableLim,
-    HiddenState(Variable),
+    HiddenState(Variable), // TODO(JW): we now create a hidden state for every variable
     PrevState(LimitState),
     NewState(LimitState),
 }
 
 impl ParamKind {
-    fn unwrap_potential_node(&self) -> Node {
-        let ParamKind::Potential { hi, lo: None } = self else {
-            unreachable!("{self:?} is not a potential node")
-        };
-        *hi
-    }
-
     pub fn is_op_dependent(&self) -> bool {
         matches!(
             self,
@@ -350,17 +339,18 @@ impl TryFrom<FlowKind> for BranchWrite {
     }
 }
 
+/// Different kinds of places(variables) used in the MIR function.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PlaceKind {
     Var(Variable),
     FunctionReturn(hir::Function),
     FunctionArg(hir::FunctionArg),
-    /// A contribution statement LHS: source branch signal
+    /// A contribution statement LHS: source branch
     Contribute {
         branch: BranchWrite,
         is_potential: bool,
     },
-    /// A flag indicating whether branch contribution is potential source.
+    /// A flag indicating whether source branch is a potential source
     IsPotential(BranchWrite),
     /// The residual corresponding to an implicit equation
     ImplicitResidual {
@@ -391,12 +381,12 @@ impl PlaceKind {
         use PlaceKind::*;
 
         match *self {
+            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
             Var(var) => var.ty(db),
             FunctionReturn(fun) => fun.return_ty(db),
             FunctionArg(arg) => arg.ty(db),
             IsPotential(_) | CollapseImplicitEquation(_) => Type::Bool,
             Contribute { .. } | ImplicitResidual { .. } | BoundStep => Type::Real,
-            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
         }
     }
 
@@ -412,7 +402,7 @@ impl PlaceKind {
 pub struct ImplicitEquation(u32);
 impl_idx_from!(ImplicitEquation(u32));
 impl_debug_display! {
-    match ImplicitEquation {ImplicitEquation(i) => "inode{i}";}
+    match ImplicitEquation {ImplicitEquation(id) => "inode{id}";}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -457,5 +447,5 @@ impl IdtKind {
 pub struct LimitState(u32);
 impl_idx_from!(LimitState(u32));
 impl_debug_display! {
-    match LimitState {LimitState(i) => "lim_state{i}";}
+    match LimitState {LimitState(id) => "lim_state{id}";}
 }

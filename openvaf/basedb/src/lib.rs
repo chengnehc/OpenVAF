@@ -242,18 +242,18 @@ impl dyn BaseDB {
         vfs.set_file_contents(root_file, root_file_contents);
         vfs.insert_std_lib();
 
-        let include_dirs = Arc::from(vec![VfsPath::new_virtual_path("/std".to_owned())]);
-        self.set_include_dirs(root_file, include_dirs);
+        let include_dirs = vec![VfsPath::new_virtual_path("/std".to_owned())];
+        self.set_include_dirs(root_file, Arc::from(include_dirs));
 
         let macro_flags: Vec<_> = PREDEFINED_MACROS.iter().map(|x| Arc::from(*x)).collect();
         self.set_macro_flags(root_file, Arc::from(macro_flags));
 
         self.set_plugin_lints(&[]);
+
         let overwrites: Arc<[_]> = Arc::from(self.empty_global_lint_overwrites().as_ref());
         let overwrites = unsafe {
             transmute::<Arc<[Option<LintLevel>]>, Arc<TiSlice<Lint, Option<LintLevel>>>>(overwrites)
         };
-
         self.set_global_lint_overwrites(root_file, overwrites);
 
         root_file
