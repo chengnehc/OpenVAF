@@ -24,6 +24,11 @@ pub struct NatureData {
     pub attrs: Arena<NatureAttrData>,
 }
 
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct NatureAttrData {
+    pub name: Name,
+}
+
 impl NatureData {
     pub fn query(db: &dyn HirDefDB, id: NatureId) -> Arc<NatureData> {
         let loc = id.lookup(db);
@@ -47,17 +52,6 @@ impl NatureData {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct NatureAttrData {
-    pub name: Name,
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct DisciplineAttrData {
-    pub name: Name,
-    pub kind: DisciplineAttrKind,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisciplineData {
     pub name: Name,
@@ -65,6 +59,12 @@ pub struct DisciplineData {
     pub flow: Option<NatureRef>,
     pub domain: Option<Domain>,
     pub attrs: Arena<DisciplineAttrData>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct DisciplineAttrData {
+    pub name: Name,
+    pub kind: DisciplineAttrKind,
 }
 
 impl DisciplineData {
@@ -88,19 +88,6 @@ impl DisciplineData {
             domain: discipline.domain.map(|(domain, _)| domain),
             attrs,
         })
-    }
-
-    // TODO(JW) lift this out to `DisciplineTy`
-    pub fn compatible(&self, other: &DisciplineData) -> bool {
-        if self.domain.is_none() || other.domain.is_none() {
-            return true;
-        }
-        if self.potential.is_none() && self.flow.is_none()
-            || other.potential.is_none() && other.flow.is_none()
-        {
-            return self.domain == other.domain;
-        }
-        self.potential == other.potential && self.flow == other.flow && self.domain == other.domain
     }
 }
 

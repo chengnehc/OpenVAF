@@ -8,8 +8,6 @@
 //!    attached separately via id-based side map.
 //! 3. Unresolved. Paths are stored as sequences of names, and not as defs the
 //!    names refer to.
-//!
-//! See also a neighboring `body` module.
 
 use stdx::{impl_debug, Ieee64};
 

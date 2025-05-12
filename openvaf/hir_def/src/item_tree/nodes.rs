@@ -1,5 +1,3 @@
-use typed_index_collections::TiVec;
-
 use super::*;
 use crate::{
     LocalDisciplineAttrId, LocalFunctionArgId, LocalNatureAttrId, LocalNodeId, Path, Type,
@@ -10,34 +8,36 @@ use crate::{
 pub struct Nature {
     pub name: Name,
     pub parent: Option<NatureRef>,
-    // Predefined nature attributes. 'units', 'access', 'abstol' are required
-    // for base nature, that is, natures not derived from any other nature.
+    // Predefined nature attributes.
+    // 'units', 'access', 'abstol' are required for base nature（natures not derived from any other)
     pub units: Option<(String, LocalNatureAttrId)>,
     pub access: Option<(Name, LocalNatureAttrId)>,
-    // TODO(JW) abstol is not fully supported
-    pub abstol: Option<LocalNatureAttrId>,
+    pub abstol: Option<LocalNatureAttrId>, // abstol is not fully supported
+    // 'ddt_nature' and 'idt_nature' are optional
     pub ddt_nature: Option<(NatureRef, LocalNatureAttrId)>,
     pub idt_nature: Option<(NatureRef, LocalNatureAttrId)>,
-    // All attributes: pre-defined + user-defined
+    // the range of all attributes in the arean: pre-defined + user-defined
     pub attrs: IdxRange<NatureAttr>,
     pub ast_id: AstId<ast::NatureDecl>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct NatureRef {
+    pub name: Name,
+    pub kind: NatureRefKind,
 }
 /// [LRM 3.6.1.1] A derived nature can declare additional attributes or override attribute
 /// values of the parent nature, with certain restrictions for the predefined attributes.
 ///
 /// [LRM 3.6.2.6] A nature can be derived from the nature bound to the potential or flow
 /// in a discipline.
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct NatureRef {
-    pub name: Name,
-    pub kind: NatureRefKind,
-}
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
 pub enum NatureRefKind {
     Nature,
     DisciplinePotential,
     DisciplineFlow,
 }
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct NatureAttr {
     pub name: Name,
@@ -54,7 +54,7 @@ pub struct Discipline {
     pub flow: Option<(NatureRef, LocalDisciplineAttrId)>,
     // domain binding
     pub domain: Option<(Domain, LocalDisciplineAttrId)>,
-    // All attributes: pre-defined + user-defined
+    // the range of all attributes in the arena: pre-defined + user-defined
     pub attrs: IdxRange<DisciplineAttr>,
     pub ast_id: AstId<ast::DisciplineDecl>,
 }
@@ -63,6 +63,7 @@ pub enum Domain {
     Discrete,
     Continuous,
 }
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct DisciplineAttr {
     pub name: Name,
@@ -81,7 +82,7 @@ pub enum DisciplineAttrKind {
 pub struct Module {
     pub name: Name,
     pub num_ports: u32,
-    pub nodes: TiVec<LocalNodeId, Node>,
+    pub nodes: Arena<Node>,
     pub items: Vec<ModuleItem>,
     pub ast_id: AstId<ast::ModuleDecl>,
 }
@@ -251,7 +252,7 @@ pub struct AliasParam {
 pub struct Function {
     pub name: Name,
     pub ty: Type,
-    pub args: TiVec<LocalFunctionArgId, FunctionArg>,
+    pub args: Arena<FunctionArg>,
     pub items: Vec<FunctionItem>,
     pub ast_id: AstId<ast::Function>,
 }
