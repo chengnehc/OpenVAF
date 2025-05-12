@@ -1,0 +1,8 @@
+module foo
+    param real p1
+    var real v1
+module bar
+    node a = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
+    node b = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
+    param integer p2
+    var integer v2

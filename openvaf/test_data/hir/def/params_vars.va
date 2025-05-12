@@ -1,0 +1,10 @@
+module foo;
+    parameter real p1 = 1.0;
+    real v1;
+endmodule
+
+module bar(a, b);
+    inout electrical a, b;
+    parameter integer p2 = 1;
+    integer v2;
+endmodule

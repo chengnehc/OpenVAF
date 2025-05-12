@@ -24,14 +24,14 @@ pub(super) struct Context<'a> {
 impl Context<'_> {
     /* Expressions */
 
-    pub fn collect_expr_opt(&mut self, expr: Option<ast::Expr>) -> ExprId {
+    pub(super) fn collect_expr_opt(&mut self, expr: Option<ast::Expr>) -> ExprId {
         match expr {
             Some(expr) => self.collect_expr(expr),
             None => self.missing_expr(),
         }
     }
 
-    pub fn collect_expr(&mut self, expr: ast::Expr) -> ExprId {
+    pub(super) fn collect_expr(&mut self, expr: ast::Expr) -> ExprId {
         let e = match &expr {
             ast::Expr::Literal(lit) => Expr::Literal(Literal::new(lit.kind())),
             ast::Expr::PathExpr(path) => {
@@ -116,14 +116,14 @@ impl Context<'_> {
 
     /* Statements */
 
-    pub fn collect_stmt_opt(&mut self, stmt: Option<ast::Stmt>) -> StmtId {
+    pub(super) fn collect_stmt_opt(&mut self, stmt: Option<ast::Stmt>) -> StmtId {
         match stmt {
             Some(stmt) => self.collect_stmt(stmt),
             None => self.missing_stmt(),
         }
     }
 
-    pub fn collect_stmt(&mut self, stmt: ast::Stmt) -> StmtId {
+    pub(super) fn collect_stmt(&mut self, stmt: ast::Stmt) -> StmtId {
         let s = match &stmt {
             ast::Stmt::EmptyStmt(_) => Stmt::Empty,
             ast::Stmt::ExprStmt(stmt) => Stmt::Expr(self.collect_expr_opt(stmt.expr())),

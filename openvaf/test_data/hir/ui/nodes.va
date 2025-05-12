@@ -1,0 +1,9 @@
+`include "disciplines.vams"
+
+module test(foo,test);
+    electrical foo;
+    inout foo;
+    electrical bar;
+    gnd bar;
+    inout electrical test;
+endmodule
