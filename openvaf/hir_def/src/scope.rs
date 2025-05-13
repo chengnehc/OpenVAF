@@ -15,16 +15,16 @@ pub struct Scope {
     /// Which kind of `DefMap` does this scope belong to?
     pub src: DefMapSource,
     /// The scope's **local** ID to the `DefMap`
-    pub local_id: LocalScopeId,
+    pub id: LocalScopeId,
 }
 
 impl Scope {
-    pub fn from(root_file: FileId, src: DefMapSource, local_id: LocalScopeId) -> Self {
-        Self { root_file, src, local_id }
+    pub fn from(root_file: FileId, src: DefMapSource, id: LocalScopeId) -> Self {
+        Self { root_file, src, id }
     }
 
     pub fn root(root_file: FileId) -> Self {
-        Self { root_file, src: DefMapSource::Root, local_id: 0usize.into() }
+        Self { root_file, src: DefMapSource::Root, id: 0usize.into() }
     }
 
     pub fn def_map(&self, db: &dyn HirDefDB) -> Arc<DefMap> {
@@ -47,7 +47,7 @@ impl Scope {
             DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
                 self.def_map(db).resolve_root_path(&path.segments, db)
             }
-            _ => self.def_map(db).resolve_normal_path(self.local_id, &path.segments, db),
+            _ => self.def_map(db).resolve_normal_path(self.id, &path.segments, db),
         }
     }
 
@@ -63,7 +63,7 @@ impl Scope {
             DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
                 self.def_map(db).resolve_root_item_path(&path.segments, db)
             }
-            _ => self.def_map(db).resolve_normal_item_path(self.local_id, &path.segments, db),
+            _ => self.def_map(db).resolve_normal_item_path(self.id, &path.segments, db),
         }
     }
 
@@ -72,7 +72,7 @@ impl Scope {
         db: &dyn HirDefDB,
         name: &Name,
     ) -> Result<T, PathResolveError> {
-        self.def_map(db).resolve_item_name(self.local_id, name)
+        self.def_map(db).resolve_item_name(self.id, name)
     }
 
     pub fn resolve_name(
@@ -81,7 +81,7 @@ impl Scope {
         name: &Name,
     ) -> Result<ScopeItemDef, PathResolveError> {
         let def_map = self.def_map(db);
-        let mut cur_scope = self.local_id;
+        let mut cur_scope = self.id;
         loop {
             if let Some(decl) = def_map[cur_scope].declarations.get(name) {
                 return Ok(*decl);

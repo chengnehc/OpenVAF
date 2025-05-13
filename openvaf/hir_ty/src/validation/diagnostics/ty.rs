@@ -180,9 +180,10 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     ])
             }
             TypeDiagnostic::IncompatibleBranch { branch, node1, node2 } => {
-                let branch = branch.lookup(self.db.upcast());
-                let branch_range = branch.ast_ptr(self.db.upcast()).text_range();
-                let branch_name = branch.name(self.db.upcast()).to_string();
+                let db = self.db.upcast();
+                let branch = branch.lookup(db);
+                let branch_range = branch.ast_ptr(db).text_range();
+                let branch_name = branch.name(db).to_string();
 
                 IncompatibleBranchDiagnostic {
                     branch_span: parse.to_file_span(branch_range, &sm),

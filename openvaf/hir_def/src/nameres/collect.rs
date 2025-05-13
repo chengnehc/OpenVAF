@@ -66,7 +66,7 @@ impl DefMap {
 
     pub fn function_query(db: &dyn HirDefDB, fun: FunctionId) -> Arc<DefMap> {
         let FunctionLoc { scope, id } = fun.lookup(db);
-        let Scope { root_file, local_id: parent_module, .. } = scope;
+        let Scope { root_file, id: parent_module, .. } = scope;
 
         let tree = &db.item_tree(root_file);
         let def_map = DefMap {

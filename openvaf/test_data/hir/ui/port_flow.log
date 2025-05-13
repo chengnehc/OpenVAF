@@ -1,0 +1,22 @@
+error[L016]: no direction declared for port 'b'
+  --> /port_flow.va:3:17
+  |
+3 | module test (a, b);
+  |                 ^ 'b' is declared here without direction
+  |
+  = if port_without_direction is set to warn/allow the direciton will be set to 'inout'.
+  = note: port directions are always required by the language standard.
+  = port_without_direction is set to deny by default
+    use a CLI argument or an attribute to overwrite
+
+error: access of port-branch potential
+  --> /port_flow.va:8:20
+  |
+6 |     branch(<b>) port_flow_b;
+  |     ------------------------ info: 'port_flow_b' was declared here
+7 |     analog begin
+8 |         I(a, b) <+ V(port_flow_b);
+  |                    ^^^^^^^^^^^^^^ invalid potential access
+  |
+  = help: only the flow of port branches like <foo> can be accessed
+

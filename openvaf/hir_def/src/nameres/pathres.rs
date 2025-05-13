@@ -93,7 +93,7 @@ impl DefMap {
                     DefMapSource::Block(block) => {
                         // switch to the def map of block's parent
                         let parent = block.lookup(db).parent;
-                        cur_scope = parent.local_id;
+                        cur_scope = parent.id;
                         arc = parent.def_map(db);
                         def_map = &arc;
                     }
@@ -116,7 +116,7 @@ impl DefMap {
         // to visit the scope corresponding to it, so that we could resolve other segments
         // within this scope.
         cur_scope = match def {
-            ScopeItemDef::ModuleId(module) => module.lookup(db).scope.local_id,
+            ScopeItemDef::ModuleId(module) => module.lookup(db).scope.id,
             ScopeItemDef::BlockId(block) => {
                 let Some(block_map) = db.block_def_map(block) else {
                     let name = segments[1].clone();

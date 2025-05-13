@@ -71,7 +71,7 @@ impl TypeValidator<'_> {
 
     fn verify_module(&mut self, module: ModuleId) {
         let loc = module.lookup(self.db.upcast());
-        let scope = loc.scope.local_id;
+        let scope = loc.scope.id;
         for item in self.def_map[scope].declarations.values() {
             match item {
                 ScopeItemDef::NodeId(node) => self.verify_node(*node, loc),
@@ -172,51 +172,43 @@ impl TypeValidator<'_> {
         // TODO(JW): multiple grounds
     }
 
-    fn verify_branch(&mut self, branch_: BranchId) {
-        let branch_data = self.db.branch_data(branch_);
-        let kind = &branch_data.kind;
-        let branch = branch_.lookup(self.db.upcast());
+    fn verify_branch(&mut self, id: BranchId) {
+        let branch = id.lookup(self.db.upcast());
         let scope = branch.scope;
-        match kind {
+        match &self.db.branch_data(id).kind {
             hir_def::BranchKind::Missing => (),
+            hir_def::BranchKind::NodeGnd(node) => {
+                self.resolve_node(node, scope, &branch);
+            }
             hir_def::BranchKind::PortFlow(port) => {
                 if let Some(node) = self.resolve_node(port, scope, &branch) {
-                    let node_ = self.db.node_data(node);
-                    if !node_.is_input && !node_.is_output {
+                    if !self.db.node_data(node).is_port() {
                         let src = branch.ast_id(self.db.upcast()).into();
                         self.report(TypeDiagnostic::ExpectedPort { node, src });
                     }
                 }
-            }
-            hir_def::BranchKind::NodeGnd(node) => {
-                self.resolve_node(node, scope, &branch);
             }
             hir_def::BranchKind::Nodes(node1, node2) => {
                 let node1 = self.resolve_node(node1, scope, &branch);
                 let node2 = self.resolve_node(node2, scope, &branch);
                 let (Some(node1), Some(node2)) = (node1, node2) else { return };
 
-                let discipline1 = self.db.node_discipline(node1);
-                let discipline2 = self.db.node_discipline(node2);
-                // fast path
-                if discipline1 == discipline2 {
+                let d1 = self.db.node_discipline(node1);
+                let d2 = self.db.node_discipline(node2);
+                if d1 == d2 {
+                    // fast path
                     return;
                 }
-                let (Some(d1), Some(d2)) = (discipline1, discipline2) else { return };
+                let (Some(d1), Some(d2)) = (d1, d2) else { return };
                 if !self.db.discipline_info(d1).compatible(d2, self.db) {
-                    self.report(TypeDiagnostic::IncompatibleBranch {
-                        branch: branch_,
-                        node1,
-                        node2,
-                    })
+                    self.report(TypeDiagnostic::IncompatibleBranch { branch: id, node1, node2 })
                 }
             }
         };
     }
 
-    fn resolve_node(&mut self, node: &Path, scope: Scope, branch: &BranchLoc) -> Option<NodeId> {
-        let node = scope.resolve_item_path::<NodeId>(self.db.upcast(), node);
-        match node {
+    fn resolve_node(&mut self, path: &Path, scope: Scope, branch: &BranchLoc) -> Option<NodeId> {
+        match scope.resolve_item_path::<NodeId>(self.db.upcast(), path) {
             Ok(node) => Some(node),
             Err(err) => {
                 let src = SyntaxNodePtr::new(

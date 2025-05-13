@@ -469,7 +469,7 @@ impl Scope {
         match self {
             Scope::Module(module) => {
                 let loc = module.lookup(db);
-                (loc.scope.local_id, loc.def_map(db))
+                (loc.scope.id, loc.def_map(db))
             }
             Scope::Block(block) => {
                 let def_map =

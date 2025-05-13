@@ -1,0 +1,10 @@
+`include "disciplines.vams"
+
+module test (a, b);
+    inout electrical a;
+    electrical b;
+    branch(<b>) port_flow_b;
+    analog begin
+        I(a, b) <+ V(port_flow_b);
+    end
+endmodule

@@ -1,0 +1,29 @@
+error: multiple direction declarations for port 'a'
+  --> /port_decls.va:6:5
+  |
+4 |     inout electrical a;
+  |     ------------------ first declared here
+5 |     electrical b;
+6 |     input a;
+  |     ^^^^^^^ redeclared here
+
+error: multiple discipline declarations for net 'a'
+  --> /port_decls.va:7:5
+  |
+4 |     inout electrical a;
+  |     ------------------ first declared here
+  .
+7 |     thermal a;
+  |     ^^^^^^^^^^ redeclared here
+
+error[L016]: no direction declared for port 'b'
+  --> /port_decls.va:3:17
+  |
+3 | module test (a, b);
+  |                 ^ 'b' is declared here without direction
+  |
+  = if port_without_direction is set to warn/allow the direciton will be set to 'inout'.
+  = note: port directions are always required by the language standard.
+  = port_without_direction is set to deny by default
+    use a CLI argument or an attribute to overwrite
+

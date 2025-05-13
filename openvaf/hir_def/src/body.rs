@@ -173,7 +173,7 @@ impl Body {
             DefWithBodyId::FunctionId(id) => {
                 let scope =
                     Scope::from(root_file, DefMapSource::Function(id), LocalScopeId::from(0u32));
-                debug_assert_eq!(scope.local_id, db.function_def_map(id).entry_scope());
+                debug_assert_eq!(scope.id, db.function_def_map(id).entry_scope());
 
                 let fun = id.lookup(db);
                 let ast_id = fun.ast_id(db);

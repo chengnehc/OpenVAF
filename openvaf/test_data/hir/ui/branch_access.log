@@ -1,5 +1,5 @@
 error: access of port-branch potential
-   --> /branch_access_errors.va:11:17
+   --> /branch_access.va:11:17
    |
 11 |         I(a) <+ V(<b>);
    |                 ^^^^^^ invalid potential access
@@ -7,7 +7,7 @@ error: access of port-branch potential
    = help: only the flow of port branches like <foo> can be accessed
 
 error: nodes 'a' and 't' of branch '(a,t)' have incompatible disciplines
-   --> /branch_access_errors.va:13:9
+   --> /branch_access.va:13:9
    |
  4 |     electrical a, b, c, d;
    |     ---------------------- help: 'a' declared with discipline 'electrical'
@@ -20,7 +20,7 @@ error: nodes 'a' and 't' of branch '(a,t)' have incompatible disciplines
    = help: disciplines are compatible if their potential and flow natures have the same 'units' attribute
 
 error: 'potential' access of branch without potential
-   --> /branch_access_errors.va:17:15
+   --> /branch_access.va:17:15
    |
 17 |         foo = potential(e, f);
    |               ^^^^^^^^^^^^^^^ access of branch without potential
@@ -28,7 +28,7 @@ error: 'potential' access of branch without potential
    = help: this branch belongs to a discipline without 'potential' attribute
 
 error: illegal access of branch '(e)'
-   --> /branch_access_errors.va:18:20
+   --> /branch_access.va:18:20
    |
 18 |         I(a, b) <+ V(e);
    |                    ^^^^ 'Voltage' is not a valid nature for this branch
@@ -36,7 +36,7 @@ error: illegal access of branch '(e)'
    = help: use 'I' to access 'Current' (flow)
 
 error: illegal access of branch '(t)'
-   --> /branch_access_errors.va:19:20
+   --> /branch_access.va:19:20
    |
 19 |         V(a, b) <+ V(t);
    |                    ^^^^ 'Voltage' is not a valid nature for this branch
@@ -44,7 +44,7 @@ error: illegal access of branch '(t)'
    = help: use 'Temp' or 'Pwr' to access 'Temperature' (potential) or 'Power' (flow)
 
 warning[L017]: Current probe always returns zero
-   --> /branch_access_errors.va:15:25
+   --> /branch_access.va:15:25
    |
 15 |         V(a, b) <+ 10 * I(c, d);
    |                         ^^^^^^^ always returns zero
