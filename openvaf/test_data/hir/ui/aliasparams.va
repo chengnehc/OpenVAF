@@ -1,0 +1,18 @@
+`include "disciplines.vams"
+
+module test(a, b);
+    inout electrical a, b;
+    parameter real dtemp = 20.0;
+    parameter real vth0 = 0.7;
+    real v;
+
+    // OK
+    aliasparam trise = dtemp;
+    aliasparam vtho = vth0;
+    aliasparam m = $mfactor;
+
+    // Err
+    aliasparam not_found = foo;
+    aliasparam not_param = v;
+    aliasparam not_param_sysfun = $temperature;
+endmodule

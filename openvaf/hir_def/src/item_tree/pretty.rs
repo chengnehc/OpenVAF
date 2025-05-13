@@ -123,7 +123,7 @@ impl Printer<'_> {
                 }
                 ModuleItem::AliasParam(param) => {
                     let param = &self.tree[param];
-                    writeln!(self, "aliasparam {} = {:?}", param.name, param.src)?;
+                    writeln!(self, "aliasparam {} = {:?}", param.name, param.param_ref)?;
                 }
             }
         }

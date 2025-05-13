@@ -242,7 +242,7 @@ pub struct Param {
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct AliasParam {
     pub name: Name,
-    pub src: Option<Path>,
+    pub param_ref: Name,
     pub ast_id: AstId<ast::AliasParam>,
 }
 

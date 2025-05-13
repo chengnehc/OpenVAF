@@ -6,8 +6,7 @@ use stdx::{impl_from, impl_from_typed};
 use arena::{Arena, Idx};
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use syntax::name::Name;
-use syntax::{AstNode, TextRange};
+use syntax::{AstNode, Name, TextRange};
 
 use crate::builtin::{self, BuiltIn, ParamSysFun};
 use crate::db::HirDefDB;
@@ -18,14 +17,14 @@ use crate::{
 
 mod collect;
 mod diagnostics;
-mod path;
+mod pathres;
 mod pretty;
 
 use diagnostics::DefDiagnostic;
 pub use diagnostics::{DefDiagnosticWrapped, PathResolveError};
-pub use path::ResolvedPath;
+pub use pathres::ResolvedPath;
 
-/// Contains the results of name resolution.
+/// Definition map. It contains the results of name resolution.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct DefMap {
     /// where does this `DefMap` come from?
@@ -112,11 +111,12 @@ pub struct ScopeData {
 /// See: LRM 3.13 Namespace and 6.8 Scope rules
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum ScopeOrigin {
-    Root,                 // Root scope, where natures and disciplines are defined.
-    Module(ModuleId),     // scopes created by modules
-    Block(BlockId),       // scopes created by named blocks
-    Function(FunctionId), // scopes created by analog functions
+    Root,
+    Module(ModuleId),
+    Block(BlockId),
+    Function(FunctionId),
 }
+
 impl_from_typed! {
     Module(ModuleId),
     Block(BlockId),
@@ -240,35 +240,3 @@ static BUILTIN_ITEM_DEF: Lazy<IndexMap<Name, ScopeItemDef, ahash::RandomState>> 
     builtin::insert_builtin_def(&mut defs);
     defs
 });
-
-impl DefMap {
-    pub fn resolve_item_name<T: ScopeItemKind>(
-        &self,
-        scope: LocalScopeId,
-        name: &Name,
-    ) -> Result<T, PathResolveError> {
-        let item = self.resolve_name(scope, name)?;
-        item.try_into().map_err(|_| PathResolveError::ExpectedItemKind {
-            name: name.clone(),
-            expected: T::NAME,
-            found: item.into(),
-        })
-    }
-
-    fn resolve_name(
-        &self,
-        scope: LocalScopeId,
-        name: &Name,
-    ) -> Result<ScopeItemDef, PathResolveError> {
-        let mut cur_scope = scope;
-        loop {
-            if let Some(decl) = self[cur_scope].declarations.get(name) {
-                return Ok(*decl);
-            }
-            let Some(parent) = self[cur_scope].parent else {
-                return Err(PathResolveError::NotFound { name: name.clone() });
-            };
-            cur_scope = parent;
-        }
-    }
-}

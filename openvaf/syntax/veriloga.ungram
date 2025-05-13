@@ -296,15 +296,14 @@ Range =
   ('(' | '[') lower:Expr ':' upper:Expr (')' | ']')
 
 // A.2.1.1
-// according to LRM, aliasparam cannot contain attributes, but it's OK as-is anyway.
 AliasParam =
-  AttrList* 'aliasparam' name:Name '=' src:ParamRef ';'
+  'aliasparam' Name '=' ParamRef ';'
 
 // # Note:
 // - aliasparam should not use OOMR (should only refer to parameters within the same module)
 // - only hierarchical parameter sysfuns are valid aliases
 ParamRef =
-  Path | SysFun
+  NameRef | SysFun
 
 // A.2.6
 // A.2.8
@@ -329,25 +328,6 @@ FunctionArg =
 AnalogBehavior =
   AttrList* 'analog' 'initial'? Stmt
 
-
-//*************************//
-//        Paramset         //
-//*************************//
-
-// A.1.9
-// ParamsetDecl = 
-//   AttrList* 'paramset' Name NameRef ';'
-//   ParamsetItem*
-//   'endparamset'
-// 
-// ParamsetItem =
-//   ParamDecl
-// | AliasParam
-// | VarDecl
-// | ParamsetStmt
-// 
-// ParamsetStmt = 
-//   '.' Name '=' (ParamRef | Expr) ';'
 
 ArrayExpr =
   '\'{' (Expr (',' Expr)*)? '}'

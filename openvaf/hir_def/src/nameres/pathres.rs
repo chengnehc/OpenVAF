@@ -77,8 +77,6 @@ impl DefMap {
         let mut def_map = self;
         let mut arc;
 
-        // dbg!(&segments);
-
         // resolve the first segment
         let name = segments.first().unwrap();
         let def = loop {

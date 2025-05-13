@@ -2,10 +2,8 @@ use std::sync::Arc;
 use stdx::Upcast;
 
 use hir_def::{
-    db::HirDefDB,
-    nameres::{ResolvedPath, ScopeItemDef},
-    AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup, NatureAttrId, NatureId, NodeId,
-    ParamId, ParamSysFun, Type,
+    db::HirDefDB, nameres::ScopeItemDef, AliasParamId, BranchId, DefWithBodyId, DisciplineId,
+    Lookup, NatureAttrId, NatureId, NodeId, ParamId, ParamSysFun, Type,
 };
 
 use crate::inference::Inference;
@@ -71,16 +69,14 @@ pub enum Alias {
     ParamSysFun(ParamSysFun),
 }
 
-// TODO validate
-// TODO allow $mfactor etc
 fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Option<Alias> {
-    let loc = id.lookup(db.upcast());
-    let data = db.aliasparam_data(id);
-    use ScopeItemDef::*;
-    match loc.scope.resolve_path(db.upcast(), data.src.as_ref()?).ok()? {
-        ResolvedPath::ScopeItemDef(ParamId(param)) => Some(Alias::Param(param)),
-        ResolvedPath::ScopeItemDef(ParamSysFun(param)) => Some(Alias::ParamSysFun(param)),
-        ResolvedPath::ScopeItemDef(AliasParamId(alias)) => db.resolve_alias(alias),
+    let alias = db.aliasparam_data(id);
+    let scope = id.lookup(db.upcast()).scope;
+
+    match scope.resolve_name(db.upcast(), &alias.param_ref).ok()? {
+        ScopeItemDef::ParamId(param) => Some(Alias::Param(param)),
+        ScopeItemDef::ParamSysFun(fun) => Some(Alias::ParamSysFun(fun)),
+        ScopeItemDef::AliasParamId(alias) => db.resolve_alias(alias),
         _ => None,
     }
 }
@@ -95,9 +91,11 @@ fn resolve_alias_recover(
 }
 
 fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
-    let def_map = id.lookup(db.upcast()).module.lookup(db.upcast()).scope.def_map(db.upcast());
     let node = db.node_data(id);
     let discipline = node.discipline.as_ref()?;
+    let db = db.upcast();
+    let def_map = id.lookup(db).module.lookup(db).def_map(db);
+
     def_map.resolve_item_name(def_map.root_scope(), discipline).ok()
 }
 

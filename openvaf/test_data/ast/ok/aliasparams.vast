@@ -1,0 +1,65 @@
+SOURCE_FILE@0..144
+  MODULE_DECL@0..144
+    MODULE_KW@0..6 "module"
+    WHITESPACE@6..7 " "
+    NAME@7..11
+      IDENT@7..11 "test"
+    SEMICOLON@11..12 ";"
+    WHITESPACE@12..17 "\n    "
+    PARAM_DECL@17..45
+      PARAMETER_KW@17..26 "parameter"
+      WHITESPACE@26..27 " "
+      TYPE@27..31
+        REAL_KW@27..31 "real"
+      WHITESPACE@31..32 " "
+      PARAM@32..44
+        NAME@32..37
+          IDENT@32..37 "dtemp"
+        WHITESPACE@37..38 " "
+        EQ@38..39 "="
+        WHITESPACE@39..40 " "
+        LITERAL@40..44
+          STD_REAL_NUMBER@40..44 "20.0"
+      SEMICOLON@44..45 ";"
+    WHITESPACE@45..50 "\n    "
+    PARAM_DECL@50..76
+      PARAMETER_KW@50..59 "parameter"
+      WHITESPACE@59..60 " "
+      TYPE@60..64
+        REAL_KW@60..64 "real"
+      WHITESPACE@64..65 " "
+      PARAM@65..75
+        NAME@65..69
+          IDENT@65..69 "vth0"
+        WHITESPACE@69..70 " "
+        EQ@70..71 "="
+        WHITESPACE@71..72 " "
+        LITERAL@72..75
+          STD_REAL_NUMBER@72..75 "0.7"
+      SEMICOLON@75..76 ";"
+    WHITESPACE@76..81 "\n    "
+    ALIAS_PARAM@81..106
+      ALIASPARAM_KW@81..91 "aliasparam"
+      WHITESPACE@91..92 " "
+      NAME@92..97
+        IDENT@92..97 "trise"
+      WHITESPACE@97..98 " "
+      EQ@98..99 "="
+      WHITESPACE@99..100 " "
+      NAME_REF@100..105
+        IDENT@100..105 "dtemp"
+      SEMICOLON@105..106 ";"
+    WHITESPACE@106..111 "\n    "
+    ALIAS_PARAM@111..134
+      ALIASPARAM_KW@111..121 "aliasparam"
+      WHITESPACE@121..122 " "
+      NAME@122..126
+        IDENT@122..126 "vtho"
+      WHITESPACE@126..127 " "
+      EQ@127..128 "="
+      WHITESPACE@128..129 " "
+      NAME_REF@129..133
+        IDENT@129..133 "vth0"
+      SEMICOLON@133..134 ";"
+    WHITESPACE@134..135 "\n"
+    ENDMODULE_KW@135..144 "endmodule"

@@ -104,6 +104,14 @@ impl AsName for ast::SysFun {
         Name::resolve(self.sysfun_token().unwrap().text())
     }
 }
+impl AsName for ast::ParamRef {
+    fn as_name(&self) -> Name {
+        match self {
+            ast::ParamRef::NameRef(name) => name.as_name(),
+            ast::ParamRef::SysFun(fun) => fun.as_name(),
+        }
+    }
+}
 
 pub trait AsIdent {
     fn as_ident(&self) -> Option<Name>;

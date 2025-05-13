@@ -18,7 +18,7 @@ pub(super) fn aliasparam_decl(p: &mut Parser, m: Marker) {
         p.bump_any();
         m.complete(p, SYS_FUN);
     } else {
-        path(p);
+        name_ref_r(p, TokenSet::unique(T![;]));
     }
     p.eat(T![;]);
     m.complete(p, ALIAS_PARAM);

@@ -1,0 +1,6 @@
+module test;
+    parameter real dtemp = 20.0;
+    parameter real vth0 = 0.7;
+    aliasparam trise = dtemp;
+    aliasparam vtho = vth0;
+endmodule

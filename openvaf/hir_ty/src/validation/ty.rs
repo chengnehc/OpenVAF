@@ -235,34 +235,21 @@ impl TypeValidator<'_> {
         }
     }
 
+    // TODO: better errors for cycles
     fn verify_alias(&mut self, alias: AliasParamId) {
         if self.db.resolve_alias(alias).is_none() {
-            let loc = alias.lookup(self.db.upcast());
-            let data = self.db.aliasparam_data(alias);
-            if let Some(path) = data.src.as_ref() {
-                match loc.scope.resolve_path(self.db.upcast(), path) {
-                    // TODO: better errors for cycles
-                    Ok(found) => {
-                        let src = SyntaxNodePtr::new(
-                            loc.source(self.db.upcast()).src().unwrap().syntax(),
-                        );
-                        self.report(TypeDiagnostic::PathError {
-                            err: PathResolveError::ExpectedItemKind {
-                                name: path.segments.last().unwrap().clone(),
-                                expected: "parameter",
-                                found,
-                            },
-                            src,
-                        })
-                    }
-                    Err(err) => {
-                        let src = SyntaxNodePtr::new(
-                            loc.source(self.db.upcast()).src().unwrap().syntax(),
-                        );
-                        self.report(TypeDiagnostic::PathError { err, src })
-                    }
-                }
-            }
+            let name = &self.db.aliasparam_data(alias).param_ref;
+            let db = self.db.upcast();
+            let err = match alias.lookup(db).scope.resolve_name(db, name) {
+                Err(err) => err,
+                Ok(found) => PathResolveError::ExpectedItemKind {
+                    name: name.clone(),
+                    expected: "parameter",
+                    found: found.into(),
+                },
+            };
+            let src = SyntaxNodePtr::new(alias.lookup(db).source(db).param_ref().unwrap().syntax());
+            self.report(TypeDiagnostic::PathError { err, src });
         }
     }
 

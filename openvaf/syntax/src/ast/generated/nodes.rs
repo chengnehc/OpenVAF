@@ -495,14 +495,13 @@ impl BranchDecl {
 pub struct AliasParam {
     pub(crate) syntax: SyntaxNode,
 }
-impl ast::AttrsOwner for AliasParam {}
 impl AliasParam {
     pub fn aliasparam_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, T![aliasparam])
     }
     pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
     pub fn eq_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![=]) }
-    pub fn src(&self) -> Option<ParamRef> { support::child(&self.syntax) }
+    pub fn param_ref(&self) -> Option<ParamRef> { support::child(&self.syntax) }
     pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
 }
 
@@ -654,7 +653,7 @@ pub enum ModuleItem {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ParamRef {
-    Path(Path),
+    NameRef(NameRef),
     SysFun(SysFun),
 }
 
@@ -1517,8 +1516,8 @@ impl AstNode for ModuleItem {
         }
     }
 }
-impl From<Path> for ParamRef {
-    fn from(node: Path) -> ParamRef { ParamRef::Path(node) }
+impl From<NameRef> for ParamRef {
+    fn from(node: NameRef) -> ParamRef { ParamRef::NameRef(node) }
 }
 impl From<SysFun> for ParamRef {
     fn from(node: SysFun) -> ParamRef { ParamRef::SysFun(node) }
@@ -1526,13 +1525,13 @@ impl From<SysFun> for ParamRef {
 impl AstNode for ParamRef {
     fn can_cast(kind: SyntaxKind) -> bool {
         match kind {
-            PATH | SYS_FUN => true,
+            NAME_REF | SYS_FUN => true,
             _ => false,
         }
     }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         let res = match syntax.kind() {
-            PATH => ParamRef::Path(Path { syntax }),
+            NAME_REF => ParamRef::NameRef(NameRef { syntax }),
             SYS_FUN => ParamRef::SysFun(SysFun { syntax }),
             _ => return None,
         };
@@ -1540,7 +1539,7 @@ impl AstNode for ParamRef {
     }
     fn syntax(&self) -> &SyntaxNode {
         match self {
-            ParamRef::Path(it) => &it.syntax,
+            ParamRef::NameRef(it) => &it.syntax,
             ParamRef::SysFun(it) => &it.syntax,
         }
     }

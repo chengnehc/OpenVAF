@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arena::IdxRange;
 use basedb::{AstId, AstIdMap, FileId};
-use syntax::ast::{self, ParamRef, PathSegmentKind};
+use syntax::ast::{self, PathSegmentKind};
 use syntax::name::{kw, AsIdent, AsName};
 use syntax::{AstNode, WalkEvent};
 use typed_index_collections::TiVec;
@@ -412,15 +412,11 @@ impl Context {
         decl: ast::AliasParam,
         dst: &mut Vec<T>,
     ) {
-        if let (Some(name), Some(src)) = (decl.name(), decl.src()) {
+        if let (Some(name), Some(param)) = (decl.name(), decl.param_ref()) {
             let ast_id = self.ast_id_map.id_of(&decl);
-            let src = match src {
-                ParamRef::Path(path) => Path::resolve(path),
-                ParamRef::SysFun(fun) => Some(Path::from_ident(fun.as_name())),
-            };
-            let param = AliasParam { name: name.as_name(), src, ast_id };
-            let param = self.tree.data.aliasparams.push_and_get_key(param);
-            dst.push(param.into())
+            let param = AliasParam { name: name.as_name(), param_ref: param.as_name(), ast_id };
+            let id = self.tree.data.aliasparams.push_and_get_key(param);
+            dst.push(id.into())
         }
     }
 

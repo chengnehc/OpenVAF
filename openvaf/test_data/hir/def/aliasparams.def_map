@@ -1,0 +1,12 @@
+test = module;
+    $angle = hierarchical parameter system function;
+    $hflip = hierarchical parameter system function;
+    $mfactor = hierarchical parameter system function;
+    $vflip = hierarchical parameter system function;
+    $xposition = hierarchical parameter system function;
+    $yposition = hierarchical parameter system function;
+    dtemp = parameter;
+    m = parameter;
+    trise = parameter;
+    vth0 = parameter;
+    vtho = parameter;

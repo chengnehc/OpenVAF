@@ -1,6 +1,5 @@
 //! See Also:
-//!
-//! https://docs.rs/ra_ap_hir_def/latest/ra_ap_hir_def/index.html
+//! - https://docs.rs/ra_ap_hir_def/latest/ra_ap_hir_def/index.html
 
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -19,6 +18,7 @@ mod builtin;
 mod data;
 mod item_tree;
 mod path;
+mod scope;
 mod types;
 
 pub use body::{Expr, Stmt};
@@ -28,69 +28,11 @@ pub use item_tree::{
     ItemTreeNode, Module, Nature, NatureAttr, NatureRef, NatureRefKind, NodeTypeDecl, Param, Var,
 };
 pub use path::Path;
+pub use scope::Scope;
 pub use types::Type;
 
 use db::HirDefDB;
-use nameres::{DefMap, DefMapSource, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind};
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub struct Scope {
-    pub root_file: FileId,
-    /// Which kind of `DefMap` does this scope correspond to?
-    pub src: DefMapSource,
-    /// The scope's ID **local** to the `DefMap`
-    pub local_id: nameres::LocalScopeId,
-}
-
-impl Scope {
-    pub fn from(root_file: FileId, src: DefMapSource, local_id: nameres::LocalScopeId) -> Self {
-        Self { root_file, src, local_id }
-    }
-
-    pub fn root(root_file: FileId) -> Self {
-        Self { root_file, src: DefMapSource::Root, local_id: 0usize.into() }
-    }
-
-    pub fn def_map(&self, db: &dyn HirDefDB) -> Arc<DefMap> {
-        match self.src {
-            DefMapSource::Root => db.root_def_map(self.root_file),
-            DefMapSource::Block(block) => db.block_def_map(block).unwrap(),
-            DefMapSource::Function(fun) => db.function_def_map(fun),
-        }
-    }
-
-    pub fn resolve_path(
-        &self,
-        db: &dyn HirDefDB,
-        path: &Path,
-    ) -> Result<ResolvedPath, PathResolveError> {
-        match self.src {
-            DefMapSource::Block(_) if path.is_root => {
-                db.root_def_map(self.root_file).resolve_root_path(&path.segments, db)
-            }
-            DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
-                self.def_map(db).resolve_root_path(&path.segments, db)
-            }
-            _ => self.def_map(db).resolve_normal_path(self.local_id, &path.segments, db),
-        }
-    }
-
-    pub fn resolve_item_path<T: ScopeItemKind>(
-        &self,
-        db: &dyn HirDefDB,
-        path: &Path,
-    ) -> Result<T, PathResolveError> {
-        match self.src {
-            DefMapSource::Block(_) if path.is_root => {
-                db.root_def_map(self.root_file).resolve_root_item_path(&path.segments, db)
-            }
-            DefMapSource::Function(_) | DefMapSource::Root if path.is_root => {
-                self.def_map(db).resolve_root_item_path(&path.segments, db)
-            }
-            _ => self.def_map(db).resolve_normal_item_path(self.local_id, &path.segments, db),
-        }
-    }
-}
+use nameres::{DefMap, ScopeItemDef};
 
 #[derive(Debug)]
 pub struct ItemLoc<N: ItemTreeNode> {
@@ -145,7 +87,7 @@ impl<N: ItemTreeNode> Hash for ItemLoc<N> {
     }
 }
 
-// Traits for interning and looking up items in DB.
+// Traits for interning and looking up items in item tree.
 pub trait Intern {
     type Id;
     fn intern(self, db: &dyn HirDefDB) -> Self::Id;
@@ -299,12 +241,10 @@ pub struct ModuleId(salsa::InternId);
 pub type ModuleLoc = ItemLoc<Module>;
 impl_intern!(ModuleId, ModuleLoc, intern_module, lookup_intern_module);
 
-// We only intern nodes, rather than ports or nets.
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub struct NodeId(salsa::InternId);
 impl_debug_display!(match NodeId{ NodeId(id) => "node{id:?}";});
 
-// The Node Id that is local to a module.
 pub type LocalNodeId = Idx<item_tree::Node>;
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NodeLoc {

@@ -10,7 +10,7 @@ use crate::db::HirDefDB;
 use crate::item_tree::{BranchKind, DisciplineAttrKind, Domain, FunctionArg, NatureRef};
 use crate::{
     AliasParamId, BranchId, DisciplineId, FunctionId, Intern, ItemTree, LocalFunctionArgId,
-    LocalNatureAttrId, Lookup, ModuleId, NatureId, NodeId, NodeLoc, ParamId, Path, Type, VarId,
+    LocalNatureAttrId, Lookup, ModuleId, NatureId, NodeId, NodeLoc, ParamId, Type, VarId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,7 +192,7 @@ impl ParamData {
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct AliasParamData {
     pub name: Name,
-    pub src: Option<Path>,
+    pub param_ref: Name,
 }
 
 impl AliasParamData {
@@ -200,7 +200,7 @@ impl AliasParamData {
         let loc = id.lookup(db);
         let param = &loc.item_tree(db)[loc.id];
 
-        Arc::new(AliasParamData { name: param.name.clone(), src: param.src.clone() })
+        Arc::new(AliasParamData { name: param.name.clone(), param_ref: param.param_ref.clone() })
     }
 }
 

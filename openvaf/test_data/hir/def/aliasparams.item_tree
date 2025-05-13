@@ -1,0 +1,6 @@
+module test
+    param real dtemp
+    param real vth0
+    aliasparam trise = Name("dtemp")
+    aliasparam vtho = Name("vth0")
+    aliasparam m = Name("$mfactor")
