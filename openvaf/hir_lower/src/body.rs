@@ -67,7 +67,8 @@ impl<'c1, 'c2> BodyLowerContext<'_, 'c1, 'c2> {
 }
 
 impl MainLowerContext<'_, '_> {
-    pub fn lower_expr_body(&mut self, body: BodyRef, i: usize) -> Value {
-        BodyLowerContext { ctxt: self, body, path: "" }.lower_expr(body.get_nth_entry_expr(i))
+    pub fn lower_first_stmt_expr(&mut self, body: BodyRef) -> Value {
+        let expr = body.get_nth_entry_expr(0);
+        BodyLowerContext { ctxt: self, body, path: "" }.lower_expr(expr)
     }
 }

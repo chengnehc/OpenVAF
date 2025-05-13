@@ -22,7 +22,7 @@ impl HirInterner {
         for (kind, param) in params.iter() {
             if let ParamKind::HiddenState(var) = *kind {
                 if !ctxt.dfg().value_dead(*param) {
-                    let val = ctxt.lower_expr_body(var.init(db).borrow(), 0);
+                    let val = ctxt.lower_first_stmt_expr(var.init(db).borrow());
                     ctxt.dfg_mut().replace_uses(*param, val);
                 }
             }

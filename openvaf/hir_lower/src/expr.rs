@@ -45,7 +45,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 Ref::ParamSysFun(param) => self.ctxt.use_param(ParamKind::ParamSysFun(param)),
                 Ref::FunctionArg(fun) => self.ctxt.use_place(PlaceKind::FunctionArg(fun)),
                 Ref::FunctionReturn(fun) => self.ctxt.use_place(PlaceKind::FunctionReturn(fun)),
-                Ref::NatureAttr(attr) => self.lower_nth_expr_in_body(attr.value(self.ctxt.db), 0),
+                Ref::NatureAttr(attr) => self.lower_first_stmt_expr(attr.value(self.ctxt.db)),
             },
             Expr::Literal(lit) => match *lit {
                 Literal::Int(val) => self.ctxt.iconst(val),
@@ -86,8 +86,8 @@ impl BodyLowerContext<'_, '_, '_> {
         val
     }
 
-    fn lower_nth_expr_in_body(&mut self, body: Body, i: usize) -> Value {
-        let expr = body.borrow().get_nth_entry_expr(i);
+    fn lower_first_stmt_expr(&mut self, body: Body) -> Value {
+        let expr = body.borrow().get_nth_entry_expr(0);
         BodyLowerContext { ctxt: self.ctxt, body: body.borrow(), path: self.path }.lower_expr(expr)
     }
 

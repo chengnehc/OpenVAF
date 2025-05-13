@@ -108,7 +108,7 @@ impl HirInterner {
                     }
                     param_val
                 } else {
-                    let default_val = ctxt.lower_expr_body(init.borrow(), 0);
+                    let default_val = ctxt.lower_first_stmt_expr(init.borrow());
                     if build_stores {
                         // JW: Default value range check should be promoted to compile-time,
                         // as default value is written in Verilog-A source code, instead of being

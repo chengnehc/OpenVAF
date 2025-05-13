@@ -90,7 +90,9 @@ impl<'a> BodyRef<'a> {
     }
 
     pub fn get_nth_entry_expr(&self, n: usize) -> ExprId {
-        let Stmt::Expr(id) = self.get_stmt(self.entry_stmts()[n]).unwrap() else { panic!() };
+        let Stmt::Expr(id) = self.get_stmt(self.entry_stmts()[n]).unwrap() else {
+            unreachable!("The entry stmt is not a expression.")
+        };
         id
     }
 }
