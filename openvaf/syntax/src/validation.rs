@@ -16,14 +16,14 @@ pub(crate) fn validate(root: &SyntaxNode, errors: &mut Vec<SyntaxError>) {
                 ast::Name(name) => validate_name(name, errors),
                 ast::Path(path) => validate_path(path, errors),
                 ast::Literal(lit) => validate_literal(lit, errors),
-                ast::DisciplineDecl(decl) => validate_discipline_decl(decl, errors),
                 ast::NatureDecl(decl) => validate_nature_decl(decl, errors),
                 ast::NatureAttr(attr) => validate_nature_attr(attr, errors),
+                ast::DisciplineDecl(decl) => validate_discipline_decl(decl, errors),
                 ast::ModuleDecl(module) => validate_module(module, errors),
-                ast::ParamDecl(param) => validate_param(param, errors),
                 ast::BranchDecl(branch) => validate_branch(branch, errors),
-                ast::Function(fun) => validate_function(fun, errors),
+                ast::ParamDecl(param) => validate_param(param, errors),
                 ast::BlockStmt(block) => validate_block(block, errors),
+                ast::Function(fun) => validate_function(fun, errors),
                 _ => validate_net_type_token(node, errors)
             }
         }
@@ -103,6 +103,58 @@ fn is_valid_inf_position(s: SyntaxNode) -> bool {
     false
 }
 
+fn validate_nature_decl(nature: ast::NatureDecl, errors: &mut Vec<SyntaxError>) {
+    if let Some(parent) = nature.parent() {
+        check_nature_path(&parent, errors)
+    }
+    for attr in nature.attrs() {
+        if let (Some(name), Some(val)) = (attr.name(), attr.val()) {
+            let name_text = name.syntax().text();
+            if name_text == "ddt_nature" || name_text == "idt_nature" {
+                check_nature_ref_attr(&val, errors)
+            } else if name_text == "access" && val.as_raw_ident().is_none() {
+                errors.push(SyntaxError::IllegalAttribute {
+                    attr: "access",
+                    expected: "an identifier",
+                    range: val.syntax().text_range(),
+                })
+            }
+        }
+    }
+}
+
+fn check_nature_ref_attr(val: &Expr, errors: &mut Vec<SyntaxError>) {
+    if let Expr::PathExpr(path) = val {
+        if let Some(path) = path.path() {
+            check_nature_path(&path, errors)
+        }
+    } else if val.syntax().children_with_tokens().all(|t| t.kind() != SyntaxKind::ERROR) {
+        errors.push(SyntaxError::IllegalNatureIdent { range: val.syntax().text_range() })
+    }
+}
+
+fn check_nature_path(path: &ast::Path, errors: &mut Vec<SyntaxError>) {
+    if let Some(segment) = path.segment_token() {
+        match path.qualifiers().count() {
+            0 => (),
+            1 if matches!(segment.text(), "ddt_nature" | "idt_nature") => (),
+            _ => errors.push(SyntaxError::IllegalNatureIdent { range: path.syntax().text_range() }),
+        }
+    }
+}
+
+fn validate_nature_attr(attr: ast::NatureAttr, errors: &mut Vec<SyntaxError>) {
+    if attr.name().is_some_and(|name| name.text() == "units") {
+        if let Some(Expr::Literal(literal)) = attr.val() {
+            if !matches!(literal.kind(), LiteralKind::StrLit(_)) {
+                errors.push(SyntaxError::UnitsExpectedStringLiteral {
+                    range: literal.syntax().text_range(),
+                })
+            }
+        }
+    }
+}
+
 // TODO(JW): this needs further consideration
 fn validate_discipline_decl(discipline: ast::DisciplineDecl, errors: &mut Vec<SyntaxError>) {
     for attr in discipline.discipline_attrs() {
@@ -151,7 +203,6 @@ fn validate_discipline_decl(discipline: ast::DisciplineDecl, errors: &mut Vec<Sy
                     "idt_nature" | "ddt_nature" if is_overwrite => {
                         check_nature_ref_attr(&val, errors)
                     }
-
                     "domain" => {
                         let src = val.syntax().text();
                         if src != "continuous" && src != "discrete" {
@@ -166,58 +217,6 @@ fn validate_discipline_decl(discipline: ast::DisciplineDecl, errors: &mut Vec<Sy
                     _ => (),
                 }
             }
-        }
-    }
-}
-
-fn validate_nature_attr(attr: ast::NatureAttr, errors: &mut Vec<SyntaxError>) {
-    if attr.name().is_some_and(|name| name.text() == "units") {
-        if let Some(Expr::Literal(literal)) = attr.val() {
-            if !matches!(literal.kind(), LiteralKind::StrLit(_)) {
-                errors.push(SyntaxError::UnitsExpectedStringLiteral {
-                    range: literal.syntax().text_range(),
-                })
-            }
-        }
-    }
-}
-
-fn validate_nature_decl(nature: ast::NatureDecl, errors: &mut Vec<SyntaxError>) {
-    if let Some(parent) = nature.parent() {
-        check_nature_path(&parent, errors)
-    }
-    for attr in nature.attrs() {
-        if let (Some(name), Some(val)) = (attr.name(), attr.val()) {
-            let name_text = name.syntax().text();
-            if name_text == "ddt_nature" || name_text == "idt_nature" {
-                check_nature_ref_attr(&val, errors)
-            } else if name_text == "access" && val.as_raw_ident().is_none() {
-                errors.push(SyntaxError::IllegalAttribute {
-                    attr: "access",
-                    expected: "an identifier",
-                    range: val.syntax().text_range(),
-                })
-            }
-        }
-    }
-}
-
-fn check_nature_ref_attr(val: &Expr, errors: &mut Vec<SyntaxError>) {
-    if let Expr::PathExpr(path) = val {
-        if let Some(path) = path.path() {
-            check_nature_path(&path, errors)
-        }
-    } else if val.syntax().children_with_tokens().all(|t| t.kind() != SyntaxKind::ERROR) {
-        errors.push(SyntaxError::IllegalNatureIdent { range: val.syntax().text_range() })
-    }
-}
-
-fn check_nature_path(path: &ast::Path, errors: &mut Vec<SyntaxError>) {
-    if let Some(segment) = path.segment_token() {
-        match path.qualifiers().count() {
-            0 => (),
-            1 if matches!(segment.text(), "ddt_nature" | "idt_nature") => (),
-            _ => errors.push(SyntaxError::IllegalNatureIdent { range: path.syntax().text_range() }),
         }
     }
 }
@@ -308,24 +307,18 @@ fn validate_branch(decl: ast::BranchDecl, errors: &mut Vec<SyntaxError>) {
             }
         }
         2 => {
-            let arg1 = arg_list.args().next().unwrap();
-            let arg2 = arg_list.args().nth(1).unwrap();
-
-            let mut illegal_nodes = Vec::new();
-            if arg1.as_path().is_none() {
-                illegal_nodes.push(arg1.syntax().text_range())
-            }
-            if arg2.as_path().is_none() {
-                illegal_nodes.push(arg2.syntax().text_range())
-            }
+            let illegal_nodes: Vec<_> = arg_list
+                .args()
+                .filter_map(|arg| arg.as_path().is_none().then_some(arg.syntax().text_range()))
+                .collect();
 
             if !illegal_nodes.is_empty() {
                 errors.push(SyntaxError::IllegalBranchNodeExpr { single: false, illegal_nodes })
             }
         }
         cnt => errors.push(SyntaxError::IllegalBranchNodeCnt {
-            cnt,
             arg_list: arg_list.syntax().text_range(),
+            cnt,
         }),
     }
 }

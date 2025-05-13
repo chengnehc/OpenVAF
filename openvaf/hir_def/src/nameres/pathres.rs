@@ -28,8 +28,8 @@ impl DefMap {
         let resolved_path = self.resolve_normal_path(scope, segments, db)?;
         let res: Result<ScopeItemDef, _> = resolved_path.clone().try_into();
         if let Ok(item) = res {
-            if let Ok(res) = item.try_into() {
-                return Ok(res);
+            if let Ok(item) = item.try_into() {
+                return Ok(item);
             }
         }
         Err(PathResolveError::ExpectedItemKind {

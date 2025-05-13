@@ -15,6 +15,37 @@ pub enum SyntaxError {
         missing_delimiter: bool,
     },
 
+    /* Name */
+    ReservedIdentifier {
+        src: SyntaxNodePtr,
+        compat: bool,
+        name: String,
+    },
+
+    /* Path */
+    IllegalRootSegment {
+        path_segment: TextRange,
+        prefix: Option<TextRange>,
+    },
+
+    /* Literal */
+    IllegalInfToken {
+        range: TextRange,
+    },
+    UnitsExpectedStringLiteral {
+        range: TextRange,
+    },
+
+    /* Nature */
+    IllegalNatureIdent {
+        range: TextRange,
+    },
+    IllegalAttribute {
+        range: TextRange,
+        attr: &'static str,
+        expected: &'static str,
+    },
+
     /* Discipline */
     SurplusToken {
         found: SyntaxKind,
@@ -29,10 +60,45 @@ pub enum SyntaxError {
         range: TextRange,
     },
 
-    /* Path */
-    IllegalRootSegment {
-        path_segment: TextRange,
-        prefix: Option<TextRange>,
+    /* Module */
+    DuplicatePort {
+        pos: Vec<TextRange>,
+        name: String,
+    },
+    PortNotDeclaredInModule {
+        head: TextRange,
+        pos: TextRange,
+        name: String,
+    },
+    MixedModuleHead {
+        module_ports: AstPtr<ast::ModulePorts>,
+    },
+    IllegalBodyPorts {
+        head: TextRange,
+        body_ports: Vec<TextRange>,
+    },
+
+    /* Net type */
+    IllegalNetType {
+        found: String,
+        range: TextRange,
+    },
+
+    /* Branch */
+    IllegalBranchNodeCnt {
+        arg_list: TextRange,
+        cnt: usize,
+    },
+    IllegalBranchNodeExpr {
+        single: bool,
+        illegal_nodes: Vec<TextRange>,
+    },
+
+    /* Parameter */
+    RangeConstraintForNonNumericParameter {
+        name: String,
+        range: TextRange,
+        ty: TextRange,
     },
 
     /* Block */
@@ -57,72 +123,6 @@ pub enum SyntaxError {
     FuncWithoutBody {
         fun: TextRange,
     },
-
-    /* Branch declaration */
-    IllegalBranchNodeCnt {
-        arg_list: TextRange,
-        cnt: usize,
-    },
-    IllegalBranchNodeExpr {
-        single: bool,
-        illegal_nodes: Vec<TextRange>,
-    },
-
-    /* Literal */
-    IllegalInfToken {
-        range: TextRange,
-    },
-    UnitsExpectedStringLiteral {
-        range: TextRange,
-    },
-
-    /* Nature */
-    IllegalNatureIdent {
-        range: TextRange,
-    },
-    IllegalAttribute {
-        range: TextRange,
-        attr: &'static str,
-        expected: &'static str,
-    },
-
-    /* Name */
-    ReservedIdentifier {
-        src: SyntaxNodePtr,
-        compat: bool,
-        name: String,
-    },
-
-    /* Module port */
-    DuplicatePort {
-        pos: Vec<TextRange>,
-        name: String,
-    },
-    PortNotDeclaredInModule {
-        head: TextRange,
-        pos: TextRange,
-        name: String,
-    },
-    MixedModuleHead {
-        module_ports: AstPtr<ast::ModulePorts>,
-    },
-    IllegalBodyPorts {
-        head: TextRange,
-        body_ports: Vec<TextRange>,
-    },
-
-    /* Net type */
-    IllegalNetType {
-        found: String,
-        range: TextRange,
-    },
-
-    /* Parameter */
-    RangeConstraintForNonNumericParameter {
-        name: String,
-        range: TextRange,
-        ty: TextRange,
-    },
 }
 
 use SyntaxError::*;
@@ -130,27 +130,27 @@ use SyntaxError::*;
 impl_display! {
     match SyntaxError{
         UnexpectedToken{expected, found, ..} => "unexpected token {}; expected {}", found, expected;
+        ReservedIdentifier{name, ..} => "reserved keyword '{name}' was used as an identifier";
+        IllegalRootSegment{..} =>  "$root is only allowed as a prefix";
+        IllegalInfToken{..} => "unexpected token 'inf'; expected an expression";
+        UnitsExpectedStringLiteral{..} => "'units' attribute must be a string literal";
+        IllegalNatureIdent{..} => "illegal nature identifier";
+        IllegalAttribute{attr, ..} => "illegal value provided for {} attribute", attr;
         SurplusToken{found, ..} => "unexpected token {}", found;
         MissingToken{expected, ..} => "unexpected token; expected {}", expected;
-        IllegalRootSegment{..} =>  "$root is only allowed as a prefix";
+        IllegalDisciplineAttrIdent{..} => "illegal discipline attribute identifier!";
+        DuplicatePort{name, ..} => "port '{name}' was declared multiple times!";
+        MixedModuleHead{..} => "module header contains mix of port references and port declarations";
+        IllegalBodyPorts{..} => "ports declared in module head and body";
+        PortNotDeclaredInModule{name, ..} => "port '{name}' was not declared in the module head";
+        IllegalNetType{found, ..} => "{} nets are currently not supported", found;
+        IllegalBranchNodeCnt{cnt, ..} => "branch declaration require 1 or 2 nets; found {cnt}";
+        IllegalBranchNodeExpr{..} => "illegal expr was used to declare a branch node!";
+        RangeConstraintForNonNumericParameter{name, ..} => "non-numeric parameter '{name}' has range bounds";
         BlockDeclsAfterStmt{..}  => "declarations in blocks are only allowed before the first stmt";
         BlockDeclsWithoutScope{..} => "declarations in blocks require an explicit scope";
         ItemsAfterFuncBody{..} => "functions may not contain any items after the function body";
         MultipleFuncBodies{..} => "functions may only contain one body";
         FuncWithoutBody{..} => "function is missing a body";
-        IllegalBranchNodeCnt{cnt, ..} => "branch declaration require 1 or 2 nets; found {}", cnt;
-        IllegalBranchNodeExpr{..} => "illegal expr was used to declare a branch node!";
-        IllegalInfToken{..} => "unexpected token 'inf'; expected an expression";
-        UnitsExpectedStringLiteral{..} => "'units' attribute must be a string literal";
-        IllegalDisciplineAttrIdent{..} => "illegal discipline attribute identifier!";
-        IllegalNatureIdent{..} => "illegal nature identifier";
-        IllegalAttribute{attr, ..} => "illegal value provided for {} attribute", attr;
-        ReservedIdentifier{name, ..} => "reserved keyword '{}' was used as an identifier", name;
-        DuplicatePort{name, ..} => "port '{}' was declared multiple times!", name;
-        MixedModuleHead{..} => "module header contains mix of port references and port declarations";
-        IllegalBodyPorts{..} => "ports declared in module head and body";
-        IllegalNetType{found, ..} => "{} nets are currently not supported!", found;
-        RangeConstraintForNonNumericParameter{name, ..} => "non-numeric parameter '{}' has range bounds", name;
-        PortNotDeclaredInModule{name, ..} => "port '{name}' was not declared in the module head";
     }
 }

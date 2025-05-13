@@ -23,8 +23,8 @@ impl_display! {
     match PathResolveError{
         NotFound{name} => "'{name}' was not found in the current scope";
         NotFoundIn{name, scope} => "'{name}' was not found in '{scope}'";
-        ExpectedScope{name, found} => "expected a scope but found {} '{}'", found.item_kind(), name;
-        ExpectedItemKind{name, expected, found} => "expected {} but found {} '{}'", expected, found, name;
+        ExpectedScope{name, found} => "expected a scope but found {} '{name}'", found.item_kind();
+        ExpectedItemKind{name, expected, found} => "expected {} but found {} '{name}'", expected, found;
         ExpectedNatureAttrIdent{found} => "expected a nature attribute identifier but found path {}", pretty::List::path(found.clone());
     }
 }
