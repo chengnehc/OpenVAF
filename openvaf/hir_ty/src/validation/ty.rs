@@ -44,26 +44,17 @@ impl TypeValidator<'_> {
         def: Def,
         wrap_err: impl Fn(DuplicateItem<Attr, Def>) -> TypeDiagnostic,
     ) {
-        // This is quadratic (actually its n(n+1)/2). But disciplines and nature usually only have very few (below 5)
-        // attributes so this is probably faster than allocating a HashMap. If this ever becomes a
-        // problem just use a HashMap instead
-        for (id, attr) in attrs.iter_enumerated() {
-            let mut duplicates =
-                attrs.iter_enumerated().filter_map(
-                    |it| {
-                        if it.1 == attr {
-                            Some(it.0)
-                        } else {
-                            None
-                        }
-                    },
-                );
-            if duplicates.next().unwrap() != id {
+        // This is quadratic (actually its n(n+1)/2). But disciplines and nature usually only have
+        // very few (below 5) attributes so this is probably faster than allocating a HashMap.
+        // If this ever becomes a problem just use a HashMap instead
+        for (idx, attr) in attrs.iter_enumerated() {
+            let mut duplicates = attrs.iter_enumerated().filter(|it| it.1 == attr).map(|it| it.0);
+            if duplicates.next().unwrap() != idx {
                 continue;
             }
             let duplicates: Vec<_> = duplicates.collect();
             if !duplicates.is_empty() {
-                let err = DuplicateItem { src: def, first: id, subsequent: duplicates };
+                let err = DuplicateItem { src: def, first: idx, subsequent: duplicates };
                 self.report(wrap_err(err))
             }
         }
