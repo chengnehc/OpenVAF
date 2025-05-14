@@ -1,6 +1,16 @@
 use super::*;
 use items::MODULE_ITEM_OR_ATTR_RECOVERY;
 
+pub(super) fn param_ref(p: &mut Parser) {
+    if p.at(T![sysfun]) {
+        let m = p.start();
+        p.bump_any();
+        m.complete(p, SYS_FUN);
+    } else {
+        name_ref_r(p, TokenSet::unique(T![;]));
+    }
+}
+
 pub(super) fn param_decl(p: &mut Parser, m: Marker) {
     p.bump_any(); // bump the parameter/localparam keyword
     eat_ty(p);
@@ -13,13 +23,7 @@ pub(super) fn aliasparam_decl(p: &mut Parser, m: Marker) {
     p.bump(T![aliasparam]);
     name_r(p, TokenSet::new(&[T![;], T![=]]));
     p.expect(T![=]);
-    if p.at(T![sysfun]) {
-        let m = p.start();
-        p.bump_any();
-        m.complete(p, SYS_FUN);
-    } else {
-        name_ref_r(p, TokenSet::unique(T![;]));
-    }
+    param_ref(p);
     p.eat(T![;]);
     m.complete(p, ALIAS_PARAM);
 }
