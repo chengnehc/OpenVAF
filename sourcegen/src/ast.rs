@@ -414,12 +414,13 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
                     Self::SYSFUN => "system function identifier",
                     Self::WHITESPACE => "whitespace",
                     Self::COMMENT => "comment",
-                    Self::FUNCTION => "analog function decl.",
                     Self::PORT_DECL => "port decl.",
                     Self::NET_DECL => "net decl.",
                     Self::BRANCH_DECL => "branch decl.",
                     Self::VAR_DECL => "variable decl.",
                     Self::PARAM_DECL => "parameter decl.",
+                    Self::FUNCTION => "analog function decl.",
+                    Self::FUNCTION_ARG => "analog function argument",
                     Self::ANALOG_BEHAVIOR => "analog procedural block",
                     _ => return std::fmt::Debug::fmt(self, f)
                 };

@@ -1,0 +1,37 @@
+error: function is missing a body
+  --> /analog_func.va:3:5
+  |  
+3 | /     analog function real foo;
+4 | |         input x;
+5 | |         real x;
+6 | |     endfunction
+  | \---------------^ function body is missing
+
+error: functions may not contain any items after the function body
+   --> /analog_func.va:21:9
+   |  
+11 | /         begin
+12 | |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
+13 | |         end
+   | \-----------' help: move all declarations before this statement
+   . |
+21 |           output y;
+   |           ^^^^^^^^^ analog function arguments are not allowed after the function body
+22 |           real y;
+   |           ^^^^^^^ variable decl.s are not allowed after the function body
+23 |           parameter real p=0;
+   |           ^^^^^^^^^^^^^^^^^^^ parameter decl.s are not allowed after the function body
+
+error: functions may only contain one body
+   --> /analog_func.va:16:9
+   |    
+11 |   /         begin
+12 |   |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
+13 |   |         end
+   |   \-----------' help: add these statements to this block
+   .   |
+16 | /           begin
+17 | |               ;
+18 | |           end
+   | \-------------^ only one body per function is allowed
+

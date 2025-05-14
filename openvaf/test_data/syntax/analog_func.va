@@ -1,0 +1,25 @@
+module test;
+    // function without body
+    analog function real foo;
+        input x;
+        real x;
+    endfunction
+
+    analog function real hypsmooth;
+        input x, c;
+        real x, c;
+        begin
+            hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
+        end
+
+        // multiple function bodies
+        begin
+            ;
+        end
+
+        // items after function body
+        output y;
+        real y;
+        parameter real p=0;
+    endfunction
+endmodule
