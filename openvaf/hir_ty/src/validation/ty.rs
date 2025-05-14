@@ -1,9 +1,8 @@
 use std::iter;
 
 use hir_def::{
-    nameres::{PathResolveError, ScopeItemDef},
-    AliasParamId, BranchId, BranchLoc, DisciplineId, ModuleId, ModuleLoc, NatureId, NodeId,
-    NodeTypeDecl, Path, Scope,
+    nameres::ScopeItemDef, AliasParamId, BranchId, BranchLoc, DisciplineId, ModuleId, ModuleLoc,
+    NatureId, NodeId, NodeTypeDecl, ParamId, Path, Scope,
 };
 use syntax::{ast::ArgListOwner, AstNode, SyntaxNodePtr};
 use typed_index_collections::TiSlice;
@@ -60,12 +59,11 @@ impl TypeValidator<'_> {
         }
     }
 
-    fn verify_module(&mut self, module: ModuleId) {
-        let loc = module.lookup(self.db.upcast());
-        let scope = loc.scope.id;
-        for item in self.def_map[scope].declarations.values() {
+    fn verify_module(&mut self, id: ModuleId) {
+        let module = id.lookup(self.db.upcast());
+        for item in self.def_map[module.scope.id].declarations.values() {
             match item {
-                ScopeItemDef::NodeId(node) => self.verify_node(*node, loc),
+                ScopeItemDef::NodeId(node) => self.verify_node(*node, module),
                 ScopeItemDef::BranchId(branch) => self.verify_branch(*branch),
                 ScopeItemDef::AliasParamId(alias) => self.verify_alias(*alias),
                 _ => (),
@@ -73,21 +71,21 @@ impl TypeValidator<'_> {
         }
     }
 
-    fn verify_node(&mut self, node: NodeId, module: ModuleLoc) {
-        let loc = node.lookup(self.db.upcast());
-        let node_ = &self.item_tree[module.id].nodes[loc.id];
-        if node_.decls.is_empty() {
+    fn verify_node(&mut self, id: NodeId, module: ModuleLoc) {
+        let node = id.lookup(self.db.upcast());
+        let node = &self.item_tree[module.id].nodes[node.id];
+        if node.decls.is_empty() {
             self.report(TypeDiagnostic::PortWithoutDirection {
-                decl: node_.ast_id,
-                name: node_.name.clone(),
+                decl: node.ast_id,
+                name: node.name.clone(),
             });
             self.report(TypeDiagnostic::NodeWithoutDiscipline {
-                decl: node_.ast_id,
-                name: node_.name.clone(),
+                decl: node.ast_id,
+                name: node.name.clone(),
             });
             return; // Do not print other diagnostics here would just lead to duplications
         }
-        let mut directions = node_.decls.iter().filter_map(|decl| {
+        let mut directions = node.decls.iter().filter_map(|decl| {
             if let NodeTypeDecl::Port(p) = decl {
                 Some(self.item_tree[*p].ast_id)
             } else {
@@ -98,19 +96,19 @@ impl TypeValidator<'_> {
             let duplicates: Vec<_> = directions.collect();
             if !duplicates.is_empty() {
                 self.report(TypeDiagnostic::MultipleDirections(DuplicateItem {
-                    src: node,
+                    src: id,
                     first,
                     subsequent: duplicates,
                 }))
             }
-        } else if node_.decls[0].ast_id(self.item_tree) != node_.ast_id {
+        } else if node.decls[0].ast_id(self.item_tree) != node.ast_id {
             self.report(TypeDiagnostic::PortWithoutDirection {
-                decl: node_.ast_id,
-                name: node_.name.clone(),
+                decl: node.ast_id,
+                name: node.name.clone(),
             })
         }
 
-        let mut disciplines = node_.decls.iter().filter_map(|it| {
+        let mut disciplines = node.decls.iter().filter_map(|it| {
             it.discipline(self.item_tree).as_ref().map(|discipline| (it, discipline))
         });
 
@@ -135,32 +133,30 @@ impl TypeValidator<'_> {
                 disciplines.map(|(decl, _)| decl.ast_id(self.item_tree)).collect();
             if !duplicates.is_empty() {
                 self.report(TypeDiagnostic::MultipleDisciplines(DuplicateItem {
-                    src: node,
+                    src: id,
                     first: decl.ast_id(self.item_tree),
                     subsequent: duplicates,
                 }))
             }
         } else {
             self.report(TypeDiagnostic::NodeWithoutDiscipline {
-                decl: node_.ast_id,
-                name: node_.name.clone(),
+                decl: node.ast_id,
+                name: node.name.clone(),
             });
         }
 
-        let mut gnd_declarations = node_.decls.iter().filter(|it| it.is_gnd(self.item_tree));
+        let mut gnd_declarations = node.decls.iter().filter(|it| it.is_gnd(self.item_tree));
 
         if let Some(first) = gnd_declarations.next() {
             let duplicates: Vec<_> = gnd_declarations.map(|it| it.ast_id(self.item_tree)).collect();
             if !duplicates.is_empty() {
                 self.report(TypeDiagnostic::MultipleDisciplines(DuplicateItem {
-                    src: node,
+                    src: id,
                     first: first.ast_id(self.item_tree),
                     subsequent: duplicates,
                 }))
             }
         }
-
-        // TODO(JW): multiple grounds
     }
 
     fn verify_branch(&mut self, id: BranchId) {
@@ -219,19 +215,13 @@ impl TypeValidator<'_> {
     }
 
     // TODO: better errors for cycles
-    fn verify_alias(&mut self, alias: AliasParamId) {
-        if self.db.resolve_alias(alias).is_none() {
-            let name = &self.db.aliasparam_data(alias).param_ref;
+    fn verify_alias(&mut self, id: AliasParamId) {
+        if self.db.resolve_alias(id).is_none() {
+            let name = &self.db.aliasparam_data(id).param_ref;
             let db = self.db.upcast();
-            let err = match alias.lookup(db).scope.resolve_name(db, name) {
-                Err(err) => err,
-                Ok(found) => PathResolveError::ExpectedItemKind {
-                    name: name.clone(),
-                    expected: "parameter",
-                    found: found.into(),
-                },
-            };
-            let src = SyntaxNodePtr::new(alias.lookup(db).source(db).param_ref().unwrap().syntax());
+            let alias = id.lookup(db);
+            let err = alias.scope.resolve_item_name::<ParamId>(db, name).unwrap_err();
+            let src = SyntaxNodePtr::new(alias.source(db).param_ref().unwrap().syntax());
             self.report(TypeDiagnostic::PathError { err, src });
         }
     }
