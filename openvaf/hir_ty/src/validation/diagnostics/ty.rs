@@ -152,8 +152,10 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
             TypeDiagnostic::ExpectedPort { node, src } => {
                 let span = parse.to_file_span(ast_id_map.get_erased(src).text_range(), &sm);
-                let decl = node.lookup(self.db.upcast()).ast_id(self.db.upcast());
-                let decl = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &sm);
+                let decl = parse.to_file_span(
+                    node.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).text_range(),
+                    &sm,
+                );
                 let node_name = &self.db.node_data(node).name;
 
                 Report::error()

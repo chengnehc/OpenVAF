@@ -22,7 +22,7 @@ use crate::item_tree::{
 };
 use crate::{
     BlockId, BlockLoc, DisciplineLoc, FunctionArgLoc, FunctionId, FunctionLoc, Intern, ItemLoc,
-    Lookup, ModuleLoc, NatureAttrLoc, NatureLoc, NodeLoc, Scope,
+    Lookup, ModuleLoc, NatureAccess, NatureAttrLoc, NatureLoc, NodeLoc, Scope,
 };
 
 use super::{DefDiagnostic, DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItem, ScopeOrigin};
@@ -46,7 +46,7 @@ impl DefMap {
     pub fn block_query(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
         let BlockLoc { parent, ast_id } = block.lookup(db);
         let tree = &db.item_tree(parent.root_file);
-        let items = &tree[ast_id].items;
+        let items = &tree.blocks[&ast_id].items;
         if items.is_empty() {
             // fast path for block scopes containing no items
             return None;
@@ -105,20 +105,20 @@ impl Collector<'_> {
             match *item {
                 RootItem::Nature(id) => {
                     let name = self.tree[id].name.clone();
-                    let nature_def = NatureLoc { root_file, id }.intern(self.db);
-                    self.insert_def(nature_def, root_scope, name);
-                    if let Some((name, attr_id)) = self.tree[id].access.clone() {
-                        // special treatment for nature access function
-                        let attr_def =
-                            NatureAttrLoc { nature: nature_def, id: attr_id }.intern(self.db);
-                        let access_def = ScopeItem::NatureAccess(attr_def.into());
-                        self.insert_def(access_def, root_scope, name)
+                    let nature = NatureLoc { root_file, id }.intern(self.db);
+                    self.insert_def(nature, root_scope, name);
+
+                    // lift nature 'access' attribute out as it is frequently used
+                    if let Some((name, id)) = self.tree[id].access.clone() {
+                        let attr = NatureAttrLoc { nature, id }.intern(self.db);
+                        let access = ScopeItem::NatureAccess(NatureAccess(attr));
+                        self.insert_def(access, root_scope, name)
                     }
                 }
                 RootItem::Discipline(id) => {
                     let name = self.tree[id].name.clone();
-                    let def = DisciplineLoc { root_file, id }.intern(self.db);
-                    self.insert_def(def, root_scope, name);
+                    let discipline = DisciplineLoc { root_file, id }.intern(self.db);
+                    self.insert_def(discipline, root_scope, name);
                 }
                 RootItem::Module(id) => self.collect_module(id, root_scope),
             }
@@ -304,8 +304,10 @@ impl Collector<'_> {
         block: AstId<ast::BlockStmt>,
         parent_scope: LocalScopeId,
     ) {
-        let name =
-            self.tree[block].name.clone().expect("should only create DefMap for named blocks");
+        let name = self.tree.blocks[&block]
+            .name
+            .clone()
+            .expect("should only create DefMap for named blocks");
         let parent = Scope::from(self.root_file, self.def_map.src, parent_scope);
         let block = BlockLoc { parent, ast_id: block }.intern(self.db);
         self.insert_def(block, parent_scope, name);

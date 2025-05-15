@@ -8,18 +8,18 @@ use syntax::ast::BlockStmt;
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Nature {
     pub name: Name,
+    pub ast_id: AstId<ast::NatureDecl>,
     pub parent: Option<NatureRef>,
-    // Predefined nature attributes.
-    // 'units', 'access', 'abstol' are required for base nature（natures not derived from any other)
+    // Predefined nature attributes
+    // 'units', 'access', 'abstol' are required for base nature
     pub units: Option<(String, LocalNatureAttrId)>,
     pub access: Option<(Name, LocalNatureAttrId)>,
     pub abstol: Option<LocalNatureAttrId>, // abstol is not fully supported
     // 'ddt_nature' and 'idt_nature' are optional
     pub ddt_nature: Option<(NatureRef, LocalNatureAttrId)>,
     pub idt_nature: Option<(NatureRef, LocalNatureAttrId)>,
-    // the range of all attributes in the arean: pre-defined + user-defined
+    // index range of attributes in the shared arena
     pub attrs: IdxRange<NatureAttr>,
-    pub ast_id: AstId<ast::NatureDecl>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
@@ -48,14 +48,14 @@ pub struct NatureAttr {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Discipline {
     pub name: Name,
+    pub ast_id: AstId<ast::DisciplineDecl>,
     // nature binding
     pub potential: Option<(NatureRef, LocalDisciplineAttrId)>,
     pub flow: Option<(NatureRef, LocalDisciplineAttrId)>,
     // domain binding
     pub domain: Option<(Domain, LocalDisciplineAttrId)>,
-    // the range of all attributes in the arena: pre-defined + user-defined
+    // index range of attributes in the shared arena
     pub attrs: IdxRange<DisciplineAttr>,
-    pub ast_id: AstId<ast::DisciplineDecl>,
 }
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum Domain {
@@ -66,8 +66,8 @@ pub enum Domain {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct DisciplineAttr {
     pub name: Name,
-    pub kind: DisciplineAttrKind,
     pub ast_id: AstId<ast::DisciplineAttr>,
+    pub kind: DisciplineAttrKind,
 }
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
 pub enum DisciplineAttrKind {
@@ -79,10 +79,10 @@ pub enum DisciplineAttrKind {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Module {
     pub name: Name,
+    pub ast_id: AstId<ast::ModuleDecl>,
     pub num_ports: u32,
     pub nodes: Arena<Node>,
     pub items: Vec<ModuleItem>,
-    pub ast_id: AstId<ast::ModuleDecl>,
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ModuleItem {
@@ -107,21 +107,21 @@ impl_from_typed! (
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Port {
     pub name: Name,
+    pub ast_id: AstId<ast::PortDecl>,
     pub name_idx: usize,
     pub discipline: Option<Name>,
     pub is_input: bool,
     pub is_output: bool,
     pub is_gnd: bool,
-    pub ast_id: AstId<ast::PortDecl>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Net {
     pub name: Name,
+    pub ast_id: AstId<ast::NetDecl>,
     pub name_idx: usize,
     pub discipline: Option<Name>,
     pub is_gnd: bool,
-    pub ast_id: AstId<ast::NetDecl>,
 }
 
 /// `Node` is an abstraction over `Net` and `Port`. A `Node` may be defined multiple
@@ -131,9 +131,9 @@ pub struct Net {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub name: Name,
+    pub ast_id: ErasedAstId,
     pub is_port: bool,
     pub decls: Vec<NodeTypeDecl>, // TODO small vec?
-    pub ast_id: ErasedAstId,
 }
 impl Node {
     pub fn discipline(&self, tree: &ItemTree) -> Option<Name> {
@@ -210,9 +210,9 @@ impl NodeTypeDecl {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Branch {
     pub name: Name,
+    pub ast_id: AstId<ast::BranchDecl>,
     pub name_idx: usize,
     pub kind: BranchKind,
-    pub ast_id: AstId<ast::BranchDecl>,
 }
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum BranchKind {
@@ -225,32 +225,32 @@ pub enum BranchKind {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Var {
     pub name: Name,
-    pub ty: Type,
     pub ast_id: AstId<ast::Var>,
+    pub ty: Type,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Param {
     pub name: Name,
+    pub ast_id: AstId<ast::Param>,
     pub ty: Option<Type>,
     pub is_local: bool, // for localparam
-    pub ast_id: AstId<ast::Param>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct AliasParam {
     pub name: Name,
-    pub param_ref: Name,
     pub ast_id: AstId<ast::AliasParam>,
+    pub param_ref: Name,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Function {
     pub name: Name,
+    pub ast_id: AstId<ast::Function>,
     pub ty: Type,
     pub args: Arena<FunctionArg>,
     pub items: Vec<FunctionItem>,
-    pub ast_id: AstId<ast::Function>,
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum FunctionItem {
@@ -269,11 +269,11 @@ impl_from_typed! (
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct FunctionArg {
     pub name: Name,
+    pub ast_ids: Vec<AstId<ast::FunctionArg>>,
     pub name_idx: usize,
     pub is_input: bool,
     pub is_output: bool,
     pub declarations: Vec<ItemTreeId<Var>>,
-    pub ast_ids: Vec<AstId<ast::FunctionArg>>,
 }
 impl FunctionArg {
     pub fn ty(&self, tree: &ItemTree) -> Type {
@@ -297,11 +297,3 @@ impl_from_typed! (
     Parameter(ItemTreeId<Param>),
     Variable(ItemTreeId<Var>)   for BlockItem
 );
-
-impl Index<AstId<BlockStmt>> for ItemTree {
-    type Output = Block;
-
-    fn index(&self, index: AstId<BlockStmt>) -> &Self::Output {
-        &self.blocks[&index]
-    }
-}
