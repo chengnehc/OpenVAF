@@ -75,18 +75,6 @@ impl EmptyStmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BlockStmt {
-    pub(crate) syntax: SyntaxNode,
-}
-impl ast::AttrsOwner for BlockStmt {}
-impl BlockStmt {
-    pub fn begin_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![begin]) }
-    pub fn block_scope(&self) -> Option<BlockScope> { support::child(&self.syntax) }
-    pub fn items(&self) -> AstChildren<BlockItem> { support::children(&self.syntax) }
-    pub fn end_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![end]) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExprStmt {
     pub(crate) syntax: SyntaxNode,
 }
@@ -104,6 +92,63 @@ impl ast::AttrsOwner for AssignStmt {}
 impl AssignStmt {
     pub fn assign(&self) -> Option<Assign> { support::child(&self.syntax) }
     pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BlockStmt {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ast::AttrsOwner for BlockStmt {}
+impl BlockStmt {
+    pub fn begin_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![begin]) }
+    pub fn block_scope(&self) -> Option<BlockScope> { support::child(&self.syntax) }
+    pub fn items(&self) -> AstChildren<BlockItem> { support::children(&self.syntax) }
+    pub fn end_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![end]) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EventStmt {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ast::AttrsOwner for EventStmt {}
+impl EventStmt {
+    pub fn at_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![@]) }
+    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
+    pub fn initial_step_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, T![initial_step])
+    }
+    pub fn final_step_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, T![final_step])
+    }
+    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
+    pub fn stmt(&self) -> Option<Stmt> { support::child(&self.syntax) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct IfStmt {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ast::AttrsOwner for IfStmt {}
+impl IfStmt {
+    pub fn if_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![if]) }
+    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
+    pub fn condition(&self) -> Option<Expr> { support::child(&self.syntax) }
+    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
+    pub fn else_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![else]) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CaseStmt {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ast::AttrsOwner for CaseStmt {}
+impl CaseStmt {
+    pub fn case_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![case]) }
+    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
+    pub fn discriminant(&self) -> Option<Expr> { support::child(&self.syntax) }
+    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
+    pub fn cases(&self) -> AstChildren<Case> { support::children(&self.syntax) }
+    pub fn endcase_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![endcase]) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -133,49 +178,10 @@ impl ForStmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CaseStmt {
+pub struct Assign {
     pub(crate) syntax: SyntaxNode,
 }
-impl ast::AttrsOwner for CaseStmt {}
-impl CaseStmt {
-    pub fn case_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![case]) }
-    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
-    pub fn discriminant(&self) -> Option<Expr> { support::child(&self.syntax) }
-    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
-    pub fn cases(&self) -> AstChildren<Case> { support::children(&self.syntax) }
-    pub fn endcase_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![endcase]) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct IfStmt {
-    pub(crate) syntax: SyntaxNode,
-}
-impl ast::AttrsOwner for IfStmt {}
-impl IfStmt {
-    pub fn if_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![if]) }
-    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
-    pub fn condition(&self) -> Option<Expr> { support::child(&self.syntax) }
-    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
-    pub fn else_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![else]) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct EventStmt {
-    pub(crate) syntax: SyntaxNode,
-}
-impl ast::AttrsOwner for EventStmt {}
-impl EventStmt {
-    pub fn at_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![@]) }
-    pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
-    pub fn initial_step_token(&self) -> Option<SyntaxToken> {
-        support::token(&self.syntax, T![initial_step])
-    }
-    pub fn final_step_token(&self) -> Option<SyntaxToken> {
-        support::token(&self.syntax, T![final_step])
-    }
-    pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
-    pub fn stmt(&self) -> Option<Stmt> { support::child(&self.syntax) }
-}
+impl Assign {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockScope {
@@ -213,12 +219,6 @@ impl ParamDecl {
     pub fn params(&self) -> AstChildren<Param> { support::children(&self.syntax) }
     pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Assign {
-    pub(crate) syntax: SyntaxNode,
-}
-impl Assign {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Case {
@@ -392,22 +392,22 @@ impl ModuleDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DisciplineAttr {
+pub struct NatureAttr {
     pub(crate) syntax: SyntaxNode,
 }
-impl DisciplineAttr {
-    pub fn name(&self) -> Option<Path> { support::child(&self.syntax) }
+impl NatureAttr {
+    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
     pub fn eq_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![=]) }
     pub fn val(&self) -> Option<Expr> { support::child(&self.syntax) }
     pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NatureAttr {
+pub struct DisciplineAttr {
     pub(crate) syntax: SyntaxNode,
 }
-impl NatureAttr {
-    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
+impl DisciplineAttr {
+    pub fn name(&self) -> Option<Path> { support::child(&self.syntax) }
     pub fn eq_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![=]) }
     pub fn val(&self) -> Option<Expr> { support::child(&self.syntax) }
     pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
@@ -536,16 +536,6 @@ impl AnalogBehavior {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Var {
-    pub(crate) syntax: SyntaxNode,
-}
-impl Var {
-    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
-    pub fn eq_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![=]) }
-    pub fn initial(&self) -> Option<Expr> { support::child(&self.syntax) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Param {
     pub(crate) syntax: SyntaxNode,
 }
@@ -580,6 +570,16 @@ impl Range {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Var {
+    pub(crate) syntax: SyntaxNode,
+}
+impl Var {
+    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
+    pub fn eq_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![=]) }
+    pub fn initial(&self) -> Option<Expr> { support::child(&self.syntax) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionArg {
     pub(crate) syntax: SyntaxNode,
 }
@@ -606,14 +606,14 @@ pub enum Expr {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Stmt {
     EmptyStmt(EmptyStmt),
-    BlockStmt(BlockStmt),
     ExprStmt(ExprStmt),
     AssignStmt(AssignStmt),
+    BlockStmt(BlockStmt),
+    EventStmt(EventStmt),
+    IfStmt(IfStmt),
+    CaseStmt(CaseStmt),
     WhileStmt(WhileStmt),
     ForStmt(ForStmt),
-    CaseStmt(CaseStmt),
-    IfStmt(IfStmt),
-    EventStmt(EventStmt),
 }
 impl ast::AttrsOwner for Stmt {}
 
@@ -644,9 +644,9 @@ pub enum ModuleItem {
     BodyPortDecl(BodyPortDecl),
     NetDecl(NetDecl),
     BranchDecl(BranchDecl),
-    VarDecl(VarDecl),
     ParamDecl(ParamDecl),
     AliasParam(AliasParam),
+    VarDecl(VarDecl),
     Function(Function),
     AnalogBehavior(AnalogBehavior),
 }
@@ -742,17 +742,6 @@ impl AstNode for EmptyStmt {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for BlockStmt {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == BLOCK_STMT }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
 impl AstNode for ExprStmt {
     fn can_cast(kind: SyntaxKind) -> bool { kind == EXPR_STMT }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
@@ -766,6 +755,50 @@ impl AstNode for ExprStmt {
 }
 impl AstNode for AssignStmt {
     fn can_cast(kind: SyntaxKind) -> bool { kind == ASSIGN_STMT }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
+impl AstNode for BlockStmt {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == BLOCK_STMT }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
+impl AstNode for EventStmt {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == EVENT_STMT }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
+impl AstNode for IfStmt {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == IF_STMT }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
+impl AstNode for CaseStmt {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == CASE_STMT }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -797,30 +830,8 @@ impl AstNode for ForStmt {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for CaseStmt {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == CASE_STMT }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
-impl AstNode for IfStmt {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == IF_STMT }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
-impl AstNode for EventStmt {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == EVENT_STMT }
+impl AstNode for Assign {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == ASSIGN }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -854,17 +865,6 @@ impl AstNode for VarDecl {
 }
 impl AstNode for ParamDecl {
     fn can_cast(kind: SyntaxKind) -> bool { kind == PARAM_DECL }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
-impl AstNode for Assign {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == ASSIGN }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1050,8 +1050,8 @@ impl AstNode for ModuleDecl {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for DisciplineAttr {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == DISCIPLINE_ATTR }
+impl AstNode for NatureAttr {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == NATURE_ATTR }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1061,8 +1061,8 @@ impl AstNode for DisciplineAttr {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for NatureAttr {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == NATURE_ATTR }
+impl AstNode for DisciplineAttr {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == DISCIPLINE_ATTR }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1182,17 +1182,6 @@ impl AstNode for AnalogBehavior {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for Var {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == VAR }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
 impl AstNode for Param {
     fn can_cast(kind: SyntaxKind) -> bool { kind == PARAM }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
@@ -1217,6 +1206,17 @@ impl AstNode for Constraint {
 }
 impl AstNode for Range {
     fn can_cast(kind: SyntaxKind) -> bool { kind == RANGE }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
+impl AstNode for Var {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == VAR }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1303,14 +1303,23 @@ impl AstNode for Expr {
 impl From<EmptyStmt> for Stmt {
     fn from(node: EmptyStmt) -> Stmt { Stmt::EmptyStmt(node) }
 }
-impl From<BlockStmt> for Stmt {
-    fn from(node: BlockStmt) -> Stmt { Stmt::BlockStmt(node) }
-}
 impl From<ExprStmt> for Stmt {
     fn from(node: ExprStmt) -> Stmt { Stmt::ExprStmt(node) }
 }
 impl From<AssignStmt> for Stmt {
     fn from(node: AssignStmt) -> Stmt { Stmt::AssignStmt(node) }
+}
+impl From<BlockStmt> for Stmt {
+    fn from(node: BlockStmt) -> Stmt { Stmt::BlockStmt(node) }
+}
+impl From<EventStmt> for Stmt {
+    fn from(node: EventStmt) -> Stmt { Stmt::EventStmt(node) }
+}
+impl From<IfStmt> for Stmt {
+    fn from(node: IfStmt) -> Stmt { Stmt::IfStmt(node) }
+}
+impl From<CaseStmt> for Stmt {
+    fn from(node: CaseStmt) -> Stmt { Stmt::CaseStmt(node) }
 }
 impl From<WhileStmt> for Stmt {
     fn from(node: WhileStmt) -> Stmt { Stmt::WhileStmt(node) }
@@ -1318,34 +1327,25 @@ impl From<WhileStmt> for Stmt {
 impl From<ForStmt> for Stmt {
     fn from(node: ForStmt) -> Stmt { Stmt::ForStmt(node) }
 }
-impl From<CaseStmt> for Stmt {
-    fn from(node: CaseStmt) -> Stmt { Stmt::CaseStmt(node) }
-}
-impl From<IfStmt> for Stmt {
-    fn from(node: IfStmt) -> Stmt { Stmt::IfStmt(node) }
-}
-impl From<EventStmt> for Stmt {
-    fn from(node: EventStmt) -> Stmt { Stmt::EventStmt(node) }
-}
 impl AstNode for Stmt {
     fn can_cast(kind: SyntaxKind) -> bool {
         match kind {
-            EMPTY_STMT | BLOCK_STMT | EXPR_STMT | ASSIGN_STMT | WHILE_STMT | FOR_STMT
-            | CASE_STMT | IF_STMT | EVENT_STMT => true,
+            EMPTY_STMT | EXPR_STMT | ASSIGN_STMT | BLOCK_STMT | EVENT_STMT | IF_STMT
+            | CASE_STMT | WHILE_STMT | FOR_STMT => true,
             _ => false,
         }
     }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         let res = match syntax.kind() {
             EMPTY_STMT => Stmt::EmptyStmt(EmptyStmt { syntax }),
-            BLOCK_STMT => Stmt::BlockStmt(BlockStmt { syntax }),
             EXPR_STMT => Stmt::ExprStmt(ExprStmt { syntax }),
             ASSIGN_STMT => Stmt::AssignStmt(AssignStmt { syntax }),
+            BLOCK_STMT => Stmt::BlockStmt(BlockStmt { syntax }),
+            EVENT_STMT => Stmt::EventStmt(EventStmt { syntax }),
+            IF_STMT => Stmt::IfStmt(IfStmt { syntax }),
+            CASE_STMT => Stmt::CaseStmt(CaseStmt { syntax }),
             WHILE_STMT => Stmt::WhileStmt(WhileStmt { syntax }),
             FOR_STMT => Stmt::ForStmt(ForStmt { syntax }),
-            CASE_STMT => Stmt::CaseStmt(CaseStmt { syntax }),
-            IF_STMT => Stmt::IfStmt(IfStmt { syntax }),
-            EVENT_STMT => Stmt::EventStmt(EventStmt { syntax }),
             _ => return None,
         };
         Some(res)
@@ -1353,14 +1353,14 @@ impl AstNode for Stmt {
     fn syntax(&self) -> &SyntaxNode {
         match self {
             Stmt::EmptyStmt(it) => &it.syntax,
-            Stmt::BlockStmt(it) => &it.syntax,
             Stmt::ExprStmt(it) => &it.syntax,
             Stmt::AssignStmt(it) => &it.syntax,
+            Stmt::BlockStmt(it) => &it.syntax,
+            Stmt::EventStmt(it) => &it.syntax,
+            Stmt::IfStmt(it) => &it.syntax,
+            Stmt::CaseStmt(it) => &it.syntax,
             Stmt::WhileStmt(it) => &it.syntax,
             Stmt::ForStmt(it) => &it.syntax,
-            Stmt::CaseStmt(it) => &it.syntax,
-            Stmt::IfStmt(it) => &it.syntax,
-            Stmt::EventStmt(it) => &it.syntax,
         }
     }
 }
@@ -1466,14 +1466,14 @@ impl From<NetDecl> for ModuleItem {
 impl From<BranchDecl> for ModuleItem {
     fn from(node: BranchDecl) -> ModuleItem { ModuleItem::BranchDecl(node) }
 }
-impl From<VarDecl> for ModuleItem {
-    fn from(node: VarDecl) -> ModuleItem { ModuleItem::VarDecl(node) }
-}
 impl From<ParamDecl> for ModuleItem {
     fn from(node: ParamDecl) -> ModuleItem { ModuleItem::ParamDecl(node) }
 }
 impl From<AliasParam> for ModuleItem {
     fn from(node: AliasParam) -> ModuleItem { ModuleItem::AliasParam(node) }
+}
+impl From<VarDecl> for ModuleItem {
+    fn from(node: VarDecl) -> ModuleItem { ModuleItem::VarDecl(node) }
 }
 impl From<Function> for ModuleItem {
     fn from(node: Function) -> ModuleItem { ModuleItem::Function(node) }
@@ -1484,7 +1484,7 @@ impl From<AnalogBehavior> for ModuleItem {
 impl AstNode for ModuleItem {
     fn can_cast(kind: SyntaxKind) -> bool {
         match kind {
-            BODY_PORT_DECL | NET_DECL | BRANCH_DECL | VAR_DECL | PARAM_DECL | ALIAS_PARAM
+            BODY_PORT_DECL | NET_DECL | BRANCH_DECL | PARAM_DECL | ALIAS_PARAM | VAR_DECL
             | FUNCTION | ANALOG_BEHAVIOR => true,
             _ => false,
         }
@@ -1494,9 +1494,9 @@ impl AstNode for ModuleItem {
             BODY_PORT_DECL => ModuleItem::BodyPortDecl(BodyPortDecl { syntax }),
             NET_DECL => ModuleItem::NetDecl(NetDecl { syntax }),
             BRANCH_DECL => ModuleItem::BranchDecl(BranchDecl { syntax }),
-            VAR_DECL => ModuleItem::VarDecl(VarDecl { syntax }),
             PARAM_DECL => ModuleItem::ParamDecl(ParamDecl { syntax }),
             ALIAS_PARAM => ModuleItem::AliasParam(AliasParam { syntax }),
+            VAR_DECL => ModuleItem::VarDecl(VarDecl { syntax }),
             FUNCTION => ModuleItem::Function(Function { syntax }),
             ANALOG_BEHAVIOR => ModuleItem::AnalogBehavior(AnalogBehavior { syntax }),
             _ => return None,
@@ -1508,9 +1508,9 @@ impl AstNode for ModuleItem {
             ModuleItem::BodyPortDecl(it) => &it.syntax,
             ModuleItem::NetDecl(it) => &it.syntax,
             ModuleItem::BranchDecl(it) => &it.syntax,
-            ModuleItem::VarDecl(it) => &it.syntax,
             ModuleItem::ParamDecl(it) => &it.syntax,
             ModuleItem::AliasParam(it) => &it.syntax,
+            ModuleItem::VarDecl(it) => &it.syntax,
             ModuleItem::Function(it) => &it.syntax,
             ModuleItem::AnalogBehavior(it) => &it.syntax,
         }
@@ -1656,17 +1656,32 @@ impl std::fmt::Display for EmptyStmt {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for BlockStmt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
 impl std::fmt::Display for ExprStmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
 impl std::fmt::Display for AssignStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
+impl std::fmt::Display for BlockStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
+impl std::fmt::Display for EventStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
+impl std::fmt::Display for IfStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
+impl std::fmt::Display for CaseStmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
@@ -1681,17 +1696,7 @@ impl std::fmt::Display for ForStmt {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for CaseStmt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
-impl std::fmt::Display for IfStmt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
-impl std::fmt::Display for EventStmt {
+impl std::fmt::Display for Assign {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
@@ -1707,11 +1712,6 @@ impl std::fmt::Display for VarDecl {
     }
 }
 impl std::fmt::Display for ParamDecl {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
-impl std::fmt::Display for Assign {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
@@ -1796,12 +1796,12 @@ impl std::fmt::Display for ModuleDecl {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for DisciplineAttr {
+impl std::fmt::Display for NatureAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for NatureAttr {
+impl std::fmt::Display for DisciplineAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
@@ -1856,11 +1856,6 @@ impl std::fmt::Display for AnalogBehavior {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for Var {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
 impl std::fmt::Display for Param {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
@@ -1872,6 +1867,11 @@ impl std::fmt::Display for Constraint {
     }
 }
 impl std::fmt::Display for Range {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
+impl std::fmt::Display for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }

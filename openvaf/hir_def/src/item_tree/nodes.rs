@@ -175,7 +175,7 @@ impl NodeTypeDecl {
     pub fn discipline_source(self, db: &dyn HirDefDB, root_file: FileId) -> Option<ast::NameRef> {
         let ast_id_map = db.ast_id_map(root_file);
         let tree = db.item_tree(root_file);
-        let ast = db.parse(root_file).syntax_node();
+        let ast = db.parse(root_file).root_node();
         match self {
             NodeTypeDecl::Net(net) => ast_id_map.get(tree[net].ast_id).to_node(&ast).discipline(),
             NodeTypeDecl::Port(port) => {

@@ -99,8 +99,8 @@ fn parse(db: &dyn BaseDB, root_file: FileId) -> Parse<SourceFile> {
 }
 
 fn ast_id_map(db: &dyn BaseDB, root_file: FileId) -> Arc<AstIdMap> {
-    let cst = db.parse(root_file).syntax_node();
-    let ast_id_map = AstIdMap::from_source(&cst);
+    let ast = db.parse(root_file).root_node();
+    let ast_id_map = AstIdMap::from_source(&ast);
     Arc::new(ast_id_map)
 }
 

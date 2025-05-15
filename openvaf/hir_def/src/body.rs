@@ -72,7 +72,7 @@ impl Body {
 
         match def {
             DefWithBodyId::NatureAttrId(attr) => {
-                let root = db.parse(root_file).syntax_node();
+                let root = db.parse(root_file).root_node();
                 let item_tree = db.item_tree(root_file);
 
                 let NatureAttrLoc { nature, id } = attr.lookup(db);
@@ -95,7 +95,7 @@ impl Body {
                 body.entry_stmts = Box::from([stmt]);
             }
             DefWithBodyId::DisciplineAttrId(attr) => {
-                let root = db.parse(root_file).syntax_node();
+                let root = db.parse(root_file).root_node();
                 let item_tree = db.item_tree(root_file);
 
                 let DisciplineAttrLoc { discipline, id } = attr.lookup(db);

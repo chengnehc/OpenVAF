@@ -51,44 +51,22 @@ Type =
 // A.6.4 Statements
 Stmt =
   EmptyStmt
-| BlockStmt
 | ExprStmt
 | AssignStmt
+| BlockStmt
+| EventStmt
+| IfStmt
+| CaseStmt
 | WhileStmt
 | ForStmt
-| CaseStmt
-| IfStmt
-| EventStmt
 
 EmptyStmt =
   AttrList* ';'
 
-// 5.3 Block statements
-// A.6.3 Sequential blocks
-BlockStmt =
-  AttrList* 'begin' BlockScope?
-  items:BlockItem*
-  'end'
-
-// Scoping rules:
-// - Variables declared for a named block are local to it, and static.
-// - All identifiers declared within a named block can be accessed outside the scope in which they are declared. 
-// - Named block variables cannot be assigned outside the scope of the block in which they are declared
-BlockScope =
-  ':' Name
-
-// A.2.8 Block item declarations
-BlockItem =
-  VarDecl | ParamDecl | Stmt
-
-// Main usages for `ExprStmt` are:
-// - system task enable
-// - incr statement in `ForStmt`
-// - analog function
 ExprStmt =
   AttrList* Expr ';'?
 
-// A.6.2
+// A.6.2 Assignments
 // A.6.10 Contribution statements
 AssignStmt =
   AttrList* Assign ';'
@@ -96,17 +74,28 @@ AssignStmt =
 Assign =
   lval:Expr op:('<+' | '=') rval:Expr
 
-// A.6.8 Looping statements
-// TODO: Check if `break` is allowed in analog while loop?
-WhileStmt =
-  AttrList* 'while' '(' condition:Expr ')'
-  body:Stmt
+// A.6.3 Analog sequential block
+BlockStmt =
+  AttrList* 'begin' BlockScope?
+  items:BlockItem*
+  'end'
+  
+BlockScope =
+  ':' Name
 
-// # Note
-// jump statements like `continue` and `break` are not allowed in analog for loop
-ForStmt =
-  AttrList* 'for' '(' init:Stmt ';' condition:Expr ';' incr:Stmt ')'
-  for_body:Stmt
+// A.2.8 Block item declarations
+BlockItem =
+  VarDecl | ParamDecl | Stmt
+
+// A.6.5 Timing control statements
+EventStmt =
+  AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases:('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
+
+// A.6.6 Conditional statements
+IfStmt =
+  AttrList* 'if' '(' condition:Expr ')'
+  then_branch:Stmt
+  ('else' else_branch:Stmt)?
 
 // A.6.7 Case statements
 CaseStmt =
@@ -119,14 +108,15 @@ CaseStmt =
 Case =
   (Expr (',' Expr)* | 'default') ':'? Stmt
 
-// A.6.6 Conditional statements
-IfStmt =
-  AttrList* 'if' '(' condition:Expr ')'
-  then_branch:Stmt
-  ('else' else_branch:Stmt)?
+// A.6.8 Looping statements
+// # Note: jump statements like 'break' and 'continue' are not implemented
+WhileStmt =
+  AttrList* 'while' '(' condition:Expr ')'
+  body:Stmt
 
-EventStmt =
-  AttrList* '@' '(' ('initial_step' | 'final_step') ('(' sim_phases:('str_lit' (',' 'str_lit')*) ')')? ')' Stmt
+ForStmt =
+  AttrList* 'for' '(' init:Stmt ';' condition:Expr ';' incr:Stmt ')'
+  for_body:Stmt
 
 
 //*********************//
@@ -145,13 +135,11 @@ Expr =
 | PortFlow
 | Call
 
-// This is manually implemented
+
 Literal =
   'int_number' | 'std_real_number' | 'si_real_number' | 'str_lit' | 'inf'
 
 // A.8.9 Analog references
-// 
-// See chapter 6.7.1 Usage of hierarchical references in terms of OOMR (out-of-module reference)
 //
 // - [OK] analog branches and nets refenece
 // - [OK] potential and flow access function for named and unnamed branches (including port branches)
@@ -204,13 +192,21 @@ ArgList =
 //          Items          //
 //*************************//
 
-// A.1.2
+// A.1.2 description
 SourceFile =
   Item*
 
-// Top level items
 Item =
-  DisciplineDecl | NatureDecl | ModuleDecl //| ParamsetDecl
+  DisciplineDecl | NatureDecl | ModuleDecl
+
+// A.1.6
+NatureDecl =
+  AttrList* 'nature' Name (':' parent:Path)? ';'?
+  NatureAttr*
+  'endnature'
+
+NatureAttr =
+  Name '=' val:Expr ';'
 
 // A.1.7
 DisciplineDecl =
@@ -221,15 +217,6 @@ DisciplineDecl =
 // the optional `=` is for nature attribute override
 DisciplineAttr =
   name:Path '='? val:Expr ';'
-
-// A.1.6
-NatureDecl =
-  AttrList* 'nature' Name (':' parent:Path)? ';'?
-  NatureAttr*
-  'endnature'
-
-NatureAttr =
-  Name '=' val:Expr ';'
 
 // A.1.2 & A.1.3
 ModuleDecl =
@@ -255,9 +242,9 @@ ModuleItem =
   BodyPortDecl
 | NetDecl
 | BranchDecl
-| VarDecl
 | ParamDecl
 | AliasParam
+| VarDecl
 | Function
 | AnalogBehavior
 
@@ -271,14 +258,6 @@ NetDecl =
 // A.2.1.3
 BranchDecl =
   AttrList* 'branch' ArgList (Name (',' Name)*) ';'
-
-// A.2.1.3
-VarDecl =
-  AttrList* Type (Var (',' Var)*) ';'
-
-// A.2.2.1
-Var =
-  Name ('=' initial:Expr)?
 
 // A.2.1.1
 ParamDecl =
@@ -299,16 +278,19 @@ Range =
 AliasParam =
   'aliasparam' Name '=' ParamRef ';'
 
-// # Note:
-// - aliasparam should not use OOMR (should only refer to parameters within the same module)
-// - only hierarchical parameter sysfuns are valid aliases
 ParamRef =
   NameRef | SysFun
 
+// A.2.1.3
+VarDecl =
+  AttrList* Type (Var (',' Var)*) ';'
+
+// A.2.2.1
+Var =
+  Name ('=' initial:Expr)?
+
 // A.2.6
-// A.2.8
-// # Note:
-// 'return' statement is currently not supported
+// Note: 'return' statement is currently not supported
 Function =
   AttrList* 'analog' 'function' Type? Name ';'
   FunctionItem*
@@ -323,8 +305,7 @@ FunctionItem =
 FunctionArg =
   AttrList* Direction (Name(',' Name)*) ';'
 
-// 5.2 analog procedural block
-// A.6.2
+// A.6.2 analog construct
 AnalogBehavior =
   AttrList* 'analog' 'initial'? Stmt
 

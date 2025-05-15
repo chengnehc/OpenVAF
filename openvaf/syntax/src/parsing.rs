@@ -80,14 +80,20 @@ impl<T> Parse<T> {
         }
     }
 
-    pub fn syntax_node(&self) -> SyntaxNode {
+    #[inline]
+    pub fn root_node(&self) -> SyntaxNode {
         SyntaxNode::new_root(self.green.clone())
     }
 
     pub fn errors(&self) -> Vec<SyntaxError> {
         let mut errors = if let Some(e) = self.errors.as_deref() { e.to_vec() } else { vec![] };
-        validation::validate(&self.syntax_node(), &mut errors);
+        validation::validate(&self.root_node(), &mut errors);
         errors
+    }
+
+    #[inline]
+    pub fn to_file_span(&self, range: TextRange, sm: &SourceMap) -> FileSpan {
+        self.to_ctx_span(range, sm).to_file_span(sm)
     }
 
     pub fn to_ctx_span(&self, range: TextRange, sm: &SourceMap) -> CtxSpan {
@@ -111,10 +117,6 @@ impl<T> Parse<T> {
                 CtxSpan { range: range1.cover(range2), ctx }
             }
         }
-    }
-
-    pub fn to_file_span(&self, range: TextRange, sm: &SourceMap) -> FileSpan {
-        self.to_ctx_span(range, sm).to_file_span(sm)
     }
 
     /* JW: not used.
@@ -155,7 +157,7 @@ impl<T: AstNode> Parse<T> {
     /// Panics if the root node cannot be casted into the typed ast node
     /// (e.g. if it's an ERROR node).
     pub fn tree(&self) -> T {
-        T::cast(self.syntax_node()).unwrap()
+        T::cast(self.root_node()).unwrap()
     }
 
     /// Converts from `Parse<T>` to [`Result<T, Vec<SyntaxError>>`].
