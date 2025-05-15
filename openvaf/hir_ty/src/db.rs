@@ -2,8 +2,8 @@ use std::sync::Arc;
 use stdx::Upcast;
 
 use hir_def::{
-    db::HirDefDB, nameres::ScopeItem, AliasParamId, BranchId, DefWithBodyId, DisciplineId,
-    Lookup, NatureAttrId, NatureId, NodeId, ParamId, ParamSysFun, Type,
+    db::HirDefDB, nameres::ScopeItem, AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup,
+    NatureAttrId, NatureId, NodeId, ParamId, ParamSysFun, Type,
 };
 
 use crate::inference::Inference;
