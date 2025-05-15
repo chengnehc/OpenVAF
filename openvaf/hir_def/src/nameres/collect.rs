@@ -26,7 +26,7 @@ use crate::{
 };
 
 use super::{
-    DefDiagnostic, DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItemDef, ScopeOrigin,
+    DefDiagnostic, DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItem, ScopeOrigin,
 };
 
 impl DefMap {
@@ -103,7 +103,7 @@ impl Collector<'_> {
         // Identifiers defined in natures and disciplines are inserted in the root scope and as a
         // result they are visible to all modules. However, each module creates its own scope.
         // Refer to LRM 6.8: Scope rules.
-        for item in &self.tree.top_level {
+        for item in &self.tree.root_items {
             match *item {
                 RootItem::Nature(id) => {
                     let name = self.tree[id].name.clone();
@@ -113,7 +113,7 @@ impl Collector<'_> {
                         // special treatment for nature access function
                         let attr_def =
                             NatureAttrLoc { nature: nature_def, id: attr_id }.intern(self.db);
-                        let access_def = ScopeItemDef::NatureAccess(attr_def.into());
+                        let access_def = ScopeItem::NatureAccess(attr_def.into());
                         self.insert_def(access_def, root_scope, name)
                     }
                 }
@@ -216,7 +216,7 @@ impl Collector<'_> {
         // with the same name as the analog_function_identifier.
         self.def_map[fun_scope]
             .declarations
-            .insert(fun.name.clone(), ScopeItemDef::FunctionReturn(fun_def));
+            .insert(fun.name.clone(), ScopeItem::FunctionReturn(fun_def));
         // insert function items declarations
         for item in &fun.items {
             match *item {
@@ -262,7 +262,7 @@ impl Collector<'_> {
                 .declarations
                 .iter()
                 .filter_map(|(name, decl)| {
-                    matches!(decl, ScopeItemDef::ParamId(_) | ScopeItemDef::FunctionId(_))
+                    matches!(decl, ScopeItem::ParamId(_) | ScopeItem::FunctionId(_))
                         .then_some((name.clone(), *decl))
                 })
                 .collect();
@@ -293,7 +293,7 @@ impl Collector<'_> {
     where
         N: ItemTreeNode,
         ItemLoc<N>: Intern,
-        <ItemLoc<N> as Intern>::Id: Into<ScopeItemDef>,
+        <ItemLoc<N> as Intern>::Id: Into<ScopeItem>,
     {
         let scope = Scope::from(self.root_file, self.def_map.src, dst);
         let def = ItemLoc { scope, id: item }.intern(self.db);
@@ -313,7 +313,7 @@ impl Collector<'_> {
         self.insert_def(block, parent_scope, name);
     }
 
-    fn insert_def(&mut self, def: impl Into<ScopeItemDef>, dst: LocalScopeId, name: Name) {
+    fn insert_def(&mut self, def: impl Into<ScopeItem>, dst: LocalScopeId, name: Name) {
         let def = def.into();
         if let Some(old) = self.def_map[dst].declarations.insert(name.clone(), def) {
             let diag = DefDiagnostic::AlreadyDeclared { old, new: def, name };

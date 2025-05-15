@@ -3,7 +3,7 @@ use std::path::Path;
 use basedb::diagnostics::{sink, ConsoleSink, DiagnosticSink};
 use basedb::{AbsPathBuf, BaseDB, FileId, SourceDatabase, Vfs, VfsEntry, VfsPath, VfsStorage};
 use hir_def::db::{HirDefDB, HirDefDatabase, InternDatabase};
-use hir_def::nameres::{DefMap, LocalScopeId, ScopeItemDef, ScopeOrigin};
+use hir_def::nameres::{DefMap, LocalScopeId, ScopeItem, ScopeOrigin};
 use hir_def::DefWithBodyId;
 use parking_lot::RwLock;
 
@@ -66,7 +66,7 @@ impl TestDataBase {
                 let diagnostics = &self.body_srcmap(id).diagnostics;
                 sink.add_diagnostics(diagnostics, root_file, self);
             }
-            if let ScopeItemDef::FunctionId(fun) = *declaration {
+            if let ScopeItem::FunctionId(fun) = *declaration {
                 let def_map = self.function_def_map(fun);
                 let entry = self.function_def_map(fun).entry_scope();
                 self.lower_and_check_rec(entry, &def_map, sink)
@@ -138,7 +138,7 @@ fn body(file: &Path) -> Result {
         }
         // dump analog function bodies of this module
         for (_, &def) in &def_map[*scope].declarations {
-            if let ScopeItemDef::FunctionId(fun) = def {
+            if let ScopeItem::FunctionId(fun) = def {
                 actual.push_str(&db.body(fun.into()).dump(&db)?);
                 actual.push_str("\n");
             }

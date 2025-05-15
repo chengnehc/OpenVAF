@@ -2,7 +2,7 @@ use std::sync::Arc;
 use stdx::Upcast;
 
 use hir_def::{
-    db::HirDefDB, nameres::ScopeItemDef, AliasParamId, BranchId, DefWithBodyId, DisciplineId,
+    db::HirDefDB, nameres::ScopeItem, AliasParamId, BranchId, DefWithBodyId, DisciplineId,
     Lookup, NatureAttrId, NatureId, NodeId, ParamId, ParamSysFun, Type,
 };
 
@@ -74,9 +74,9 @@ fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Option<Alias> {
     let scope = id.lookup(db.upcast()).scope;
 
     match scope.resolve_name(db.upcast(), &alias.param_ref).ok()? {
-        ScopeItemDef::ParamId(param) => Some(Alias::Param(param)),
-        ScopeItemDef::ParamSysFun(fun) => Some(Alias::ParamSysFun(fun)),
-        ScopeItemDef::AliasParamId(alias) => db.resolve_alias(alias),
+        ScopeItem::ParamId(param) => Some(Alias::Param(param)),
+        ScopeItem::ParamSysFun(fun) => Some(Alias::ParamSysFun(fun)),
+        ScopeItem::AliasParamId(alias) => db.resolve_alias(alias),
         _ => None,
     }
 }

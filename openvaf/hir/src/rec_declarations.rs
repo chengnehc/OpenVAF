@@ -6,7 +6,7 @@ use std::mem::transmute;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use hir_def::nameres::{self, DefMap, LocalScopeId, ScopeItemDef};
+use hir_def::nameres::{self, DefMap, LocalScopeId, ScopeItem};
 use smol_str::SmolStr;
 use syntax::name::Name;
 
@@ -16,7 +16,7 @@ use crate::{
 
 struct Scope {
     //_def_map: Arc<DefMap>,
-    iter: indexmap::map::Iter<'static, Name, nameres::ScopeItemDef>,
+    iter: indexmap::map::Iter<'static, Name, nameres::ScopeItem>,
     def: Option<(Name, ScopeDef)>,
 }
 impl Scope {
@@ -66,13 +66,13 @@ impl Iterator for RecDeclarations<'_> {
             let scope = self.stack.last_mut()?;
             if let Some((name, &item)) = scope.iter.next() {
                 let def = match item {
-                    ScopeItemDef::ModuleId(id) => ScopeDef::Module(Module { id }),
-                    ScopeItemDef::NodeId(id) => ScopeDef::Node(Node { id }),
-                    ScopeItemDef::BranchId(id) => ScopeDef::Branch(Branch { id }),
-                    ScopeItemDef::VarId(id) => ScopeDef::Variable(Variable { id }),
-                    ScopeItemDef::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
-                    ScopeItemDef::AliasParamId(id) => ScopeDef::AliasParam(AliasParam { id }),
-                    ScopeItemDef::BlockId(id) => {
+                    ScopeItem::ModuleId(id) => ScopeDef::Module(Module { id }),
+                    ScopeItem::NodeId(id) => ScopeDef::Node(Node { id }),
+                    ScopeItem::BranchId(id) => ScopeDef::Branch(Branch { id }),
+                    ScopeItem::VarId(id) => ScopeDef::Variable(Variable { id }),
+                    ScopeItem::ParamId(id) => ScopeDef::Parameter(Parameter { id }),
+                    ScopeItem::AliasParamId(id) => ScopeDef::AliasParam(AliasParam { id }),
+                    ScopeItem::BlockId(id) => {
                         if let Some(def_map) = self.db.block_def_map(id) {
                             let entry = def_map.entry_scope();
                             let block = (name.clone(), ScopeDef::Block(Block { id }));

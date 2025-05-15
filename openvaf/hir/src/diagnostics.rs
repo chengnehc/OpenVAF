@@ -1,6 +1,6 @@
 use hir_def::{
     db::HirDefDB,
-    nameres::{DefDiagnosticWrapped, DefMap, LocalScopeId, ScopeItemDef, ScopeOrigin},
+    nameres::{DefDiagnosticWrapped, DefMap, LocalScopeId, ScopeItem, ScopeOrigin},
     DefWithBodyId::{self, ModuleId},
     ItemTree,
 };
@@ -95,11 +95,11 @@ fn collect_scope_diagnostics(
             collect_body_diagnostics(db, root_file, body, sink);
         }
         let def_map = match def {
-            ScopeItemDef::BlockId(block) => {
+            ScopeItem::BlockId(block) => {
                 let Some(def_map) = db.block_def_map(block) else { continue };
                 def_map
             }
-            ScopeItemDef::FunctionId(fun) => db.function_def_map(fun),
+            ScopeItem::FunctionId(fun) => db.function_def_map(fun),
             _ => continue,
         };
         collect_scope_diagnostics(db, root_file, &def_map, def_map.entry_scope(), sink);

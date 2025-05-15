@@ -40,7 +40,7 @@ impl Context {
     }
 
     pub(super) fn lower_root_items(mut self, file: &ast::SourceFile) -> ItemTree {
-        self.tree.top_level = file.items().filter_map(|it| self.lower_root_item(it)).collect();
+        self.tree.root_items = file.items().filter_map(|it| self.lower_root_item(it)).collect();
         self.tree
     }
 

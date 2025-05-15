@@ -4,7 +4,7 @@ use ahash::RandomState;
 use indexmap::IndexMap;
 use syntax::name::{kw, sysfun, Name};
 
-use crate::nameres::ScopeItemDef;
+use crate::nameres::ScopeItem;
 
 #[derive(Eq, PartialEq, Copy, Clone, Hash, Debug)]
 #[allow(nonstandard_style, unreachable_pub)]
@@ -244,7 +244,7 @@ impl ParamSysFun {
         }
     }
 }
-pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
+pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItem, RandomState>) {
     dst.insert(kw::ln, BuiltIn::ln.into());
     dst.insert(kw::log, BuiltIn::log.into());
     dst.insert(kw::exp, BuiltIn::exp.into());
@@ -377,7 +377,7 @@ pub fn insert_builtin_def(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
     dst.insert(kw::white_noise, BuiltIn::white_noise.into());
     dst.insert(kw::flicker_noise, BuiltIn::flicker_noise.into());
 }
-pub fn insert_param_sysfun(dst: &mut IndexMap<Name, ScopeItemDef, RandomState>) {
+pub fn insert_param_sysfun(dst: &mut IndexMap<Name, ScopeItem, RandomState>) {
     dst.insert(sysfun::mfactor, ParamSysFun::mfactor.into());
     dst.insert(sysfun::xposition, ParamSysFun::xposition.into());
     dst.insert(sysfun::yposition, ParamSysFun::yposition.into());

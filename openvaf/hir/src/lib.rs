@@ -13,7 +13,7 @@ use stdx::impl_debug;
 
 use basedb::{BaseDB, FileId};
 use hir_def::db::HirDefDB;
-use hir_def::nameres::{DefMap, LocalScopeId, ScopeItemDef};
+use hir_def::nameres::{DefMap, LocalScopeId, ScopeItem};
 use hir_def::{
     AliasParamId, BlockId, BranchId, DefWithBodyId, DisciplineId, FunctionId, LocalFunctionArgId,
     Lookup, ModuleId, ModuleLoc, NatureAttrId, NatureId, NodeId, ParamId, VarId,
@@ -89,13 +89,15 @@ impl CompilationUnit {
         root_def_map[entry]
             .declarations
             .iter()
-            .filter_map(|(_, def)| {
-                if let ScopeItemDef::ModuleId(id) = *def {
-                    Some(Module { id })
-                } else {
-                    None
-                }
-            })
+            .filter_map(
+                |(_, def)| {
+                    if let ScopeItem::ModuleId(id) = *def {
+                        Some(Module { id })
+                    } else {
+                        None
+                    }
+                },
+            )
             .collect()
     }
 

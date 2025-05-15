@@ -10,7 +10,7 @@ use ahash::AHashMap;
 use arena::ArenaMap;
 use hir_def::{
     body::{Body, CaseCond, Expr, ExprId, Literal, Stmt, StmtId},
-    nameres::{PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind},
+    nameres::{PathResolveError, ResolvedPath, ScopeItem, ScopeItemKind},
     BranchId, BuiltIn, DefWithBodyId, FunctionArgLoc, FunctionId, LocalFunctionArgId, Lookup,
     NatureAccess, NatureId, NodeId, ParamSysFun, Path, Type, VarId,
 };
@@ -261,17 +261,17 @@ impl Context<'_> {
                 Ty::PortFlow(port)
             }
             Expr::Path { ref path, port: false } => match self.resolve_path(stmt, expr, path)? {
-                ScopeItemDef::NatureId(nature) => Ty::Nature(nature),
-                ScopeItemDef::NatureAttrId(attr) => {
+                ScopeItem::NatureId(nature) => Ty::Nature(nature),
+                ScopeItem::NatureAttrId(attr) => {
                     Ty::NatureAttr(self.db.nature_attr_ty(attr)?, attr)
                 }
-                ScopeItemDef::DisciplineId(discipline) => Ty::Discipline(discipline),
-                ScopeItemDef::ModuleId(_) | ScopeItemDef::BlockId(_) => Ty::Scope,
-                ScopeItemDef::NodeId(node) => Ty::Node(node),
-                ScopeItemDef::BranchId(branch) => Ty::Branch(branch),
-                ScopeItemDef::VarId(var) => Ty::Var(self.db.var_data(var).ty.clone(), var),
-                ScopeItemDef::ParamId(param) => Ty::Param(self.db.param_ty(param), param),
-                ScopeItemDef::AliasParamId(param) => match self.db.resolve_alias(param)? {
+                ScopeItem::DisciplineId(discipline) => Ty::Discipline(discipline),
+                ScopeItem::ModuleId(_) | ScopeItem::BlockId(_) => Ty::Scope,
+                ScopeItem::NodeId(node) => Ty::Node(node),
+                ScopeItem::BranchId(branch) => Ty::Branch(branch),
+                ScopeItem::VarId(var) => Ty::Var(self.db.var_data(var).ty.clone(), var),
+                ScopeItem::ParamId(param) => Ty::Param(self.db.param_ty(param), param),
+                ScopeItem::AliasParamId(param) => match self.db.resolve_alias(param)? {
                     Alias::Cycle => return None,
                     Alias::Param(param) => Ty::Param(self.db.param_ty(param), param),
                     Alias::ParamSysFun(param) => {
@@ -279,15 +279,15 @@ impl Context<'_> {
                         Ty::Val(Type::Real)
                     }
                 },
-                ScopeItemDef::ParamSysFun(_) => Ty::Val(Type::Real),
-                ScopeItemDef::BuiltIn(_) | ScopeItemDef::NatureAccess(_) => Ty::BuiltInFunction,
-                ScopeItemDef::FunctionId(fun) => Ty::UserFunction(fun),
-                ScopeItemDef::FunctionArgId(arg) => {
+                ScopeItem::ParamSysFun(_) => Ty::Val(Type::Real),
+                ScopeItem::BuiltIn(_) | ScopeItem::NatureAccess(_) => Ty::BuiltInFunction,
+                ScopeItem::FunctionId(fun) => Ty::UserFunction(fun),
+                ScopeItem::FunctionArgId(arg) => {
                     let FunctionArgLoc { fun, id } = arg.lookup(self.db.upcast());
                     let ty = self.db.function_data(fun).args[id].ty.clone();
                     Ty::FunctionVar { ty, fun, arg: Some(id) }
                 }
-                ScopeItemDef::FunctionReturn(fun) => {
+                ScopeItem::FunctionReturn(fun) => {
                     let ty = self.db.function_data(fun).return_ty.clone();
                     Ty::FunctionVar { ty, fun, arg: None }
                 }
@@ -434,16 +434,16 @@ impl Context<'_> {
     ) -> Option<Ty> {
         let def = self.resolve_path(stmt, expr, fun)?;
         match def {
-            ScopeItemDef::NatureAccess(access) => {
+            ScopeItem::NatureAccess(access) => {
                 self.infere_nature_access(stmt, expr, access, args);
                 Some(Ty::Val(Type::Real))
             }
-            ScopeItemDef::BuiltIn(builtin) => {
+            ScopeItem::BuiltIn(builtin) => {
                 self.result.resolved_calls.insert(expr, ResolvedFun::BuiltIn(builtin));
                 self.infere_builtin(stmt, expr, builtin, args).0
             }
-            ScopeItemDef::FunctionId(fun) => self.infere_user_fun_call(stmt, expr, fun, args),
-            ScopeItemDef::ParamSysFun(param) => {
+            ScopeItem::FunctionId(fun) => self.infere_user_fun_call(stmt, expr, fun, args),
+            ScopeItem::ParamSysFun(param) => {
                 self.result.resolved_calls.insert(expr, ResolvedFun::Param(param));
                 if !args.is_empty() {
                     self.result.diagnostics.push(InferDiagnostic::ArgCntMismatch {
@@ -459,7 +459,7 @@ impl Context<'_> {
                 self.result.diagnostics.push(InferDiagnostic::PathResolveError {
                     err: PathResolveError::ExpectedItemKind {
                         expected: "a function",
-                        found: ResolvedPath::ScopeItemDef(found),
+                        found: ResolvedPath::ScopeItem(found),
                         name: fun.segments.last().unwrap().to_owned(),
                     },
                     expr,
@@ -1118,7 +1118,7 @@ impl Context<'_> {
         }
     }
 
-    fn resolve_path(&mut self, stmt: StmtId, expr: ExprId, path: &Path) -> Option<ScopeItemDef> {
+    fn resolve_path(&mut self, stmt: StmtId, expr: ExprId, path: &Path) -> Option<ScopeItem> {
         let resolved_path = match self.body.stmt_scopes[stmt].resolve_path(self.db.upcast(), path) {
             Ok(resolved_path) => resolved_path,
             Err(err) => {
@@ -1134,7 +1134,7 @@ impl Context<'_> {
             ResolvedPath::PotentialAttr { branch, ref name } => {
                 BranchTy::potential_attr(self.db, branch, name)?
             }
-            ResolvedPath::ScopeItemDef(def) => return Some(def),
+            ResolvedPath::ScopeItem(def) => return Some(def),
         };
 
         match attr {

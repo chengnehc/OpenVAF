@@ -1,9 +1,10 @@
 use super::*;
+
 use crate::{
     LocalDisciplineAttrId, LocalFunctionArgId, LocalNatureAttrId, LocalNodeId, Path, Type,
 };
+use syntax::ast::BlockStmt;
 
-/// [LRM 3.6.1] A nature is a collection of attributes.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Nature {
     pub name: Name,
@@ -44,8 +45,6 @@ pub struct NatureAttr {
     pub ast_id: AstId<ast::NatureAttr>,
 }
 
-/// [LRM 3.6.2] A discipline description consists of specifying a domain type and binding any
-/// natures to potential or flow.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Discipline {
     pub name: Name,
@@ -77,7 +76,6 @@ pub enum DisciplineAttrKind {
     UserDefined,
 }
 
-/// [LRM 6.2]
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Module {
     pub name: Name,
@@ -246,8 +244,6 @@ pub struct AliasParam {
     pub ast_id: AstId<ast::AliasParam>,
 }
 
-/// [LRM 4.7] A user-defined function can be used to return a value
-/// (for an expression). All functions are defined within modules.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Function {
     pub name: Name,
@@ -285,7 +281,6 @@ impl FunctionArg {
     }
 }
 
-/// [LRM 5.3] Block Statements
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Block {
     pub name: Option<Name>,

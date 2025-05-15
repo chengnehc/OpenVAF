@@ -3,7 +3,7 @@ use std::fmt::{self, Write};
 use crate::db::HirDefDB;
 use crate::nameres::{DefMap, LocalScopeId};
 
-use super::ScopeItemDef;
+use super::ScopeItem;
 
 impl DefMap {
     pub fn dump(&self, db: &dyn HirDefDB) -> Result<String, fmt::Error> {
@@ -48,12 +48,12 @@ impl Printer<'_> {
         for (name, def) in declarations {
             write!(self, "{name} = {};", def.item_kind())?;
             match def {
-                ScopeItemDef::BlockId(block) => {
+                ScopeItem::BlockId(block) => {
                     if let Some(def_map) = self.db.block_def_map(block) {
                         self.indented(|s| s.print_def_map(&def_map))?;
                     }
                 }
-                ScopeItemDef::FunctionId(fun) => {
+                ScopeItem::FunctionId(fun) => {
                     let def_map = self.db.function_def_map(fun);
                     self.indented(|s| s.print_def_map(&def_map))?;
                 }

@@ -16,9 +16,7 @@ use stdx::impl_from_typed;
 use ahash::AHashMap;
 use arena::{Arena, Idx, IdxRange};
 use basedb::{AstId, ErasedAstId, FileId};
-use syntax::ast::{self, BlockStmt};
-use syntax::name::Name;
-use syntax::AstNode;
+use syntax::{ast, AstNode, Name};
 
 use crate::HirDefDB;
 
@@ -29,15 +27,14 @@ mod pretty;
 pub use nodes::*;
 
 /// An item tree is a simplified AST that only contains items.
+///
+/// For blocks, special treatment is taken as `BlockStmt` is not an item tree node.
+// TODO(JW): currently all blocks (named and unnamed) are stored. Is that really necessary?
 #[derive(Debug, Eq, PartialEq, Default)]
 pub struct ItemTree {
-    pub(crate) top_level: Box<[RootItem]>,
-    /// The data storage for items.
+    pub(crate) root_items: Box<[RootItem]>,
     pub(crate) data: ItemTreeData,
-    /// Map from block statement AstId to the block's data. This special treatment is taken as
-    /// `BlockStmt` is not an item tree node.
-    // TODO(JW): currently all blocks (named and unnamed) are stored. Is that really necessary?
-    pub(crate) blocks: AHashMap<AstId<BlockStmt>, Block>,
+    pub(crate) blocks: AHashMap<AstId<ast::BlockStmt>, Block>,
 }
 
 impl ItemTree {
@@ -80,8 +77,6 @@ impl ItemTree {
     }
 }
 
-/// An item that is defined at top level of source file (in the root scope),
-/// i.e. `discipline`, `nature` and `module`
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum RootItem {
     Nature(ItemTreeId<Nature>),
@@ -94,11 +89,10 @@ impl_from_typed! (
     Module(ItemTreeId<Module>)  for RootItem
 );
 
+pub type ItemTreeId<N> = Idx<N>;
+
 #[derive(Default, Debug, Eq, PartialEq)]
 pub(crate) struct ItemTreeData {
-    // # Note
-    // Disciplines or Natures share the same arena of their attributes
-    // within which each discipline or nature owns a `IdxRange` of attributes.
     pub natures: Arena<Nature>,
     pub nature_attrs: Arena<NatureAttr>,
     pub disciplines: Arena<Discipline>,
@@ -113,10 +107,7 @@ pub(crate) struct ItemTreeData {
     pub functions: Arena<Function>,
 }
 
-pub type ItemTreeId<N> = Idx<N>;
-
 pub trait ItemTreeNode: Clone {
-    // This means trait has an associative type `Source` that must satisfy trait bound `AstNode`.
     type Source: AstNode;
 
     /// The name of this item.
@@ -127,34 +118,9 @@ pub trait ItemTreeNode: Clone {
     fn lookup(tree: &ItemTree, index: ItemTreeId<Self>) -> &Self;
 }
 
-macro_rules! scope_items {
-    ($typ:ident) => {
-        impl From<ItemTreeId<$typ>> for ScopeItem {
-            fn from(id: ItemTreeId<$typ>) -> ScopeItem {
-                ScopeItem::$typ(id)
-            }
-        }
-        impl TryFrom<ScopeItem> for ItemTreeId<$typ> {
-            type Error = (); // TODO(JW): should not use () as Error type
-            fn try_from(it: ScopeItem) -> Result<ItemTreeId<$typ>, ()> {
-                if let ScopeItem::$typ(id) = it {
-                    Ok(id)
-                } else {
-                    Err(())
-                }
-            }
-        }
-    };
-}
 macro_rules! item_tree_nodes {
     ( $( $typ:ident in $fld:ident -> $ast:ty ),+ $(,)? ) => {
-        #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-        pub enum ScopeItem {
-            $( $typ(ItemTreeId<$typ>), )+
-        }
         $(
-            scope_items!($typ);
-             // `ItemTreeNode` trait impls
             impl ItemTreeNode for $typ {
                 type Source = $ast;
                 #[inline]
@@ -170,7 +136,7 @@ macro_rules! item_tree_nodes {
                     &tree.data.$fld[index]
                 }
             }
-            // [] operator overload of each arena of item tree data
+
             impl Index<Idx<$typ>> for ItemTree {
                 type Output = $typ;
                 fn index(&self, index: Idx<$typ>) -> &Self::Output {

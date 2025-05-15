@@ -7,13 +7,13 @@ use syntax::sourcemap::FileSpan;
 
 use crate::db::HirDefDB;
 
-use super::{ResolvedPath, ScopeItemDef};
+use super::{ResolvedPath, ScopeItem};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathResolveError {
     NotFound { name: Name },
     NotFoundIn { name: Name, scope: Name },
-    ExpectedScope { name: Name, found: ScopeItemDef },
+    ExpectedScope { name: Name, found: ScopeItem },
     ExpectedItemKind { name: Name, expected: &'static str, found: ResolvedPath },
     ExpectedNatureAttrIdent { found: Box<[Name]> },
 }
@@ -43,7 +43,7 @@ impl PathResolveError {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum DefDiagnostic {
-    AlreadyDeclared { old: ScopeItemDef, new: ScopeItemDef, name: Name },
+    AlreadyDeclared { old: ScopeItem, new: ScopeItem, name: Name },
 }
 
 impl_display! {

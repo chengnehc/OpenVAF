@@ -1,7 +1,7 @@
 use std::iter;
 
 use hir_def::{
-    nameres::ScopeItemDef, AliasParamId, BranchId, BranchLoc, DisciplineId, ModuleId, ModuleLoc,
+    nameres::ScopeItem, AliasParamId, BranchId, BranchLoc, DisciplineId, ModuleId, ModuleLoc,
     NatureId, NodeId, NodeTypeDecl, ParamId, Path, Scope,
 };
 use syntax::{ast::ArgListOwner, AstNode};
@@ -15,9 +15,9 @@ impl TypeValidator<'_> {
         let root = &self.def_map[self.def_map.root_scope()];
         for def in root.declarations.values() {
             match *def {
-                ScopeItemDef::NatureId(nature) => self.verify_nature(nature),
-                ScopeItemDef::DisciplineId(discipline) => self.verify_discipline(discipline),
-                ScopeItemDef::ModuleId(module) => self.verify_module(module),
+                ScopeItem::NatureId(nature) => self.verify_nature(nature),
+                ScopeItem::DisciplineId(discipline) => self.verify_discipline(discipline),
+                ScopeItem::ModuleId(module) => self.verify_module(module),
                 _ => (),
             }
         }
@@ -63,9 +63,9 @@ impl TypeValidator<'_> {
         let module = id.lookup(self.db.upcast());
         for item in self.def_map[module.scope.id].declarations.values() {
             match item {
-                ScopeItemDef::NodeId(node) => self.verify_node(*node, module),
-                ScopeItemDef::BranchId(branch) => self.verify_branch(*branch),
-                ScopeItemDef::AliasParamId(alias) => self.verify_alias(*alias),
+                ScopeItem::NodeId(node) => self.verify_node(*node, module),
+                ScopeItem::BranchId(branch) => self.verify_branch(*branch),
+                ScopeItem::AliasParamId(alias) => self.verify_alias(*alias),
                 _ => (),
             }
         }

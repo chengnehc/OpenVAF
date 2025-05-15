@@ -7,14 +7,14 @@ use super::*;
 pub enum ResolvedPath {
     FlowAttr { branch: BranchId, name: Name },
     PotentialAttr { branch: BranchId, name: Name },
-    ScopeItemDef(ScopeItemDef),
+    ScopeItem(ScopeItem),
 }
-impl_from!(ScopeItemDef for ResolvedPath);
+impl_from!(ScopeItem for ResolvedPath);
 impl_display! {
     match ResolvedPath{
         ResolvedPath::FlowAttr{..}  => "nature attribute";
         ResolvedPath::PotentialAttr{..} => "nature attribute";
-        ResolvedPath::ScopeItemDef(item) => "{}", item.item_kind();
+        ResolvedPath::ScopeItem(item) => "{}", item.item_kind();
     }
 }
 
@@ -26,7 +26,7 @@ impl DefMap {
         db: &dyn HirDefDB,
     ) -> Result<T, PathResolveError> {
         let resolved_path = self.resolve_normal_path(scope, segments, db)?;
-        let res: Result<ScopeItemDef, _> = resolved_path.clone().try_into();
+        let res: Result<ScopeItem, _> = resolved_path.clone().try_into();
         if let Ok(item) = res {
             if let Ok(item) = item.try_into() {
                 return Ok(item);
@@ -116,8 +116,8 @@ impl DefMap {
         // to visit the scope corresponding to it, so that we could resolve other segments
         // within this scope.
         cur_scope = match def {
-            ScopeItemDef::ModuleId(module) => module.lookup(db).scope.id,
-            ScopeItemDef::BlockId(block) => {
+            ScopeItem::ModuleId(module) => module.lookup(db).scope.id,
+            ScopeItem::BlockId(block) => {
                 let Some(block_map) = db.block_def_map(block) else {
                     let name = segments[1].clone();
                     let scope = segments[0].clone();
@@ -139,7 +139,7 @@ impl DefMap {
         db: &dyn HirDefDB,
     ) -> Result<T, PathResolveError> {
         let resolved_path = self.resolve_root_path(segments, db)?;
-        let res: Result<ScopeItemDef, _> = resolved_path.clone().try_into();
+        let res: Result<ScopeItem, _> = resolved_path.clone().try_into();
         if let Ok(def) = res {
             if let Ok(item) = def.try_into() {
                 return Ok(item);
@@ -183,7 +183,7 @@ impl DefMap {
             match def_map[scope].children.get(seg) {
                 Some(child) => scope = *child,
                 None => match def_map[scope].declarations.get(seg) {
-                    Some(ScopeItemDef::BlockId(block)) => {
+                    Some(ScopeItem::BlockId(block)) => {
                         if let Some(block_map) = db.block_def_map(*block) {
                             arc = block_map;
                             def_map = &arc;
@@ -196,7 +196,7 @@ impl DefMap {
                         };
                     }
                     // Refer to LRM: 3.13.4
-                    Some(ScopeItemDef::BranchId(branch))
+                    Some(ScopeItem::BranchId(branch))
                         if segments.get(i + 1) == Some(&kw::potential) =>
                     {
                         let rem = &segments[(i + 1)..];
@@ -211,9 +211,7 @@ impl DefMap {
                             });
                         }
                     }
-                    Some(ScopeItemDef::BranchId(branch))
-                        if segments.get(i + 1) == Some(&kw::flow) =>
-                    {
+                    Some(ScopeItem::BranchId(branch)) if segments.get(i + 1) == Some(&kw::flow) => {
                         let rem = &segments[(i + 1)..];
                         if let [name] = rem {
                             return Ok(ResolvedPath::FlowAttr {
@@ -244,7 +242,7 @@ impl DefMap {
         }
 
         match self[scope].declarations.get(name) {
-            Some(decl) => Ok(ResolvedPath::ScopeItemDef(*decl)),
+            Some(decl) => Ok(ResolvedPath::ScopeItem(*decl)),
             None => {
                 Err(PathResolveError::NotFoundIn { name: name.clone(), scope: scope_name.clone() })
             }

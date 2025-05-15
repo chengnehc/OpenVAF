@@ -98,7 +98,7 @@ pub struct ScopeData {
     /// children scopes defined within this scope
     pub children: IndexMap<Name, LocalScopeId, ahash::RandomState>,
     /// items declared in this scope
-    pub declarations: IndexMap<Name, ScopeItemDef, ahash::RandomState>,
+    pub declarations: IndexMap<Name, ScopeItem, ahash::RandomState>,
 }
 
 /// Where does the scope originate from?
@@ -125,9 +125,10 @@ impl_from_typed! {
 
 /// Items that can be defined within a scope.
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
-pub enum ScopeItemDef {
+pub enum ScopeItem {
     NatureId(NatureId),
     NatureAttrId(NatureAttrId),
+    NatureAccess(NatureAccess),
     DisciplineId(DisciplineId),
     ModuleId(ModuleId),
     BlockId(BlockId),
@@ -136,16 +137,17 @@ pub enum ScopeItemDef {
     VarId(VarId),
     ParamId(ParamId),
     AliasParamId(AliasParamId),
-    ParamSysFun(ParamSysFun),   // Hierarchical system parameters
-    BuiltIn(BuiltIn),           // Builtin functions and sysfuns
-    NatureAccess(NatureAccess), // signal access function
-    FunctionId(FunctionId),     // user function
-    FunctionReturn(FunctionId),
+    ParamSysFun(ParamSysFun),
+    BuiltIn(BuiltIn),
+    FunctionId(FunctionId),
     FunctionArgId(FunctionArgId),
+    FunctionReturn(FunctionId),
 }
 
 impl_from! {
-    NatureId, NatureAttrId, NatureAccess,
+    NatureId,
+    NatureAttrId,
+    NatureAccess,
     DisciplineId,
     ModuleId,
     BlockId,
@@ -154,32 +156,39 @@ impl_from! {
     VarId,
     ParamId,
     AliasParamId,
-    FunctionId, FunctionArgId, // FunctionReturn
-    ParamSysFun, BuiltIn     for ScopeItemDef
+    ParamSysFun,
+    BuiltIn,
+    FunctionId,
+    FunctionArgId   for ScopeItem
 }
 
-impl ScopeItemDef {
+impl ScopeItem {
     fn text_range(self, db: &dyn HirDefDB) -> Option<TextRange> {
-        use ScopeItemDef::*;
+        use ScopeItem::*;
 
         let res = match self {
+            // items with large span
             NatureId(nature) => nature.lookup(db).source(db).name()?.syntax().text_range(),
-            NatureAttrId(attr) => attr.lookup(db).ast_ptr(db).text_range(),
-            NatureAccess(access) => access.0.lookup(db).ast_ptr(db).text_range(),
             DisciplineId(disc) => disc.lookup(db).source(db).name()?.syntax().text_range(),
             ModuleId(module) => module.lookup(db).source(db).name()?.syntax().text_range(),
             BlockId(blk) => blk.lookup(db).source(db).block_scope()?.name()?.syntax().text_range(),
+            FunctionId(fun) | FunctionReturn(fun) => {
+                fun.lookup(db).source(db).name()?.syntax().text_range()
+            }
+
+            // items with small span
+            NatureAttrId(attr) => attr.lookup(db).ast_ptr(db).text_range(),
+            NatureAccess(access) => access.0.lookup(db).ast_ptr(db).text_range(),
             NodeId(node) => node.lookup(db).ast_ptr(db).text_range(),
+            VarId(var) => var.lookup(db).ast_ptr(db).text_range(),
+            ParamId(param) => param.lookup(db).ast_ptr(db).text_range(),
+            AliasParamId(alias) => alias.lookup(db).ast_ptr(db).text_range(),
+
+            // items with argument list
             BranchId(branch) => {
                 let branch = branch.lookup(db);
                 let pos = branch.item_tree(db)[branch.id].name_idx;
                 branch.source(db).names().nth(pos)?.syntax().text_range()
-            }
-            VarId(var) => var.lookup(db).ast_ptr(db).text_range(),
-            ParamId(param) => param.lookup(db).ast_ptr(db).text_range(),
-            AliasParamId(alias) => alias.lookup(db).ast_ptr(db).text_range(),
-            FunctionId(fun) | FunctionReturn(fun) => {
-                fun.lookup(db).source(db).name()?.syntax().text_range()
             }
             FunctionArgId(arg) => {
                 let arg = arg.lookup(db);
@@ -187,6 +196,7 @@ impl ScopeItemDef {
                 let pos = fun.item_tree(db)[fun.id].args[arg.id].name_idx;
                 arg.source(db).names().nth(pos)?.syntax().text_range()
             }
+
             BuiltIn(_) | ParamSysFun(_) => return None,
         };
 
@@ -194,7 +204,7 @@ impl ScopeItemDef {
     }
 }
 
-pub trait ScopeItemKind: TryFrom<ScopeItemDef> {
+pub trait ScopeItemKind: TryFrom<ScopeItem> {
     const NAME: &'static str;
 }
 
@@ -205,11 +215,11 @@ macro_rules! scope_item_kinds {
             const NAME: &'static str = $name;
         }
         )*
-        impl ScopeItemDef {
+        impl ScopeItem {
             pub const fn item_kind(&self) -> &'static str {
                 match self {
-                    $(ScopeItemDef::$ty(_) => $ty::NAME,)*
-                    ScopeItemDef::FunctionReturn(_) => VarId::NAME
+                    $(ScopeItem::$ty(_) => $ty::NAME,)*
+                    ScopeItem::FunctionReturn(_) => VarId::NAME
                 }
             }
         }
@@ -235,7 +245,7 @@ scope_item_kinds! {
     ParamSysFun => "hierarchical parameter system function"
 }
 
-static BUILTIN_ITEM_DEF: Lazy<IndexMap<Name, ScopeItemDef, ahash::RandomState>> = Lazy::new(|| {
+static BUILTIN_ITEM_DEF: Lazy<IndexMap<Name, ScopeItem, ahash::RandomState>> = Lazy::new(|| {
     let mut defs = IndexMap::default();
     builtin::insert_builtin_def(&mut defs);
     defs

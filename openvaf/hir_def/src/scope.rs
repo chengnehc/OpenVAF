@@ -4,7 +4,7 @@ use basedb::FileId;
 
 use crate::db::HirDefDB;
 use crate::nameres::{
-    DefMap, DefMapSource, LocalScopeId, PathResolveError, ResolvedPath, ScopeItemDef, ScopeItemKind,
+    DefMap, DefMapSource, LocalScopeId, PathResolveError, ResolvedPath, ScopeItem, ScopeItemKind,
 };
 use crate::{Name, Path};
 
@@ -79,7 +79,7 @@ impl Scope {
         &self,
         db: &dyn HirDefDB,
         name: &Name,
-    ) -> Result<ScopeItemDef, PathResolveError> {
+    ) -> Result<ScopeItem, PathResolveError> {
         let def_map = self.def_map(db);
         let mut cur_scope = self.id;
         loop {
@@ -112,7 +112,7 @@ impl DefMap {
         &self,
         scope: LocalScopeId,
         name: &Name,
-    ) -> Result<ScopeItemDef, PathResolveError> {
+    ) -> Result<ScopeItem, PathResolveError> {
         let mut cur_scope = scope;
         loop {
             if let Some(decl) = self[cur_scope].declarations.get(name) {

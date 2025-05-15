@@ -7,8 +7,7 @@ use stdx::{impl_debug_display, impl_from};
 
 use arena::Idx;
 use basedb::{AstId, ErasedAstId, FileId};
-use syntax::name::Name;
-use syntax::{ast, AstNode, AstPtr, SyntaxNodePtr};
+use syntax::{ast, AstNode, AstPtr, Name, SyntaxNodePtr};
 
 pub mod body;
 pub mod db;
@@ -32,7 +31,7 @@ pub use scope::Scope;
 pub use types::Type;
 
 use db::HirDefDB;
-use nameres::{DefMap, ScopeItemDef};
+use nameres::{DefMap, ScopeItem};
 
 #[derive(Debug)]
 pub struct ItemLoc<N: ItemTreeNode> {
@@ -348,21 +347,21 @@ impl_intern!(BlockId, BlockLoc, intern_block, lookup_intern_block);
 pub enum DefWithBodyId {
     NatureAttrId(NatureAttrId),
     DisciplineAttrId(DisciplineAttrId),
-    ModuleId { initial: bool, id: ModuleId }, // multiple analog behavior blocks are concatenated
+    ModuleId { initial: bool, id: ModuleId },
     VarId(VarId),
     ParamId(ParamId),
     FunctionId(FunctionId),
 }
 impl_from!(NatureAttrId, DisciplineAttrId, VarId, ParamId, FunctionId for DefWithBodyId);
 
-impl TryFrom<ScopeItemDef> for DefWithBodyId {
+impl TryFrom<ScopeItem> for DefWithBodyId {
     type Error = (); // TODO(JW): should not use () as error type
-    fn try_from(src: ScopeItemDef) -> Result<DefWithBodyId, ()> {
+    fn try_from(src: ScopeItem) -> Result<DefWithBodyId, ()> {
         let res = match src {
-            ScopeItemDef::NatureAttrId(attr) => attr.into(),
-            ScopeItemDef::VarId(var) => var.into(),
-            ScopeItemDef::ParamId(param) => param.into(),
-            ScopeItemDef::FunctionId(fun) => fun.into(),
+            ScopeItem::NatureAttrId(attr) => attr.into(),
+            ScopeItem::VarId(var) => var.into(),
+            ScopeItem::ParamId(param) => param.into(),
+            ScopeItem::FunctionId(fun) => fun.into(),
             _ => return Err(()),
         };
         Ok(res)
