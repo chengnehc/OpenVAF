@@ -4,7 +4,7 @@ use hir_def::{
     nameres::ScopeItemDef, AliasParamId, BranchId, BranchLoc, DisciplineId, ModuleId, ModuleLoc,
     NatureId, NodeId, NodeTypeDecl, ParamId, Path, Scope,
 };
-use syntax::{ast::ArgListOwner, AstNode, SyntaxNodePtr};
+use syntax::{ast::ArgListOwner, AstNode};
 use typed_index_collections::TiSlice;
 
 use super::diagnostics::DuplicateItem;
@@ -87,7 +87,7 @@ impl TypeValidator<'_> {
         }
         let mut directions = node.decls.iter().filter_map(|decl| {
             if let NodeTypeDecl::Port(p) = decl {
-                Some(self.item_tree[*p].ast_id)
+                Some(self.item_tree[*p].ast_id.erased())
             } else {
                 None
             }
@@ -120,11 +120,11 @@ impl TypeValidator<'_> {
                 {
                     self.report(TypeDiagnostic::PathError {
                         err,
-                        src: SyntaxNodePtr::new(
-                            decl.discipline_source(self.db.upcast(), self.root_file)
-                                .unwrap()
-                                .syntax(),
-                        ),
+                        range: decl
+                            .discipline_source(self.db.upcast(), self.root_file)
+                            .unwrap()
+                            .syntax()
+                            .text_range(),
                     })
                 }
             }
@@ -198,17 +198,16 @@ impl TypeValidator<'_> {
         match scope.resolve_item_path::<NodeId>(self.db.upcast(), path) {
             Ok(node) => Some(node),
             Err(err) => {
-                let src = SyntaxNodePtr::new(
-                    branch
-                        .source(self.db.upcast())
-                        .arg_list()
-                        .unwrap()
-                        .args()
-                        .next()
-                        .unwrap()
-                        .syntax(),
-                );
-                self.report(TypeDiagnostic::PathError { err, src });
+                let range = branch
+                    .source(self.db.upcast())
+                    .arg_list()
+                    .unwrap()
+                    .args()
+                    .next()
+                    .unwrap()
+                    .syntax()
+                    .text_range();
+                self.report(TypeDiagnostic::PathError { err, range });
                 None
             }
         }
@@ -221,8 +220,8 @@ impl TypeValidator<'_> {
             let db = self.db.upcast();
             let alias = id.lookup(db);
             let err = alias.scope.resolve_item_name::<ParamId>(db, name).unwrap_err();
-            let src = SyntaxNodePtr::new(alias.source(db).param_ref().unwrap().syntax());
-            self.report(TypeDiagnostic::PathError { err, src });
+            let range = alias.source(db).param_ref().unwrap().syntax().text_range();
+            self.report(TypeDiagnostic::PathError { err, range });
         }
     }
 

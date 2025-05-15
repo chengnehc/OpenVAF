@@ -47,8 +47,8 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
         let ast_id_map = db.ast_id_map(root_file);
 
         match *self.diag {
-            TypeDiagnostic::PathError { ref err, src } => {
-                let span = parse.to_file_span(src.text_range(), &sm);
+            TypeDiagnostic::PathError { ref err, range } => {
+                let span = parse.to_file_span(range, &sm);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -122,7 +122,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
             TypeDiagnostic::MultipleDirections(ref info) => {
                 let labels = self.build_duplicate_item(info, |id| {
-                    parse.to_file_span(ast_id_map.get(id).text_range(), &sm)
+                    parse.to_file_span(ast_id_map.get_erased(id).text_range(), &sm)
                 });
                 let node_name = self.db.node_data(info.src).name.clone();
 

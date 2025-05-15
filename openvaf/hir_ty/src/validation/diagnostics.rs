@@ -105,12 +105,11 @@ pub enum IllegalCtxtAccessKind {
 
 /* Type Diagnostics */
 
-use basedb::{AstId, ErasedAstId};
+use basedb::ErasedAstId;
 use hir_def::{
     nameres::PathResolveError, BranchId, DisciplineId, ItemTree, LocalDisciplineAttrId,
     LocalNatureAttrId,
 };
-use syntax::{ast, SyntaxNodePtr};
 
 pub struct TypeDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
@@ -120,12 +119,12 @@ pub struct TypeDiagnosticWrapped<'a> {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TypeDiagnostic {
-    PathError { err: PathResolveError, src: SyntaxNodePtr },
+    PathError { err: PathResolveError, range: TextRange },
     DuplicateNatureAttr(DuplicateItem<LocalNatureAttrId, NatureId>),
     DuplicateDisciplineAttr(DuplicateItem<LocalDisciplineAttrId, DisciplineId>),
     PortWithoutDirection { decl: ErasedAstId, name: Name },
     NodeWithoutDiscipline { decl: ErasedAstId, name: Name },
-    MultipleDirections(DuplicateItem<AstId<ast::PortDecl>, NodeId>),
+    MultipleDirections(DuplicateItem<ErasedAstId, NodeId>),
     MultipleDisciplines(DuplicateItem<ErasedAstId, NodeId>),
     MultipleGnds(DuplicateItem<ErasedAstId, NodeId>),
     ExpectedPort { node: NodeId, src: ErasedAstId },
