@@ -1,0 +1,6 @@
+module test;
+    parameter real p = inf;
+    real x;
+    
+    analog x = -inf;
+endmodule

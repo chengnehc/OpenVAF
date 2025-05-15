@@ -358,7 +358,7 @@ impl Diagnostic for SyntaxError {
                     file_id,
                     range: range.into(),
                     message: "unexpected token".to_owned(),
-                }]).with_notes(vec!["help: 'inf' is only allowed in ranges of parameter declarations (example: [0:inf])".to_owned()])
+                }]).with_notes(vec!["help: 'inf' is only allowed in ranges of parameter declarations (example: [0:inf))".to_owned()])
             }
             SyntaxError::UnitsExpectedStringLiteral { range } => {
                 let FileSpan { range, file: file_id } = parse.to_file_span(range, &sm);

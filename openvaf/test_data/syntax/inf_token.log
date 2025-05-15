@@ -1,0 +1,16 @@
+error: unexpected token 'inf'; expected an expression
+  --> /inf_token.va:2:24
+  |
+2 |     parameter real p = inf;
+  |                        ^^^ unexpected token
+  |
+  = help: 'inf' is only allowed in ranges of parameter declarations (example: [0:inf))
+
+error: unexpected token 'inf'; expected an expression
+  --> /inf_token.va:5:17
+  |
+5 |     analog x = -inf;
+  |                 ^^^ unexpected token
+  |
+  = help: 'inf' is only allowed in ranges of parameter declarations (example: [0:inf))
+

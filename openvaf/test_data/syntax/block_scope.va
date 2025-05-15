@@ -1,9 +1,16 @@
 module test1;
-    parameter real foo = 1;
-    real v_module;
+    parameter real foo=1;
+    real v;
 
     analog begin
-        parameter bar = 2;
-        real v_local;
+        begin
+            parameter bar=1;
+            real v;
+        end
+
+        begin : myscope
+            v = $mfactor * foo;
+            parameter qux=1;
+        end
     end
 endmodule

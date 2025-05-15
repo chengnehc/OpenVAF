@@ -1,10 +1,18 @@
 error: declarations in blocks require an explicit scope
-  --> /block_scope.va:6:9
+  --> /block_scope.va:7:13
   |
-5 |     analog begin
-  |                - help: add ':<scope>' here
-6 |         parameter bar = 2;
-  |         ^^^^^^^^^^^^^^^^^^ parameter decl.s require a scope
-7 |         real v_local;
-  |         ^^^^^^^^^^^^^ variable decl.s require a scope
+6 |         begin
+  |             - help: add ':<scope>' here
+7 |             parameter bar=1;
+  |             ^^^^^^^^^^^^^^^^ parameter decl.s require a scope
+8 |             real v;
+  |             ^^^^^^^ variable decl.s require a scope
+
+error: declarations in blocks are only allowed before the first stmt
+   --> /block_scope.va:13:13
+   |
+12 |             v = $mfactor * foo;
+   |             ------------------- help: move all declarations before this statement
+13 |             parameter qux=1;
+   |             ^^^^^^^^^^^^^^^^ parameter decl.s are only allowed before the first stmt
 
