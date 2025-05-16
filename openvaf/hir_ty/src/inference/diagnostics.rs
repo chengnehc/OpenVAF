@@ -329,7 +329,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 });
 
                 if invalid_arg0 {
-                    let decl = tree[tree[func.id].args.raw[0].declarations[0]].ast_id;
+                    let decl = tree[tree[func.id].args.raw[0].var_binds[0]].ast_id;
                     let decl = id_map.get_erased(decl.into()).text_range();
                     let decl = parse.to_file_span(decl, &sm);
                     labels.push(Label {
@@ -341,7 +341,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 }
 
                 if invalid_arg1 {
-                    let decl = tree[tree[func.id].args.raw[1].declarations[0]].ast_id;
+                    let decl = tree[tree[func.id].args.raw[1].var_binds[0]].ast_id;
                     let decl = id_map.get_erased(decl.into()).text_range();
                     let decl = parse.to_file_span(decl, &sm);
                     labels.push(Label {
@@ -353,7 +353,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 }
 
                 for arg in output_args {
-                    let decl = tree[func.id].args[*arg].ast_ids[0];
+                    let decl = tree[func.id].args[*arg].ast_id;
                     let decl = id_map.get_erased(decl.into()).text_range();
                     let decl = parse.to_file_span(decl, &sm);
                     labels.push(Label {

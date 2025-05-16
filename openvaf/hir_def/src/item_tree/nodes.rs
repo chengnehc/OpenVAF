@@ -106,9 +106,9 @@ impl_from_typed! (
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Port {
+    pub name_idx: usize,
     pub name: Name,
     pub ast_id: AstId<ast::PortDecl>,
-    pub name_idx: usize,
     pub discipline: Option<Name>,
     pub is_input: bool,
     pub is_output: bool,
@@ -117,9 +117,9 @@ pub struct Port {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Net {
+    pub name_idx: usize,
     pub name: Name,
     pub ast_id: AstId<ast::NetDecl>,
-    pub name_idx: usize,
     pub discipline: Option<Name>,
     pub is_gnd: bool,
 }
@@ -209,9 +209,9 @@ impl NodeTypeDecl {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Branch {
+    pub name_idx: usize,
     pub name: Name,
     pub ast_id: AstId<ast::BranchDecl>,
-    pub name_idx: usize,
     pub kind: BranchKind,
 }
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -257,27 +257,25 @@ pub enum FunctionItem {
     FunctionArg(LocalFunctionArgId),
     Parameter(ItemTreeId<Param>),
     Variable(ItemTreeId<Var>),
-    ScopedBlock(AstId<BlockStmt>),
 }
 impl_from_typed! (
     FunctionArg(LocalFunctionArgId),
     Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>),
-    ScopedBlock(AstId<BlockStmt>)   for FunctionItem
+    Variable(ItemTreeId<Var>)      for FunctionItem
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct FunctionArg {
-    pub name: Name,
-    pub ast_ids: Vec<AstId<ast::FunctionArg>>,
     pub name_idx: usize,
+    pub name: Name,
+    pub ast_id: AstId<ast::FunctionArg>,
     pub is_input: bool,
     pub is_output: bool,
-    pub declarations: Vec<ItemTreeId<Var>>,
+    pub var_binds: Vec<ItemTreeId<Var>>,
 }
 impl FunctionArg {
     pub fn ty(&self, tree: &ItemTree) -> Type {
-        self.declarations.first().map_or(Type::Err, |decl| tree[*decl].ty.clone())
+        self.var_binds.first().map_or(Type::Err, |var| tree[*var].ty.clone())
     }
 }
 
@@ -295,5 +293,5 @@ pub enum BlockItem {
 impl_from_typed! (
     ScopedBlock(AstId<BlockStmt>),
     Parameter(ItemTreeId<Param>),
-    Variable(ItemTreeId<Var>)   for BlockItem
+    Variable(ItemTreeId<Var>)       for BlockItem
 );

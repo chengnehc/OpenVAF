@@ -16,7 +16,3 @@ module test
         arg Real w = { input = true, output = false }
         arg Real area = { input = false, output = true }
         arg Real perim = { input = false, output = true }
-        param real p1
-        block Some(Name("myscope"))
-            param real p2
-            var real tmp

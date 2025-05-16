@@ -1,13 +1,14 @@
 use basedb::{
     diagnostics::{Diagnostic, Label, LabelStyle, Report},
     lints::{self, Lint, LintSrc},
-    BaseDB, FileId,
+    AstId, BaseDB, FileId,
 };
 use hir_def::{
     body::{BodySourceMap, ExprId, StmtId},
     BuiltIn, FunctionArgLoc, ItemTreeNode, Lookup, NatureId, NodeId, ParamId, VarId,
 };
 use syntax::{
+    ast,
     sourcemap::{FileSpan, SourceMap},
     Name, Parse, SourceFile, TextRange,
 };
@@ -79,11 +80,13 @@ pub enum BodyDiagnostic {
         param: ParamId,
     },
 
-    /* Function */
+    /* User function */
     WriteToInputArg {
         expr: ExprId,
         arg: FunctionArgLoc,
     },
+
+    /* Buitin function */
     UnsupportedFunction {
         expr: ExprId,
         func: BuiltIn,
@@ -119,16 +122,27 @@ pub struct TypeDiagnosticWrapped<'a> {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TypeDiagnostic {
+    /* Name and Path */
     PathError { err: PathResolveError, range: TextRange },
+
+    /* Nature and Discipline */
     DuplicateNatureAttr(DuplicateItem<LocalNatureAttrId, NatureId>),
     DuplicateDisciplineAttr(DuplicateItem<LocalDisciplineAttrId, DisciplineId>),
+
+    /* Node and Port */
     PortWithoutDirection { decl: ErasedAstId, name: Name },
     NodeWithoutDiscipline { decl: ErasedAstId, name: Name },
     MultipleDirections(DuplicateItem<ErasedAstId, NodeId>),
     MultipleDisciplines(DuplicateItem<ErasedAstId, NodeId>),
     MultipleGnds(DuplicateItem<ErasedAstId, NodeId>),
+
+    /* Branch */
     ExpectedPort { node: NodeId, src: ErasedAstId },
     IncompatibleBranch { branch: BranchId, node1: NodeId, node2: NodeId },
+
+    /* Function */
+    MultipleFuncArgBind(DuplicateItem<AstId<ast::Var>, Name>),
+    FuncArgWithoutVarBind { decl: AstId<ast::FunctionArg>, name: Name },
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]

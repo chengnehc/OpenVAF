@@ -276,7 +276,7 @@ impl Context {
                 }
                 ast::ModuleItem::AnalogBehavior(behaviour) => {
                     if let Some(stmt) = behaviour.stmt() {
-                        self.lower_stmt(stmt, dst);
+                        self.lower_block_scope(stmt, dst);
                     }
                 }
                 ast::ModuleItem::NetDecl(net) => self.lower_net(net, nodes, dst),
@@ -305,9 +305,9 @@ impl Context {
         for (name_idx, name) in decl.names().enumerate() {
             let name = name.as_name();
             let port = self.tree.data.ports.push_and_get_key(Port {
+                name_idx,
                 name: name.clone(),
                 ast_id,
-                name_idx,
                 discipline: discipline.clone(),
                 is_input,
                 is_output,
@@ -341,9 +341,9 @@ impl Context {
         for (name_idx, name) in decl.names().enumerate() {
             let name = name.as_name();
             let net = self.tree.data.nets.push_and_get_key(Net {
+                name_idx,
                 name: name.clone(),
                 ast_id,
-                name_idx,
                 discipline: discipline.clone(),
                 is_gnd,
             });
@@ -380,7 +380,7 @@ impl Context {
             })
             .unwrap_or(BranchKind::Missing);
         for (name_idx, name) in decl.names().enumerate() {
-            let branch = Branch { name: name.as_name(), ast_id, name_idx, kind: kind.clone() };
+            let branch = Branch { name_idx, name: name.as_name(), ast_id, kind: kind.clone() };
             let id = self.tree.data.branches.push_and_get_key(branch);
             dst.push(id.into());
         }
@@ -437,34 +437,30 @@ impl Context {
             match item {
                 ast::FunctionItem::ParamDecl(param) => self.lower_param(param, &mut items),
                 ast::FunctionItem::VarDecl(var) => self.lower_var(var, &mut items),
-                ast::FunctionItem::Stmt(stmt) => self.lower_stmt(stmt, &mut items),
                 ast::FunctionItem::FunctionArg(arg) => {
                     self.lower_func_arg(arg, &mut args, &mut items)
                 }
+                _ => (),
             }
         }
-        // de-duplicate correlated function argument and local variable:
-        // - set the variable as the argument's declaration.
-        // - remove the variable from the function item set.
+        // combine correlated function argument and variable declarations
+        // so that name resolution won't report false errors
         items.retain(|decl| {
             if let FunctionItem::Variable(var) = decl {
                 if let Some(arg) = args.iter_mut().find(|arg| arg.name == self.tree[*var].name) {
-                    arg.declarations.push(*var); // TODO validation
+                    arg.var_binds.push(*var);
                     return false;
                 }
             }
             true
         });
 
-        let fun = Function {
-            name: name.as_name(),
-            ast_id,
-            ty: fun.ty().map_or(Type::Real, |ty| ty.as_type()), // return type is real by default if elided
-            args,
-            items,
-        };
-        let fun = self.tree.data.functions.push_and_get_key(fun);
-        dst.push(fun.into())
+        // return type is real by default if elided
+        let ty = fun.ty().map_or(Type::Real, |ty| ty.as_type());
+
+        let fun = Function { name: name.as_name(), ast_id, ty, args, items };
+        let id = self.tree.data.functions.push_and_get_key(fun);
+        dst.push(id.into())
     }
 
     fn lower_func_arg(
@@ -474,24 +470,22 @@ impl Context {
         dst: &mut Vec<FunctionItem>,
     ) {
         let ast_id = self.ast_id_map.id_of(&arg);
+
         for (name_idx, name) in arg.names().enumerate() {
             let name = name.as_name();
-            if let Some(arg) = args.iter_mut().find(|arg| arg.name == name) {
-                arg.ast_ids.push(ast_id) // TODO validation
-            }
             let arg = args.push_and_get_key(FunctionArg {
-                name,
-                ast_ids: vec![ast_id],
                 name_idx,
+                name,
+                ast_id,
                 is_input: is_input(&arg.direction()),
                 is_output: is_output(&arg.direction()),
-                declarations: Vec::new(),
+                var_binds: Vec::new(),
             });
             dst.push(arg.into());
         }
     }
 
-    fn lower_stmt<T>(&mut self, stmt: ast::Stmt, dst: &mut Vec<T>)
+    fn lower_block_scope<T>(&mut self, stmt: ast::Stmt, dst: &mut Vec<T>)
     where
         T: From<ItemTreeId<Param>> + From<ItemTreeId<Var>> + From<AstId<ast::BlockStmt>>,
     {

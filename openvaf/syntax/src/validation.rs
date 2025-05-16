@@ -4,7 +4,7 @@ use tokens::SyntaxKind::NET_TYPE;
 
 use crate::ast::{
     self, support, ArgListOwner, BlockItem, ConstraintValue, Expr, FunctionItem, LiteralKind,
-    ModulePorts, Name, PathSegmentKind,
+    ModulePorts, Name, PathSegmentKind, Stmt,
 };
 use crate::name::{kw, kw_comp};
 use crate::{match_ast, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr, T};
@@ -355,6 +355,17 @@ fn validate_function(fun: ast::Function, errors: &mut Vec<SyntaxError>) {
         }
     };
 
+    if fun.args().next().is_none() {
+        errors.push(SyntaxError::FuncWithoutArg { fun: fun.syntax().text_range() });
+    };
+
+    if let Stmt::BlockStmt(blk) = &body {
+        if let Some(scope) = blk.block_scope() {
+            let name = scope.name().unwrap();
+            errors.push(SyntaxError::NamedFuncBodyBlock { name: name.syntax().text_range() })
+        }
+    }
+
     let illegal_items: Vec<_> = items
         .clone()
         .filter(|item| !matches!(item, FunctionItem::Stmt(_)))
@@ -368,7 +379,7 @@ fn validate_function(fun: ast::Function, errors: &mut Vec<SyntaxError>) {
         })
     }
 
-    let additional_bodys: Vec<_> = items
+    let additional_bodies: Vec<_> = items
         .filter_map(|item| {
             if let FunctionItem::Stmt(stmt) = item {
                 Some(stmt.syntax().text_range())
@@ -378,8 +389,8 @@ fn validate_function(fun: ast::Function, errors: &mut Vec<SyntaxError>) {
         })
         .collect();
 
-    if !additional_bodys.is_empty() {
-        errors.push(SyntaxError::MultipleFuncBodies { additional_bodys, body: AstPtr::new(&body) })
+    if !additional_bodies.is_empty() {
+        errors.push(SyntaxError::MultipleFuncBodies { additional_bodies, body: AstPtr::new(&body) })
     }
 }
 

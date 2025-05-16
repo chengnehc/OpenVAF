@@ -66,7 +66,7 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     #[salsa::transparent]
     fn body(&self, id: DefWithBodyId) -> Arc<Body>;
     #[salsa::transparent]
-    fn body_srcmap(&self, def: DefWithBodyId) -> Arc<BodySourceMap>;
+    fn body_srcmap(&self, id: DefWithBodyId) -> Arc<BodySourceMap>;
     #[salsa::transparent]
     fn param_exprs(&self, id: ParamId) -> ParamExprs;
 
@@ -79,7 +79,7 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     #[salsa::invoke(NodeData::query)]
     fn node_data(&self, node: NodeId) -> Arc<NodeData>;
     #[salsa::invoke(BranchData::query)]
-    fn branch_data(&self, node: BranchId) -> Arc<BranchData>;
+    fn branch_data(&self, branch: BranchId) -> Arc<BranchData>;
     #[salsa::invoke(VarData::query)]
     fn var_data(&self, var: VarId) -> Arc<VarData>;
     #[salsa::invoke(ParamData::query)]
@@ -87,7 +87,7 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     #[salsa::invoke(AliasParamData::query)]
     fn aliasparam_data(&self, param: AliasParamId) -> Arc<AliasParamData>;
     #[salsa::invoke(FunctionData::query)]
-    fn function_data(&self, node: FunctionId) -> Arc<FunctionData>;
+    fn function_data(&self, fun: FunctionId) -> Arc<FunctionData>;
 
     #[salsa::transparent]
     fn find_module(&self, root_file: FileId) -> ModuleId;

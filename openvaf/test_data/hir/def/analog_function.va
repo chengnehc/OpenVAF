@@ -24,10 +24,7 @@ module test;
         input l, w;
         output area, perim;
         real l, w, area, perim;
-        parameter real p1 = 1.0;
-        begin: myscope
-            parameter real p2 = 1.0;
-            real tmp;
+        begin
             area = l * w;
             perim = 2 * ( l + w );
         end

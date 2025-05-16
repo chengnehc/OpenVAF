@@ -164,7 +164,6 @@ impl Printer<'_> {
     fn print_function(&mut self, function: &Function) -> fmt::Result {
         for item in &function.items {
             match *item {
-                FunctionItem::ScopedBlock(block) => self.print_block(block)?,
                 FunctionItem::Parameter(param) => self.print_param(param)?,
                 FunctionItem::Variable(var) => self.print_var(var)?,
                 FunctionItem::FunctionArg(arg) => {

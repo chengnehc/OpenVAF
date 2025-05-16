@@ -241,6 +241,24 @@ impl Diagnostic for SyntaxError {
 
                 Report::error().with_labels(labels)
             }
+            SyntaxError::FuncWithoutBody { fun } => {
+                let FileSpan { range, file: file_id } = parse.to_file_span(fun, &sm);
+                Report::error().with_labels(vec![Label {
+                    style: LabelStyle::Primary,
+                    file_id,
+                    range: range.into(),
+                    message: "function body is missing".to_owned(),
+                }])
+            }
+            SyntaxError::FuncWithoutArg { fun } => {
+                let FileSpan { range, file: file_id } = parse.to_file_span(fun, &sm);
+                Report::error().with_labels(vec![Label {
+                    style: LabelStyle::Primary,
+                    file_id,
+                    range: range.into(),
+                    message: "function shall have at least one formal argument".to_owned(),
+                }])
+            }
             SyntaxError::ItemsAfterFuncBody { ref items, body } => {
                 let ranges: Vec<_> =
                     once(body).chain(items.iter().map(|item| item.text_range())).collect();
@@ -271,21 +289,19 @@ impl Diagnostic for SyntaxError {
 
                 Report::error().with_labels(labels)
             }
-            SyntaxError::MultipleFuncBodies { ref additional_bodys, ref body } => {
+            SyntaxError::MultipleFuncBodies { ref additional_bodies, ref body } => {
                 let (range, message) = if body.syntax_kind() == BLOCK_STMT {
                     (body.text_range(), "help: add these statements to this block".to_owned())
                 } else {
                     (
-                        body.text_range().cover(*additional_bodys.last().unwrap()),
+                        body.text_range().cover(*additional_bodies.last().unwrap()),
                         "help: surround with begin ... end to create a single function body"
                             .to_owned(),
                     )
                 };
 
-                let ranges: Vec<_> = once(range).chain(additional_bodys.iter().copied()).collect();
-
+                let ranges: Vec<_> = once(range).chain(additional_bodies.iter().copied()).collect();
                 let (file_id, ranges) = text_range_list_to_unified_spans(&sm, &parse, &ranges);
-
                 let range = ranges[0];
                 let item_ranges = &ranges[1..];
 
@@ -308,15 +324,17 @@ impl Diagnostic for SyntaxError {
 
                 Report::error().with_labels(labels)
             }
+            SyntaxError::NamedFuncBodyBlock { name: scope } => {
+                let FileSpan { range, file: file_id } = parse.to_file_span(scope, &sm);
 
-            SyntaxError::FuncWithoutBody { fun } => {
-                let FileSpan { range, file: file_id } = parse.to_file_span(fun, &sm);
-                Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id,
-                    range: range.into(),
-                    message: "function body is missing".to_owned(),
-                }])
+                Report::error()
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Primary,
+                        file_id,
+                        range: range.into(),
+                        message: "unexpected block name".to_owned(),
+                    }])
+                    .with_notes(vec!["help: remove the block scope name".to_owned()])
             }
 
             SyntaxError::IllegalBranchNodeCnt { arg_list, .. } => {

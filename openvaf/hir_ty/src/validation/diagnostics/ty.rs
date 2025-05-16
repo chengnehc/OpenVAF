@@ -59,6 +59,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     }])
                     .with_message(err.to_string())
             }
+
             TypeDiagnostic::DuplicateNatureAttr(ref info) => {
                 let nature = &self.item_tree[info.src.lookup(self.db.upcast()).id];
                 let labels = self.build_duplicate_item(info, |attr| {
@@ -89,6 +90,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     ))
                     .with_labels(labels)
             }
+
             TypeDiagnostic::PortWithoutDirection { decl, ref name } => {
                 let span = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &sm);
 
@@ -150,6 +152,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     .with_message(format!("multiple 'ground' declarations for net '{node_name}'"))
                     .with_labels(labels)
             }
+
             TypeDiagnostic::ExpectedPort { node, src } => {
                 let span = parse.to_file_span(ast_id_map.get_erased(src).text_range(), &sm);
                 let decl = parse.to_file_span(
@@ -194,6 +197,31 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     node2,
                 }
                 .into_report(self.db, &parse, &ast_id_map, &sm)
+            }
+
+            TypeDiagnostic::MultipleFuncArgBind(ref info) => {
+                let labels = self.build_duplicate_item(info, |id| {
+                    parse.to_file_span(ast_id_map.get(id).text_range(), &sm)
+                });
+
+                Report::error()
+                    .with_message(format!(
+                        "function argument '{}' is binded with multiple variable declarations",
+                        info.src
+                    ))
+                    .with_labels(labels)
+            }
+            TypeDiagnostic::FuncArgWithoutVarBind { decl, ref name } => {
+                let span = parse.to_file_span(ast_id_map.get(decl).text_range(), &sm);
+
+                Report::error()
+                    .with_message(format!("argument '{name}' is not binded with any variable"))
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Primary,
+                        file_id: span.file,
+                        range: span.range.into(),
+                        message: format!("'{name}' shall have an associated variable declaration"),
+                    }])
             }
         }
     }

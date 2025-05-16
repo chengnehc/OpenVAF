@@ -1,8 +1,8 @@
 use std::iter;
 
 use hir_def::{
-    nameres::ScopeItem, AliasParamId, BranchId, BranchLoc, DisciplineId, ModuleId, ModuleLoc,
-    NatureId, NodeId, NodeTypeDecl, ParamId, Path, Scope,
+    nameres::ScopeItem, AliasParamId, BranchId, BranchLoc, DisciplineId, FunctionId, ModuleId,
+    ModuleLoc, NatureId, NodeId, NodeTypeDecl, ParamId, Path, Scope,
 };
 use syntax::{ast::ArgListOwner, AstNode};
 use typed_index_collections::TiSlice;
@@ -66,6 +66,7 @@ impl TypeValidator<'_> {
                 ScopeItem::NodeId(node) => self.verify_node(*node, module),
                 ScopeItem::BranchId(branch) => self.verify_branch(*branch),
                 ScopeItem::AliasParamId(alias) => self.verify_alias(*alias),
+                ScopeItem::FunctionId(func) => self.verify_function(*func),
                 _ => (),
             }
         }
@@ -222,6 +223,27 @@ impl TypeValidator<'_> {
             let err = alias.scope.resolve_item_name::<ParamId>(db, name).unwrap_err();
             let range = alias.source(db).param_ref().unwrap().syntax().text_range();
             self.report(TypeDiagnostic::PathError { err, range });
+        }
+    }
+
+    fn verify_function(&mut self, id: FunctionId) {
+        let func = id.lookup(self.db);
+        let args = &func.item_tree(self.db)[func.id].args;
+        for arg in args {
+            let name = arg.name.clone();
+            let mut vars = arg.var_binds.iter().map(|var| self.item_tree[*var].ast_id);
+            if let Some(first) = vars.next() {
+                let duplicates: Vec<_> = vars.collect();
+                if !duplicates.is_empty() {
+                    self.report(TypeDiagnostic::MultipleFuncArgBind(DuplicateItem {
+                        src: name.clone(),
+                        first,
+                        subsequent: duplicates,
+                    }))
+                }
+            } else {
+                self.report(TypeDiagnostic::FuncArgWithoutVarBind { decl: arg.ast_id, name });
+            }
         }
     }
 

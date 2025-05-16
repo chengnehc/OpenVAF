@@ -145,6 +145,10 @@ impl ast::Function {
     pub fn body(&self) -> AstChildren<ast::Stmt> {
         support::children(self.syntax())
     }
+
+    pub fn args(&self) -> AstChildren<ast::FunctionArg> {
+        support::children(self.syntax())
+    }
 }
 
 impl ast::BranchDecl {

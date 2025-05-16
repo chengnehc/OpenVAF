@@ -7,31 +7,57 @@ error: function is missing a body
 6 | |     endfunction
   | \---------------^ function body is missing
 
-error: functions may not contain any items after the function body
-   --> /analog_func.va:21:9
+error: function is missing arguments
+   --> /analog_func.va:9:5
    |  
-11 | /         begin
-12 | |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
-13 | |         end
+ 9 | /     analog function bar;
+10 | |         ;
+11 | |     endfunction
+   | \---------------^ function shall have at least one formal argument
+
+error: functions may not contain any items after the function body
+   --> /analog_func.va:26:9
+   |  
+16 | /         begin
+17 | |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
+18 | |         end
    | \-----------' help: move all declarations before this statement
    . |
-21 |           output y;
+26 |           output y;
    |           ^^^^^^^^^ analog function arguments are not allowed after the function body
-22 |           real y;
+27 |           real y;
    |           ^^^^^^^ variable decl.s are not allowed after the function body
-23 |           parameter real p=0;
+28 |           parameter real p=0;
    |           ^^^^^^^^^^^^^^^^^^^ parameter decl.s are not allowed after the function body
 
 error: functions may only contain one body
-   --> /analog_func.va:16:9
+   --> /analog_func.va:21:9
    |    
-11 |   /         begin
-12 |   |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
-13 |   |         end
+16 |   /         begin
+17 |   |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
+18 |   |         end
    |   \-----------' help: add these statements to this block
    .   |
-16 | /           begin
-17 | |               ;
-18 | |           end
+21 | /           begin
+22 | |               ;
+23 | |           end
    | \-------------^ only one body per function is allowed
+
+error: function is missing arguments
+   --> /analog_func.va:32:5
+   |  
+32 | /     analog function lln;
+33 | |         begin: scope
+34 | |             ;
+35 | |         end
+36 | |     endfunction
+   | \---------------^ function shall have at least one formal argument
+
+error: functions shall not use named blocks
+   --> /analog_func.va:33:16
+   |
+33 |         begin: scope
+   |                ^^^^^ unexpected block name
+   |
+   = help: remove the block scope name
 

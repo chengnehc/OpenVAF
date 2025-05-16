@@ -228,9 +228,6 @@ impl Collector<'_> {
                 FunctionItem::Parameter(param) => {
                     self.intern_and_insert_item(param, fun_scope, self.tree[param].name.clone())
                 }
-                FunctionItem::ScopedBlock(block) => {
-                    self.intern_and_insert_scoped_block(block, fun_scope)
-                }
             }
         }
 

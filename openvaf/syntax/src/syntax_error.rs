@@ -110,16 +110,22 @@ pub enum SyntaxError {
     },
 
     /* Function */
+    FuncWithoutBody {
+        fun: TextRange,
+    },
+    FuncWithoutArg {
+        fun: TextRange,
+    },
     ItemsAfterFuncBody {
         items: Vec<AstPtr<ast::FunctionItem>>,
         body: TextRange,
     },
     MultipleFuncBodies {
-        additional_bodys: Vec<TextRange>,
+        additional_bodies: Vec<TextRange>,
         body: AstPtr<ast::Stmt>,
     },
-    FuncWithoutBody {
-        fun: TextRange,
+    NamedFuncBodyBlock {
+        name: TextRange,
     },
 }
 
@@ -147,8 +153,10 @@ impl_display! {
         RangeConstraintForNonNumericParameter{name, ..} => "non-numeric parameter '{name}' has range bounds";
         BlockDeclsAfterStmt{..}  => "declarations in blocks are only allowed before the first stmt";
         BlockDeclsWithoutScope{..} => "declarations in blocks require an explicit scope";
+        FuncWithoutBody{..} => "function is missing a body";
+        FuncWithoutArg{..} => "function is missing arguments";
         ItemsAfterFuncBody{..} => "functions may not contain any items after the function body";
         MultipleFuncBodies{..} => "functions may only contain one body";
-        FuncWithoutBody{..} => "function is missing a body";
+        NamedFuncBodyBlock{..} => "functions shall not use named blocks";
     }
 }

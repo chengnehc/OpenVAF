@@ -289,7 +289,7 @@ impl FunctionArgLoc {
     }
     pub fn ast_id(self, db: &dyn HirDefDB) -> AstId<ast::FunctionArg> {
         let fun = self.fun.lookup(db);
-        fun.item_tree(db)[fun.id].args[self.id].ast_ids[0]
+        fun.item_tree(db)[fun.id].args[self.id].ast_id
     }
     pub fn ast_ptr(self, db: &dyn HirDefDB) -> AstPtr<ast::FunctionArg> {
         db.ast_id_map(self.fun.lookup(db).scope.root_file).get(self.ast_id(db))

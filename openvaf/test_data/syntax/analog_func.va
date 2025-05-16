@@ -5,6 +5,11 @@ module test;
         real x;
     endfunction
 
+    // function without argument
+    analog function bar;
+        ;
+    endfunction
+
     analog function real hypsmooth;
         input x, c;
         real x, c;
@@ -21,5 +26,12 @@ module test;
         output y;
         real y;
         parameter real p=0;
+    endfunction
+
+    // function that uses named blocks
+    analog function lln;
+        begin: scope
+            ;
+        end
     endfunction
 endmodule
