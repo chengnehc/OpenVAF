@@ -369,7 +369,7 @@ impl Diagnostic for SyntaxError {
                     message: "expected string literal".to_owned(),
                 }])
             }
-            SyntaxError::IllegalDisciplineAttrIdent { range } => {
+            SyntaxError::IllegalDisciplineAttrPath { range } => {
                 let FileSpan { range, file: file_id } = parse.to_file_span(range, &sm);
                 Report::error()
                     .with_labels(vec![Label {
@@ -379,9 +379,8 @@ impl Diagnostic for SyntaxError {
                         message: "illegal attribute path".to_owned(),
                     }])
                     .with_notes(vec![
-                        "help: expected one of the following".to_owned(),
-                        "an identifier: abstol".to_owned(),
-                        "an identifier precceded by potential or flow: potential.abstol".to_owned(),
+                        "help: expected a nature attribute preceded by 'potential' or 'flow': potential.abstol"
+                            .to_owned(),
                     ])
             }
             SyntaxError::IllegalNatureIdent { range } => {
@@ -395,9 +394,8 @@ impl Diagnostic for SyntaxError {
                     }])
                     .with_notes(vec![
                         "help: expected one of the following".to_owned(),
-                        "an identifier: voltage".to_owned(),
-                        "an identifier followed by potential or flow: electrical.potential"
-                            .to_owned(),
+                        "an identifier: Voltage".to_owned(),
+                        "an identifier followed by a discipline: electrical.potential".to_owned(),
                     ])
             }
             SyntaxError::IllegalAttribute { expected, range, .. } => {

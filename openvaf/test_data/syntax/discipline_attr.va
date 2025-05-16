@@ -1,0 +1,13 @@
+nature Current;
+  units        = "A";
+  access       = I;
+  idt_nature   = Charge;
+  abstol       = 1e-12;
+endnature
+
+discipline test;
+  foo.bar       = 1;
+  flow          = Current;
+  flow.abstol   1e-12;
+  domain        ddiscrete;
+enddiscipline

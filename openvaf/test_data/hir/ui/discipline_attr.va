@@ -1,0 +1,11 @@
+nature Current;
+  units        = "A";
+  access       = I;
+  idt_nature   = Charge;
+  abstol       = 1e-12;
+endnature
+
+discipline test;
+  flow     foo;     // (TODO)JW: should Err
+  flow     Current;
+enddiscipline

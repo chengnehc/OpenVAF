@@ -1,0 +1,14 @@
+// The constant expression assigned to "access" shall be an identifier (by name, not as a string)
+// The constant expression assigned to "units" shall be a string.
+// The constant expression assigned to "idt_nature" and "ddt_nature" shall be the name (not a string) of a
+// nature which is defined elsewhere
+// The "abstol" attribute is a real value constant expression
+
+nature Current;
+  access       = "I";
+  access       = 3.14;
+  units        = 1;
+  units        = A;
+  idt_nature   = "Charge";
+  abstol       = 1e-12;
+endnature

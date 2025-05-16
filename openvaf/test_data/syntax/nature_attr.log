@@ -1,0 +1,34 @@
+error: illegal value provided for access attribute
+  --> /nature_attr.va:8:18
+  |
+8 |   access       = "I";
+  |                  ^^^ expected an identifier
+
+error: illegal value provided for access attribute
+  --> /nature_attr.va:9:18
+  |
+9 |   access       = 3.14;
+  |                  ^^^^ expected an identifier
+
+error: illegal nature identifier
+   --> /nature_attr.va:12:18
+   |
+12 |   idt_nature   = "Charge";
+   |                  ^^^^^^^^ illegal nature identifier
+   |
+   = help: expected one of the following
+   = an identifier: Voltage
+   = an identifier followed by a discipline: electrical.potential
+
+error: 'units' attribute must be a string literal
+   --> /nature_attr.va:10:18
+   |
+10 |   units        = 1;
+   |                  ^ expected string literal
+
+error: 'units' attribute must be a string literal
+   --> /nature_attr.va:11:18
+   |
+11 |   units        = A;
+   |                  ^ expected string literal
+

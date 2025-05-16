@@ -1,0 +1,30 @@
+error: illegal discipline attribute path
+  --> /discipline_attr.va:9:3
+  |
+9 |   foo.bar       = 1;
+  |   ^^^^^^^ illegal attribute path
+  |
+  = help: expected a nature attribute preceded by 'potential' or 'flow': potential.abstol
+
+error: unexpected token '='
+   --> /discipline_attr.va:10:17
+   |
+10 |   flow          = Current;
+   |                 ^ unexpected '='
+   |
+   = the '=' token is not required here; simply remove it
+
+error: unexpected token; expected '='
+   --> /discipline_attr.va:11:17
+   |
+11 |   flow.abstol   1e-12;
+   |              -  ^^^^^ unexpected token
+   |              |   
+   |              '=' might be missing here
+
+error: illegal value provided for domain attribute
+   --> /discipline_attr.va:12:17
+   |
+12 |   domain        ddiscrete;
+   |                 ^^^^^^^^^ expected continuous or discrete
+

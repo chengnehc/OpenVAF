@@ -3,8 +3,8 @@ use tokens::SyntaxKind;
 use tokens::SyntaxKind::NET_TYPE;
 
 use crate::ast::{
-    self, support, ArgListOwner, AttrsOwner, BlockItem, ConstraintValue, Expr, FunctionItem,
-    LiteralKind, ModulePorts, Name, PathSegmentKind,
+    self, support, ArgListOwner, BlockItem, ConstraintValue, Expr, FunctionItem, LiteralKind,
+    ModulePorts, Name, PathSegmentKind,
 };
 use crate::name::{kw, kw_comp};
 use crate::{match_ast, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr, T};
@@ -107,7 +107,7 @@ fn validate_nature_decl(nature: ast::NatureDecl, errors: &mut Vec<SyntaxError>) 
     if let Some(parent) = nature.parent() {
         check_nature_path(&parent, errors)
     }
-    for attr in nature.attrs() {
+    for attr in nature.nature_attrs() {
         if let (Some(name), Some(val)) = (attr.name(), attr.val()) {
             let name_text = name.syntax().text();
             if name_text == "ddt_nature" || name_text == "idt_nature" {
@@ -145,33 +145,32 @@ fn check_nature_path(path: &ast::Path, errors: &mut Vec<SyntaxError>) {
 
 fn validate_nature_attr(attr: ast::NatureAttr, errors: &mut Vec<SyntaxError>) {
     if attr.name().is_some_and(|name| name.text() == "units") {
-        if let Some(Expr::Literal(literal)) = attr.val() {
-            if !matches!(literal.kind(), LiteralKind::StrLit(_)) {
-                errors.push(SyntaxError::UnitsExpectedStringLiteral {
-                    range: literal.syntax().text_range(),
-                })
+        let expr = attr.val().unwrap();
+        if let Expr::Literal(literal) = &expr {
+            if let LiteralKind::StrLit(_) = literal.kind() {
+                return;
             }
         }
+        let range = expr.syntax().text_range();
+        errors.push(SyntaxError::UnitsExpectedStringLiteral { range });
     }
 }
 
-// TODO(JW): this needs further consideration
 fn validate_discipline_decl(discipline: ast::DisciplineDecl, errors: &mut Vec<SyntaxError>) {
     for attr in discipline.discipline_attrs() {
         if let Some(name) = attr.name() {
             let is_overwrite = match name.qualifier() {
                 None => false,
-                Some(qual)
-                    if (qual.syntax().text() == "potential" || qual.syntax().text() == "flow")
-                        && qual.qualifier().is_none() =>
-                {
-                    true
-                }
-                _ => {
-                    errors.push(SyntaxError::IllegalDisciplineAttrIdent {
-                        range: name.syntax().text_range(),
-                    });
-                    continue;
+                Some(qual) => {
+                    let text = qual.syntax().text();
+                    if (text == "potential" || text == "flow") && qual.qualifier().is_none() {
+                        true
+                    } else {
+                        errors.push(SyntaxError::IllegalDisciplineAttrPath {
+                            range: name.syntax().text_range(),
+                        });
+                        continue;
+                    }
                 }
             };
 
@@ -201,11 +200,12 @@ fn validate_discipline_decl(discipline: ast::DisciplineDecl, errors: &mut Vec<Sy
                 match &*name_text {
                     "potential" | "flow" => check_nature_ref_attr(&val, errors),
                     "idt_nature" | "ddt_nature" if is_overwrite => {
+                        // TODO(JW): is it really OK to override these two?
                         check_nature_ref_attr(&val, errors)
                     }
                     "domain" => {
-                        let src = val.syntax().text();
-                        if src != "continuous" && src != "discrete" {
+                        let text = val.syntax().text();
+                        if text != "continuous" && text != "discrete" {
                             errors.push(SyntaxError::IllegalAttribute {
                                 attr: "domain",
                                 expected: "continuous or discrete",
@@ -213,7 +213,6 @@ fn validate_discipline_decl(discipline: ast::DisciplineDecl, errors: &mut Vec<Sy
                             })
                         }
                     }
-
                     _ => (),
                 }
             }
@@ -332,13 +331,11 @@ fn validate_param(param_decl: ast::ParamDecl, errors: &mut Vec<SyntaxError>) {
     for param in param_decl.params() {
         for constraint in param.constraints() {
             if matches!(constraint.val(), Some(ConstraintValue::Range(_))) {
-                if let Some(name) = param.name() {
-                    errors.push(SyntaxError::RangeConstraintForNonNumericParameter {
-                        name: name.text().to_owned(),
-                        range: constraint.syntax().text_range(),
-                        ty: param_decl.ty().unwrap().syntax().text_range(),
-                    });
-                }
+                errors.push(SyntaxError::RangeConstraintForNonNumericParameter {
+                    name: param.name().unwrap().text().to_owned(),
+                    range: constraint.syntax().text_range(),
+                    ty: param_decl.ty().unwrap().syntax().text_range(),
+                });
             }
         }
     }

@@ -32,21 +32,19 @@ pub enum SyntaxError {
     IllegalInfToken {
         range: TextRange,
     },
-    UnitsExpectedStringLiteral {
-        range: TextRange,
-    },
 
-    /* Nature */
-    IllegalNatureIdent {
-        range: TextRange,
-    },
+    /* Nature and Discipline */
     IllegalAttribute {
         range: TextRange,
         attr: &'static str,
         expected: &'static str,
     },
-
-    /* Discipline */
+    IllegalNatureIdent {
+        range: TextRange,
+    },
+    UnitsExpectedStringLiteral {
+        range: TextRange,
+    },
     SurplusToken {
         found: SyntaxKind,
         range: TextRange,
@@ -56,7 +54,7 @@ pub enum SyntaxError {
         range: TextRange,
         expected_at: TextRange,
     },
-    IllegalDisciplineAttrIdent {
+    IllegalDisciplineAttrPath {
         range: TextRange,
     },
 
@@ -133,12 +131,12 @@ impl_display! {
         ReservedIdentifier{name, ..} => "reserved keyword '{name}' was used as an identifier";
         IllegalRootSegment{..} =>  "$root is only allowed as a prefix";
         IllegalInfToken{..} => "unexpected token 'inf'; expected an expression";
-        UnitsExpectedStringLiteral{..} => "'units' attribute must be a string literal";
-        IllegalNatureIdent{..} => "illegal nature identifier";
         IllegalAttribute{attr, ..} => "illegal value provided for {} attribute", attr;
+        IllegalNatureIdent{..} => "illegal nature identifier";
+        UnitsExpectedStringLiteral{..} => "'units' attribute must be a string literal";
         SurplusToken{found, ..} => "unexpected token {}", found;
         MissingToken{expected, ..} => "unexpected token; expected {}", expected;
-        IllegalDisciplineAttrIdent{..} => "illegal discipline attribute identifier!";
+        IllegalDisciplineAttrPath{..} => "illegal discipline attribute path";
         DuplicatePort{name, ..} => "port '{name}' was declared multiple times!";
         MixedModuleHead{..} => "module header contains mix of port references and port declarations";
         IllegalBodyPorts{..} => "ports declared in module head and body";
