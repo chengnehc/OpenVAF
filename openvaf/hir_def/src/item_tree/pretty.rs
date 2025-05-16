@@ -4,8 +4,8 @@ use basedb::AstId;
 use syntax::ast;
 
 use super::{
-    BlockItem, Discipline, Function, FunctionItem, ItemTree, ItemTreeId, Module, ModuleItem,
-    Nature, Param, Var,
+    AliasParam, BlockItem, Discipline, Function, FunctionItem, ItemTree, ItemTreeId, Module,
+    ModuleItem, Nature, Param, Var,
 };
 
 impl ItemTree {
@@ -96,13 +96,10 @@ impl Printer<'_> {
     fn print_module(&mut self, module: &Module) -> fmt::Result {
         for item in &module.items {
             match *item {
-                ModuleItem::ScopedBlock(block) => self.print_block(block)?,
                 ModuleItem::Parameter(param) => self.print_param(param)?,
+                ModuleItem::AliasParam(alias) => self.print_aliasparam(alias)?,
                 ModuleItem::Variable(var) => self.print_var(var)?,
-                ModuleItem::Branch(branch) => {
-                    let branch = &self.tree[branch];
-                    writeln!(self, "branch {} = {:?}", branch.name, branch.kind)?
-                }
+                ModuleItem::ScopedBlock(block) => self.print_block(block)?,
                 ModuleItem::Node(node) => {
                     let node = &module.nodes[node];
                     let (is_input, is_output) = node.direction(self.tree);
@@ -116,14 +113,14 @@ impl Printer<'_> {
                         node.discipline(self.tree),
                     )?;
                 }
+                ModuleItem::Branch(branch) => {
+                    let branch = &self.tree[branch];
+                    writeln!(self, "branch {} = {:?}", branch.name, branch.kind)?
+                }
                 ModuleItem::Function(function) => {
                     let function = &self.tree[function];
                     write!(self, "function {}", function.name)?;
                     self.indented(|s| s.print_function(function))?;
-                }
-                ModuleItem::AliasParam(param) => {
-                    let param = &self.tree[param];
-                    writeln!(self, "aliasparam {} = {:?}", param.name, param.param_ref)?;
                 }
             }
         }
@@ -134,6 +131,11 @@ impl Printer<'_> {
     fn print_param(&mut self, param: ItemTreeId<Param>) -> fmt::Result {
         let param = &self.tree[param];
         writeln!(self, "param {} {}", param.ty.as_ref().unwrap_or(&crate::Type::Err), param.name)
+    }
+
+    fn print_aliasparam(&mut self, alias: ItemTreeId<AliasParam>) -> fmt::Result {
+        let alias = &self.tree[alias];
+        writeln!(self, "aliasparam {} = {}", alias.name, alias.param_ref)
     }
 
     fn print_var(&mut self, var: ItemTreeId<Var>) -> fmt::Result {
