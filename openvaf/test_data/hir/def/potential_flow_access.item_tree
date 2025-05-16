@@ -1,8 +1,8 @@
 module measure1
-    node p = {is_input: false, is_output:true, gnd: false , discipline Some(Name("electrical"))}
+    node p = {input: false, output: true, gnd: false , discipline: Some(Name("electrical"))}
     param real V
 module resistor
-    node p = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
-    node n = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
+    node p = {input: true, output: true, gnd: false , discipline: Some(Name("electrical"))}
+    node n = {input: true, output: true, gnd: false , discipline: Some(Name("electrical"))}
     branch res = Nodes(p, n)
     param real R

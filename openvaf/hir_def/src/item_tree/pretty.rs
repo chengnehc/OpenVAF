@@ -108,7 +108,7 @@ impl Printer<'_> {
                     let (is_input, is_output) = node.direction(self.tree);
                     writeln!(
                         self,
-                        "node {} = {{is_input: {}, is_output:{}, gnd: {} , discipline {:?}}}",
+                        "node {} = {{input: {}, output: {}, gnd: {} , discipline: {:?}}}",
                         node.name,
                         is_input,
                         is_output,
@@ -169,7 +169,7 @@ impl Printer<'_> {
                     let arg = &function.args[arg];
                     writeln!(
                         self,
-                        "arg {:?} {} = {{ is_input = {}, is_output = {}}}",
+                        "arg {:?} {} = {{ input = {}, output = {} }}",
                         arg.ty(self.tree),
                         arg.name,
                         arg.is_input,

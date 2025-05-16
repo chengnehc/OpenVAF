@@ -1,7 +1,7 @@
 error: discipline attribute 'flow' was defined multiple times
    --> /discipline_attr.va:10:3
    |
- 9 |   flow     foo;
+ 9 |   flow     foo;     // (TODO)JW: should Err
    |   ------------- first declared here
 10 |   flow     Current;
    |   ^^^^^^^^^^^^^^^^^ redeclared here

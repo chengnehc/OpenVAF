@@ -1,6 +1,6 @@
 module test
-    node a = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
-    node b = {is_input: true, is_output:false, gnd: false , discipline Some(Name("electrical"))}
+    node a = {input: true, output: true, gnd: false , discipline: Some(Name("electrical"))}
+    node b = {input: true, output: false, gnd: false , discipline: Some(Name("electrical"))}
     branch ab1 = Nodes(a, b)
     branch ab2 = Nodes(a, b)
     branch a_gnd = NodeGnd(a)

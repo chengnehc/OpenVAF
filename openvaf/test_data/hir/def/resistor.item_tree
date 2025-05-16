@@ -1,6 +1,6 @@
 module resistor_va
-    node A = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
-    node B = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
+    node A = {input: true, output: true, gnd: false , discipline: Some(Name("electrical"))}
+    node B = {input: true, output: true, gnd: false , discipline: Some(Name("electrical"))}
     branch br_a_b = Nodes(A, B)
     param real R
     param real zeta

@@ -1,16 +1,16 @@
 module foo
 module bar
-    node a = {is_input: false, is_output:true, gnd: false , discipline None}
-    node b = {is_input: true, is_output:false, gnd: false , discipline None}
-    node c = {is_input: true, is_output:true, gnd: true , discipline None}
-    node d = {is_input: true, is_output:true, gnd: false , discipline Some(Name("electrical"))}
-    node e = {is_input: false, is_output:true, gnd: false , discipline Some(Name("electrical"))}
-    node f = {is_input: false, is_output:true, gnd: false , discipline Some(Name("electrical"))}
-    node g = {is_input: true, is_output:true, gnd: true , discipline Some(Name("electrical"))}
+    node a = {input: false, output: true, gnd: false , discipline: None}
+    node b = {input: true, output: false, gnd: false , discipline: None}
+    node c = {input: true, output: true, gnd: true , discipline: None}
+    node d = {input: true, output: true, gnd: false , discipline: Some(Name("electrical"))}
+    node e = {input: false, output: true, gnd: false , discipline: Some(Name("electrical"))}
+    node f = {input: false, output: true, gnd: false , discipline: Some(Name("electrical"))}
+    node g = {input: true, output: true, gnd: true , discipline: Some(Name("electrical"))}
 module zaf
-    node a = {is_input: false, is_output:true, gnd: false , discipline None}
-    node b = {is_input: false, is_output:true, gnd: false , discipline None}
-    node c = {is_input: true, is_output:false, gnd: false , discipline Some(Name("electrical"))}
-    node d = {is_input: true, is_output:false, gnd: false , discipline Some(Name("electrical"))}
-    node e = {is_input: true, is_output:false, gnd: false , discipline Some(Name("electrical"))}
-    node f = {is_input: true, is_output:true, gnd: true , discipline Some(Name("electrical"))}
+    node a = {input: false, output: true, gnd: false , discipline: None}
+    node b = {input: false, output: true, gnd: false , discipline: None}
+    node c = {input: true, output: false, gnd: false , discipline: Some(Name("electrical"))}
+    node d = {input: true, output: false, gnd: false , discipline: Some(Name("electrical"))}
+    node e = {input: true, output: false, gnd: false , discipline: Some(Name("electrical"))}
+    node f = {input: true, output: true, gnd: true , discipline: Some(Name("electrical"))}

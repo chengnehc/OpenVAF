@@ -24,7 +24,7 @@ pub struct NatureData {
     pub attrs: Arena<NatureAttrData>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct NatureAttrData {
     pub name: Name,
 }
@@ -61,7 +61,7 @@ pub struct DisciplineData {
     pub attrs: Arena<DisciplineAttrData>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisciplineAttrData {
     pub name: Name,
     pub kind: DisciplineAttrKind,
@@ -189,7 +189,7 @@ impl ParamData {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct AliasParamData {
     pub name: Name,
     pub param_ref: Name,
@@ -201,6 +201,24 @@ impl AliasParamData {
         let param = &loc.item_tree(db)[loc.id];
 
         Arc::new(AliasParamData { name: param.name.clone(), param_ref: param.param_ref.clone() })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionData {
+    pub name: Name,
+    pub args: Box<TiSlice<LocalFunctionArgId, FunctionArgData>>,
+    pub return_ty: Type,
+}
+
+impl FunctionData {
+    pub fn query(db: &dyn HirDefDB, id: FunctionId) -> Arc<FunctionData> {
+        let loc = id.lookup(db);
+        let tree = loc.item_tree(db);
+        let fun = &tree[loc.id];
+        let args = fun.args.iter().map(|arg| FunctionArgData::new(arg, &tree)).collect();
+
+        Arc::new(FunctionData { name: fun.name.clone(), return_ty: fun.ty.clone(), args })
     }
 }
 
@@ -220,23 +238,5 @@ impl FunctionArgData {
             is_input: arg.is_input,
             is_output: arg.is_output,
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionData {
-    pub name: Name,
-    pub args: Box<TiSlice<LocalFunctionArgId, FunctionArgData>>,
-    pub return_ty: Type,
-}
-
-impl FunctionData {
-    pub fn query(db: &dyn HirDefDB, id: FunctionId) -> Arc<FunctionData> {
-        let loc = id.lookup(db);
-        let itree = loc.item_tree(db);
-        let fun = &itree[loc.id];
-        let args = fun.args.iter().map(|arg| FunctionArgData::new(arg, &itree)).collect();
-
-        Arc::new(FunctionData { name: fun.name.clone(), return_ty: itree[loc.id].ty.clone(), args })
     }
 }
