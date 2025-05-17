@@ -2,8 +2,10 @@ use std::sync::Arc;
 use stdx::Upcast;
 
 use hir_def::{
-    db::HirDefDB, nameres::ScopeItem, AliasParamId, BranchId, DefWithBodyId, DisciplineId, Lookup,
-    NatureAttrId, NatureId, NodeId, ParamId, ParamSysFun, Type,
+    db::HirDefDB,
+    nameres::{ItemWithBodyId, ScopeItem},
+    AliasParamId, BranchId, DisciplineId, Lookup, NatureAttrId, NatureId, NodeId, ParamId,
+    ParamSysFun, Type,
 };
 
 use crate::inference::Inference;
@@ -22,7 +24,7 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     fn branch_info(&self, branch: BranchId) -> Option<Arc<BranchTy>>;
 
     #[salsa::invoke(Inference::infere_body_query)]
-    fn inference_result(&self, id: DefWithBodyId) -> Arc<Inference>;
+    fn inference_result(&self, id: ItemWithBodyId) -> Arc<Inference>;
 
     #[salsa::cycle(nature_attr_ty_recover)]
     fn nature_attr_ty(&self, id: NatureAttrId) -> Option<Type>;

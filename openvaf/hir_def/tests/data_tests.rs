@@ -3,8 +3,7 @@ use std::path::Path;
 use basedb::diagnostics::{sink, ConsoleSink, DiagnosticSink};
 use basedb::{AbsPathBuf, BaseDB, FileId, SourceDatabase, Vfs, VfsEntry, VfsPath, VfsStorage};
 use hir_def::db::{HirDefDB, HirDefDatabase, InternDatabase};
-use hir_def::nameres::{DefMap, LocalScopeId, ScopeItem, ScopeOrigin};
-use hir_def::DefWithBodyId;
+use hir_def::nameres::{DefMap, ItemWithBodyId, LocalScopeId, ScopeItem, ScopeOrigin};
 use parking_lot::RwLock;
 
 use expect_test::expect_file;
@@ -61,20 +60,22 @@ impl TestDataBase {
     fn lower_and_check_rec(&self, scope: LocalScopeId, def_map: &DefMap, sink: &mut ConsoleSink) {
         let root_file = self.root_file();
 
-        for (_, declaration) in &def_map[scope].declarations {
-            if let Ok(id) = (*declaration).try_into() {
+        for (_, decl) in def_map[scope].decls() {
+            if let Ok(id) = (*decl).try_into() {
                 let diagnostics = &self.body_srcmap(id).diagnostics;
                 sink.add_diagnostics(diagnostics, root_file, self);
             }
-            if let ScopeItem::FunctionId(fun) = *declaration {
+            if let ScopeItem::FunctionId(fun) = *decl {
                 let def_map = self.function_def_map(fun);
                 let entry = self.function_def_map(fun).entry_scope();
                 self.lower_and_check_rec(entry, &def_map, sink)
             }
         }
 
-        for (_, child) in &def_map[scope].children {
-            self.lower_and_check_rec(*child, def_map, sink)
+        if let Some(children) = def_map[scope].children() {
+            for (_, child) in children {
+                self.lower_and_check_rec(*child, def_map, sink)
+            }
         }
     }
 }
@@ -131,13 +132,13 @@ fn body(file: &Path) -> Result {
 
     let def_map = db.root_def_map(db.root_file());
     // dump analog behavior body of top-level modules
-    for (_, scope) in &def_map[def_map.entry_scope()].children {
-        if let ScopeOrigin::Module(module) = def_map[*scope].origin {
-            let module = DefWithBodyId::ModuleId { initial: false, id: module };
+    for (_, scope) in def_map[def_map.entry_scope()].children().unwrap() {
+        if let ScopeOrigin::Module(module) = def_map[*scope].origin() {
+            let module = ItemWithBodyId::ModuleId { initial: false, id: module };
             actual.push_str(&db.body(module).dump(&db)?);
         }
         // dump analog function bodies of this module
-        for (_, &def) in &def_map[*scope].declarations {
+        for (_, &def) in def_map[*scope].decls() {
             if let ScopeItem::FunctionId(fun) = def {
                 actual.push_str(&db.body(fun.into()).dump(&db)?);
                 actual.push_str("\n");

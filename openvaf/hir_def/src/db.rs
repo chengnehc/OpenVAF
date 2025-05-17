@@ -9,12 +9,12 @@ use crate::data::{
     ParamData, VarData,
 };
 use crate::item_tree::ItemTree;
-use crate::nameres::{DefMap, ScopeOrigin};
+use crate::nameres::{DefMap, ItemWithBodyId, ScopeOrigin};
 use crate::{
-    AliasParamId, AliasParamLoc, BlockId, BlockLoc, BranchId, BranchLoc, DefWithBodyId,
-    DisciplineAttrId, DisciplineAttrLoc, DisciplineId, DisciplineLoc, FunctionArgId,
-    FunctionArgLoc, FunctionId, FunctionLoc, ModuleId, ModuleLoc, NatureAttrId, NatureAttrLoc,
-    NatureId, NatureLoc, NodeId, NodeLoc, ParamId, ParamLoc, VarId, VarLoc,
+    AliasParamId, AliasParamLoc, BlockId, BlockLoc, BranchId, BranchLoc, DisciplineAttrId,
+    DisciplineAttrLoc, DisciplineId, DisciplineLoc, FunctionArgId, FunctionArgLoc, FunctionId,
+    FunctionLoc, ModuleId, ModuleLoc, NatureAttrId, NatureAttrLoc, NatureId, NatureLoc, NodeId,
+    NodeLoc, ParamId, ParamLoc, VarId, VarLoc,
 };
 
 #[salsa::query_group(InternDatabase)]
@@ -60,13 +60,13 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     fn function_def_map(&self, fun: FunctionId) -> Arc<DefMap>;
 
     #[salsa::invoke(Body::body_with_srcmap_query)]
-    fn body_with_srcmap(&self, id: DefWithBodyId) -> (Arc<Body>, Arc<BodySourceMap>);
+    fn body_with_srcmap(&self, id: ItemWithBodyId) -> (Arc<Body>, Arc<BodySourceMap>);
     #[salsa::invoke(Body::param_body_with_srcmap_query)]
     fn param_body_with_srcmap(&self, id: ParamId) -> (Arc<Body>, Arc<BodySourceMap>, ParamExprs);
     #[salsa::transparent]
-    fn body(&self, id: DefWithBodyId) -> Arc<Body>;
+    fn body(&self, id: ItemWithBodyId) -> Arc<Body>;
     #[salsa::transparent]
-    fn body_srcmap(&self, id: DefWithBodyId) -> Arc<BodySourceMap>;
+    fn body_srcmap(&self, id: ItemWithBodyId) -> Arc<BodySourceMap>;
     #[salsa::transparent]
     fn param_exprs(&self, id: ParamId) -> ParamExprs;
 
@@ -93,11 +93,11 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     fn find_module(&self, root_file: FileId) -> ModuleId;
 }
 
-fn body(db: &dyn HirDefDB, def: DefWithBodyId) -> Arc<Body> {
+fn body(db: &dyn HirDefDB, def: ItemWithBodyId) -> Arc<Body> {
     db.body_with_srcmap(def).0
 }
 
-fn body_srcmap(db: &dyn HirDefDB, def: DefWithBodyId) -> Arc<BodySourceMap> {
+fn body_srcmap(db: &dyn HirDefDB, def: ItemWithBodyId) -> Arc<BodySourceMap> {
     db.body_with_srcmap(def).1
 }
 
@@ -109,10 +109,11 @@ fn find_module(db: &dyn HirDefDB, root_file: FileId) -> ModuleId {
     let def_map = db.root_def_map(root_file);
     let root_scope = def_map.entry_scope();
     def_map[root_scope]
-        .children
+        .children()
+        .unwrap()
         .values()
         .find_map(|scope| {
-            if let ScopeOrigin::Module(module) = def_map[*scope].origin {
+            if let ScopeOrigin::Module(module) = def_map[*scope].origin() {
                 Some(module)
             } else {
                 None

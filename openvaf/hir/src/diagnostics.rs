@@ -1,7 +1,10 @@
 use hir_def::{
     db::HirDefDB,
-    nameres::{DefDiagnosticWrapped, DefMap, LocalScopeId, ScopeItem, ScopeOrigin},
-    DefWithBodyId::{self, ModuleId},
+    nameres::{
+        DefDiagnosticWrapped, DefMap,
+        ItemWithBodyId::{self, ModuleId},
+        LocalScopeId, ScopeItem, ScopeOrigin,
+    },
     ItemTree,
 };
 use hir_ty::{
@@ -27,8 +30,8 @@ pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl Dia
     collect_type_diagnostics(db, root_file, &item_tree, sink);
 
     let root_scope = def_map.root_scope();
-    for child in def_map[root_scope].children.values() {
-        if let ScopeOrigin::Module(id) = def_map[*child].origin {
+    for child in def_map[root_scope].children().unwrap().values() {
+        if let ScopeOrigin::Module(id) = def_map[*child].origin() {
             collect_body_diagnostics(db, root_file, ModuleId { initial: true, id }, sink);
             collect_body_diagnostics(db, root_file, ModuleId { initial: false, id }, sink)
         }
@@ -64,7 +67,7 @@ fn collect_type_diagnostics(
 fn collect_body_diagnostics(
     db: &dyn HirDB,
     root_file: FileId,
-    def: DefWithBodyId,
+    def: ItemWithBodyId,
     sink: &mut impl DiagnosticSink,
 ) {
     let body_sm = &db.body_srcmap(def);
@@ -90,7 +93,7 @@ fn collect_scope_diagnostics(
     scope: LocalScopeId,
     sink: &mut impl DiagnosticSink,
 ) {
-    for &def in def_map[scope].declarations.values() {
+    for &def in def_map[scope].decls().values() {
         if let Ok(body) = def.try_into() {
             collect_body_diagnostics(db, root_file, body, sink);
         }

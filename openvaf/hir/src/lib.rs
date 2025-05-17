@@ -13,10 +13,10 @@ use stdx::impl_debug;
 
 use basedb::{BaseDB, FileId};
 use hir_def::db::HirDefDB;
-use hir_def::nameres::{DefMap, LocalScopeId, ScopeItem};
+use hir_def::nameres::{DefMap, ItemWithBodyId, LocalScopeId, ScopeItem};
 use hir_def::{
-    AliasParamId, BlockId, BranchId, DefWithBodyId, DisciplineId, FunctionId, LocalFunctionArgId,
-    Lookup, ModuleId, ModuleLoc, NatureAttrId, NatureId, NodeId, ParamId, VarId,
+    AliasParamId, BlockId, BranchId, DisciplineId, FunctionId, LocalFunctionArgId, Lookup,
+    ModuleId, ModuleLoc, NatureAttrId, NatureId, NodeId, ParamId, VarId,
 };
 use hir_ty::db::HirTyDB as HirDB;
 use hir_ty::inference;
@@ -87,7 +87,7 @@ impl CompilationUnit {
         let root_def_map = db.root_def_map(self.root_file);
         let entry = root_def_map.entry_scope();
         root_def_map[entry]
-            .declarations
+            .decls()
             .iter()
             .filter_map(
                 |(_, def)| {
@@ -198,10 +198,10 @@ impl Module {
         RecDeclarations::new(Scope::Module(self), db)
     }
     pub fn analog_initial_body(&self, db: &CompilationDB) -> Body {
-        Body::new(DefWithBodyId::ModuleId { initial: true, id: self.id }, db)
+        Body::new(ItemWithBodyId::ModuleId { initial: true, id: self.id }, db)
     }
     pub fn analog_body(&self, db: &CompilationDB) -> Body {
-        Body::new(DefWithBodyId::ModuleId { initial: false, id: self.id }, db)
+        Body::new(ItemWithBodyId::ModuleId { initial: false, id: self.id }, db)
     }
     // JW: for VerilogAE
     pub fn lookup_var(

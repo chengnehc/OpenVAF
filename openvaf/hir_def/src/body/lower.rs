@@ -18,7 +18,7 @@ pub(super) struct Context<'a> {
     pub(super) db: &'a dyn HirDefDB,
     pub(super) ast_id_map: &'a AstIdMap,
     // states
-    pub(super) curr_scope: (Scope, ErasedAstId),
+    pub(super) curr_scope: (ScopeId, ErasedAstId),
 }
 
 impl Context<'_> {
@@ -169,7 +169,8 @@ impl Context<'_> {
             // Fixed(JW): no need to intern unnamed blocks, intern scoped blocks only.
             let id = BlockLoc { parent: curr, ast_id }.intern(self.db);
             if let Some(def_map) = self.db.block_def_map(id) {
-                next = Scope::from(curr.root_file, DefMapSource::Block(id), def_map.entry_scope());
+                next =
+                    ScopeId::from(curr.root_file, DefMapSource::Block(id), def_map.entry_scope());
             }
         }
         // JW: Be careful of the order: we enter the block's scope first, then we

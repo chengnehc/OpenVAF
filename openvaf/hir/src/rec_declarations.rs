@@ -22,7 +22,7 @@ struct Scope {
 impl Scope {
     fn new(def_map: Arc<DefMap>, scope: LocalScopeId, def: Option<(Name, ScopeDef)>) -> Scope {
         // safety: def_map is a immutable/an arc that will live at least as long as the scope
-        let iter = def_map[scope].declarations.iter();
+        let iter = def_map[scope].decls().iter();
         let iter = unsafe { transmute(iter) };
 
         Scope { iter, def }

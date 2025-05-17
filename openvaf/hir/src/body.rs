@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hir_def::db::HirDefDB;
-use hir_def::DefWithBodyId;
+use hir_def::nameres::ItemWithBodyId;
 use hir_ty::db::HirTyDB;
 use hir_ty::inference;
 use hir_ty::types::{Signature, Ty};
@@ -23,7 +23,7 @@ pub struct Body {
     infere: Arc<inference::Inference>,
 }
 impl Body {
-    pub(crate) fn new(id: DefWithBodyId, db: &CompilationDB) -> Body {
+    pub(crate) fn new(id: ItemWithBodyId, db: &CompilationDB) -> Body {
         Body { body: db.body(id), infere: db.inference_result(id) }
     }
 

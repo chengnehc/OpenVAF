@@ -113,7 +113,7 @@ impl ExprValidator<'_, '_> {
             Expr::Path { port: false, .. } => {
                 match self.parent.infer.expr_types[expr] {
                     Ty::Param(_, param) => {
-                        if let DefWithBodyId::ParamId(def) = self.parent.def {
+                        if let ItemWithBodyId::ParamId(def) = self.parent.def {
                             if def.lookup(self.parent.db.upcast()).id
                                 < param.lookup(self.parent.db.upcast()).id
                             {

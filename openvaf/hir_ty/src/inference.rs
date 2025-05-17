@@ -10,9 +10,9 @@ use ahash::AHashMap;
 use arena::ArenaMap;
 use hir_def::{
     body::{Body, CaseCond, Expr, ExprId, Literal, Stmt, StmtId},
-    nameres::{PathResolveError, ResolvedPath, ScopeItem, ScopeItemKind},
-    BranchId, BuiltIn, DefWithBodyId, FunctionArgLoc, FunctionId, LocalFunctionArgId, Lookup,
-    NatureAccess, NatureId, NodeId, ParamSysFun, Path, Type, VarId,
+    nameres::{ItemWithBodyId, PathResolveError, ResolvedPath, ScopeItem, ScopeItemKind},
+    BranchId, BuiltIn, FunctionArgLoc, FunctionId, LocalFunctionArgId, Lookup, NatureAccess,
+    NatureId, NodeId, ParamSysFun, Path, Type, VarId,
 };
 use syntax::{
     ast::{self, BinaryOp, UnaryOp},
@@ -48,7 +48,7 @@ pub struct Inference {
 }
 
 impl Inference {
-    pub fn infere_body_query(db: &dyn HirTyDB, id: DefWithBodyId) -> Arc<Inference> {
+    pub fn infere_body_query(db: &dyn HirTyDB, id: ItemWithBodyId) -> Arc<Inference> {
         let body = db.body(id);
         let result = Inference {
             expr_types: ArenaMap::from(vec![Ty::Val(Type::Err); body.exprs.len()]),
@@ -58,7 +58,7 @@ impl Inference {
         // Parameter and variable bodies only contain expressions, whose entry stmts
         // are expr stmts which shall be type checked properly.
         ctxt.expr_stmt_ty = match id {
-            DefWithBodyId::ParamId(param) => match &db.param_data(param).ty {
+            ItemWithBodyId::ParamId(param) => match &db.param_data(param).ty {
                 Some(ty) => Some(ty.clone()),
                 // If the type of a parameter is omitted, it shall be inferred through
                 // the parameter's default value. Refer to [LRM 3.4.1]
@@ -69,7 +69,7 @@ impl Inference {
                 }
             },
             // the type of a variable can not be omitted
-            DefWithBodyId::VarId(var) => Some(db.var_data(var).ty.clone()),
+            ItemWithBodyId::VarId(var) => Some(db.var_data(var).ty.clone()),
             _ => None,
         };
 

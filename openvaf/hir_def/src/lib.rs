@@ -3,7 +3,7 @@
 
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use stdx::{impl_debug_display, impl_from};
+use stdx::impl_debug_display;
 
 use arena::Idx;
 use basedb::{AstId, ErasedAstId, FileId};
@@ -17,7 +17,6 @@ mod builtin;
 mod data;
 mod item_tree;
 mod path;
-mod scope;
 mod types;
 
 pub use body::{Expr, Stmt};
@@ -27,15 +26,14 @@ pub use item_tree::{
     ItemTreeNode, Module, Nature, NatureAttr, NatureRef, NatureRefKind, NodeTypeDecl, Param, Var,
 };
 pub use path::Path;
-pub use scope::Scope;
 pub use types::Type;
 
 use db::HirDefDB;
-use nameres::{DefMap, ScopeItem};
+use nameres::{DefMap, ScopeId};
 
 #[derive(Debug)]
 pub struct ItemLoc<N: ItemTreeNode> {
-    pub scope: Scope,
+    pub scope: ScopeId,
     pub id: ItemTreeId<N>,
 }
 
@@ -305,58 +303,18 @@ impl FunctionArgLoc {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockLoc {
-    parent: Scope,
+    parent: ScopeId,
     ast_id: AstId<ast::BlockStmt>,
 }
 impl_intern!(BlockId, BlockLoc, intern_block, lookup_intern_block);
 impl BlockLoc {
     pub fn name(self, db: &dyn HirDefDB) -> Name {
         let tree = db.item_tree(self.parent.root_file);
-        tree.blocks[&self.ast_id].name.clone().expect("BlockLocs are only created for named Blocks")
+        tree.blocks[&self.ast_id].name.clone().expect("Only named blocks shall be interned")
     }
     pub fn source(self, db: &dyn HirDefDB) -> ast::BlockStmt {
         let file = self.parent.root_file;
         let ptr = db.ast_id_map(file).get(self.ast_id);
         ptr.to_node(db.parse(file).tree().syntax())
-    }
-}
-
-/* Some items can have a body that contains statements and expressions */
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DefWithBodyId {
-    NatureAttrId(NatureAttrId),
-    DisciplineAttrId(DisciplineAttrId),
-    ModuleId { initial: bool, id: ModuleId },
-    VarId(VarId),
-    ParamId(ParamId),
-    FunctionId(FunctionId),
-}
-impl_from!(NatureAttrId, DisciplineAttrId, VarId, ParamId, FunctionId for DefWithBodyId);
-
-impl TryFrom<ScopeItem> for DefWithBodyId {
-    type Error = ();
-    fn try_from(src: ScopeItem) -> Result<DefWithBodyId, ()> {
-        let res = match src {
-            ScopeItem::NatureAttrId(attr) => attr.into(),
-            ScopeItem::VarId(var) => var.into(),
-            ScopeItem::ParamId(param) => param.into(),
-            ScopeItem::FunctionId(fun) => fun.into(),
-            _ => return Err(()),
-        };
-        Ok(res)
-    }
-}
-
-impl DefWithBodyId {
-    pub fn file(self, db: &dyn HirDefDB) -> FileId {
-        match self {
-            DefWithBodyId::NatureAttrId(id) => id.lookup(db).nature.lookup(db).root_file,
-            DefWithBodyId::DisciplineAttrId(id) => id.lookup(db).discipline.lookup(db).root_file,
-            DefWithBodyId::ModuleId { id, .. } => id.lookup(db).scope.root_file,
-            DefWithBodyId::VarId(id) => id.lookup(db).scope.root_file,
-            DefWithBodyId::ParamId(id) => id.lookup(db).scope.root_file,
-            DefWithBodyId::FunctionId(id) => id.lookup(db).scope.root_file,
-        }
     }
 }

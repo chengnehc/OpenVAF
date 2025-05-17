@@ -1,8 +1,9 @@
 use std::iter;
 
 use hir_def::{
-    nameres::ScopeItem, AliasParamId, BranchId, BranchLoc, DisciplineId, FunctionId, ModuleId,
-    ModuleLoc, NatureId, NodeId, NodeTypeDecl, ParamId, Path, Scope,
+    nameres::{ScopeId, ScopeItem},
+    AliasParamId, BranchId, BranchLoc, DisciplineId, FunctionId, ModuleId, ModuleLoc, NatureId,
+    NodeId, NodeTypeDecl, ParamId, Path,
 };
 use syntax::{ast::ArgListOwner, AstNode};
 use typed_index_collections::TiSlice;
@@ -13,7 +14,7 @@ use super::*;
 impl TypeValidator<'_> {
     pub(super) fn validate(mut self) -> Vec<TypeDiagnostic> {
         let root = &self.def_map[self.def_map.root_scope()];
-        for def in root.declarations.values() {
+        for def in root.decls().values() {
             match *def {
                 ScopeItem::NatureId(nature) => self.verify_nature(nature),
                 ScopeItem::DisciplineId(discipline) => self.verify_discipline(discipline),
@@ -61,7 +62,7 @@ impl TypeValidator<'_> {
 
     fn verify_module(&mut self, id: ModuleId) {
         let module = id.lookup(self.db.upcast());
-        for item in self.def_map[module.scope.id].declarations.values() {
+        for item in self.def_map[module.scope.id].decls().values() {
             match item {
                 ScopeItem::NodeId(node) => self.verify_node(*node, module),
                 ScopeItem::BranchId(branch) => self.verify_branch(*branch),
@@ -195,7 +196,7 @@ impl TypeValidator<'_> {
         };
     }
 
-    fn resolve_node(&mut self, path: &Path, scope: Scope, branch: &BranchLoc) -> Option<NodeId> {
+    fn resolve_node(&mut self, path: &Path, scope: ScopeId, branch: &BranchLoc) -> Option<NodeId> {
         match scope.resolve_item_path::<NodeId>(self.db.upcast(), path) {
             Ok(node) => Some(node),
             Err(err) => {

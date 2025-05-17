@@ -4,8 +4,8 @@ use ahash::{HashMap, HashSet};
 use basedb::FileId;
 use hir_def::{
     body::{Body, ExprId, StmtId},
-    nameres::DefMap,
-    DefWithBodyId, ItemTree, Lookup,
+    nameres::{DefMap, ItemWithBodyId},
+    ItemTree, Lookup,
 };
 
 use crate::db::HirTyDB;
@@ -36,7 +36,7 @@ impl TypeDiagnostic {
 }
 
 pub struct BodyValidator<'a> {
-    def: DefWithBodyId,
+    def: ItemWithBodyId,
     // reads
     db: &'a dyn HirTyDB,
     infer: &'a Inference,
@@ -123,13 +123,13 @@ struct ExprValidator<'a, 'b> {
 }
 
 impl BodyDiagnostic {
-    pub fn validate_and_collect(db: &dyn HirTyDB, def: DefWithBodyId) -> Vec<BodyDiagnostic> {
+    pub fn validate_and_collect(db: &dyn HirTyDB, def: ItemWithBodyId) -> Vec<BodyDiagnostic> {
         let body = &db.body(def);
         let infer = &db.inference_result(def);
         let body_ctxt = match def {
-            DefWithBodyId::ModuleId { initial: false, .. } => BodyContext::AnalogBlock,
-            DefWithBodyId::ModuleId { initial: true, .. } => BodyContext::AnalogInitialBlock,
-            DefWithBodyId::FunctionId(_) => BodyContext::Function,
+            ItemWithBodyId::ModuleId { initial: false, .. } => BodyContext::AnalogBlock,
+            ItemWithBodyId::ModuleId { initial: true, .. } => BodyContext::AnalogInitialBlock,
+            ItemWithBodyId::FunctionId(_) => BodyContext::Function,
             _ => BodyContext::Const,
         };
         BodyValidator {

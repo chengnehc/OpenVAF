@@ -22,10 +22,12 @@ use crate::item_tree::{
 };
 use crate::{
     BlockId, BlockLoc, DisciplineLoc, FunctionArgLoc, FunctionId, FunctionLoc, Intern, ItemLoc,
-    Lookup, ModuleLoc, NatureAccess, NatureAttrLoc, NatureLoc, NodeLoc, Scope,
+    Lookup, ModuleLoc, NatureAccess, NatureAttrLoc, NatureLoc, NodeLoc, ScopeId,
 };
 
-use super::{DefDiagnostic, DefMap, DefMapSource, LocalScopeId, ScopeData, ScopeItem, ScopeOrigin};
+use super::{
+    DefDiagnostic, DefMap, DefMapSource, LocalScopeId, RecScope, Scope, ScopeItem, ScopeOrigin,
+};
 
 impl DefMap {
     pub fn root_query(db: &dyn HirDefDB, root_file: FileId) -> Arc<DefMap> {
@@ -38,14 +40,14 @@ impl DefMap {
             root_scope: LocalScopeId::from(0u32),
             diagnostics: Vec::new(),
         };
-        let c = Collector { def_map, root_file, db, tree };
 
-        c.collect_root_map()
+        Collector { def_map, root_file, db, tree }.collect_root_map()
     }
 
     pub fn block_query(db: &dyn HirDefDB, block: BlockId) -> Option<Arc<DefMap>> {
         let BlockLoc { parent, ast_id } = block.lookup(db);
-        let tree = &db.item_tree(parent.root_file);
+        let root_file = parent.root_file;
+        let tree = &db.item_tree(root_file);
         let items = &tree.blocks[&ast_id].items;
         if items.is_empty() {
             // fast path for block scopes containing no items
@@ -57,15 +59,13 @@ impl DefMap {
             root_scope: LocalScopeId::from(0u32),
             diagnostics: Vec::new(),
         };
-        let c = Collector { def_map, tree, db, root_file: parent.root_file };
 
-        Some(c.collect_block_map(block, items))
+        Some(Collector { def_map, root_file, tree, db }.collect_block_map(block, items))
     }
 
     pub fn function_query(db: &dyn HirDefDB, fun: FunctionId) -> Arc<DefMap> {
         let FunctionLoc { scope, id } = fun.lookup(db);
-        let Scope { root_file, id: parent_module, .. } = scope;
-
+        let ScopeId { root_file, id: parent_module, .. } = scope;
         let tree = &db.item_tree(root_file);
         let def_map = DefMap {
             src: DefMapSource::Function(fun),
@@ -73,15 +73,15 @@ impl DefMap {
             root_scope: 0u32.into(), // This will be changed once the scope has been created
             diagnostics: Vec::new(),
         };
-        let c = Collector { def_map, root_file, db, tree };
 
-        c.collect_function_map(id, parent_module, fun)
+        Collector { def_map, root_file, db, tree }.collect_function_map(id, parent_module, fun)
     }
 }
 
 struct Collector<'a> {
+    // output
     def_map: DefMap,
-
+    // reads
     root_file: FileId,
     db: &'a dyn HirDefDB,
     tree: &'a ItemTree,
@@ -132,7 +132,7 @@ impl Collector<'_> {
         let module_name = module.name.clone();
 
         // create new scope
-        let scope = Scope::from(self.root_file, self.def_map.src, self.def_map.scopes.next_key());
+        let scope = ScopeId::from(self.root_file, self.def_map.src, self.def_map.scopes.next_key());
         let module_def = ModuleLoc { scope, id }.intern(self.db);
         let module_scope =
             self.def_map.declare_scope(ScopeOrigin::Module(module_def), Some(parent_scope));
@@ -140,39 +140,38 @@ impl Collector<'_> {
         // insert module def into parent scope
         self.insert_def(module_def, parent_scope, module_name.clone());
         // update children scope for parent
-        self.def_map[parent_scope].children.entry(module_name).or_insert(module_scope);
+        let Scope::Rec(root_scope) = &mut self.def_map[parent_scope] else { unreachable!() };
+        root_scope.children.entry(module_name).or_insert(module_scope);
 
         // [LRM 6.3.6] Hierarchical system parameters.
         // In addition to the parameters explicitly declared in a module’s header,
         // there are six system parameters that are implicitly declared for every
         // module: $mfactor, $xposition, $yposition, $angle, $hflip, and $vflip.
-        builtin::insert_param_sysfun(&mut self.def_map[module_scope].declarations);
+        builtin::insert_param_sysfun(self.def_map[module_scope].decls_mut());
 
-        // collect module items
-        use ModuleItem::*;
         for item in &module.items {
             match *item {
-                Node(id) => {
+                ModuleItem::Node(id) => {
                     let name = module.nodes[id].name.clone();
                     let node = NodeLoc { module: module_def, id }.intern(self.db);
                     self.insert_def(node, module_scope, name)
                 }
-                Branch(br) => {
+                ModuleItem::Branch(br) => {
                     self.intern_and_insert_item(br, module_scope, self.tree[br].name.clone())
                 }
-                Variable(var) => {
+                ModuleItem::Variable(var) => {
                     self.intern_and_insert_item(var, module_scope, self.tree[var].name.clone());
                 }
-                Parameter(param) => {
+                ModuleItem::Parameter(param) => {
                     self.intern_and_insert_item(param, module_scope, self.tree[param].name.clone())
                 }
-                AliasParam(alias) => {
+                ModuleItem::AliasParam(alias) => {
                     self.intern_and_insert_item(alias, module_scope, self.tree[alias].name.clone())
                 }
-                Function(fun) => {
+                ModuleItem::Function(fun) => {
                     self.intern_and_insert_item(fun, module_scope, self.tree[fun].name.clone());
                 }
-                ScopedBlock(block) => {
+                ModuleItem::ScopedBlock(block) => {
                     self.intern_and_insert_scoped_block(block, module_scope);
                 }
             }
@@ -213,9 +212,9 @@ impl Collector<'_> {
         // declares a variable internal to the analog user-defined function,
         // with the same name as the analog_function_identifier.
         self.def_map[fun_scope]
-            .declarations
+            .decls_mut()
             .insert(fun.name.clone(), ScopeItem::FunctionReturn(fun_def));
-        // insert function items declarations
+
         for item in &fun.items {
             match *item {
                 FunctionItem::FunctionArg(arg) => {
@@ -236,7 +235,7 @@ impl Collector<'_> {
         self.def_map.root_scope = root;
 
         // [LRM 4.7.1] Analog user-defined function:
-        // - shall not use named blocks;
+        //
         // - shall only reference locally-defined variables, variables passed as arguments,
         //   locally-defined parameters and *module-level parameters*; and
         // - if a locally-defined parameter with the specified name does not exist, then
@@ -247,52 +246,43 @@ impl Collector<'_> {
         let root_def_map = self.db.root_def_map(self.root_file);
         let main_root_scope = &root_def_map[root_def_map.root_scope()];
 
-        for (module_name, module_scope_id) in main_root_scope.children.iter() {
-            let module_scope = &root_def_map[*module_scope_id];
-            let ScopeOrigin::Module(module) = module_scope.origin else {
-                unreachable!("Top-level scopes can only be modules")
-            };
-            // only module-level parameters and the function def are visible
-            let declarations = module_scope
-                .declarations
-                .iter()
-                .filter_map(|(name, decl)| {
-                    matches!(decl, ScopeItem::ParamId(_) | ScopeItem::FunctionId(_))
-                        .then_some((name.clone(), *decl))
-                })
-                .collect();
-            let scope_id = self.def_map.scopes.push_and_get_key(ScopeData {
-                origin: module_scope.origin,
-                parent: Some(root),
-                children: IndexMap::default(),
-                declarations,
-            });
-            // update the parent module scope id when we've met it.
-            if parent_module == *module_scope_id {
-                self.def_map[fun_scope].parent = Some(scope_id);
-                // JW: add function scope to parent module scope's children
-                self.def_map[scope_id].children.insert(fun.name.clone(), fun_scope);
+        for (name, scope_id) in main_root_scope.children().unwrap().iter() {
+            let scope = &root_def_map[*scope_id];
+            if let ScopeOrigin::Module(module) = scope.origin() {
+                let declarations = scope
+                    .decls()
+                    .iter()
+                    .filter_map(|(name, decl)| {
+                        matches!(decl, ScopeItem::ParamId(_) | ScopeItem::FunctionId(_))
+                            .then_some((name.clone(), *decl))
+                    })
+                    .collect();
+                let id = self.def_map.scopes.push_and_get_key(
+                    RecScope {
+                        origin: scope.origin(),
+                        parent: Some(root),
+                        children: IndexMap::default(),
+                        declarations,
+                    }
+                    .into(),
+                );
+                // update the parent module scope id when we've met it
+                if parent_module == *scope_id {
+                    let Scope::Flat(scope) = &mut self.def_map[fun_scope] else { unreachable!() };
+                    scope.parent = Some(id);
+                    // JW: add function scope to parent module scope's children
+                    self.def_map[id].children_mut().unwrap().insert(fun.name.clone(), fun_scope);
+                }
+                self.def_map[root].children_mut().unwrap().insert(name.clone(), id);
+                self.def_map[root].decls_mut().insert(name.clone(), module.into());
             }
-            self.def_map[root].children.insert(module_name.clone(), scope_id);
-            self.def_map[root].declarations.insert(module_name.clone(), module.into());
         }
         assert!(
-            self.def_map[fun_scope].parent.is_some(),
+            self.def_map[fun_scope].parent().is_some(),
             "parent module was not among the root modules"
         );
 
         Arc::new(self.def_map)
-    }
-
-    fn intern_and_insert_item<N>(&mut self, item: ItemTreeId<N>, dst: LocalScopeId, name: Name)
-    where
-        N: ItemTreeNode,
-        ItemLoc<N>: Intern,
-        <ItemLoc<N> as Intern>::Id: Into<ScopeItem>,
-    {
-        let scope = Scope::from(self.root_file, self.def_map.src, dst);
-        let def = ItemLoc { scope, id: item }.intern(self.db);
-        self.insert_def(def, dst, name)
     }
 
     /// Intern a named block and insert its definition into the given parent scope.
@@ -305,14 +295,25 @@ impl Collector<'_> {
             .name
             .clone()
             .expect("should only create DefMap for named blocks");
-        let parent = Scope::from(self.root_file, self.def_map.src, parent_scope);
+        let parent = ScopeId::from(self.root_file, self.def_map.src, parent_scope);
         let block = BlockLoc { parent, ast_id: block }.intern(self.db);
         self.insert_def(block, parent_scope, name);
     }
 
+    fn intern_and_insert_item<N>(&mut self, item: ItemTreeId<N>, dst: LocalScopeId, name: Name)
+    where
+        N: ItemTreeNode,
+        ItemLoc<N>: Intern,
+        <ItemLoc<N> as Intern>::Id: Into<ScopeItem>,
+    {
+        let scope = ScopeId::from(self.root_file, self.def_map.src, dst);
+        let def = ItemLoc { scope, id: item }.intern(self.db);
+        self.insert_def(def, dst, name)
+    }
+
     fn insert_def(&mut self, def: impl Into<ScopeItem>, dst: LocalScopeId, name: Name) {
         let def = def.into();
-        if let Some(old) = self.def_map[dst].declarations.insert(name.clone(), def) {
+        if let Some(old) = self.def_map[dst].decls_mut().insert(name.clone(), def) {
             let diag = DefDiagnostic::AlreadyDeclared { old, new: def, name };
             self.def_map.diagnostics.push(diag);
         }

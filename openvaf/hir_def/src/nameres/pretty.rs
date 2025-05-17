@@ -43,11 +43,11 @@ impl Printer<'_> {
 
     fn print_scope(&mut self, map: &DefMap, scope: LocalScopeId) -> fmt::Result {
         let mut declarations: Vec<_> =
-            map[scope].declarations.iter().map(|(name, def)| (name.clone(), *def)).collect();
+            map[scope].decls().iter().map(|(name, decl)| (name.clone(), *decl)).collect();
         declarations.sort_unstable_by_key(|(name, _)| name.clone());
-        for (name, def) in declarations {
-            write!(self, "{name} = {};", def.item_kind())?;
-            match def {
+        for (name, decl) in declarations {
+            write!(self, "{name} = {};", decl.item_kind())?;
+            match decl {
                 ScopeItem::BlockId(block) => {
                     if let Some(def_map) = self.db.block_def_map(block) {
                         self.indented(|s| s.print_def_map(&def_map))?;
@@ -58,8 +58,12 @@ impl Printer<'_> {
                     self.indented(|s| s.print_def_map(&def_map))?;
                 }
                 _ => {
-                    if let Some(child) = map[scope].children.get(&name) {
-                        self.indented(|s| s.print_scope(map, *child))?;
+                    if let Some(children) = map[scope].children() {
+                        if let Some(child) = children.get(&name) {
+                            self.indented(|s| s.print_scope(map, *child))?;
+                        } else {
+                            writeln!(self)?;
+                        }
                     } else {
                         writeln!(self)?;
                     }

@@ -1,7 +1,9 @@
+use super::*;
+
 use stdx::impl_display;
 use syntax::name::kw;
 
-use super::*;
+use scope::BUILTIN_ITEM_DEF;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedPath {
@@ -81,11 +83,11 @@ impl DefMap {
         let name = segments.first().unwrap();
         let def = loop {
             // try resolving in current scope
-            if let Some(def) = def_map[cur_scope].declarations.get(name) {
+            if let Some(def) = def_map[cur_scope].decls().get(name) {
                 break *def;
             }
             // try resolving in parent scopes
-            match def_map[cur_scope].parent {
+            match def_map[cur_scope].parent() {
                 Some(parent) => cur_scope = parent,
                 None => match def_map.src {
                     // for named blocks, the parent scope is stored in `BlockLoc`
@@ -180,9 +182,9 @@ impl DefMap {
         let mut def_map = self;
 
         for (i, seg) in segments.iter().enumerate() {
-            match def_map[scope].children.get(seg) {
+            match def_map[scope].children().and_then(|children| children.get(seg)) {
                 Some(child) => scope = *child,
-                None => match def_map[scope].declarations.get(seg) {
+                None => match def_map[scope].decls().get(seg) {
                     Some(ScopeItem::BlockId(block)) => {
                         if let Some(block_map) = db.block_def_map(*block) {
                             arc = block_map;
@@ -241,7 +243,7 @@ impl DefMap {
             scope_name = seg;
         }
 
-        match self[scope].declarations.get(name) {
+        match self[scope].decls().get(name) {
             Some(decl) => Ok(ResolvedPath::ScopeItem(*decl)),
             None => {
                 Err(PathResolveError::NotFoundIn { name: name.clone(), scope: scope_name.clone() })
