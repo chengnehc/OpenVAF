@@ -19,7 +19,7 @@ mod cursor;
 #[cfg(test)]
 mod tests;
 
-use crate::cursor::Cursor;
+use crate::cursor::{Cursor, EOF_CHAR};
 
 /// Creates an iterator that produces tokens from the input string.
 pub fn tokenize(input: &str) -> Vec<Token> {
@@ -285,7 +285,7 @@ impl Cursor<'_> {
 
         loop {
             match self.first() {
-                '\n' => break,
+                '\n' | EOF_CHAR => break,
                 '\\' if self.second() == '\n' => break,
                 _ => self.bump(),
             };
