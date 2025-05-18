@@ -53,7 +53,7 @@ impl Context {
     fn lower_nature(&mut self, decl: ast::NatureDecl) -> Option<ItemTreeId<Nature>> {
         let name = decl.name()?.as_name();
         let ast_id = self.ast_id_map.id_of(&decl);
-        let parent = decl.parent().and_then(|it| Self::lower_nature_path(&it));
+        let parent = decl.parent().and_then(|path| Self::lower_nature_ref(&path));
 
         let attr_start = self.tree.data.nature_attrs.next_key();
 
@@ -64,6 +64,7 @@ impl Context {
         let mut abstol = None;
 
         for (id, attr) in decl.nature_attrs().enumerate() {
+            let id = id.into();
             let Some(name) = attr.name().map(|name| name.as_name()) else { continue };
             let ast_id = self.ast_id_map.id_of(&attr);
 
@@ -71,29 +72,28 @@ impl Context {
             match &*name {
                 kw::access if access.is_none() => {
                     if let Some(name) = attr.val().and_then(|expr| expr.as_ident()) {
-                        access = Some((name, id.into()));
+                        access = Some((name, id));
                     }
                 }
                 kw::ddt_nature if ddt_nature.is_none() => {
                     if let Some(name) = attr.val().and_then(Self::lower_nature_expr) {
-                        ddt_nature = Some((name, id.into()));
+                        ddt_nature = Some((name, id));
                     }
                 }
                 kw::idt_nature if idt_nature.is_none() => {
                     if let Some(name) = attr.val().and_then(Self::lower_nature_expr) {
-                        idt_nature = Some((name, id.into()));
+                        idt_nature = Some((name, id));
                     }
                 }
                 kw::units if units.is_none() => {
                     if let Some(ast::LiteralKind::StrLit(lit)) =
                         attr.val().and_then(|e| e.as_literal())
                     {
-                        units = Some((lit.unescaped_value(), id.into()));
+                        units = Some((lit.unescaped_value(), id));
                     }
                 }
-                kw::abstol if abstol.is_none() => {
-                    abstol = Some(id.into());
-                }
+                kw::abstol if abstol.is_none() => abstol = Some(id),
+
                 _ => (),
             };
             self.tree.data.nature_attrs.push(NatureAttr { name, ast_id });
@@ -117,17 +117,17 @@ impl Context {
 
     fn lower_nature_expr(expr: ast::Expr) -> Option<NatureRef> {
         let path = expr.as_path()?;
-        Self::lower_nature_path(&path)
+        Self::lower_nature_ref(&path)
     }
 
-    fn lower_nature_path(decl: &ast::Path) -> Option<NatureRef> {
-        let mut name = decl.segment_token()?.as_name();
+    fn lower_nature_ref(path: &ast::Path) -> Option<NatureRef> {
+        let mut name = path.segment_token()?.as_name();
 
         let kind = match &*name {
             kw::raw::potential => NatureRefKind::DisciplinePotential,
             kw::raw::flow => NatureRefKind::DisciplineFlow,
-            _ if decl.qualifier().is_none()
-                && decl.segment_kind()? == ast::PathSegmentKind::Name =>
+            _ if path.qualifier().is_none()
+                && path.segment_kind()? == ast::PathSegmentKind::Name =>
             {
                 NatureRefKind::Nature
             }
@@ -135,7 +135,7 @@ impl Context {
         };
 
         if matches!(kind, NatureRefKind::DisciplineFlow | NatureRefKind::DisciplinePotential) {
-            let qual = decl.qualifier()?;
+            let qual = path.qualifier()?;
             let segment = qual.segment()?;
             if segment.kind == ast::PathSegmentKind::Root || qual.qualifier().is_some() {
                 return None;
@@ -157,10 +157,10 @@ impl Context {
         let mut domain = None;
 
         for (id, attr) in decl.discipline_attrs().enumerate() {
+            let id = id.into();
             let Some(name) = attr.name() else { continue };
             let kind = if let Some(qual) = name.qualifier() {
-                let qual = qual.segment_token();
-                match qual.as_ref().map(|t| t.text()) {
+                match qual.segment_token().as_ref().map(|t| t.text()) {
                     Some(kw::potential) => DisciplineAttrKind::PotentialOverride,
                     Some(kw::flow) => DisciplineAttrKind::FlowOverride,
                     _ => continue,
@@ -174,23 +174,19 @@ impl Context {
             use kw::raw as kw;
             match &*name {
                 kw::potential if potential.is_none() => {
-                    if let Some(name_ref) = attr.val().and_then(Self::lower_nature_expr) {
-                        potential = Some((name_ref, id.into()))
+                    if let Some(nature_ref) = attr.val().and_then(Self::lower_nature_expr) {
+                        potential = Some((nature_ref, id))
                     }
                 }
                 kw::flow if flow.is_none() => {
-                    if let Some(name_ref) = attr.val().and_then(Self::lower_nature_expr) {
-                        flow = Some((name_ref, id.into()))
+                    if let Some(nature_ref) = attr.val().and_then(Self::lower_nature_expr) {
+                        flow = Some((nature_ref, id))
                     }
                 }
                 kw::domain if domain.is_none() => {
                     match attr.val().and_then(|expr| expr.as_ident()).as_deref() {
-                        Some(kw::continuous) => {
-                            domain = Some((Domain::Continuous, id.into()));
-                        }
-                        Some(kw::discrete) => {
-                            domain = Some((Domain::Discrete, id.into()));
-                        }
+                        Some(kw::continuous) => domain = Some((Domain::Continuous, id)),
+                        Some(kw::discrete) => domain = Some((Domain::Discrete, id)),
                         _ => (),
                     }
                 }

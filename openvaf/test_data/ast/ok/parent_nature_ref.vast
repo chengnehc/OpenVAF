@@ -1,0 +1,37 @@
+SOURCE_FILE@0..95
+  NATURE_DECL@0..95
+    NATURE_KW@0..6 "nature"
+    WHITESPACE@6..7 " "
+    NAME@7..16
+      IDENT@7..16 "Mycurrent"
+    COLON@16..17 ":"
+    WHITESPACE@17..18 " "
+    PATH@18..35
+      PATH@18..30
+        IDENT@18..30 "Mydiscipline"
+      DOT@30..31 "."
+      IDENT@31..35 "flow"
+    SEMICOLON@35..36 ";"
+    WHITESPACE@36..41 "\n    "
+    NATURE_ATTR@41..59
+      NAME@41..46
+        IDENT@41..46 "units"
+      WHITESPACE@46..53 "       "
+      EQ@53..54 "="
+      WHITESPACE@54..55 " "
+      LITERAL@55..58
+        STR_LIT@55..58 "\"A\""
+      SEMICOLON@58..59 ";"
+    WHITESPACE@59..64 "\n    "
+    NATURE_ATTR@64..85
+      NAME@64..74
+        IDENT@64..74 "ddt_nature"
+      WHITESPACE@74..76 "  "
+      EQ@76..77 "="
+      WHITESPACE@77..78 " "
+      PATH_EXPR@78..84
+        PATH@78..84
+          IDENT@78..84 "Charge"
+      SEMICOLON@84..85 ";"
+    WHITESPACE@85..86 "\n"
+    ENDNATURE_KW@86..95 "endnature"

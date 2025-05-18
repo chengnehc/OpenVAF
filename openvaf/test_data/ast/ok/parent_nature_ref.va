@@ -1,0 +1,4 @@
+nature Mycurrent: Mydiscipline.flow;
+    units       = "A";
+    ddt_nature  = Charge;
+endnature

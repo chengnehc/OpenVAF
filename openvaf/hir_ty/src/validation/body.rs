@@ -255,13 +255,14 @@ impl ExprValidator<'_, '_> {
         let db = self.parent.db;
         let discipline = db.discipline_info(discipline);
 
-        let nature_info = |nature: NatureId| {
-            let nature = nature.lookup(db.upcast());
-            let nature = &nature.item_tree(db.upcast())[nature.id];
+        let get_nature_info = |nature: NatureId| {
+            let nature = nature.lookup(db);
+            let nature = &nature.item_tree(db)[nature.id];
             Some((nature.name.clone(), nature.access.clone()?.0))
         };
-        let pot = discipline.potential.and_then(nature_info);
-        let flow = discipline.flow.and_then(nature_info);
+        let pot = discipline.potential.and_then(get_nature_info);
+        let flow = discipline.flow.and_then(get_nature_info);
+
         self.parent.diagnostics.push(BodyDiagnostic::IncompatibleNatureAccess {
             candidates: [pot, flow],
             access_nature,

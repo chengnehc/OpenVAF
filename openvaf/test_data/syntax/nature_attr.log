@@ -18,17 +18,17 @@ error: illegal nature identifier
    |
    = help: expected one of the following
    = an identifier: Voltage
-   = an identifier followed by a discipline: electrical.potential
+   = an identifier preceded by a discipline: electrical.potential
 
-error: 'units' attribute must be a string literal
+error: illegal value provided for units attribute
    --> /nature_attr.va:10:18
    |
 10 |   units        = 1;
-   |                  ^ expected string literal
+   |                  ^ expected a string literal
 
-error: 'units' attribute must be a string literal
+error: illegal value provided for units attribute
    --> /nature_attr.va:11:18
    |
 11 |   units        = A;
-   |                  ^ expected string literal
+   |                  ^ expected a string literal
 

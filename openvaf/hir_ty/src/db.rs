@@ -18,7 +18,7 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     fn nature_info(&self, nature: NatureId) -> Arc<NatureTy>;
 
     #[salsa::invoke(DisciplineTy::discipline_info_query)]
-    fn discipline_info(&self, nature: DisciplineId) -> Arc<DisciplineTy>;
+    fn discipline_info(&self, discipline: DisciplineId) -> Arc<DisciplineTy>;
 
     #[salsa::invoke(BranchTy::branch_info_query)]
     fn branch_info(&self, branch: BranchId) -> Option<Arc<BranchTy>>;
@@ -27,10 +27,10 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     fn inference_result(&self, id: ItemWithBodyId) -> Arc<Inference>;
 
     #[salsa::cycle(nature_attr_ty_recover)]
-    fn nature_attr_ty(&self, id: NatureAttrId) -> Option<Type>;
+    fn nature_attr_ty(&self, nature_attr: NatureAttrId) -> Option<Type>;
 
     #[salsa::cycle(resolve_alias_recover)]
-    fn resolve_alias(&self, id: AliasParamId) -> Option<Alias>;
+    fn resolve_alias(&self, alias: AliasParamId) -> Option<Alias>;
 
     #[salsa::transparent]
     fn node_discipline(&self, node: NodeId) -> Option<DisciplineId>;

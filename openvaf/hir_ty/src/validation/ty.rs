@@ -25,13 +25,13 @@ impl TypeValidator<'_> {
         self.diagnostics
     }
 
+    // TODO check natures/discipline (~dspom/OpenVAF#1)
     fn verify_nature(&mut self, nature: NatureId) {
         // let info = self.db.nature_info(nature);
         let data = self.db.nature_data(nature);
         self.verify_unique_attr(&data.attrs, nature, TypeDiagnostic::DuplicateNatureAttr);
     }
 
-    // TODO check natures/discipline (~dspom/OpenVAF#1)
     fn verify_discipline(&mut self, discipline: DisciplineId) {
         // let info = self.db.discipline_info(discipline);
         let data = self.db.discipline_data(discipline);

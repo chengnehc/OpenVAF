@@ -1,3 +1,5 @@
+//! Type-related item reference.
+
 use std::sync::Arc;
 
 use hir_def::{
@@ -16,7 +18,7 @@ pub fn lookup_nature(
     db: &dyn HirTyDB,
 ) -> Result<NatureId, PathResolveError> {
     let root_scope = def_map.root_scope();
-    let (nature, attr) = match nature_ref.kind {
+    let (nature, name) = match nature_ref.kind {
         NatureRefKind::Nature => return def_map.resolve_item_name(root_scope, &nature_ref.name),
         NatureRefKind::DisciplinePotential => {
             let discipline = def_map.resolve_item_name(root_scope, &nature_ref.name)?;
@@ -28,8 +30,7 @@ pub fn lookup_nature(
         }
     };
 
-    nature
-        .ok_or_else(|| PathResolveError::NotFoundIn { name: attr, scope: nature_ref.name.clone() })
+    nature.ok_or_else(|| PathResolveError::NotFoundIn { name, scope: nature_ref.name.clone() })
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -64,7 +65,11 @@ impl NatureTy {
             data.parent.as_ref().and_then(|parent| lookup_nature(&def_map, parent, db).ok());
         let parent_nature_info =
             parent_nature.and_then(|parent| resolve_parent.then(|| db.nature_info(parent)));
-        let base_nature_info = parent_nature_info.as_ref().map(|parent| parent.base_nature);
+
+        let base_nature = parent_nature_info.as_ref().map(|parent| parent.base_nature);
+        let units = base_nature
+            .and_then(|nature| db.nature_info(nature).units.clone())
+            .or_else(|| data.units.clone());
 
         let ddt_nature = data
             .ddt_nature
@@ -72,7 +77,6 @@ impl NatureTy {
             .and_then(|ddt_nature| lookup_nature(&def_map, ddt_nature, db).ok())
             .or_else(|| parent_nature_info.as_ref().map(|parent| parent.ddt_nature))
             .unwrap_or(nature);
-
         let idt_nature = data
             .idt_nature
             .as_ref()
@@ -80,13 +84,9 @@ impl NatureTy {
             .or_else(|| parent_nature_info.as_ref().map(|parent| parent.idt_nature))
             .unwrap_or(nature);
 
-        let units = base_nature_info
-            .and_then(|nature| db.nature_info(nature).units.clone())
-            .or_else(|| data.units.clone());
-
         Arc::new(NatureTy {
             parent_nature,
-            base_nature: base_nature_info.unwrap_or(nature),
+            base_nature: base_nature.unwrap_or(nature),
             ddt_nature,
             idt_nature,
             units,
@@ -125,13 +125,12 @@ impl NatureTy {
             name: &Name,
         ) -> Option<NatureAttrId> {
             loop {
-                if let Some((attr, _)) = db
-                    .nature_data(nature)
-                    .attrs
-                    .iter_enumerated()
-                    .find(|(_, attr)| &attr.name == name)
+                let data = db.nature_data(nature);
+                if let Some((id, _)) =
+                    data.attrs.iter_enumerated().find(|(_, attr)| &attr.name == name)
                 {
-                    return Some(NatureAttrLoc { nature, id: attr }.intern(db.upcast()));
+                    let attr = NatureAttrLoc { nature, id }.intern(db.upcast());
+                    return Some(attr);
                 }
                 let info = db.nature_info(nature);
                 if info.base_nature == nature {
@@ -140,6 +139,7 @@ impl NatureTy {
                 nature = info.parent_nature?;
             }
         }
+
         lookup_attr_inner(db, nature, name).ok_or_else(|| PathResolveError::NotFoundIn {
             name: name.clone(),
             scope: db.nature_data(nature).name.clone(),
@@ -153,16 +153,12 @@ pub struct DisciplineTy {
     pub potential: Option<NatureId>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum DisciplineAccess {
-    Potential,
-    Flow,
-}
-
 impl DisciplineTy {
     pub fn discipline_info_query(db: &dyn HirTyDB, discipline: DisciplineId) -> Arc<DisciplineTy> {
         let data = db.discipline_data(discipline);
-        let def_map = db.root_def_map(discipline.lookup(db.upcast()).root_file);
+        let loc = discipline.lookup(db.upcast());
+        let def_map = db.root_def_map(loc.root_file);
+
         Arc::new(DisciplineTy {
             flow: data.flow.as_ref().and_then(|flow| lookup_nature(&def_map, flow, db).ok()),
             potential: data
@@ -170,19 +166,6 @@ impl DisciplineTy {
                 .as_ref()
                 .and_then(|potential| lookup_nature(&def_map, potential, db).ok()),
         })
-    }
-
-    pub fn access(&self, nature: NatureId, db: &dyn HirTyDB) -> Option<DisciplineAccess> {
-        if self.flow.is_some_and(|flow| NatureTy::compatible(db, flow, nature)) {
-            Some(DisciplineAccess::Flow)
-        } else if self
-            .potential
-            .is_some_and(|potential| NatureTy::compatible(db, potential, nature))
-        {
-            Some(DisciplineAccess::Potential)
-        } else {
-            None
-        }
     }
 
     /// [LRM 3.11.1]
@@ -216,37 +199,23 @@ impl DisciplineTy {
 
         true
     }
+
+    pub fn access(&self, nature: NatureId, db: &dyn HirTyDB) -> Option<DisciplineAccess> {
+        let Self { flow, potential } = self;
+        if flow.is_some_and(|flow| NatureTy::compatible(db, flow, nature)) {
+            Some(DisciplineAccess::Flow)
+        } else if potential.is_some_and(|potential| NatureTy::compatible(db, potential, nature)) {
+            Some(DisciplineAccess::Potential)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum BranchKind {
-    PortFlow(NodeId),
-    NodeGnd(NodeId),
-    Nodes(NodeId, NodeId),
-}
-
-impl BranchKind {
-    pub fn discipline(&self, db: &dyn HirTyDB) -> Option<DisciplineId> {
-        match *self {
-            BranchKind::PortFlow(node) | BranchKind::NodeGnd(node) => db.node_discipline(node),
-            BranchKind::Nodes(node1, node2) => {
-                // Standard dictates that the disciplines of the two nodes need to be compatible.
-                // Compatible disciplines behave identical during type checking, so we just use
-                // the discipline of the first node here.
-                let discipline1 = db.node_discipline(node1);
-                let discipline2 = db.node_discipline(node2);
-                // fast path
-                if discipline1 == discipline2 {
-                    return discipline1;
-                }
-                let (discipline1, discipline2) = match (discipline1, discipline2) {
-                    (None, res) | (res, None) => return res,
-                    (Some(d1), Some(d2)) => (d1, d2),
-                };
-                db.discipline_info(discipline1).compatible(discipline2, db).then_some(discipline1)
-            }
-        }
-    }
+pub enum DisciplineAccess {
+    Potential,
+    Flow,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -308,6 +277,37 @@ impl BranchTy {
                 name: kw::potential,
                 scope: db.discipline_data(discipline).name.clone(),
             })),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum BranchKind {
+    PortFlow(NodeId),
+    NodeGnd(NodeId),
+    Nodes(NodeId, NodeId),
+}
+
+impl BranchKind {
+    pub fn discipline(&self, db: &dyn HirTyDB) -> Option<DisciplineId> {
+        match *self {
+            BranchKind::PortFlow(node) | BranchKind::NodeGnd(node) => db.node_discipline(node),
+            BranchKind::Nodes(node1, node2) => {
+                // Standard dictates that the disciplines of the two nodes need to be compatible.
+                // Compatible disciplines behave identical during type checking, so we just use
+                // the discipline of the first node here.
+                let discipline1 = db.node_discipline(node1);
+                let discipline2 = db.node_discipline(node2);
+                // fast path
+                if discipline1 == discipline2 {
+                    return discipline1;
+                }
+                let (discipline1, discipline2) = match (discipline1, discipline2) {
+                    (None, res) | (res, None) => return res,
+                    (Some(d1), Some(d2)) => (d1, d2),
+                };
+                db.discipline_info(discipline1).compatible(discipline2, db).then_some(discipline1)
+            }
         }
     }
 }

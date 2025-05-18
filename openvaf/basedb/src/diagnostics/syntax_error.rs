@@ -378,15 +378,6 @@ impl Diagnostic for SyntaxError {
                     message: "unexpected token".to_owned(),
                 }]).with_notes(vec!["help: 'inf' is only allowed in ranges of parameter declarations (example: [0:inf))".to_owned()])
             }
-            SyntaxError::UnitsExpectedStringLiteral { range } => {
-                let FileSpan { range, file: file_id } = parse.to_file_span(range, &sm);
-                Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id,
-                    range: range.into(),
-                    message: "expected string literal".to_owned(),
-                }])
-            }
             SyntaxError::IllegalDisciplineAttrPath { range } => {
                 let FileSpan { range, file: file_id } = parse.to_file_span(range, &sm);
                 Report::error()
@@ -413,7 +404,7 @@ impl Diagnostic for SyntaxError {
                     .with_notes(vec![
                         "help: expected one of the following".to_owned(),
                         "an identifier: Voltage".to_owned(),
-                        "an identifier followed by a discipline: electrical.potential".to_owned(),
+                        "an identifier preceded by a discipline: electrical.potential".to_owned(),
                     ])
             }
             SyntaxError::IllegalAttribute { expected, range, .. } => {

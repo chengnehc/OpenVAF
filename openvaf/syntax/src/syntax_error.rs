@@ -34,16 +34,13 @@ pub enum SyntaxError {
     },
 
     /* Nature and Discipline */
+    IllegalNatureIdent {
+        range: TextRange,
+    },
     IllegalAttribute {
         range: TextRange,
         attr: &'static str,
         expected: &'static str,
-    },
-    IllegalNatureIdent {
-        range: TextRange,
-    },
-    UnitsExpectedStringLiteral {
-        range: TextRange,
     },
     SurplusToken {
         found: SyntaxKind,
@@ -137,9 +134,8 @@ impl_display! {
         ReservedIdentifier{name, ..} => "reserved keyword '{name}' was used as an identifier";
         IllegalRootSegment{..} =>  "$root is only allowed as a prefix";
         IllegalInfToken{..} => "unexpected token 'inf'; expected an expression";
-        IllegalAttribute{attr, ..} => "illegal value provided for {} attribute", attr;
         IllegalNatureIdent{..} => "illegal nature identifier";
-        UnitsExpectedStringLiteral{..} => "'units' attribute must be a string literal";
+        IllegalAttribute{attr, ..} => "illegal value provided for {} attribute", attr;
         SurplusToken{found, ..} => "unexpected token {}", found;
         MissingToken{expected, ..} => "unexpected token; expected {}", expected;
         IllegalDisciplineAttrPath{..} => "illegal discipline attribute path";

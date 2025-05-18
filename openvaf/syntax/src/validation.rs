@@ -7,7 +7,7 @@ use crate::ast::{
     ModulePorts, Name, PathSegmentKind, Stmt,
 };
 use crate::name::{kw, kw_comp};
-use crate::{match_ast, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr, T};
+use crate::{match_ast, AsName, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr, T};
 
 pub(crate) fn validate(root: &SyntaxNode, errors: &mut Vec<SyntaxError>) {
     for node in root.descendants() {
@@ -109,38 +109,45 @@ fn validate_nature_decl(nature: ast::NatureDecl, errors: &mut Vec<SyntaxError>) 
     }
     for attr in nature.nature_attrs() {
         if let (Some(name), Some(val)) = (attr.name(), attr.val()) {
-            let name_text = name.syntax().text();
-            if name_text == "ddt_nature" || name_text == "idt_nature" {
-                check_nature_ref_attr(&val, errors)
-            } else if name_text == "access" && val.as_raw_ident().is_none() {
-                errors.push(SyntaxError::IllegalAttribute {
-                    attr: "access",
-                    expected: "an identifier",
-                    range: val.syntax().text_range(),
-                })
+            match &*name.as_name() {
+                "ddt_nature" | "idt_nature" => check_nature_ref(&val, errors),
+                "access" if val.as_raw_ident().is_none() => {
+                    errors.push(SyntaxError::IllegalAttribute {
+                        attr: "access",
+                        expected: "an identifier",
+                        range: val.syntax().text_range(),
+                    })
+                }
+                _ => (),
             }
         }
     }
 }
 
-fn check_nature_ref_attr(val: &Expr, errors: &mut Vec<SyntaxError>) {
-    if let Expr::PathExpr(path) = val {
+fn check_nature_ref(expr: &Expr, errors: &mut Vec<SyntaxError>) {
+    if let Expr::PathExpr(path) = expr {
         if let Some(path) = path.path() {
             check_nature_path(&path, errors)
         }
-    } else if val.syntax().children_with_tokens().all(|t| t.kind() != SyntaxKind::ERROR) {
-        errors.push(SyntaxError::IllegalNatureIdent { range: val.syntax().text_range() })
+    } else {
+        errors.push(SyntaxError::IllegalNatureIdent { range: expr.syntax().text_range() })
     }
 }
 
 fn check_nature_path(path: &ast::Path, errors: &mut Vec<SyntaxError>) {
-    if let Some(segment) = path.segment_token() {
-        match path.qualifiers().count() {
-            0 => (),
-            1 if matches!(segment.text(), "ddt_nature" | "idt_nature") => (),
-            _ => errors.push(SyntaxError::IllegalNatureIdent { range: path.syntax().text_range() }),
+    if path.qualifier().is_none() && path.segment_kind() == Some(ast::PathSegmentKind::Name) {
+        return;
+    }
+    if let Some(name) = path.segment_token().as_ref().map(|name| name.text()) {
+        if name == "potential" || name == "flow" {
+            let qual = path.qualifier().unwrap();
+            if qual.qualifier().is_none() && qual.segment_kind() != Some(ast::PathSegmentKind::Root)
+            {
+                return;
+            }
         }
     }
+    errors.push(SyntaxError::IllegalNatureIdent { range: path.syntax().text_range() });
 }
 
 fn validate_nature_attr(attr: ast::NatureAttr, errors: &mut Vec<SyntaxError>) {
@@ -151,8 +158,11 @@ fn validate_nature_attr(attr: ast::NatureAttr, errors: &mut Vec<SyntaxError>) {
                 return;
             }
         }
-        let range = expr.syntax().text_range();
-        errors.push(SyntaxError::UnitsExpectedStringLiteral { range });
+        errors.push(SyntaxError::IllegalAttribute {
+            attr: "units",
+            expected: "a string literal",
+            range: expr.syntax().text_range(),
+        });
     }
 }
 
@@ -198,10 +208,10 @@ fn validate_discipline_decl(discipline: ast::DisciplineDecl, errors: &mut Vec<Sy
 
             if let Some(val) = attr.val() {
                 match &*name_text {
-                    "potential" | "flow" => check_nature_ref_attr(&val, errors),
+                    "potential" | "flow" => check_nature_ref(&val, errors),
                     "idt_nature" | "ddt_nature" if is_overwrite => {
                         // TODO(JW): is it really OK to override these two?
-                        check_nature_ref_attr(&val, errors)
+                        check_nature_ref(&val, errors)
                     }
                     "domain" => {
                         let text = val.syntax().text();

@@ -1,0 +1,30 @@
+error: illegal nature identifier
+  --> /parent_nature.va:1:15
+  |
+1 | nature test1: $root.flow;
+  |               ^^^^^^^^^^ illegal nature identifier
+  |
+  = help: expected one of the following
+  = an identifier: Voltage
+  = an identifier preceded by a discipline: electrical.potential
+
+error: illegal nature identifier
+  --> /parent_nature.va:4:15
+  |
+4 | nature test2: foo.bar;
+  |               ^^^^^^^ illegal nature identifier
+  |
+  = help: expected one of the following
+  = an identifier: Voltage
+  = an identifier preceded by a discipline: electrical.potential
+
+error: illegal nature identifier
+  --> /parent_nature.va:7:15
+  |
+7 | nature test3: foo.bar.flow;
+  |               ^^^^^^^^^^^^ illegal nature identifier
+  |
+  = help: expected one of the following
+  = an identifier: Voltage
+  = an identifier preceded by a discipline: electrical.potential
+

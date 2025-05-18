@@ -1,0 +1,11 @@
+nature test1: $root.flow;
+endnature
+
+nature test2: foo.bar;
+endnature
+
+nature test3: foo.bar.flow;
+endnature
+
+nature test4: parent_nature;
+endnature
