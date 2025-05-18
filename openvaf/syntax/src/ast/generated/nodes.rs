@@ -340,6 +340,23 @@ impl SourceFile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NatureDecl {
+    pub(crate) syntax: SyntaxNode,
+}
+impl ast::AttrsOwner for NatureDecl {}
+impl NatureDecl {
+    pub fn nature_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![nature]) }
+    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
+    pub fn colon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![:]) }
+    pub fn parent(&self) -> Option<Path> { support::child(&self.syntax) }
+    pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
+    pub fn nature_attrs(&self) -> AstChildren<NatureAttr> { support::children(&self.syntax) }
+    pub fn endnature_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, T![endnature])
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DisciplineDecl {
     pub(crate) syntax: SyntaxNode,
 }
@@ -355,23 +372,6 @@ impl DisciplineDecl {
     }
     pub fn enddiscipline_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, T![enddiscipline])
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NatureDecl {
-    pub(crate) syntax: SyntaxNode,
-}
-impl ast::AttrsOwner for NatureDecl {}
-impl NatureDecl {
-    pub fn nature_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![nature]) }
-    pub fn name(&self) -> Option<Name> { support::child(&self.syntax) }
-    pub fn colon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![:]) }
-    pub fn parent(&self) -> Option<Path> { support::child(&self.syntax) }
-    pub fn semicolon_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![;]) }
-    pub fn nature_attrs(&self) -> AstChildren<NatureAttr> { support::children(&self.syntax) }
-    pub fn endnature_token(&self) -> Option<SyntaxToken> {
-        support::token(&self.syntax, T![endnature])
     }
 }
 
@@ -633,8 +633,8 @@ pub enum FunctionRef {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Item {
-    DisciplineDecl(DisciplineDecl),
     NatureDecl(NatureDecl),
+    DisciplineDecl(DisciplineDecl),
     ModuleDecl(ModuleDecl),
 }
 impl ast::AttrsOwner for Item {}
@@ -1017,8 +1017,8 @@ impl AstNode for SourceFile {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for DisciplineDecl {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == DISCIPLINE_DECL }
+impl AstNode for NatureDecl {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == NATURE_DECL }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1028,8 +1028,8 @@ impl AstNode for DisciplineDecl {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
-impl AstNode for NatureDecl {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == NATURE_DECL }
+impl AstNode for DisciplineDecl {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == DISCIPLINE_DECL }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1424,11 +1424,11 @@ impl AstNode for FunctionRef {
         }
     }
 }
-impl From<DisciplineDecl> for Item {
-    fn from(node: DisciplineDecl) -> Item { Item::DisciplineDecl(node) }
-}
 impl From<NatureDecl> for Item {
     fn from(node: NatureDecl) -> Item { Item::NatureDecl(node) }
+}
+impl From<DisciplineDecl> for Item {
+    fn from(node: DisciplineDecl) -> Item { Item::DisciplineDecl(node) }
 }
 impl From<ModuleDecl> for Item {
     fn from(node: ModuleDecl) -> Item { Item::ModuleDecl(node) }
@@ -1436,14 +1436,14 @@ impl From<ModuleDecl> for Item {
 impl AstNode for Item {
     fn can_cast(kind: SyntaxKind) -> bool {
         match kind {
-            DISCIPLINE_DECL | NATURE_DECL | MODULE_DECL => true,
+            NATURE_DECL | DISCIPLINE_DECL | MODULE_DECL => true,
             _ => false,
         }
     }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         let res = match syntax.kind() {
-            DISCIPLINE_DECL => Item::DisciplineDecl(DisciplineDecl { syntax }),
             NATURE_DECL => Item::NatureDecl(NatureDecl { syntax }),
+            DISCIPLINE_DECL => Item::DisciplineDecl(DisciplineDecl { syntax }),
             MODULE_DECL => Item::ModuleDecl(ModuleDecl { syntax }),
             _ => return None,
         };
@@ -1451,8 +1451,8 @@ impl AstNode for Item {
     }
     fn syntax(&self) -> &SyntaxNode {
         match self {
-            Item::DisciplineDecl(it) => &it.syntax,
             Item::NatureDecl(it) => &it.syntax,
+            Item::DisciplineDecl(it) => &it.syntax,
             Item::ModuleDecl(it) => &it.syntax,
         }
     }
@@ -1781,12 +1781,12 @@ impl std::fmt::Display for SourceFile {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for DisciplineDecl {
+impl std::fmt::Display for NatureDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
-impl std::fmt::Display for NatureDecl {
+impl std::fmt::Display for DisciplineDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }

@@ -123,9 +123,6 @@ impl<'t> Parser<'t> {
         self.do_bump(kind)
     }
 
-    // TODO: ra does not create error node in case of recovery
-    // just push the error event
-
     /// Create an error node in the syntax tree.
     pub(crate) fn error(&mut self, err: Error) {
         let m = self.start();
@@ -141,7 +138,7 @@ impl<'t> Parser<'t> {
         m.complete(self, ERROR);
     }
 
-    /// Create an error node and bump following tokens until a token is seen in the `recovery` set.
+    /// Create an error node and bump the next token unless it is in the `recovery` set.
     ///
     /// Returns `true` if recovery kicked in.
     pub(crate) fn err_recover(&mut self, err: Error, recovery: TokenSet) -> bool {

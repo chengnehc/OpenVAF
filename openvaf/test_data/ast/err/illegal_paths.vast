@@ -1,0 +1,42 @@
+SOURCE_FILE@0..63
+  NATURE_DECL@0..26
+    NATURE_KW@0..6 "nature"
+    WHITESPACE@6..7 " "
+    NAME@7..12
+      IDENT@7..12 "test1"
+    COLON@12..13 ":"
+    ERROR@13..15
+      WHITESPACE@13..14 " "
+      INT_NUMBER@14..15 "1"
+    SEMICOLON@15..16 ";"
+    WHITESPACE@16..17 "\n"
+    ENDNATURE_KW@17..26 "endnature"
+  WHITESPACE@26..28 "\n\n"
+  NATURE_DECL@28..63
+    NATURE_KW@28..34 "nature"
+    WHITESPACE@34..35 " "
+    NAME@35..40
+      IDENT@35..40 "test2"
+    COLON@40..41 ":"
+    WHITESPACE@41..42 " "
+    PATH@42..45
+      PATH@42..43
+        IDENT@42..43 "a"
+      DOT@43..44 "."
+      IDENT@44..45 "b"
+    DOT@45..46 "."
+    ERROR@46..50
+      SYSFUN@46..50 "$das"
+    NATURE_ATTR@50..53
+      ERROR@50..51
+        DOT@50..51 "."
+      ERROR@51..51
+      PATH_EXPR@51..52
+        PATH@51..52
+          IDENT@51..52 "c"
+      SEMICOLON@52..53 ";"
+    WHITESPACE@53..54 "\n"
+    ENDNATURE_KW@54..63 "endnature"
+error : unexpected token integer; expected identifier or 'root'
+error : unexpected token system function identifier; expected identifier or 'root'
+error : illegal nature identifier

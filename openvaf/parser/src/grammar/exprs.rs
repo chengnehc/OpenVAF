@@ -118,7 +118,7 @@ fn atom_expr(p: &mut Parser) -> Option<CompletedMarker> {
         }
         // PathExpr or Call
         T![ident] | T![root] => {
-            let cm = path(p);
+            let cm = path(p)?;
             if p.at(T!('(')) {
                 call(p, cm)
             } else {

@@ -197,7 +197,7 @@ SourceFile =
   Item*
 
 Item =
-  DisciplineDecl | NatureDecl | ModuleDecl
+  NatureDecl | DisciplineDecl | ModuleDecl
 
 // A.1.6
 NatureDecl =

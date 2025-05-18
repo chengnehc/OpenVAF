@@ -1,0 +1,5 @@
+nature test1: 1;
+endnature
+
+nature test2: a.b.$das.c;
+endnature

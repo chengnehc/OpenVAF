@@ -1,6 +1,5 @@
 use rowan::TextRange;
 use tokens::SyntaxKind;
-use tokens::SyntaxKind::NET_TYPE;
 
 use crate::ast::{
     self, support, ArgListOwner, BlockItem, ConstraintValue, Expr, FunctionItem, LiteralKind,
@@ -64,13 +63,14 @@ fn validate_name(name: Name, errors: &mut Vec<SyntaxError>) {
 }
 
 fn validate_path(path: ast::Path, errors: &mut Vec<SyntaxError>) {
+    // $root without subsequent identifier
     if path.segment_kind() == Some(PathSegmentKind::Root) && path.parent().is_none() {
         errors.push(SyntaxError::IllegalRootSegment {
             path_segment: path.segment_token().unwrap().text_range(),
             prefix: None,
         })
     }
-    // TODO(JW) likely broken
+    // $root does not appear as ultimate prefix
     for qual in path.qualifiers() {
         if qual.qualifier().is_some() && path.segment_kind() == Some(PathSegmentKind::Root) {
             errors.push(SyntaxError::IllegalRootSegment {
@@ -451,7 +451,7 @@ fn validate_block(block: ast::BlockStmt, errors: &mut Vec<SyntaxError>) {
 
 fn validate_net_type_token(node: SyntaxNode, errors: &mut Vec<SyntaxError>) {
     if matches!(node.kind(), SyntaxKind::NET_DECL | SyntaxKind::PORT_DECL) {
-        if let Some(token) = support::token(&node, NET_TYPE) {
+        if let Some(token) = support::token(&node, SyntaxKind::NET_TYPE) {
             if token.text() != kw::raw::ground {
                 errors.push(SyntaxError::IllegalNetType {
                     found: token.text().to_owned(),
