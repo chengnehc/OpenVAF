@@ -1,10 +1,19 @@
 `include "disciplines.vams"
 
-module test (a, b);
+// port 'a' is not declared with direction
+// illegal potential access of port flow branch
+module test1(a);
+    electrical a;
+    branch(<a>) port_flow;
+
+    analog begin
+        I(a) <+ V(port_flow);
+    end
+endmodule
+
+// 'b' is not declared as port
+module test2(a);
     inout electrical a;
     electrical b;
-    branch(<b>) port_flow_b;
-    analog begin
-        I(a, b) <+ V(port_flow_b);
-    end
+    branch(<b>) port_flow;
 endmodule

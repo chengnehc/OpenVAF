@@ -170,26 +170,24 @@ impl DefMap {
     /// Main routine to search for identifiers with hierarchical paths.
     fn resolve_path<'a>(
         &self,
-        scope_id: LocalScopeId,
-        scope_name: &'a Name,
+        mut scope_id: LocalScopeId,
+        mut scope_name: &'a Name,
         segments: &'a [Name],
         db: &dyn HirDefDB,
     ) -> Result<ResolvedPath, PathResolveError> {
-        let [segments @ .., name] = segments else { unreachable!() };
-        let mut scope = scope_id;
-        let mut scope_name = scope_name;
-        let mut arc;
         let mut def_map = self;
+        let mut arc;
+        let [segments @ .., name] = segments else { unreachable!() };
 
         for (i, seg) in segments.iter().enumerate() {
-            match def_map[scope].children().and_then(|children| children.get(seg)) {
-                Some(child) => scope = *child,
-                None => match def_map[scope].decls().get(seg) {
+            match def_map[scope_id].children().and_then(|children| children.get(seg)) {
+                Some(child) => scope_id = *child,
+                None => match def_map[scope_id].decls().get(seg) {
                     Some(ScopeItem::BlockId(block)) => {
                         if let Some(block_map) = db.block_def_map(*block) {
                             arc = block_map;
                             def_map = &arc;
-                            scope = def_map.entry_scope();
+                            scope_id = def_map.entry_scope();
                         } else {
                             return Err(PathResolveError::NotFoundIn {
                                 name: segments[i + 1].clone(),
@@ -197,7 +195,6 @@ impl DefMap {
                             });
                         };
                     }
-                    // Refer to LRM: 3.13.4
                     Some(ScopeItem::BranchId(branch))
                         if segments.get(i + 1) == Some(&kw::potential) =>
                     {
@@ -243,7 +240,7 @@ impl DefMap {
             scope_name = seg;
         }
 
-        match self[scope].decls().get(name) {
+        match def_map[scope_id].decls().get(name) {
             Some(decl) => Ok(ResolvedPath::ScopeItem(*decl)),
             None => {
                 Err(PathResolveError::NotFoundIn { name: name.clone(), scope: scope_name.clone() })

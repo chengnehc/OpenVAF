@@ -5,8 +5,9 @@ use hir_def::{ItemLoc, NodeTypeDecl};
 
 impl BodyDiagnosticWrapped<'_> {
     #[inline]
-    fn expr_span(&self, expr: ExprId, sm: &SourceMap, parse: &Parse<SourceFile>) -> FileSpan {
-        parse.to_file_span(self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(), sm)
+    fn expr_span(&self, expr: ExprId, src_map: &SourceMap, parse: &Parse<SourceFile>) -> FileSpan {
+        let range = self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range();
+        parse.to_file_span(range, src_map)
     }
 
     fn lookup<I, T>(&self, id: I) -> (Name, TextRange)
@@ -16,9 +17,10 @@ impl BodyDiagnosticWrapped<'_> {
     {
         let db = self.db.upcast();
         let loc = id.lookup(db);
-        let src = loc.ast_ptr(db).text_range();
+        let name = loc.name(db);
+        let range = loc.ast_ptr(db).text_range();
 
-        (loc.name(db), src)
+        (name, range)
     }
 }
 
@@ -26,9 +28,9 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
     fn lint(&self, root_file: FileId, db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
         match *self.diag {
             BodyDiagnostic::ConstSimparam { known: false, stmt, .. } => {
-                let src1 = self.body_sm.lint_src(stmt, const_simparam);
+                let src1 = self.body_src_map.lint_src(stmt, const_simparam);
                 let (lvl1, _) = src1.lvl(const_simparam, root_file, db);
-                let src2 = self.body_sm.lint_src(stmt, variant_const_simparam);
+                let src2 = self.body_src_map.lint_src(stmt, variant_const_simparam);
                 let (lvl2, _) = src2.lvl(variant_const_simparam, root_file, db);
 
                 let res = if lvl2 > lvl1 {
@@ -39,11 +41,11 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                 Some(res)
             }
             BodyDiagnostic::ConstSimparam { known: true, stmt, .. } => {
-                let src = self.body_sm.lint_src(stmt, const_simparam);
+                let src = self.body_src_map.lint_src(stmt, const_simparam);
                 Some((const_simparam, src))
             }
             BodyDiagnostic::TrivialBranchAccess { stmt, .. } => {
-                let src = self.body_sm.lint_src(stmt, trivial_probe);
+                let src = self.body_src_map.lint_src(stmt, trivial_probe);
                 Some((trivial_probe, src))
             }
             _ => None,
@@ -51,18 +53,18 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
     }
 
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
-        let sm = db.sourcemap(root_file);
+        let src_map = db.sourcemap(root_file);
         let parse = db.parse(root_file);
         let ast_id_map = db.ast_id_map(root_file);
 
         match *self.diag {
             BodyDiagnostic::ExpectedPort { expr, node } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
-                let node = node.lookup(self.db.upcast());
-                let module = node.module.lookup(self.db.upcast());
-                let tree = module.item_tree(self.db.upcast());
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
+                let db = self.db.upcast();
+                let node = node.lookup(db);
+                let module = node.module.lookup(db);
+                let tree = module.item_tree(db);
                 let node = &tree[module.id].nodes[node.id];
-                let node_name = &node.name;
 
                 let mut labels = vec![Label {
                     style: LabelStyle::Primary,
@@ -71,24 +73,22 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     message: "expected port".to_owned(),
                 }];
                 labels.extend(node.decls.iter().map(|decl| {
-                    let net = match decl {
-                        NodeTypeDecl::Net(net) => *net,
-                        NodeTypeDecl::Port(_) => unreachable!(),
-                    };
+                    let NodeTypeDecl::Net(net) = *decl else { unreachable!() };
                     let range = ast_id_map.get(tree[net].ast_id).text_range();
-                    let FileSpan { range, file } = parse.to_file_span(range, &sm);
+                    let FileSpan { range, file } = parse.to_file_span(range, &src_map);
 
                     Label {
                         style: LabelStyle::Secondary,
                         file_id: file,
                         range: range.into(),
-                        message: format!("info: '{node_name}' was declared here"),
+                        message: format!("info: '{}' was declared here", node.name),
                     }
                 }));
 
                 Report::error()
                     .with_message(format!(
-                        "expected a port reference but no direction was declared for net '{node_name}'",
+                        "expected a port reference but no direction was declared for net '{}'",
+                        node.name
                     ))
                     .with_labels(labels)
                     .with_notes(vec![
@@ -99,7 +99,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
             /* Branch access */
             BodyDiagnostic::PotentialOfPortFlow { expr, branch } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 let mut labels = vec![Label {
                     style: LabelStyle::Primary,
@@ -109,13 +109,13 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                 }];
 
                 if let Some(branch) = branch {
-                    let (branch_name, range) = self.lookup(branch);
-                    let FileSpan { range, file } = parse.to_file_span(range, &sm);
+                    let (name, range) = self.lookup(branch);
+                    let FileSpan { range, file } = parse.to_file_span(range, &src_map);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: file,
                         range: range.into(),
-                        message: format!("info: '{branch_name}' was declared here"),
+                        message: format!("info: '{name}' was declared here"),
                     });
                 }
 
@@ -128,18 +128,16 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     ])
             }
             BodyDiagnostic::TrivialBranchAccess { branch, expr, .. } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
                 let db = self.db.upcast();
                 let branch_name = match branch {
-                    BranchWrite::Named(branch) => {
-                        let branch = branch.lookup(db).name(db);
-                        branch.to_string()
-                    }
-                    BranchWrite::Unnamed { hi, lo: Some(lo) } => {
-                        format!("({}, {})", db.node_data(hi).name, db.node_data(lo).name)
-                    }
-                    BranchWrite::Unnamed { hi, lo: None } => {
-                        format!("({})", db.node_data(hi).name)
+                    BranchWrite::Named(branch) => branch.lookup(db).name(db).to_string(),
+                    BranchWrite::Unnamed { hi, lo } => {
+                        if let Some(lo) = lo {
+                            format!("({}, {})", db.node_data(hi).name, db.node_data(lo).name)
+                        } else {
+                            format!("({})", db.node_data(hi).name)
+                        }
                     }
                 };
                 let branch_probe = match branch {
@@ -156,21 +154,21 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     }]);
 
                 res.with_notes(vec![
-                    format!("help: there are no contributions to branch {branch_name}",),
+                    format!("help: there are no contributions to branch {branch_name}"),
                     format!("info: branches are open circuted by default: I({branch_probe}) <+ 0"),
                 ])
             }
-            BodyDiagnostic::IncompatibleUnnamedBranch { access_expr, node1, node2 } => {
+            BodyDiagnostic::IncompatibleUnnamedBranch { expr, node1, node2 } => {
                 let name1 = &self.db.node_data(node1).name;
                 let name2 = &self.db.node_data(node2).name;
 
                 IncompatibleBranchDiagnostic {
-                    branch_span: self.expr_span(access_expr, &sm, &parse),
-                    branch_name: format!("({name1},{name2})"),
+                    branch_span: self.expr_span(expr, &src_map, &parse),
+                    branch_name: format!("({name1}, {name2})"),
                     node1,
                     node2,
                 }
-                .into_report(self.db, &parse, &ast_id_map, &sm)
+                .into_report(self.db, &parse, &ast_id_map, &src_map)
             }
             BodyDiagnostic::IncompatibleNatureAccess {
                 ref candidates,
@@ -178,7 +176,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                 access_expr,
                 ref branch,
             } => {
-                let FileSpan { range, file } = self.expr_span(access_expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(access_expr, &src_map, &parse);
                 let access_nature = access_nature.map(|nature| self.db.nature_data(nature));
 
                 let message = if let Some(access_nature) = access_nature {
@@ -215,9 +213,9 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                 Report::error().with_labels(labels).with_message(msg).with_notes(vec![help_msg])
             }
             // this is for potential() or flow() access functions
-            BodyDiagnostic::IllegalNatureAccess { is_pot, access_expr } => {
+            BodyDiagnostic::IllegalNatureAccess { is_pot, expr } => {
                 let name = if is_pot { "potential" } else { "flow" };
-                let span = self.expr_span(access_expr, &sm, &parse);
+                let span = self.expr_span(expr, &src_map, &parse);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -234,8 +232,8 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
             /* Context violation */
             BodyDiagnostic::IllegalContribute { stmt, ctxt } => {
-                let range = self.body_sm.stmt_map_back[stmt].as_ref().unwrap().text_range();
-                let FileSpan { range, file } = parse.to_file_span(range, &sm);
+                let range = self.body_src_map.stmt_map_back[stmt].as_ref().unwrap().text_range();
+                let FileSpan { range, file } = parse.to_file_span(range, &src_map);
 
                 Report::error()
                     .with_message(format!("branch contributions are not allowed in {ctxt}"))
@@ -251,7 +249,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     ])
             }
             BodyDiagnostic::IllegalCtxtAccess { ref kind, ctxt, expr } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 let mut res = Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
@@ -283,7 +281,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                                 .to_owned()]
                         };
                         res.labels.extend(non_const_dominator.iter().map(|&expr| {
-                            let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                            let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
                             Label {
                                 style: LabelStyle::Secondary,
                                 file_id: file,
@@ -303,7 +301,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                         let name = var.lookup(self.db.upcast()).name(self.db.upcast());
                         let def =
                             var.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).text_range();
-                        let FileSpan { range, file } = parse.to_file_span(def, &sm);
+                        let FileSpan { range, file } = parse.to_file_span(def, &src_map);
                         res.labels.push(Label {
                             style: LabelStyle::Secondary,
                             file_id: file,
@@ -319,11 +317,11 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
             /* Parameter */
             BodyDiagnostic::IllegalParamAccess { def, expr, param } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
                 let (def_name, def_src) = self.lookup(def);
                 let (ref_name, ref_src) = self.lookup(param);
-                let def_span = parse.to_file_span(def_src, &sm);
-                let ref_span = parse.to_file_span(ref_src, &sm);
+                let def_span = parse.to_file_span(def_src, &src_map);
+                let ref_span = parse.to_file_span(ref_src, &src_map);
 
                 Report::error()
                     .with_message(format!(
@@ -357,10 +355,10 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
             /* Function */
             BodyDiagnostic::WriteToInputArg { expr, arg } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
                 let arg_name = arg.name(self.db.upcast());
                 let arg_src = arg.ast_ptr(self.db.upcast()).text_range();
-                let arg_src = parse.to_file_span(arg_src, &sm);
+                let arg_src = parse.to_file_span(arg_src, &src_map);
 
                 Report::error()
                     .with_message(format!("write to input function argument '{arg_name}'"))
@@ -379,7 +377,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     .with_notes(vec![format!("help: change direction of '{arg_name}' to inout")])
             }
             BodyDiagnostic::UnsupportedFunction { expr, func } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 Report::error()
                     .with_message(format!(
@@ -398,7 +396,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     ])
             }
             BodyDiagnostic::ConstSimparam { known, expr, .. } => {
-                let FileSpan { range, file } = self.expr_span(expr, &sm, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 let mut report = Report::warning()
                     .with_message(

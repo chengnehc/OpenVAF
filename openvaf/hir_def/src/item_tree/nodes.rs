@@ -27,11 +27,8 @@ pub struct NatureRef {
     pub name: Name,
     pub kind: NatureRefKind,
 }
-/// [LRM 3.6.1.1] A derived nature can declare additional attributes or override attribute
-/// values of the parent nature, with certain restrictions for the predefined attributes.
-///
-/// [LRM 3.6.2.6] A nature can be derived from the nature bound to the potential or flow
-/// in a discipline.
+/// [LRM 3.6.1.1]
+/// [LRM 3.6.2.6]
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
 pub enum NatureRefKind {
     Nature,
@@ -69,6 +66,7 @@ pub struct DisciplineAttr {
     pub ast_id: AstId<ast::DisciplineAttr>,
     pub kind: DisciplineAttrKind,
 }
+/// [LRM 3.6.2.5]
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
 pub enum DisciplineAttrKind {
     FlowOverride,
@@ -127,7 +125,7 @@ pub struct Net {
 /// `Node` is an abstraction over `Net` and `Port`. A `Node` may be defined multiple
 /// times as `Port` or `Net` (abstracted by `NodeTypeDecl`).
 ///
-/// Since `NodeTypeDecl` cannot be mapped to a concrete ast node, so `ErasedAstId` is used.
+/// Since `NodeTypeDecl` cannot be mapped to a concrete ast node, `ErasedAstId` is used.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub name: Name,

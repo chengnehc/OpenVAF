@@ -25,7 +25,7 @@ use super::BodyContext;
 pub struct BodyDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
     pub diag: &'a BodyDiagnostic,
-    pub body_sm: &'a BodySourceMap,
+    pub body_src_map: &'a BodySourceMap,
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -47,13 +47,13 @@ pub enum BodyDiagnostic {
         stmt: StmtId,
     },
     IncompatibleUnnamedBranch {
-        access_expr: ExprId,
+        expr: ExprId,
         node1: NodeId,
         node2: NodeId,
     },
     IllegalNatureAccess {
         is_pot: bool,
-        access_expr: ExprId,
+        expr: ExprId,
     },
     IncompatibleNatureAccess {
         candidates: [Option<(Name, Name)>; 2],

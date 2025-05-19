@@ -56,9 +56,9 @@ pub enum SyntaxError {
     },
 
     /* Module */
-    DuplicatePort {
-        pos: Vec<TextRange>,
-        name: String,
+    IllegalBodyPorts {
+        head: TextRange,
+        body_ports: Vec<TextRange>,
     },
     PortNotDeclaredInModule {
         head: TextRange,
@@ -68,9 +68,9 @@ pub enum SyntaxError {
     MixedModuleHead {
         module_ports: AstPtr<ast::ModulePorts>,
     },
-    IllegalBodyPorts {
-        head: TextRange,
-        body_ports: Vec<TextRange>,
+    DuplicatePort {
+        pos: Vec<TextRange>,
+        name: String,
     },
 
     /* Net type */
@@ -139,10 +139,10 @@ impl_display! {
         SurplusToken{found, ..} => "unexpected token {}", found;
         MissingToken{expected, ..} => "unexpected token; expected {}", expected;
         IllegalDisciplineAttrPath{..} => "illegal discipline attribute path";
-        DuplicatePort{name, ..} => "port '{name}' was declared multiple times!";
-        MixedModuleHead{..} => "module header contains mix of port references and port declarations";
         IllegalBodyPorts{..} => "ports declared in module head and body";
         PortNotDeclaredInModule{name, ..} => "port '{name}' was not declared in the module head";
+        MixedModuleHead{..} => "module header contains mix of port references and port declarations";
+        DuplicatePort{name, ..} => "port '{name}' was declared multiple times";
         IllegalNetType{found, ..} => "{} nets are currently not supported", found;
         IllegalBranchNodeCnt{cnt, ..} => "branch declaration require 1 or 2 nets; found {cnt}";
         IllegalBranchNodeExpr{..} => "illegal expr was used to declare a branch node!";

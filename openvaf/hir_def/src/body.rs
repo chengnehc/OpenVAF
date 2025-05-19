@@ -48,8 +48,8 @@ pub struct BodySourceMap {
     pub stmt_map_back: ArenaMap<Stmt, Option<AstPtr<ast::Stmt>>>,
     /// for user-defined lint attributes
     lint_map: ArenaMap<Stmt, LintAttrs>,
-    /// Diagnostics accumulated during body lowering. These contain `AstPtr`s and so are stored in
-    /// the source map (since they're just as volatile).
+    /// Diagnostics accumulated during body lowering.
+    /// These contain `AstPtr`s and so are stored in the source map (since they're just as volatile).
     pub diagnostics: Vec<AttrDiagnostic>,
 }
 

@@ -139,12 +139,12 @@ pub struct NatureAttr {
     id: NatureAttrId,
 }
 impl NatureAttr {
-    pub fn value(&self, db: &CompilationDB) -> Body {
-        Body::new(self.id.into(), db)
-    }
     pub fn name(self, db: &CompilationDB) -> String {
         let loc = self.id.lookup(db);
         db.nature_data(loc.nature).attrs[loc.id].name.to_string()
+    }
+    pub fn value(&self, db: &CompilationDB) -> Body {
+        Body::new(self.id.into(), db)
     }
 }
 

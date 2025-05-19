@@ -1,0 +1,18 @@
+// Taken from LRM 3.6.1.1
+
+nature ttl_curr;
+    units = "A";
+    access = I;
+    abstol = 1u;
+endnature
+
+// An alias
+nature ttl_net_curr : ttl_curr;
+endnature
+
+nature new_curr : ttl_curr;
+    // derived, but different modified for this nature
+    abstol = 1m;
+    // new attribute for this nature
+    maxval = 12.3;
+endnature

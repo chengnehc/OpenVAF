@@ -20,7 +20,7 @@ pub struct LintAttrTree {
 }
 
 impl LintAttrTree {
-    pub fn lint_attr_tree_query(db: &dyn BaseDB, root_file: FileId) -> Arc<LintAttrTree> {
+    pub fn query(db: &dyn BaseDB, root_file: FileId) -> Arc<LintAttrTree> {
         let map = db.ast_id_map(root_file);
         let cst = db.parse(root_file).tree();
         let cst = cst.syntax();

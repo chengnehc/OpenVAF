@@ -263,7 +263,7 @@ impl NodeLoc {
         let file = module.scope.root_file;
         db.ast_id_map(file).get_erased(ast_id)
     }
-    pub fn discipline_ast_id(self, db: &dyn HirDefDB) -> Option<ErasedAstId> {
+    pub fn ast_id(self, db: &dyn HirDefDB) -> Option<ErasedAstId> {
         let module = self.module.lookup(db);
         let tree = module.item_tree(db);
         let node = &tree[module.id].nodes[self.id];

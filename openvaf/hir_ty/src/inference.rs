@@ -1145,10 +1145,6 @@ impl Context<'_> {
             }
         }
     }
-
-    // fn collect_fmt_literal(&mut self, stmt: StmtId, args: &[ExprId]){
-    //     self.body
-    // }
 }
 
 fn default_return_ty(signatures: &[SignatureData]) -> Option<Ty> {

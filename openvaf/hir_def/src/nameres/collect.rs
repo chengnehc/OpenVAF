@@ -88,10 +88,6 @@ struct Collector<'a> {
 }
 
 impl Collector<'_> {
-    // Verilog-ams standard does not specify any way to access user-defined discipline attributes
-    // I am guessing this is an oversight but until this is clarified we are not adding this.
-    // TODO talk to committee about discipline attributes
-
     fn collect_root_map(mut self) -> Arc<DefMap> {
         let root_file = self.root_file;
         let root_scope = self.def_map.declare_scope(ScopeOrigin::Root, None);
@@ -108,13 +104,16 @@ impl Collector<'_> {
                     let nature = NatureLoc { root_file, id }.intern(self.db);
                     self.insert_def(nature, root_scope, name);
 
-                    // lift nature 'access' attribute out as it is frequently used
                     if let Some((name, id)) = self.tree[id].access.clone() {
                         let attr = NatureAttrLoc { nature, id }.intern(self.db);
                         let access = ScopeItem::NatureAccess(NatureAccess(attr));
                         self.insert_def(access, root_scope, name)
                     }
                 }
+                // Verilog-ams standard does not specify any way to access user-defined discipline
+                // attributes. I am guessing this is an oversight but until this is clarified we
+                // are not adding this.
+                // TODO talk to committee about discipline attributes
                 RootItem::Discipline(id) => {
                     let name = self.tree[id].name.clone();
                     let discipline = DisciplineLoc { root_file, id }.intern(self.db);

@@ -232,21 +232,20 @@ impl IncompatibleBranchDiagnostic {
         self,
         db: &dyn HirTyDB,
         parse: &Parse<SourceFile>,
-        map: &AstIdMap,
-        sm: &SourceMap,
+        ast_id_map: &AstIdMap,
+        src_map: &SourceMap,
     ) -> Report {
         let Self { branch_span, branch_name, node1, node2 } = self;
 
-        let node1_ = node1.lookup(db.upcast());
-        let node1_range =
-            map.get_erased(node1_.discipline_ast_id(db.upcast()).unwrap()).text_range();
-        let node1_span = parse.to_file_span(node1_range, sm);
-        let node1 = db.node_data(node1);
+        let id1 = node1.lookup(db.upcast()).ast_id(db.upcast()).unwrap();
+        let range1 = ast_id_map.get_erased(id1).text_range();
+        let span1 = parse.to_file_span(range1, src_map);
 
-        let node2_ = node2.lookup(db.upcast());
-        let node2_range =
-            map.get_erased(node2_.discipline_ast_id(db.upcast()).unwrap()).text_range();
-        let node2_span = parse.to_file_span(node2_range, sm);
+        let id2 = node2.lookup(db.upcast()).ast_id(db.upcast()).unwrap();
+        let range2 = ast_id_map.get_erased(id2).text_range();
+        let span2 = parse.to_file_span(range2, src_map);
+
+        let node1 = db.node_data(node1);
         let node2 = db.node_data(node2);
 
         let msg = format!(
@@ -265,14 +264,14 @@ impl IncompatibleBranchDiagnostic {
                 },
                 Label {
                     style: LabelStyle::Secondary,
-                    file_id: node1_span.file,
-                    range: node1_span.range.into(),
+                    file_id: span1.file,
+                    range: span1.range.into(),
                     message: format!("help: '{}' declared with discipline '{}'", node1.name, node1.discipline.as_ref().unwrap()),
                 },
                 Label {
                     style: LabelStyle::Secondary,
-                    file_id: node2_span.file,
-                    range: node2_span.range.into(),
+                    file_id: span2.file,
+                    range: span2.range.into(),
                     message: format!("help: '{}' declared with discipline '{}'", node2.name, node2.discipline.as_ref().unwrap()),
                 }
             ])

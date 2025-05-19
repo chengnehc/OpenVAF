@@ -70,7 +70,7 @@ pub trait BaseDB: VfsStorage {
     fn empty_global_lint_overwrites(&self) -> TiVec<Lint, Option<LintLevel>>;
     #[salsa::invoke(LintRegistry::new)]
     fn lint_registry(&self) -> Arc<LintRegistry>;
-    #[salsa::invoke(LintAttrTree::lint_attr_tree_query)]
+    #[salsa::invoke(LintAttrTree::query)]
     fn lint_attr_tree(&self, root_file: FileId) -> Arc<LintAttrTree>;
     #[salsa::transparent]
     fn lint(&self, name: &str) -> Option<Lint>;

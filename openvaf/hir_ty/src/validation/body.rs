@@ -223,7 +223,7 @@ impl ExprValidator<'_, '_> {
                     )
                 } else {
                     self.report(BodyDiagnostic::IncompatibleUnnamedBranch {
-                        access_expr,
+                        expr: access_expr,
                         node1,
                         node2,
                     })
@@ -330,7 +330,7 @@ impl ExprValidator<'_, '_> {
                     self.validate_flow_or_pot(expr, builtin, discipline)
                 } else {
                     self.report(BodyDiagnostic::IncompatibleUnnamedBranch {
-                        access_expr: expr,
+                        expr,
                         node1: hi,
                         node2: lo,
                     });
@@ -517,7 +517,7 @@ impl ExprValidator<'_, '_> {
         let is_pot = call == BuiltIn::potential;
         let discipline = self.parent.db.discipline_info(discipline);
         if discipline.potential.is_none() && is_pot || discipline.flow.is_none() && !is_pot {
-            self.report(BodyDiagnostic::IllegalNatureAccess { is_pot, access_expr: expr })
+            self.report(BodyDiagnostic::IllegalNatureAccess { is_pot, expr })
         }
     }
 

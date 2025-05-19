@@ -70,18 +70,18 @@ fn collect_body_diagnostics(
     def: ItemWithBodyId,
     sink: &mut impl DiagnosticSink,
 ) {
-    let body_sm = &db.body_srcmap(def);
+    let body_src_map = &db.body_srcmap(def);
 
     // Inference
     for diag in &db.inference_result(def).diagnostics {
-        let diag = InferDiagnosticWrapped { db, diag, body_sm };
+        let diag = InferDiagnosticWrapped { db, diag, body_src_map };
         sink.add_diagnostic(&diag, root_file, db.upcast())
     }
 
     // Body
     let diagnostics = BodyDiagnostic::validate_and_collect(db, def);
     for diag in &diagnostics {
-        let diag = BodyDiagnosticWrapped { db, diag, body_sm };
+        let diag = BodyDiagnosticWrapped { db, diag, body_src_map };
         sink.add_diagnostic(&diag, root_file, db.upcast())
     }
 }

@@ -18,28 +18,28 @@ use crate::inference::InferDiagnostic;
 
 pub struct InferDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
-    pub body_sm: &'a BodySourceMap,
+    pub body_src_map: &'a BodySourceMap,
     pub diag: &'a InferDiagnostic,
 }
 
 impl Diagnostic for InferDiagnosticWrapped<'_> {
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
         if let InferDiagnostic::NonStandardUnknown { stmt, .. } = *self.diag {
-            Some((non_standard_code, self.body_sm.lint_src(stmt, non_standard_code)))
+            Some((non_standard_code, self.body_src_map.lint_src(stmt, non_standard_code)))
         } else {
             None
         }
     }
 
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
-        let sm = db.sourcemap(root_file);
+        let src_map = db.sourcemap(root_file);
         let parse = db.parse(root_file);
 
         match *self.diag {
             InferDiagnostic::PathResolveError { ref err, expr } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 Report::error()
@@ -54,8 +54,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
             InferDiagnostic::InvalidAssignDst { expr: e, op_kind, maybe_different_op } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[e].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[e].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
                 let res = Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
@@ -90,8 +90,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
             InferDiagnostic::ArgCntMismatch { expected, found, expr, exact } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 let message = match (expected < found, exact) {
@@ -115,8 +115,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
             InferDiagnostic::TypeMismatch(ref err) => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[err.expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[err.expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 Report::error()
@@ -132,8 +132,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
             InferDiagnostic::SignatureMismatch(ref err) => {
                 let mut res = if let [ref ty_err] = *err.type_mismatches {
                     let FileSpan { file, range } = parse.to_file_span(
-                        self.body_sm.expr_map_back[ty_err.expr].as_ref().unwrap().text_range(),
-                        &sm,
+                        self.body_src_map.expr_map_back[ty_err.expr].as_ref().unwrap().text_range(),
+                        &src_map,
                     );
 
                     Report::error()
@@ -154,13 +154,16 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         .iter()
                         .map(|it| {
                             parse.to_ctx_span(
-                                self.body_sm.expr_map_back[it.expr].as_ref().unwrap().text_range(),
-                                &sm,
+                                self.body_src_map.expr_map_back[it.expr]
+                                    .as_ref()
+                                    .unwrap()
+                                    .text_range(),
+                                &src_map,
                             )
                         })
                         .collect();
 
-                    let (file, ranges) = to_unified_span_list(&sm, &mut spans);
+                    let (file, ranges) = to_unified_span_list(&src_map, &mut spans);
                     let labels = zip(ranges, &*err.type_mismatches)
                         .map(|(range, ty_err)| Label {
                             style: LabelStyle::Primary,
@@ -186,7 +189,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     let fun = src.lookup(self.db.upcast());
                     let name = fun.item_tree(self.db.upcast())[fun.id].name.clone();
                     let range = fun.ast_ptr(self.db.upcast()).text_range();
-                    let span = parse.to_file_span(range, &sm);
+                    let span = parse.to_file_span(range, &src_map);
                     res.labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: span.file,
@@ -205,15 +208,15 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 expected_expr,
             } => {
                 let found_range =
-                    self.body_sm.expr_map_back[found_expr].as_ref().unwrap().text_range();
+                    self.body_src_map.expr_map_back[found_expr].as_ref().unwrap().text_range();
                 let expected_range =
-                    self.body_sm.expr_map_back[expected_expr].as_ref().unwrap().text_range();
+                    self.body_src_map.expr_map_back[expected_expr].as_ref().unwrap().text_range();
 
-                let expected_span = parse.to_ctx_span(expected_range, &sm);
-                let found_span = parse.to_ctx_span(found_range, &sm);
+                let expected_span = parse.to_ctx_span(expected_range, &src_map);
+                let found_span = parse.to_ctx_span(found_range, &src_map);
 
                 let (file, [found_range, expected_range]) =
-                    to_unified_spans(&sm, [found_span, expected_span]);
+                    to_unified_spans(&src_map, [found_span, expected_span]);
 
                 Report::error()
                     .with_labels(vec![
@@ -236,8 +239,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
             InferDiagnostic::InvalidUnknown { expr } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 Report::error()
@@ -255,8 +258,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
             InferDiagnostic::NonStandardUnknown { expr, .. } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 Report::warning()
@@ -275,8 +278,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
             InferDiagnostic::ExpectedProbe { expr } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 Report::error()
@@ -301,8 +304,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 ref output_args,
             } => {
                 let src = parse.to_file_span(
-                    self.body_sm.expr_map_back[expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 let func = func.lookup(self.db.upcast());
@@ -313,7 +316,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
                 let decl = tree[func.id].ast_id;
                 let decl = id_map.get_erased(decl.into()).text_range();
-                let decl = parse.to_file_span(decl, &sm);
+                let decl = parse.to_file_span(decl, &src_map);
                 labels.push(Label {
                     style: LabelStyle::Primary,
                     file_id: decl.file,
@@ -331,7 +334,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 if invalid_arg0 {
                     let decl = tree[tree[func.id].args.raw[0].var_binds[0]].ast_id;
                     let decl = id_map.get_erased(decl.into()).text_range();
-                    let decl = parse.to_file_span(decl, &sm);
+                    let decl = parse.to_file_span(decl, &src_map);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: decl.file,
@@ -343,7 +346,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 if invalid_arg1 {
                     let decl = tree[tree[func.id].args.raw[1].var_binds[0]].ast_id;
                     let decl = id_map.get_erased(decl.into()).text_range();
-                    let decl = parse.to_file_span(decl, &sm);
+                    let decl = parse.to_file_span(decl, &src_map);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: decl.file,
@@ -355,7 +358,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 for arg in output_args {
                     let decl = tree[func.id].args[*arg].ast_id;
                     let decl = id_map.get_erased(decl.into()).text_range();
-                    let decl = parse.to_file_span(decl, &sm);
+                    let decl = parse.to_file_span(decl, &src_map);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
                         file_id: decl.file,
@@ -377,13 +380,14 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
             }
 
             InferDiagnostic::DisplayTypeMismatch { ref err, fmt_lit, lit_range, .. } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
-                let lit_src =
-                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
+                let fmt_lit =
+                    self.body_src_map.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src = parse
+                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &src_map);
 
                 let val_src = parse.to_file_span(
-                    self.body_sm.expr_map_back[err.expr].as_ref().unwrap().text_range(),
-                    &sm,
+                    self.body_src_map.expr_map_back[err.expr].as_ref().unwrap().text_range(),
+                    &src_map,
                 );
 
                 Report::error()
@@ -405,9 +409,10 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
             }
 
             InferDiagnostic::MissingFmtArg { fmt_lit, lit_range } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
-                let lit_src =
-                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
+                let fmt_lit =
+                    self.body_src_map.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src = parse
+                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &src_map);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -425,9 +430,10 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 err_char,
                 candidates,
             } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
-                let lit_src =
-                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
+                let fmt_lit =
+                    self.body_src_map.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src = parse
+                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &src_map);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -449,9 +455,10 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
             }
 
             InferDiagnostic::InvalidFmtSpecifierEnd { fmt_lit, lit_range } => {
-                let fmt_lit = self.body_sm.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
-                let lit_src =
-                    parse.to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &sm);
+                let fmt_lit =
+                    self.body_src_map.expr_map_back[fmt_lit].as_ref().unwrap().text_range();
+                let lit_src = parse
+                    .to_file_span(lit_range + fmt_lit.start() + TextSize::from(1u32), &src_map);
 
                 Report::error()
                     .with_labels(vec![Label {

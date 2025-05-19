@@ -6,7 +6,7 @@ error: access of port-branch potential
    |
    = help: only the flow of port branches like <foo> can be accessed
 
-error: nodes 'a' and 't' of branch '(a,t)' have incompatible disciplines
+error: nodes 'a' and 't' of branch '(a, t)' have incompatible disciplines
    --> /branch_access.va:13:9
    |
  4 |     electrical a, b, c, d;
@@ -15,7 +15,7 @@ error: nodes 'a' and 't' of branch '(a,t)' have incompatible disciplines
    |     ---------- help: 't' declared with discipline 'thermal'
    .
 13 |         V(a, t) <+ 0;
-   |         ^^^^^^^ branch '(a,t)' has mismatched disciplines
+   |         ^^^^^^^ branch '(a, t)' has mismatched disciplines
    |
    = help: disciplines are compatible if their potential and flow natures have the same 'units' attribute
 

@@ -101,9 +101,9 @@ impl Context<'_> {
     }
 
     #[inline]
-    fn alloc_expr(&mut self, expr: Expr, ptr: AstPtr<ast::Expr>) -> ExprId {
-        let id = self.make_expr(expr, Some(ptr.clone()));
-        self.src_map.expr_map.insert(ptr, id);
+    fn alloc_expr(&mut self, expr: Expr, src: AstPtr<ast::Expr>) -> ExprId {
+        let id = self.make_expr(expr, Some(src.clone()));
+        self.src_map.expr_map.insert(src, id);
         id
     }
 
@@ -220,14 +220,14 @@ impl Context<'_> {
     fn alloc_stmt(
         &mut self,
         stmt: Stmt,
-        ptr: AstPtr<ast::Stmt>,
+        src: AstPtr<ast::Stmt>,
         attrs: impl Iterator<Item = ast::Attr>,
     ) -> StmtId {
         let registry = &self.db.lint_registry();
         let attrs =
             LintAttrs::resolve(registry, attrs, &mut self.src_map.diagnostics, self.curr_scope.1);
-        let id = self.make_stmt(stmt, Some(ptr.clone()), attrs);
-        self.src_map.stmt_map.insert(ptr, id);
+        let id = self.make_stmt(stmt, Some(src.clone()), attrs);
+        self.src_map.stmt_map.insert(src, id);
         id
     }
 
