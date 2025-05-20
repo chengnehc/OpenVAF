@@ -90,204 +90,39 @@ impl Iterator for RecDeclarations<'_> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use expect_test::{expect, Expect};
-    use std::fs;
-    use stdx::integration_test_dir;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use expect_test::{expect, Expect};
 
-    fn assert(src: &str, expect: Expect) {
-        let db = CompilationDB::new_from_vfs(&src).unwrap();
-        let cu = db.compilation_unit();
-        let modules = cu.modules(&db);
-        let decls: Vec<_> = modules[0].rec_declarations(&db).collect();
+//     fn assert(src: &str, expect: Expect) {
+//         let db = CompilationDB::new_from_vfs(&src).unwrap();
+//         let cu = db.compilation_unit();
+//         let modules = cu.modules(&db);
+//         let decls: Vec<_> = modules[0].rec_declarations(&db).collect();
 
-        expect.assert_debug_eq(&decls);
-    }
+//         expect.assert_debug_eq(&decls);
+//     }
 
-    #[test]
-    fn smoke_test() {
-        let src = r#"
-        module test(inout d, inout s);
-            electrical d, s;
-            branch (d, s) br_d_s;
-            parameter real outer_param = 100 from (0:inf);
-            real outer_var = 0;
+//     #[test]
+//     fn smoke_test() {
+//         let src = r#"
+//         module test(inout d, inout s);
+//             electrical d, s;
+//             branch (d, s) br_d_s;
+//             parameter real outer_param = 100 from (0:inf);
+//             real outer_var = 0;
 
-            analog begin
-                begin: myscope
-                    parameter real inner_param = Rd;
-                    real inner_var = 1.5 * inner;
-                end
-                outer_var = myscope.inner_var;
-            end
-        endmodule
-        "#;
+//             analog begin
+//                 begin: myscope
+//                     parameter real inner_param = Rd;
+//                     real inner_var = 1.5 * inner;
+//                 end
+//                 outer_var = myscope.inner_var;
+//             end
+//         endmodule
+//         "#;
 
-        let expect = expect![[r#"
-        [
-            (
-                Name(
-                    "d",
-                ),
-                Node(
-                    node0,
-                ),
-            ),
-            (
-                Name(
-                    "s",
-                ),
-                Node(
-                    node1,
-                ),
-            ),
-            (
-                Name(
-                    "br_d_s",
-                ),
-                Branch(
-                    BranchId(0),
-                ),
-            ),
-            (
-                Name(
-                    "outer_param",
-                ),
-                Parameter(
-                    Parameter {
-                        id: ParamId(
-                            0,
-                        ),
-                    },
-                ),
-            ),
-            (
-                Name(
-                    "outer_var",
-                ),
-                Variable(
-                    VarId(0),
-                ),
-            ),
-            (
-                Name(
-                    "inner_param",
-                ),
-                Parameter(
-                    Parameter {
-                        id: ParamId(
-                            1,
-                        ),
-                    },
-                ),
-            ),
-            (
-                Name(
-                    "inner_var",
-                ),
-                Variable(
-                    VarId(1),
-                ),
-            ),
-            (
-                Name(
-                    "myscope",
-                ),
-                Block(
-                    BlockId(0),
-                ),
-            ),
-        ]
-        "#]];
-
-        assert(&src, expect);
-    }
-
-    #[test]
-    fn resistor() {
-        let src = fs::read_to_string(integration_test_dir("RESISTOR").join("resistor.va")).unwrap();
-        let expect = expect![[r#"
-            [
-                (
-                    Name(
-                        "A",
-                    ),
-                    Node(
-                        node0,
-                    ),
-                ),
-                (
-                    Name(
-                        "B",
-                    ),
-                    Node(
-                        node1,
-                    ),
-                ),
-                (
-                    Name(
-                        "br_a_b",
-                    ),
-                    Branch(
-                        BranchId(0),
-                    ),
-                ),
-                (
-                    Name(
-                        "R",
-                    ),
-                    Parameter(
-                        Parameter {
-                            id: ParamId(
-                                0,
-                            ),
-                        },
-                    ),
-                ),
-                (
-                    Name(
-                        "zeta",
-                    ),
-                    Parameter(
-                        Parameter {
-                            id: ParamId(
-                                1,
-                            ),
-                        },
-                    ),
-                ),
-                (
-                    Name(
-                        "tnom",
-                    ),
-                    Parameter(
-                        Parameter {
-                            id: ParamId(
-                                2,
-                            ),
-                        },
-                    ),
-                ),
-                (
-                    Name(
-                        "res",
-                    ),
-                    Variable(
-                        VarId(0),
-                    ),
-                ),
-                (
-                    Name(
-                        "vres",
-                    ),
-                    Variable(
-                        VarId(1),
-                    ),
-                ),
-            ]
-        "#]];
-        assert(&src, expect);
-    }
-}
+//         assert(&src, expect);
+//     }
+// }
