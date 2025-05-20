@@ -110,13 +110,11 @@ pub enum IllegalCtxtAccessKind {
 
 use basedb::ErasedAstId;
 use hir_def::{
-    nameres::PathResolveError, BranchId, DisciplineId, ItemTree, LocalDisciplineAttrId,
-    LocalNatureAttrId,
+    nameres::PathResolveError, BranchId, DisciplineId, LocalDisciplineAttrId, LocalNatureAttrId,
 };
 
 pub struct TypeDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
-    pub item_tree: &'a ItemTree,
     pub diag: &'a TypeDiagnostic,
 }
 

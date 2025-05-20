@@ -36,17 +36,15 @@ impl TypeDiagnostic {
 }
 
 pub struct BodyValidator<'a> {
-    def: ItemWithBodyId,
+    item: ItemWithBodyId,
     // reads
     db: &'a dyn HirTyDB,
     infer: &'a Inference,
     body: &'a Body,
     // states
     ctxt: BodyContext,
-    // for condition validation
-    non_const_dominator: Box<[ExprId]>,
-    // for trivial branch linting
-    non_trivial_branches: HashSet<BranchWrite>,
+    non_const_dominator: Box<[ExprId]>, // for condition validation
+    non_trivial_branches: HashSet<BranchWrite>, // for trivial branch linting
     trivial_probes: HashMap<BranchWrite, Vec<(StmtId, ExprId)>>,
     // output
     diagnostics: Vec<BodyDiagnostic>,
@@ -123,17 +121,17 @@ struct ExprValidator<'a, 'b> {
 }
 
 impl BodyDiagnostic {
-    pub fn validate_and_collect(db: &dyn HirTyDB, def: ItemWithBodyId) -> Vec<BodyDiagnostic> {
-        let body = &db.body(def);
-        let infer = &db.inference_result(def);
-        let body_ctxt = match def {
+    pub fn validate_and_collect(db: &dyn HirTyDB, item: ItemWithBodyId) -> Vec<BodyDiagnostic> {
+        let body = &db.body(item);
+        let infer = &db.inference_result(item);
+        let body_ctxt = match item {
             ItemWithBodyId::ModuleId { initial: false, .. } => BodyContext::AnalogBlock,
             ItemWithBodyId::ModuleId { initial: true, .. } => BodyContext::AnalogInitialBlock,
             ItemWithBodyId::FunctionId(_) => BodyContext::Function,
             _ => BodyContext::Const,
         };
         BodyValidator {
-            def,
+            item,
             db,
             body,
             infer,

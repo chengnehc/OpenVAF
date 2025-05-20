@@ -62,12 +62,12 @@ impl TestDataBase {
 
         for (_, decl) in def_map[scope].decls() {
             if let Ok(id) = (*decl).try_into() {
-                let diagnostics = &self.body_srcmap(id).diagnostics;
+                let diagnostics = &self.body_src_map(id).diagnostics;
                 sink.add_diagnostics(diagnostics, root_file, self);
             }
             if let ScopeItem::FunctionId(fun) = *decl {
                 let def_map = self.function_def_map(fun);
-                let entry = self.function_def_map(fun).entry_scope();
+                let entry = def_map.entry_scope();
                 self.lower_and_check_rec(entry, &def_map, sink)
             }
         }

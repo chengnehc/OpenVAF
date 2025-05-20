@@ -66,7 +66,7 @@ pub trait HirDefDB: InternDB + Upcast<dyn BaseDB> {
     #[salsa::transparent]
     fn body(&self, id: ItemWithBodyId) -> Arc<Body>;
     #[salsa::transparent]
-    fn body_srcmap(&self, id: ItemWithBodyId) -> Arc<BodySourceMap>;
+    fn body_src_map(&self, id: ItemWithBodyId) -> Arc<BodySourceMap>;
     #[salsa::transparent]
     fn param_exprs(&self, id: ParamId) -> ParamExprs;
 
@@ -97,7 +97,7 @@ fn body(db: &dyn HirDefDB, def: ItemWithBodyId) -> Arc<Body> {
     db.body_with_srcmap(def).0
 }
 
-fn body_srcmap(db: &dyn HirDefDB, def: ItemWithBodyId) -> Arc<BodySourceMap> {
+fn body_src_map(db: &dyn HirDefDB, def: ItemWithBodyId) -> Arc<BodySourceMap> {
     db.body_with_srcmap(def).1
 }
 

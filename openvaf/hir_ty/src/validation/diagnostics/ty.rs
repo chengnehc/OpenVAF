@@ -42,13 +42,13 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
     }
 
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
-        let sm = db.sourcemap(root_file);
+        let src_map = db.sourcemap(root_file);
         let parse = db.parse(root_file);
         let ast_id_map = db.ast_id_map(root_file);
 
         match *self.diag {
             TypeDiagnostic::PathError { ref err, range } => {
-                let span = parse.to_file_span(range, &sm);
+                let span = parse.to_file_span(range, &src_map);
 
                 Report::error()
                     .with_labels(vec![Label {
@@ -61,13 +61,15 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
 
             TypeDiagnostic::DuplicateNatureAttr(ref info) => {
-                let nature = &self.item_tree[info.src.lookup(self.db.upcast()).id];
+                let item_tree = self.db.item_tree(root_file);
+                let db = self.db.upcast();
+                let nature = &item_tree[info.src.lookup(db).id];
                 let labels = self.build_duplicate_item(info, |attr| {
                     let id = u32::from(nature.attrs.start()) + u32::from(attr);
-                    let id = NatureAttr::lookup(self.item_tree, id.into()).ast_id();
-                    parse.to_file_span(ast_id_map.get(id).text_range(), &sm)
+                    let id = NatureAttr::lookup(&item_tree, id.into()).ast_id();
+                    parse.to_file_span(ast_id_map.get(id).text_range(), &src_map)
                 });
-                let attr_name = self.db.nature_data(info.src).attrs[info.first].name.clone();
+                let attr_name = db.nature_data(info.src).attrs[info.first].name.clone();
 
                 Report::error()
                     .with_message(format!(
@@ -76,13 +78,15 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     .with_labels(labels)
             }
             TypeDiagnostic::DuplicateDisciplineAttr(ref info) => {
-                let discipline = &self.item_tree[info.src.lookup(self.db.upcast()).id];
+                let item_tree = self.db.item_tree(root_file);
+                let db = self.db.upcast();
+                let discipline = &item_tree[info.src.lookup(db).id];
                 let labels = self.build_duplicate_item(info, |attr| {
                     let id = u32::from(discipline.attrs.start()) + u32::from(attr);
-                    let id = DisciplineAttr::lookup(self.item_tree, id.into()).ast_id();
-                    parse.to_file_span(ast_id_map.get(id).text_range(), &sm)
+                    let id = DisciplineAttr::lookup(&item_tree, id.into()).ast_id();
+                    parse.to_file_span(ast_id_map.get(id).text_range(), &src_map)
                 });
-                let attr_name = self.db.discipline_data(info.src).attrs[info.first].name.clone();
+                let attr_name = db.discipline_data(info.src).attrs[info.first].name.clone();
 
                 Report::error()
                     .with_message(format!(
@@ -92,7 +96,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
 
             TypeDiagnostic::PortWithoutDirection { decl, ref name } => {
-                let span = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &sm);
+                let span = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &src_map);
 
                 Report::error()
                 .with_message(format!("no direction declared for port '{name}'"))
@@ -107,7 +111,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     "note: port directions are always required by the language standard.".to_owned()])
             }
             TypeDiagnostic::NodeWithoutDiscipline { decl, ref name } => {
-                let span = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &sm);
+                let span = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &src_map);
 
                 Report::error()
                 .with_message(format!("no discipline for net '{name}'"))
@@ -124,7 +128,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
             TypeDiagnostic::MultipleDirections(ref info) => {
                 let labels = self.build_duplicate_item(info, |id| {
-                    parse.to_file_span(ast_id_map.get_erased(id).text_range(), &sm)
+                    parse.to_file_span(ast_id_map.get_erased(id).text_range(), &src_map)
                 });
                 let node_name = self.db.node_data(info.src).name.clone();
 
@@ -134,7 +138,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
             TypeDiagnostic::MultipleDisciplines(ref info) => {
                 let labels = self.build_duplicate_item(info, |id| {
-                    parse.to_file_span(ast_id_map.get_erased(id).text_range(), &sm)
+                    parse.to_file_span(ast_id_map.get_erased(id).text_range(), &src_map)
                 });
                 let node_name = self.db.node_data(info.src).name.clone();
 
@@ -144,7 +148,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
             TypeDiagnostic::MultipleGnds(ref info) => {
                 let labels = self.build_duplicate_item(info, |id| {
-                    parse.to_file_span(ast_id_map.get_erased(id).text_range(), &sm)
+                    parse.to_file_span(ast_id_map.get_erased(id).text_range(), &src_map)
                 });
                 let node_name = self.db.node_data(info.src).name.clone();
 
@@ -154,10 +158,10 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
 
             TypeDiagnostic::ExpectedPort { node, src } => {
-                let span = parse.to_file_span(ast_id_map.get_erased(src).text_range(), &sm);
+                let span = parse.to_file_span(ast_id_map.get_erased(src).text_range(), &src_map);
                 let decl = parse.to_file_span(
                     node.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).text_range(),
-                    &sm,
+                    &src_map,
                 );
                 let node_name = &self.db.node_data(node).name;
 
@@ -191,17 +195,17 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                 let branch_name = branch.name(db).to_string();
 
                 IncompatibleBranchDiagnostic {
-                    branch_span: parse.to_file_span(branch_range, &sm),
+                    branch_span: parse.to_file_span(branch_range, &src_map),
                     branch_name,
                     node1,
                     node2,
                 }
-                .into_report(self.db, &parse, &ast_id_map, &sm)
+                .into_report(self.db, &parse, &ast_id_map, &src_map)
             }
 
             TypeDiagnostic::MultipleFuncArgBind(ref info) => {
                 let labels = self.build_duplicate_item(info, |id| {
-                    parse.to_file_span(ast_id_map.get(id).text_range(), &sm)
+                    parse.to_file_span(ast_id_map.get(id).text_range(), &src_map)
                 });
 
                 Report::error()
@@ -212,7 +216,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     .with_labels(labels)
             }
             TypeDiagnostic::FuncArgWithoutVarBind { decl, ref name } => {
-                let span = parse.to_file_span(ast_id_map.get(decl).text_range(), &sm);
+                let span = parse.to_file_span(ast_id_map.get(decl).text_range(), &src_map);
 
                 Report::error()
                     .with_message(format!("argument '{name}' is not binded with any variable"))

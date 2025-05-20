@@ -1,11 +1,5 @@
-use hir_def::{
-    db::HirDefDB,
-    nameres::{
-        DefDiagnosticWrapped, DefMap,
-        ItemWithBodyId::{self, ModuleId},
-        LocalScopeId, ScopeItem, ScopeOrigin,
-    },
-    ItemTree,
+use hir_def::nameres::{
+    DefDiagnosticWrapped, DefMap, ItemWithBodyId, LocalScopeId, ScopeItem, ScopeOrigin,
 };
 use hir_ty::{
     inference::InferDiagnosticWrapped,
@@ -15,7 +9,7 @@ use hir_ty::{
 pub use basedb::diagnostics::*;
 pub use basedb::{BaseDB, FileId};
 
-use crate::{CompilationDB, HirDB};
+use crate::{CompilationDB, HirDB, HirDefDB};
 
 /// Collect all frontend diagnostics to `sink`.
 pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl DiagnosticSink) {
@@ -24,18 +18,18 @@ pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl Dia
     sink.add_diagnostics(&db.parse(root_file).errors(), root_file, db);
 
     // HirDB
-    let item_tree = db.item_tree(root_file);
     let def_map = db.root_def_map(root_file);
-    collect_def_diagnostics(db, root_file, &def_map, sink);
-    collect_type_diagnostics(db, root_file, &item_tree, sink);
-
     let root_scope = def_map.root_scope();
-    for child in def_map[root_scope].children().unwrap().values() {
-        if let ScopeOrigin::Module(id) = def_map[*child].origin() {
+    collect_def_diagnostics(db, root_file, &def_map, sink);
+    collect_type_diagnostics(db, root_file, sink);
+
+    use hir_def::nameres::ItemWithBodyId::ModuleId;
+    for &child in def_map[root_scope].children().unwrap().values() {
+        if let ScopeOrigin::Module(id) = def_map[child].origin() {
             collect_body_diagnostics(db, root_file, ModuleId { initial: true, id }, sink);
             collect_body_diagnostics(db, root_file, ModuleId { initial: false, id }, sink)
         }
-        collect_scope_diagnostics(db, root_file, &def_map, *child, sink)
+        collect_scope_diagnostics(db, root_file, &def_map, child, sink)
     }
 }
 
@@ -51,15 +45,10 @@ fn collect_def_diagnostics(
     }
 }
 
-fn collect_type_diagnostics(
-    db: &dyn HirDB,
-    root_file: FileId,
-    item_tree: &ItemTree,
-    sink: &mut impl DiagnosticSink,
-) {
+fn collect_type_diagnostics(db: &dyn HirDB, root_file: FileId, sink: &mut impl DiagnosticSink) {
     let diagnostics = TypeDiagnostic::validate_and_collect(db, root_file);
     for diag in &diagnostics {
-        let diag = TypeDiagnosticWrapped { db, diag, item_tree };
+        let diag = TypeDiagnosticWrapped { db, diag };
         sink.add_diagnostic(&diag, root_file, db.upcast());
     }
 }
@@ -67,19 +56,19 @@ fn collect_type_diagnostics(
 fn collect_body_diagnostics(
     db: &dyn HirDB,
     root_file: FileId,
-    def: ItemWithBodyId,
+    item: ItemWithBodyId,
     sink: &mut impl DiagnosticSink,
 ) {
-    let body_src_map = &db.body_srcmap(def);
+    let body_src_map = &db.body_src_map(item);
 
     // Inference
-    for diag in &db.inference_result(def).diagnostics {
+    for diag in &db.inference_result(item).diagnostics {
         let diag = InferDiagnosticWrapped { db, diag, body_src_map };
         sink.add_diagnostic(&diag, root_file, db.upcast())
     }
 
     // Body
-    let diagnostics = BodyDiagnostic::validate_and_collect(db, def);
+    let diagnostics = BodyDiagnostic::validate_and_collect(db, item);
     for diag in &diagnostics {
         let diag = BodyDiagnosticWrapped { db, diag, body_src_map };
         sink.add_diagnostic(&diag, root_file, db.upcast())
@@ -93,11 +82,11 @@ fn collect_scope_diagnostics(
     scope: LocalScopeId,
     sink: &mut impl DiagnosticSink,
 ) {
-    for &def in def_map[scope].decls().values() {
-        if let Ok(body) = def.try_into() {
+    for &item in def_map[scope].decls().values() {
+        if let Ok(body) = item.try_into() {
             collect_body_diagnostics(db, root_file, body, sink);
         }
-        let def_map = match def {
+        let def_map = match item {
             ScopeItem::BlockId(block) => {
                 let Some(def_map) = db.block_def_map(block) else { continue };
                 def_map
@@ -105,7 +94,7 @@ fn collect_scope_diagnostics(
             ScopeItem::FunctionId(fun) => db.function_def_map(fun),
             _ => continue,
         };
-        collect_scope_diagnostics(db, root_file, &def_map, def_map.entry_scope(), sink);
         collect_def_diagnostics(db, root_file, &def_map, sink);
+        collect_scope_diagnostics(db, root_file, &def_map, def_map.entry_scope(), sink);
     }
 }
