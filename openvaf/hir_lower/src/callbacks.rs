@@ -1,7 +1,8 @@
-use hir::{Node, Parameter};
 use lasso::Spur;
-use mir::{FunctionSignature, Param};
 use stdx::Ieee64;
+
+use hir::{Node, Parameter};
+use mir::{FunctionSignature, Param};
 
 use crate::fmt::{DisplayKind, FmtArg};
 use crate::parameters::ParamInfoKind;

@@ -651,9 +651,9 @@ impl BodyLowerContext<'_, '_, '_> {
             }
 
             // Explicit binding detection system functions
-            BuiltIn::param_given => self
-                .ctxt
-                .use_param(ParamKind::ParamGiven { param: self.body.into_parameter(args[0]) }),
+            BuiltIn::param_given => {
+                self.ctxt.use_param(ParamKind::ParamGiven { param: self.body.into_param(args[0]) })
+            }
             BuiltIn::port_connected => {
                 self.ctxt.use_param(ParamKind::PortConnected { port: self.body.into_node(args[0]) })
             }
@@ -667,7 +667,7 @@ impl BodyLowerContext<'_, '_, '_> {
             BuiltIn::discontinuity => {
                 // AB: Negative literals are represented as UnaryOp::Neg(Literal)
                 //     We have a function for that now.
-                if self.ctxt.inside_lim && Some(-1) == self.body.as_signed_int_literal(&args[0]) {
+                if self.ctxt.inside_lim && Some(-1) == self.body.as_signed_int_literal(args[0]) {
                     self.ctxt.call(CallBackKind::LimDiscontinuity, &[]);
                 } else {
                     // TODO implement support for discontinuity?

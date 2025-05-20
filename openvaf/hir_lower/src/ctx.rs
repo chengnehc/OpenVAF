@@ -89,15 +89,13 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
                 | FunctionArg { .. } => return place,
 
                 // such kinds of places require initialization
-                // TODO(JW) hidden state: a variable without proper initialization could
-                // cause hidden state, which should not be used by compact models.
                 Var(var) => self.use_param(ParamKind::HiddenState(var)),
                 Contribute { .. } | ImplicitResidual { .. } => F_ZERO,
                 CollapseImplicitEquation(_) => TRUE,
                 IsPotential(_) => FALSE,
                 BoundStep => INFINITY,
             };
-            let entry = self.func.func.layout.entry_block().unwrap();
+            let entry = self.layout_mut().entry_block().unwrap();
             self.func.def_var_at(place, init_val, entry);
         }
         place
@@ -253,14 +251,13 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     }
 
     pub fn make_type_cast(&mut self, val: Value, src: &Type, dst: &Type) -> Value {
-        let op = match (dst, src) {
-            (Type::Real, Type::Integer) => Opcode::IFcast,
-            (Type::Integer, Type::Real) => Opcode::FIcast,
-            (Type::Bool, Type::Real) => Opcode::FBcast,
-            (Type::Real, Type::Bool) => Opcode::BFcast,
-            (Type::Integer, Type::Bool) => Opcode::BIcast,
-            (Type::Bool, Type::Integer) => Opcode::IBcast,
-
+        let op = match (src, dst) {
+            (Type::Real, Type::Integer) => Opcode::FIcast,
+            (Type::Integer, Type::Real) => Opcode::IFcast,
+            (Type::Bool, Type::Real) => Opcode::BFcast,
+            (Type::Real, Type::Bool) => Opcode::FBcast,
+            (Type::Integer, Type::Bool) => Opcode::IBcast,
+            (Type::Bool, Type::Integer) => Opcode::BIcast,
             (Type::Array { .. }, Type::EmptyArray) | (Type::EmptyArray, Type::Array { .. }) => {
                 return val
             }

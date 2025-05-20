@@ -1,3 +1,6 @@
+//! Hidden state: a variable without proper initialization could
+// cause hidden state, which should not be used by compact models.
+
 use hir::CompilationDB;
 use lasso::Rodeo;
 use mir::Function;
@@ -22,7 +25,7 @@ impl HirInterner {
         for (kind, param) in params.iter() {
             if let ParamKind::HiddenState(var) = *kind {
                 if !ctxt.dfg().value_dead(*param) {
-                    let val = ctxt.lower_first_stmt_expr(var.init(db).borrow());
+                    let val = ctxt.lower_first_stmt_expr(var.body(db).borrow());
                     ctxt.dfg_mut().replace_uses(*param, val);
                 }
             }

@@ -2,28 +2,26 @@
 //! that is, module, named block, analog function.
 
 use std::iter;
-use std::mem::transmute;
-use std::ops::Deref;
+use std::mem;
 use std::sync::Arc;
 
-use hir_def::nameres::{self, DefMap, LocalScopeId, ScopeItem};
+use hir_def::nameres::{DefMap, LocalScopeId, ScopeItem};
 use smol_str::SmolStr;
 use syntax::name::Name;
 
-use crate::{
-    AliasParam, Block, Branch, CompilationDB, HirDefDB, Module, Node, Parameter, ScopeDef, Variable,
-};
+use crate::{AliasParam, Block, Branch, Module, Node, Parameter, ScopeDef, Variable};
+use crate::{CompilationDB, HirDefDB};
 
 struct Scope {
-    //_def_map: Arc<DefMap>,
-    iter: indexmap::map::Iter<'static, Name, nameres::ScopeItem>,
+    iter: indexmap::map::Iter<'static, Name, ScopeItem>,
     def: Option<(Name, ScopeDef)>,
 }
+
 impl Scope {
     fn new(def_map: Arc<DefMap>, scope: LocalScopeId, def: Option<(Name, ScopeDef)>) -> Scope {
-        // safety: def_map is a immutable/an arc that will live at least as long as the scope
         let iter = def_map[scope].decls().iter();
-        let iter = unsafe { transmute(iter) };
+        // # safety: def_map is a immutable/an arc that will live at least as long as the scope
+        let iter = unsafe { mem::transmute(iter) };
 
         Scope { iter, def }
     }
@@ -41,8 +39,9 @@ pub struct RecDeclarations<'a> {
 impl<'a> RecDeclarations<'a> {
     pub(super) fn new(scope: super::Scope, db: &'a CompilationDB) -> RecDeclarations<'a> {
         let (scope_id, def_map) = scope.def_map_and_scope(db);
+        let scope = Scope::new(def_map, scope_id, None);
 
-        RecDeclarations { db, path: Vec::new(), stack: vec![Scope::new(def_map, scope_id, None)] }
+        RecDeclarations { db, path: Vec::new(), stack: vec![scope] }
     }
 
     pub fn to_path(&self, name: Name) -> SmolStr {
@@ -50,11 +49,7 @@ impl<'a> RecDeclarations<'a> {
             // fast path
             return name.into();
         }
-        self.path.iter().flat_map(|path| [path, "."]).chain(iter::once(name.deref())).collect()
-    }
-
-    pub fn current_path(&self) -> &[Name] {
-        &self.path
+        self.path.iter().flat_map(|path| [path, "."]).chain(iter::once(&*name)).collect()
     }
 }
 

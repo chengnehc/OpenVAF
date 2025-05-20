@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use hir_def::db::HirDefDB;
 use hir_def::nameres::ItemWithBodyId;
-use hir_ty::db::HirTyDB;
 use hir_ty::inference;
 use hir_ty::types::{Signature, Ty};
 
@@ -10,8 +8,8 @@ pub use hir_def::body::{Case, Event, ExprId, Literal, StmtId};
 pub use hir_def::{BuiltIn, ParamSysFun, Type};
 pub use syntax::ast::{BinaryOp, UnaryOp};
 
-use crate::{Branch, CompilationDB, Node};
-use crate::{BranchWrite, Function, FunctionArg, NatureAttr, Parameter, Variable};
+use crate::{Branch, BranchWrite, Function, FunctionArg, NatureAttr, Node, Parameter, Variable};
+use crate::{CompilationDB, HirDB, HirDefDB};
 
 mod expr;
 
@@ -59,7 +57,7 @@ impl<'a> BodyRef<'a> {
                         rhs: val,
                     },
                     inference::AssignDst::FunVar { fun, arg: Some(arg) } => Stmt::Assignment {
-                        lhs: AssignmentLhs::FunctionArg(FunctionArg { fun_id: fun, arg_id: arg }),
+                        lhs: AssignmentLhs::FunctionArg(FunctionArg { fun, arg }),
                         rhs: val,
                     },
                     inference::AssignDst::Flow(branch) => Stmt::Contribute {
@@ -101,33 +99,6 @@ impl<'a> BodyRef<'a> {
 impl<'a> BodyRef<'a> {
     /* Body-related */
 
-    pub fn as_literal(&self, expr: ExprId) -> Option<&'a Literal> {
-        match &self.body.exprs[expr] {
-            hir_def::Expr::Literal(lit) => Some(lit),
-            _ => None,
-        }
-    }
-
-    pub fn as_int_literal(&self, &expr: &ExprId) -> Option<i32> {
-        match &self.body.exprs[expr] {
-            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
-            _ => None,
-        }
-    }
-
-    // AB: get integer literal with optional negative sign
-    pub fn as_signed_int_literal(&self, &expr: &ExprId) -> Option<i32> {
-        match &self.body.exprs[expr] {
-            // Int literal
-            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
-            // Int literal with `-` prefix
-            hir_def::Expr::UnaryOp { arg, op: UnaryOp::Neg } => {
-                self.as_int_literal(arg).map(|ii| -ii)
-            }
-            _ => None,
-        }
-    }
-
     pub fn get_expr(&self, expr: ExprId) -> Expr<'a> {
         match self.body.exprs[expr] {
             hir_def::Expr::Path { .. } => Expr::Read(self.resolve_path(expr)),
@@ -166,29 +137,65 @@ impl<'a> BodyRef<'a> {
             Ty::Var(_, id) => Ref::Variable(Variable { id }),
             Ty::Param(_, id) => Ref::Parameter(Parameter { id }),
             Ty::FunctionVar { fun, arg: Some(arg), .. } => {
-                Ref::FunctionArg(FunctionArg { fun_id: fun, arg_id: arg })
+                Ref::FunctionArg(FunctionArg { fun, arg })
             }
             Ty::FunctionVar { fun, .. } => Ref::FunctionReturn(Function { id: fun }),
 
             ref it => {
-                let Some(&inference::ResolvedFun::Param(param)) =
+                if let Some(&inference::ResolvedFun::Param(param)) =
                     self.infere.resolved_calls.get(&expr)
-                else {
-                    panic!(
-                        "invalid HIR: path {:?} was not resolved {:?}",
-                        self.body.exprs[expr], it
-                    )
-                };
-                Ref::ParamSysFun(param)
+                {
+                    Ref::ParamSysFun(param)
+                } else {
+                    panic!("invalid HIR: path {:?} was not resolved {it:?}", self.body.exprs[expr])
+                }
             }
+        }
+    }
+
+    pub fn as_literal(&self, expr: ExprId) -> Option<&'a Literal> {
+        match &self.body.exprs[expr] {
+            hir_def::Expr::Literal(lit) => Some(lit),
+            _ => None,
+        }
+    }
+
+    pub fn as_signed_int_literal(&self, expr: ExprId) -> Option<i32> {
+        match &self.body.exprs[expr] {
+            // Int literal
+            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
+            // Int literal with `-` prefix
+            hir_def::Expr::UnaryOp { arg, op: UnaryOp::Neg } => {
+                self.as_int_literal(*arg).map(|ii| -ii)
+            }
+            _ => None,
+        }
+    }
+
+    fn as_int_literal(&self, expr: ExprId) -> Option<i32> {
+        match &self.body.exprs[expr] {
+            hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
+            _ => None,
         }
     }
 
     /* Inference-related */
 
-    /// Returns the type that was inferred for this expression
     pub fn expr_type(&self, expr: ExprId) -> Type {
         self.infere.expr_types[expr].to_value().unwrap()
+    }
+
+    pub fn get_call_signature(&self, expr: ExprId) -> Signature {
+        self.infere.resolved_signatures.get(&expr).copied().unwrap_or(Signature(u32::MAX))
+    }
+
+    /// Returns whether the result of an expression needs to be cast to a
+    /// different type before use.
+    pub fn need_type_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
+        let dst = self.infere.casts.get(&expr)?;
+        let src = self.expr_type(expr);
+        debug_assert_ne!(&src, dst, "cast types must be different");
+        Some((src, dst))
     }
 
     pub fn into_node(&self, expr: ExprId) -> Node {
@@ -206,21 +213,8 @@ impl<'a> BodyRef<'a> {
         Node { id }
     }
 
-    pub fn into_parameter(&self, expr: ExprId) -> Parameter {
+    pub fn into_param(&self, expr: ExprId) -> Parameter {
         let id = self.infere.expr_types[expr].unwrap_param();
         Parameter { id }
-    }
-
-    /// Returns whether the result of an expression needs to be cast to a
-    /// different type before use.
-    pub fn need_type_cast(&self, expr: ExprId) -> Option<(Type, &'a Type)> {
-        let dst = self.infere.casts.get(&expr)?;
-        let src = self.expr_type(expr);
-        debug_assert_ne!(&src, dst, "cast types must be different");
-        Some((src, dst))
-    }
-
-    pub fn get_call_signature(&self, expr: ExprId) -> Signature {
-        self.infere.resolved_signatures.get(&expr).copied().unwrap_or(Signature(u32::MAX))
     }
 }

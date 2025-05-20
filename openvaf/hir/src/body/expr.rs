@@ -24,13 +24,6 @@ pub enum Ref {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub enum AssignmentLhs {
-    Variable(Variable),
-    FunctionArg(FunctionArg),
-    FunctionReturn(Function),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum ResolvedFun {
     User { func: Function, limit: bool },
     BuiltIn(BuiltIn),
@@ -68,6 +61,13 @@ pub enum Stmt<'a> {
     ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
     Case { discr: ExprId, case_arms: &'a [Case] }, // TODO lint on unreachable
     EventControl { event: &'a Event, body: StmtId },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum AssignmentLhs {
+    Variable(Variable),
+    FunctionArg(FunctionArg),
+    FunctionReturn(Function),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

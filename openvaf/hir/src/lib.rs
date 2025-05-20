@@ -69,42 +69,33 @@ impl CompilationUnit {
     pub fn root_file(self) -> FileId {
         self.root_file
     }
-
     pub fn name(self, db: &CompilationDB) -> String {
         db.file_path(self.root_file).name().unwrap_or_else(|| String::from("~.va"))
     }
-
     pub fn preprocess(&self, db: &CompilationDB) -> syntax::Preprocess {
         db.preprocess(self.root_file)
     }
-
-    /// Create an ast cache to extract the information of attributes
     pub fn ast_cache(&self, db: &CompilationDB) -> attributes::AstCache {
         attributes::AstCache::new(db, self.root_file)
     }
-
     pub fn modules(self, db: &CompilationDB) -> Vec<Module> {
         let root_def_map = db.root_def_map(self.root_file);
         let entry = root_def_map.entry_scope();
         root_def_map[entry]
             .decls()
-            .iter()
-            .filter_map(
-                |(_, def)| {
-                    if let ScopeItem::ModuleId(id) = *def {
-                        Some(Module { id })
-                    } else {
-                        None
-                    }
-                },
-            )
+            .values()
+            .filter_map(|decl| {
+                if let ScopeItem::ModuleId(id) = *decl {
+                    Some(Module { id })
+                } else {
+                    None
+                }
+            })
             .collect()
     }
-
     pub fn collect_diagnostics(self, db: &CompilationDB, sink: &mut impl DiagnosticSink) {
         diagnostics::collect(db, self.root_file, sink)
     }
-
     pub fn test_diagnostics(&self, db: &CompilationDB) -> String {
         use basedb::diagnostics::sink::Buffer;
         use basedb::diagnostics::ConsoleSink;
@@ -125,6 +116,7 @@ impl CompilationUnit {
 pub struct Nature {
     id: NatureId,
 }
+
 impl Nature {
     pub fn name(self, db: &CompilationDB) -> String {
         db.nature_data(self.id).name.to_string()
@@ -138,6 +130,7 @@ impl Nature {
 pub struct NatureAttr {
     id: NatureAttrId,
 }
+
 impl NatureAttr {
     pub fn name(self, db: &CompilationDB) -> String {
         let loc = self.id.lookup(db);
@@ -152,6 +145,7 @@ impl NatureAttr {
 pub struct Discipline {
     id: DisciplineId,
 }
+
 impl Discipline {
     pub fn name(self, db: &CompilationDB) -> String {
         db.discipline_data(self.id).name.to_string()
@@ -168,10 +162,12 @@ impl Discipline {
 pub struct Module {
     id: ModuleId,
 }
-impl_debug! {
-    match Module { Module { id } => "{id:?}"; }
-}
+impl_debug!(match Module { Module { id } => "{id:?}"; });
+
 impl Module {
+    pub fn uuid(self, _db: &CompilationDB) -> u32 {
+        self.id.as_intern_id().as_u32()
+    }
     pub fn name(self, db: &CompilationDB) -> String {
         db.module_data(self.id).name.to_string()
     }
@@ -181,19 +177,12 @@ impl Module {
     pub fn internal_nodes(self, db: &CompilationDB) -> Vec<Node> {
         db.module_data(self.id).internal_nodes.iter().map(|&id| Node { id }).collect()
     }
-    pub fn uuid(self, _db: &CompilationDB) -> u32 {
-        self.id.as_intern_id().as_u32()
-    }
-    /* JW: not used
-        /// list of all child scopes.
-        pub fn child_scopes(self, db: &CompilationDB) -> Vec<Scope> {
-            Scope::Module(self).children(db)
-        }
-        /// list of all declarations.
-        pub fn declarations(self, db: &CompilationDB) -> Vec<(Name, ScopeDef)> {
-            Scope::Module(self).declarations(db)
-        }
-    */
+    // pub fn child_scopes(self, db: &CompilationDB) -> Vec<Scope> {
+    //     Scope::Module(self).children(db)
+    // }
+    // pub fn declarations(self, db: &CompilationDB) -> Vec<(Name, ScopeDef)> {
+    //     Scope::Module(self).declarations(db)
+    // }
     pub fn rec_declarations(self, db: &CompilationDB) -> RecDeclarations<'_> {
         RecDeclarations::new(Scope::Module(self), db)
     }
@@ -203,7 +192,6 @@ impl Module {
     pub fn analog_body(&self, db: &CompilationDB) -> Body {
         Body::new(ItemWithBodyId::ModuleId { initial: false, id: self.id }, db)
     }
-    // JW: for VerilogAE
     pub fn lookup_var(
         &self,
         db: &CompilationDB,
@@ -221,32 +209,25 @@ impl Module {
 pub struct Node {
     id: NodeId,
 }
-impl_debug! {
-    match Node { Node { id } => "{id:?}"; }
-}
+impl_debug!(match Node { Node { id } => "{id:?}"; });
+
 impl Node {
-    #[inline]
     pub fn name(self, db: &CompilationDB) -> SmolStr {
         db.node_data(self.id).name.clone().into()
     }
-    #[inline]
     pub fn discipline(self, db: &CompilationDB) -> Discipline {
         let id = db.node_discipline(self.id).unwrap();
         Discipline { id }
     }
-    #[inline]
     pub fn is_input(self, db: &CompilationDB) -> bool {
         db.node_data(self.id).is_input
     }
-    #[inline]
     pub fn is_output(self, db: &CompilationDB) -> bool {
         db.node_data(self.id).is_output
     }
-    #[inline]
     pub fn is_port(self, db: &CompilationDB) -> bool {
         db.node_data(self.id).is_port()
     }
-    #[inline]
     pub fn is_gnd(self, db: &CompilationDB) -> bool {
         db.node_data(self.id).is_gnd
     }
@@ -256,9 +237,8 @@ impl Node {
 pub struct Branch {
     id: BranchId,
 }
-impl_debug! {
-    match Branch { Branch { id } => "{id:?}"; }
-}
+impl_debug!(match Branch { Branch { id } => "{id:?}"; });
+
 impl Branch {
     pub fn name(self, db: &CompilationDB) -> String {
         db.branch_data(self.id).name.to_string()
@@ -287,6 +267,7 @@ pub enum BranchKind {
     NodeGnd(Node),
     Nodes(Node, Node),
 }
+
 impl BranchKind {
     pub fn node_pair(self) -> (Node, Option<Node>) {
         match self {
@@ -297,12 +278,12 @@ impl BranchKind {
     }
 }
 
-/// Branch write destination. Refer to `branch_lvalue` described in [LRM 5.6.1].
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum BranchWrite {
     Named(Branch),
     Unnamed { hi: Node, lo: Option<Node> },
 }
+
 impl BranchWrite {
     pub fn node_pair(self, db: &CompilationDB) -> (Node, Option<Node>) {
         match self {
@@ -311,6 +292,7 @@ impl BranchWrite {
         }
     }
 }
+
 impl From<inference::BranchWrite> for BranchWrite {
     #[inline]
     fn from(inner: inference::BranchWrite) -> Self {
@@ -327,9 +309,8 @@ impl From<inference::BranchWrite> for BranchWrite {
 pub struct Block {
     id: BlockId,
 }
-impl_debug! {
-    match Block { Block{ id } => "{id:?}"; }
-}
+impl_debug!(match Block { Block{ id } => "{id:?}"; });
+
 impl Block {
     pub fn name(self, db: &CompilationDB) -> String {
         self.id.lookup(db).name(db).to_string()
@@ -340,9 +321,8 @@ impl Block {
 pub struct Variable {
     id: VarId,
 }
-impl_debug! {
-    match Variable { Variable { id } => "{id:?}"; }
-}
+impl_debug!(match Variable { Variable { id } => "{id:?}"; });
+
 impl Variable {
     pub fn name(self, db: &CompilationDB) -> SmolStr {
         db.var_data(self.id).name.clone().into()
@@ -350,7 +330,7 @@ impl Variable {
     pub fn ty(self, db: &CompilationDB) -> Type {
         db.var_data(self.id).ty.clone()
     }
-    pub fn init(self, db: &CompilationDB) -> Body {
+    pub fn body(self, db: &CompilationDB) -> Body {
         Body::new(self.id.into(), db)
     }
     pub fn get_attr(&self, db: &CompilationDB, ast: &AstCache, name: &str) -> Option<ast::Attr> {
@@ -358,10 +338,12 @@ impl Variable {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Parameter {
     id: ParamId,
 }
+impl_debug!(match Parameter { Parameter { id } => "{id:?}"; });
+
 impl Parameter {
     pub fn name(self, db: &CompilationDB) -> String {
         db.param_data(self.id).name.to_string()
@@ -375,7 +357,7 @@ impl Parameter {
     pub fn constraints(self, db: &CompilationDB) -> Arc<[ParamConstraint]> {
         db.param_exprs(self.id).constraints
     }
-    pub fn init(self, db: &CompilationDB) -> Body {
+    pub fn body(self, db: &CompilationDB) -> Body {
         Body::new(self.id.into(), db)
     }
     pub fn get_attr(&self, db: &CompilationDB, ast: &AstCache, name: &str) -> Option<ast::Attr> {
@@ -387,9 +369,8 @@ impl Parameter {
 pub struct AliasParam {
     id: AliasParamId,
 }
-impl_debug! {
-    match AliasParam { AliasParam { id } => "{id:?}"; }
-}
+impl_debug!(match AliasParam { AliasParam { id } => "{id:?}"; });
+
 impl AliasParam {
     pub fn name(self, db: &CompilationDB) -> String {
         db.aliasparam_data(self.id).name.to_string()
@@ -413,9 +394,8 @@ pub enum ResolvedAliasParam {
 pub struct Function {
     id: FunctionId,
 }
-impl_debug! {
-    match Function { Function { id } => "{id:?}"; }
-}
+impl_debug!(match Function { Function { id } => "{id:?}"; });
+
 impl Function {
     pub fn name(self, db: &CompilationDB) -> String {
         db.function_data(self.id).name.to_string()
@@ -425,12 +405,12 @@ impl Function {
     }
     pub fn args(self, db: &CompilationDB) -> impl Iterator<Item = FunctionArg> + Clone {
         let num = db.function_data(self.id).args.len();
-        (0..num).map(move |i| FunctionArg { fun_id: self.id, arg_id: i.into() })
+        (0..num).map(move |i| FunctionArg { fun: self.id, arg: i.into() })
     }
     pub fn arg(self, idx: usize, db: &CompilationDB) -> FunctionArg {
         // AB: debug assertion should be > because length>index
         debug_assert!(db.function_data(self.id).args.len() > idx);
-        FunctionArg { fun_id: self.id, arg_id: idx.into() }
+        FunctionArg { fun: self.id, arg: idx.into() }
     }
     pub fn body(&self, db: &CompilationDB) -> Body {
         Body::new(self.id.into(), db)
@@ -439,24 +419,25 @@ impl Function {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionArg {
-    fun_id: FunctionId,
-    arg_id: LocalFunctionArgId,
+    fun: FunctionId,
+    arg: LocalFunctionArgId,
 }
+
 impl FunctionArg {
     pub fn function(self) -> Function {
-        Function { id: self.fun_id }
+        Function { id: self.fun }
     }
     pub fn name(self, db: &CompilationDB) -> String {
-        db.function_data(self.fun_id).args[self.arg_id].name.to_string()
+        db.function_data(self.fun).args[self.arg].name.to_string()
     }
     pub fn ty(self, db: &CompilationDB) -> Type {
-        db.function_data(self.fun_id).args[self.arg_id].ty.clone()
+        db.function_data(self.fun).args[self.arg].ty.clone()
     }
     pub fn is_input(self, db: &CompilationDB) -> bool {
-        db.function_data(self.fun_id).args[self.arg_id].is_input
+        db.function_data(self.fun).args[self.arg].is_input
     }
     pub fn is_output(self, db: &CompilationDB) -> bool {
-        db.function_data(self.fun_id).args[self.arg_id].is_output
+        db.function_data(self.fun).args[self.arg].is_output
     }
 }
 
@@ -466,6 +447,7 @@ pub enum Scope {
     Block(Block),
     Function(Function),
 }
+
 impl Scope {
     fn def_map_and_scope(self, db: &CompilationDB) -> (LocalScopeId, Arc<DefMap>) {
         match self {

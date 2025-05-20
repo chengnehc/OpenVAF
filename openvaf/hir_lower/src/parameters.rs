@@ -91,7 +91,8 @@ impl HirInterner {
             let new_val = ctxt.func.make_param(0u32.into());
             ctxt.dfg_mut().replace_uses(param_val, new_val);
 
-            let init = param.init(db);
+            let body = param.body(db);
+            let body = body.borrow();
             let ty = param.ty(db);
             let constraints = param.constraints(db);
 
@@ -102,13 +103,13 @@ impl HirInterner {
                 if param_given {
                     if build_stores {
                         let exit = ctxt.create_block();
-                        let mut ctx = BodyLowerContext { ctxt, body: init.borrow(), path: "" };
+                        let mut ctx = BodyLowerContext { ctxt, body, path: "" };
                         ctx.check_constraints(param_val, &constraints, &[], ops, invalid, exit);
                         ctxt.switch_to_block(exit);
                     }
                     param_val
                 } else {
-                    let default_val = ctxt.lower_first_stmt_expr(init.borrow());
+                    let default_val = ctxt.lower_first_stmt_expr(body);
                     if build_stores {
                         // JW: Default value range check should be promoted to compile-time,
                         // as default value is written in Verilog-A source code, instead of being
@@ -154,7 +155,7 @@ impl HirInterner {
                 let max_exclusive =
                     ctxt.dec_callback(CallBackKind::ParamInfo(ParamInfoKind::MaxExclusive, param));
 
-                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: init.borrow(), path: "" };
+                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body, path: "" };
                 let mut lowered_bounds = None;
                 let precomputes: Vec<_> = constraints
                     .iter()
@@ -272,7 +273,7 @@ impl HirInterner {
 
                 // first from bounds (here we also get min/max from)
                 let exit = ctxt.create_block();
-                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body: init.borrow(), path: "" };
+                let mut ctx = BodyLowerContext { ctxt: &mut ctxt, body, path: "" };
                 ctx.check_constraints(param_val, &constraints, &precomputes, ops, invalid, exit);
                 ctxt.switch_to_block(exit);
             }

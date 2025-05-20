@@ -365,12 +365,8 @@ fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, Str
     // Disciplines without potential/flow nature bindings are valid, but then we can't
     // have branches for them, so it is OK to unwrap here.
     let units = discipline
-        .map(|discipline| {
-            let nature = if is_flow {
-                discipline.flow(db).unwrap()
-            } else {
-                discipline.potential(db).unwrap()
-            };
+        .map(|disc| {
+            let nature = if is_flow { disc.flow(db).unwrap() } else { disc.potential(db).unwrap() };
             nature.units(db)
         })
         .unwrap_or_default();
