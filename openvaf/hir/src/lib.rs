@@ -16,7 +16,7 @@ use hir_def::db::HirDefDB;
 use hir_def::nameres::{DefMap, ItemWithBodyId, LocalScopeId, ScopeItem};
 use hir_def::{
     AliasParamId, BlockId, BranchId, DisciplineId, FunctionId, LocalFunctionArgId, Lookup,
-    ModuleId, ModuleLoc, NatureAttrId, NatureId, NodeId, ParamId, VarId,
+    ModuleId, NatureAttrId, NatureId, NodeId, ParamId, VarId,
 };
 use hir_ty::db::HirTyDB as HirDB;
 use hir_ty::inference;
@@ -197,11 +197,8 @@ impl Module {
         db: &CompilationDB,
         path: &Path,
     ) -> Result<Variable, PathResolveError> {
-        let scope = self.lookup(db).scope;
+        let scope = self.id.lookup(db).scope;
         scope.resolve_item_path(db, path).map(|id| Variable { id })
-    }
-    fn lookup(self, db: &CompilationDB) -> ModuleLoc {
-        self.id.lookup(db)
     }
 }
 
@@ -452,7 +449,7 @@ impl Scope {
     fn def_map_and_scope(self, db: &CompilationDB) -> (LocalScopeId, Arc<DefMap>) {
         match self {
             Scope::Module(module) => {
-                let loc = module.lookup(db);
+                let loc = module.id.lookup(db);
                 (loc.scope.id, loc.def_map(db))
             }
             Scope::Block(block) => {
