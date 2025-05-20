@@ -10,7 +10,6 @@ use parking_lot::RwLock;
 use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 use vfs::{AbsPathBuf, FileId, Vfs, VfsEntry};
 
-// TODO(JW) make `TestDatabase` more general
 #[salsa::database(SourceDatabase)]
 pub struct TestDataBase {
     storage: salsa::Storage<TestDataBase>,

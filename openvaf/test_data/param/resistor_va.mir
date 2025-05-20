@@ -1,7 +1,7 @@
 function %(v19, v20, v27, v28, v38, v39) {
-    inst0 = fn %set_Invalid(Parameter { id: ParamId(0) })(0) -> 0
-    inst1 = fn %set_Invalid(Parameter { id: ParamId(1) })(0) -> 0
-    inst2 = fn %set_Invalid(Parameter { id: ParamId(2) })(0) -> 0
+    inst0 = fn %set_Invalid(ParamId(0))(0) -> 0
+    inst1 = fn %set_Invalid(ParamId(1))(0) -> 0
+    inst2 = fn %set_Invalid(ParamId(2))(0) -> 0
     // v1 = bconst false
     v3 = fconst 0.0
     v4 = iconst 0
