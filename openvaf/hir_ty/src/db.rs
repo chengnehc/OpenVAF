@@ -29,14 +29,14 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     #[salsa::cycle(nature_attr_ty_recover)]
     fn nature_attr_ty(&self, nature_attr: NatureAttrId) -> Option<Type>;
 
-    #[salsa::cycle(resolve_alias_recover)]
-    fn resolve_alias(&self, alias: AliasParamId) -> Option<Alias>;
+    #[salsa::transparent]
+    fn param_ty(&self, param: ParamId) -> Type;
 
     #[salsa::transparent]
     fn node_discipline(&self, node: NodeId) -> Option<DisciplineId>;
 
-    #[salsa::transparent]
-    fn param_ty(&self, param: ParamId) -> Type;
+    #[salsa::cycle(resolve_alias_recover)]
+    fn resolve_alias(&self, alias: AliasParamId) -> Option<Alias>;
 
     #[salsa::input]
     fn known_limit_functions(&self) -> Option<Arc<[LimitSignature]>>;
@@ -65,6 +65,27 @@ fn nature_attr_ty_recover(
     None
 }
 
+fn param_ty(db: &dyn HirTyDB, param: ParamId) -> Type {
+    match db.param_data(param).ty.clone() {
+        Some(ty) => ty,
+        None => {
+            let default_expr = db.param_exprs(param).default;
+            db.inference_result(param.into()).expr_types[default_expr]
+                .to_value()
+                .unwrap_or(Type::Err)
+        }
+    }
+}
+
+fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
+    let node = db.node_data(id);
+    let discipline = node.discipline.as_ref()?;
+    let db = db.upcast();
+    let def_map = id.lookup(db).module.lookup(db).def_map(db);
+
+    def_map.resolve_item_name(def_map.root_scope(), discipline).ok()
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Alias {
     Cycle,
@@ -91,25 +112,4 @@ fn resolve_alias_recover(
     _id: &AliasParamId,
 ) -> Option<Alias> {
     Some(Alias::Cycle)
-}
-
-fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
-    let node = db.node_data(id);
-    let discipline = node.discipline.as_ref()?;
-    let db = db.upcast();
-    let def_map = id.lookup(db).module.lookup(db).def_map(db);
-
-    def_map.resolve_item_name(def_map.root_scope(), discipline).ok()
-}
-
-fn param_ty(db: &dyn HirTyDB, param: ParamId) -> Type {
-    match db.param_data(param).ty.clone() {
-        Some(ty) => ty,
-        None => {
-            let default_expr = db.param_exprs(param).default;
-            db.inference_result(param.into()).expr_types[default_expr]
-                .to_value()
-                .unwrap_or(Type::Err)
-        }
-    }
 }

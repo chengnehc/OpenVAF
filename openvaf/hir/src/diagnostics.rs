@@ -23,7 +23,7 @@ pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl Dia
     collect_def_diagnostics(db, root_file, &def_map, sink);
     collect_type_diagnostics(db, root_file, sink);
 
-    use hir_def::nameres::ItemWithBodyId::ModuleId;
+    use ItemWithBodyId::ModuleId;
     for &child in def_map[root_scope].children().unwrap().values() {
         if let ScopeOrigin::Module(id) = def_map[child].origin() {
             collect_body_diagnostics(db, root_file, ModuleId { initial: true, id }, sink);
