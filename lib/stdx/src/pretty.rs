@@ -25,6 +25,10 @@ impl<C> List<C> {
         }
     }
 
+    pub fn path(contents: C) -> Self {
+        Self::new(contents).with_separator(".").with_final_separator(".")
+    }
+
     pub fn surround(mut self, prefix: &'static str) -> Self {
         self.prefix = prefix;
         self.postfix = prefix;
@@ -50,10 +54,6 @@ impl<C> List<C> {
         self.final_separator = final_separator;
         self
     }
-
-    pub fn path(contents: C) -> Self {
-        Self::new(contents).with_separator(".").with_final_separator(".")
-    }
 }
 
 impl<C: Debug> Debug for List<C> {
@@ -65,13 +65,14 @@ impl<C: Debug> Debug for List<C> {
 impl<T: Display, C: Deref<Target = [T]>> Display for List<C> {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let Self { separator, final_separator, prefix, postfix, .. } = self;
         match self.data.deref() {
             [] => f.write_str(" "),
-            [x] => write!(f, "{}{}{}", self.prefix, x, self.postfix),
+            [elem] => write!(f, "{prefix}{elem}{postfix}"),
             [ref body @ .., second_last, last] => {
                 let mut i = 0;
                 let mut break_after = self.first_break_after;
-                for x in body {
+                for elem in body {
                     if i == break_after {
                         i = 1;
                         break_after = self.break_after;
@@ -79,19 +80,9 @@ impl<T: Display, C: Deref<Target = [T]>> Display for List<C> {
                     } else {
                         i += 1;
                     }
-                    write!(f, "{}{}{}{}", self.prefix, x, self.postfix, self.separator)?;
+                    write!(f, "{prefix}{elem}{postfix}{separator}")?;
                 }
-                write!(
-                    f,
-                    "{}{}{}{}{}{}{}",
-                    self.prefix,
-                    second_last,
-                    self.postfix,
-                    self.final_separator,
-                    self.prefix,
-                    last,
-                    self.postfix
-                )
+                write!(f, "{prefix}{second_last}{postfix}{final_separator}{prefix}{last}{postfix}",)
             }
         }
     }

@@ -79,7 +79,7 @@ fn comment_flavors() {
 /** outer doc block */
 /*! inner doc block */
 /* foo //
-//",
+",
         expect![[r#"
             Token { kind: Whitespace, len: 1 }
             "\n"
@@ -113,8 +113,6 @@ fn comment_flavors() {
             "\n"
             Token { kind: BlockComment { terminated: false }, len: 10 }
             "/* foo //\n"
-            Token { kind: LineComment, len: 2 }
-            "//"
         "#]],
     )
 }

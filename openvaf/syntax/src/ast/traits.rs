@@ -1,5 +1,3 @@
-//! Super traits `ArgListOwner` and `AttrsOwner` over `AstNode`
-
 use crate::ast::{self, support, AstNode};
 use crate::SyntaxNode;
 

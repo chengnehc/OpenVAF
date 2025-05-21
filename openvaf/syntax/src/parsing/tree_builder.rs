@@ -13,24 +13,24 @@ use crate::{SyntaxError, SyntaxKind, TextRange, TextSize, T};
 type Text = Arc<str>;
 
 pub(crate) struct SyntaxTreeBuilder<'a> {
-    db: &'a dyn SourceProvider,
     inner: GreenNodeBuilder<'static>,
     state: State,
 
+    db: &'a dyn SourceProvider,
     tokens: &'a [Token],
+    sm: &'a SourceMap,
+
+    current_span: CtxSpan,
+    current_text: Text,
     text_pos: TextSize,
     token_pos: usize,
-    current_span: CtxSpan,
+    /// (context range, context id, offset)
+    ranges: Vec<(TextRange, SourceContextId, TextSize)>,
 
     errors: Vec<SyntaxError>,
     last_error: Option<SyntaxError>,
     err_depth: u32,
     panic: bool,
-
-    sm: &'a SourceMap,
-    current_text: Text,
-    /// (context range, context id, offset)
-    ranges: Vec<(TextRange, SourceContextId, TextSize)>,
 }
 
 enum State {

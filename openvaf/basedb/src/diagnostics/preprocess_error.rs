@@ -4,9 +4,7 @@ use std::iter::zip;
 use ahash::AHashSet;
 use syntax::PreprocessError;
 
-use super::{to_unified_spans, Diagnostic, Label, LabelStyle, Report};
-use crate::lints::{self, Lint, LintSrc};
-use crate::{BaseDB, FileId};
+use super::*;
 
 impl Diagnostic for PreprocessError {
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
@@ -21,32 +19,32 @@ impl Diagnostic for PreprocessError {
         let sm = db.sourcemap(root_file);
         let report = match *self {
             PreprocessError::MacroArgCountMismatch { expected, found, span } => {
-                let span = span.to_file_span(&sm);
+                let FileSpan { file, range } = span.to_file_span(&sm);
 
                 Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
-                    file_id: span.file,
-                    range: span.range.into(),
+                    file_id: file,
+                    range: range.into(),
                     message: format!("expected {} arguments, but found {}", expected, found),
                 }])
             }
             PreprocessError::MacroNotFound { span, .. } => {
-                let span = span.to_file_span(&sm);
+                let FileSpan { range, file } = span.to_file_span(&sm);
 
                 Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
-                    file_id: span.file,
-                    range: span.range.into(),
+                    file_id: file,
+                    range: range.into(),
                     message: "macro not found here".to_owned(),
                 }])
             }
             PreprocessError::MacroNotDefined { span, .. } => {
-                let span = span.to_file_span(&sm);
+                let FileSpan { range, file } = span.to_file_span(&sm);
 
                 Report::warning().with_labels(vec![Label {
                     style: LabelStyle::Primary,
-                    file_id: span.file,
-                    range: span.range.into(),
+                    file_id: file,
+                    range: range.into(),
                     message: "macro not defined here".to_owned(),
                 }])
             }
@@ -54,22 +52,22 @@ impl Diagnostic for PreprocessError {
                 todo!("macro recursion diagnosis is not supported")
             }
             PreprocessError::UnsupportedCompDir { span, .. } => {
-                let span = span.to_file_span(&sm);
+                let FileSpan { range, file } = span.to_file_span(&sm);
 
                 Report::warning().with_labels(vec![Label {
                     style: LabelStyle::Primary,
-                    file_id: span.file,
-                    range: span.range.into(),
+                    file_id: file,
+                    range: range.into(),
                     message: "directive ignored".to_owned(),
                 }])
             }
             PreprocessError::FileNotFound { span, .. } => {
                 let labels = if let Some(span) = span {
-                    let span = span.to_file_span(&sm);
+                    let FileSpan { range, file } = span.to_file_span(&sm);
                     vec![Label {
                         style: LabelStyle::Primary,
-                        file_id: span.file,
-                        range: span.range.into(),
+                        file_id: file,
+                        range: range.into(),
                         message: "failed to read file".to_owned(),
                     }]
                 } else {
@@ -90,11 +88,11 @@ impl Diagnostic for PreprocessError {
                     })
                     .collect();
                 if let Some(span) = span {
-                    let span = span.to_file_span(&sm);
+                    let FileSpan { range, file } = span.to_file_span(&sm);
                     labels.push(Label {
                         style: LabelStyle::Secondary,
-                        file_id: span.file,
-                        range: span.range.into(),
+                        file_id: file,
+                        range: range.into(),
                         message: "file was read here".to_owned(),
                     })
                 };
@@ -105,12 +103,12 @@ impl Diagnostic for PreprocessError {
                     .with_notes(vec!["help: use --encode-lossy to use the file as-is".to_owned()])
             }
             PreprocessError::UnexpectedEof { expected, span } => {
-                let span = span.to_file_span(&sm);
+                let FileSpan { range, file } = span.to_file_span(&sm);
 
                 Report::error().with_labels(vec![Label {
                     style: LabelStyle::Primary,
-                    file_id: span.file,
-                    range: span.range.into(),
+                    file_id: file,
+                    range: range.into(),
                     message: format!("expected {}", expected),
                 }])
             }
@@ -134,9 +132,9 @@ impl Diagnostic for PreprocessError {
                 ])
             }
             PreprocessError::UnexpectedToken(span) => {
-                let span = span.to_file_span(&sm);
-                let text = db.file_text(span.file).unwrap();
-                let src = &text[span.range];
+                let FileSpan { range, file } = span.to_file_span(&sm);
+                let text = db.file_text(file).unwrap();
+                let src = &text[range];
                 let mut dst = String::with_capacity(src.len());
                 let mut lookalike = AHashSet::default();
                 let mut has_unicode = false;
@@ -250,8 +248,8 @@ impl Diagnostic for PreprocessError {
                 Report::error()
                     .with_labels(vec![Label {
                         style: LabelStyle::Primary,
-                        file_id: span.file,
-                        range: span.range.into(),
+                        file_id: file,
+                        range: range.into(),
                         message: "unexpected token".to_owned(),
                     }])
                     .with_notes(notes)
@@ -265,13 +263,13 @@ impl Diagnostic for PreprocessError {
                         style: LabelStyle::Secondary,
                         file_id: old.file,
                         range: old.range.into(),
-                        message: format!("'`{}' was first defined here", name),
+                        message: format!("'`{name}' was first defined here"),
                     },
                     Label {
                         style: LabelStyle::Primary,
                         file_id: new.file,
                         range: new.range.into(),
-                        message: format!("'`{}' is redefined here", name),
+                        message: format!("'`{name}' is redefined here"),
                     },
                 ])
             }

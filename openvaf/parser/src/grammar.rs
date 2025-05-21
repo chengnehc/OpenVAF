@@ -32,7 +32,7 @@ use attrs::attrs;
 use exprs::expr;
 use paths::path;
 
-/// Parse a list of declarations.
+/// Parse a list of declarations separated by comma.
 fn decl_list(
     p: &mut Parser,
     mut parse_entry: impl FnMut(&mut Parser) -> bool,

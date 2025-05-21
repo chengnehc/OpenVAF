@@ -1,12 +1,7 @@
 use super::*;
 
 #[inline]
-pub(super) fn name(p: &mut Parser) {
-    name_r(p, TokenSet::EMPTY);
-}
-
-#[inline]
-pub(super) fn decl_name(p: &mut Parser) -> bool {
+pub(super) fn name(p: &mut Parser) -> bool {
     name_r(p, TokenSet::new(&[T![,], T![;]]));
     true
 }

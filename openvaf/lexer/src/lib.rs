@@ -15,13 +15,13 @@ use tokens::LiteralKind::*;
 use tokens::TokenKind::*;
 use tokens::{LiteralKind, Token, TokenKind};
 
-mod cursor;
 #[cfg(test)]
 mod tests;
 
-use crate::cursor::{Cursor, EOF_CHAR};
+mod cursor;
+use cursor::{Cursor, EOF_CHAR};
 
-/// Creates an iterator that produces tokens from the input string.
+/// Tokenize input string.
 pub fn tokenize(input: &str) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
     while !cursor.is_eof() {
@@ -271,7 +271,7 @@ impl Cursor<'_> {
         }
         if !is_define || is_ident_continue(self.first()) {
             // for cases like `foo or `definefoo
-            self.eat_while(is_ident_continue);
+            self.eat_identifier();
             CompilerDirective
         } else {
             // `define`

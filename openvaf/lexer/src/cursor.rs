@@ -14,10 +14,10 @@ pub(crate) struct Cursor<'a> {
     // the last eaten symbol
     #[cfg(debug_assertions)]
     prev: char,
-    // TODO(JW) consider refactoring this out of `Cursor`?
-    dst: Vec<Token>,
     // for '`define' macro expansion
     marker: Option<usize>,
+    // ouptut
+    dst: Vec<Token>,
 }
 
 pub(crate) const EOF_CHAR: char = '\0';
@@ -29,10 +29,15 @@ impl<'a> Cursor<'a> {
             chars: input.chars(),
             #[cfg(debug_assertions)]
             prev: EOF_CHAR,
-            // Tokens are on averge a length of about 4
+            // Tokens are on average length of about 4
             dst: Vec::with_capacity(input.len() / 4),
             marker: None,
         }
+    }
+
+    pub(crate) fn finish(mut self) -> Vec<Token> {
+        self.finish_marker();
+        self.dst
     }
 
     /// Returns the last eaten symbol in debug builds, or `'\0'` in release builds.
@@ -53,7 +58,7 @@ impl<'a> Cursor<'a> {
     ///
     /// However, getting `EOF_CHAR` doesn't always mean actual end of file,
     /// it should be checked with `is_eof` method.
-    pub fn first(&self) -> char {
+    pub(crate) fn first(&self) -> char {
         // `.next()` optimizes better than `.nth(0)`
         self.chars.clone().next().unwrap_or(EOF_CHAR)
     }
@@ -69,16 +74,6 @@ impl<'a> Cursor<'a> {
     /// Checks if there is nothing more to consume.
     pub(crate) fn is_eof(&self) -> bool {
         self.chars.as_str().is_empty()
-    }
-
-    /// Returns amount of already consumed symbols.
-    pub(crate) fn pos_within_token(&self) -> TextSize {
-        self.len_remaining - TextSize::of(self.chars.as_str())
-    }
-
-    /// Resets the number of bytes consumed to 0.
-    pub(crate) fn reset_pos_within_token(&mut self) {
-        self.len_remaining = TextSize::of(self.chars.as_str());
     }
 
     /// Moves to the next character.
@@ -99,6 +94,17 @@ impl<'a> Cursor<'a> {
         self.dst.push(Token { kind, len })
     }
 
+    /// Returns amount of already consumed symbols.
+    fn pos_within_token(&self) -> TextSize {
+        self.len_remaining - TextSize::of(self.chars.as_str())
+    }
+
+    /// Resets the number of bytes consumed to 0.
+    fn reset_pos_within_token(&mut self) {
+        self.len_remaining = TextSize::of(self.chars.as_str());
+    }
+
+    /// Set the marker for `define statements
     pub(crate) fn set_marker(&mut self) -> TokenKind {
         // Nested define statements are not allowed.
         if self.marker.is_none() {
@@ -108,6 +114,7 @@ impl<'a> Cursor<'a> {
         TokenKind::IllegalDefine
     }
 
+    /// Finish the marker for `define statements
     pub(crate) fn finish_marker(&mut self) -> bool {
         if let Some(marker) = self.marker.take() {
             self.dst[marker].kind = TokenKind::Define { end: self.dst.len() };
@@ -115,10 +122,5 @@ impl<'a> Cursor<'a> {
         } else {
             false
         }
-    }
-
-    pub(crate) fn finish(mut self) -> Vec<Token> {
-        self.finish_marker();
-        self.dst
     }
 }

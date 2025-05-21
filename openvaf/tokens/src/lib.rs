@@ -1,9 +1,20 @@
-mod lexer;
-mod syntax_kind;
+use text_size::TextSize;
 
-pub use lexer::TokenKind::*;
-pub use lexer::{LiteralKind, Token, TokenKind};
+mod syntax_kind;
+mod token_kind;
+
 pub use syntax_kind::SyntaxKind;
+pub use token_kind::{LiteralKind, TokenKind, TokenKind::*};
+
+/// Lexed token.
+///
+/// It doesn't contain information about data that has been lexed,
+/// only the kind and size of the token.
+#[derive(Debug, Clone, Copy)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub len: TextSize,
+}
 
 pub enum LexerError {
     UnterminatedBlockComment,
@@ -11,7 +22,7 @@ pub enum LexerError {
     UnexpectedToken,
 }
 
-impl lexer::TokenKind {
+impl TokenKind {
     /// Convert this `TokenKind` with identifier `src` to corresponding `SyntaxKind`
     /// if possible, and emit lexer errors.
     pub fn to_syntax(self, src: &str) -> (Option<SyntaxKind>, Option<LexerError>) {

@@ -32,7 +32,7 @@ const PARAM_RECOVERY: TokenSet = MODULE_ITEM_OR_ATTR_RECOVERY.union(TokenSet::ne
 
 fn parameter(p: &mut Parser) -> bool {
     let m = p.start();
-    name_r(p, TokenSet::new(&[T![,], T![;]]));
+    name(p);
     p.expect(T![=]);
     expr(p);
     while !p.at_ts(PARAM_RECOVERY) {

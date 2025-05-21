@@ -78,7 +78,7 @@ fn block_stmt(p: &mut Parser, m: Marker) {
     if p.at(T![:]) {
         let m = p.start();
         p.bump(T![:]);
-        name(p);
+        name_r(p, TokenSet::EMPTY);
         m.complete(p, BLOCK_SCOPE);
     }
     while !p.at_ts(BLOCK_RECOVERY) {

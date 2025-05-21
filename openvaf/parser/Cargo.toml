@@ -12,6 +12,7 @@ doctest = false
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-drop_bomb = "0.1.5"
 stdx = {version="0.0.0", path="../../lib/stdx"}
 tokens = {version="0.0.0", path="../tokens"}
+
+drop_bomb = "0.1.5"

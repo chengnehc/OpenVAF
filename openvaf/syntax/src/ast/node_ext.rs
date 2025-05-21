@@ -6,8 +6,7 @@ use std::iter::successors;
 use rowan::{GreenNodeData, GreenTokenData, NodeOrToken};
 
 use crate::ast::{self, support, ArgListOwner, AstChildren, AstNode};
-use crate::SyntaxKind::{IDENT, ROOT_KW};
-use crate::{SyntaxNode, SyntaxToken, TokenText};
+use crate::{SyntaxNode, SyntaxToken, TokenText, T};
 
 impl ast::Name {
     pub fn text(&self) -> TokenText<'_> {
@@ -42,10 +41,6 @@ impl ast::Path {
         successors(self.qualifier(), |p| p.qualifier())
     }
 
-    // pub fn first_segment(&self) -> Option<PathSegment> {
-    //    self.first_qualifier().segment()
-    // }
-
     pub fn parent(&self) -> Option<ast::Path> {
         self.syntax().parent().and_then(ast::Path::cast)
     }
@@ -56,6 +51,10 @@ impl ast::Path {
         successors(Some(self.clone()), ast::Path::parent).last().unwrap()
     }
 
+    // pub fn first_segment(&self) -> Option<PathSegment> {
+    //    self.first_qualifier().segment()
+    // }
+
     // pub fn last_segment(&self) -> Option<ast::PathSegment> {
     //     self.top_path().segment()
     // }
@@ -64,8 +63,8 @@ impl ast::Path {
     pub fn segment(&self) -> Option<PathSegment> {
         self.syntax().children_with_tokens().find_map(|e| {
             let kind = match e.kind() {
-                IDENT => PathSegmentKind::Name,
-                ROOT_KW => PathSegmentKind::Root,
+                T![ident] => PathSegmentKind::Name,
+                T![root] => PathSegmentKind::Root,
                 _ => return None,
             };
             Some(PathSegment { kind, token: e.into_token().unwrap() })
@@ -75,14 +74,14 @@ impl ast::Path {
     pub fn segment_token(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
-            .find(|e| matches!(e.kind(), IDENT | ROOT_KW))
+            .find(|e| matches!(e.kind(), T![ident] | T![root]))
             .and_then(|e| e.into_token())
     }
 
     pub fn segment_kind(&self) -> Option<PathSegmentKind> {
         self.syntax().children_with_tokens().find_map(|e| match e.kind() {
-            IDENT => Some(PathSegmentKind::Name),
-            ROOT_KW => Some(PathSegmentKind::Root),
+            T![ident] => Some(PathSegmentKind::Name),
+            T![root] => Some(PathSegmentKind::Root),
             _ => None,
         })
     }
@@ -127,26 +126,6 @@ impl ast::ModuleDecl {
     }
 
     pub fn body_ports(&self) -> AstChildren<ast::BodyPortDecl> {
-        support::children(self.syntax())
-    }
-}
-
-impl ast::ModulePorts {
-    pub fn decls(&self) -> AstChildren<ast::PortDecl> {
-        support::children(self.syntax())
-    }
-
-    pub fn names(&self) -> AstChildren<ast::Name> {
-        support::children(self.syntax())
-    }
-}
-
-impl ast::Function {
-    pub fn body(&self) -> AstChildren<ast::Stmt> {
-        support::children(self.syntax())
-    }
-
-    pub fn args(&self) -> AstChildren<ast::FunctionArg> {
         support::children(self.syntax())
     }
 }
@@ -227,5 +206,15 @@ impl ast::Range {
 
     pub fn upper_bound(&self) -> Option<ast::Expr> {
         support::children(self.syntax()).nth(1)
+    }
+}
+
+impl ast::Function {
+    pub fn body(&self) -> AstChildren<ast::Stmt> {
+        support::children(self.syntax())
+    }
+
+    pub fn args(&self) -> AstChildren<ast::FunctionArg> {
+        support::children(self.syntax())
     }
 }

@@ -1,0 +1,18 @@
+// port not declared in module head
+module test1(a);
+    inout a, b;
+endmodule
+
+// illgeal body ports
+module test2(inout a);
+    inout a;
+endmodule
+
+// mixed module head
+module test3(a, inout b);
+endmodule
+
+// duplicate module port
+module test4(a, a, b);
+    inout a, b;
+endmodule

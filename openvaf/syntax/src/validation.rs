@@ -249,7 +249,7 @@ fn validate_module(module: ast::ModuleDecl, errors: &mut Vec<SyntaxError>) {
                     for name in decl.names() {
                         if names.binary_search_by(|locs| locs[0].text().cmp(&name.text())).is_err()
                         {
-                            errors.push(SyntaxError::PortNotDeclaredInModule {
+                            errors.push(SyntaxError::PortNotDeclaredInModuleHead {
                                 head: ports.syntax().text_range(),
                                 pos: name.syntax().text_range(),
                                 name: name.text().to_owned(),

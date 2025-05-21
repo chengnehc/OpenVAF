@@ -1,8 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
+use stdx::{impl_debug_display, impl_idx_from};
 
 use indexmap::IndexMap;
-use stdx::{impl_debug_display, impl_idx_from};
 
 use crate::{BaseDB, ErasedAstId, FileId};
 
@@ -36,7 +36,7 @@ impl Display for LintLevel {
             LintLevel::Warn => "warn",
             LintLevel::Allow => "allow",
         };
-        write!(f, "{}", name)
+        write!(f, "{name}")
     }
 }
 

@@ -2,9 +2,9 @@ pub use codespan_reporting::diagnostic::{LabelStyle, Severity};
 pub type Report = codespan_reporting::diagnostic::Diagnostic<FileId>;
 pub type Label = codespan_reporting::diagnostic::Label<FileId>;
 use syntax::sourcemap::{CtxSpan, FileSpan, SourceMap};
-use syntax::{Parse, SourceFile, TextRange};
+use syntax::{Parse, SourceFile, TextRange, TextSize};
 
-use crate::lints::{Lint, LintData, LintLevel, LintSrc};
+use crate::lints::{self, Lint, LintData, LintLevel, LintSrc};
 use crate::{BaseDB, FileId};
 
 mod preprocess_error;
@@ -21,31 +21,25 @@ pub trait Diagnostic {
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report;
 
     fn to_report(&self, root_file: FileId, db: &dyn BaseDB) -> Option<Report> {
-        if let Some((lint, lint_src)) = self.lint(root_file, db) {
-            let (lvl, is_default) = lint_src.lvl(lint, root_file, db);
-            let LintData { name, documentation_id, .. } = db.lint_data(lint);
+        let mut report = self.build_report(root_file, db);
 
-            let severity = match lvl {
+        if let Some((lint, lint_src)) = self.lint(root_file, db) {
+            let LintData { name, documentation_id, .. } = db.lint_data(lint);
+            let (lvl, is_default) = lint_src.lvl(lint, root_file, db);
+
+            report.code = Some(format!("L{:03}", documentation_id));
+            report.severity = match lvl {
                 LintLevel::Deny => Severity::Error,
                 LintLevel::Warn => Severity::Warning,
                 LintLevel::Allow => return None,
             };
-
-            let mut report = self.build_report(root_file, db);
-
             if is_default {
-                let hint = format!(
-                    "{} is set to {} by default\nuse a CLI argument or an attribute to overwrite",
-                    name, lvl
-                );
+                let hint = format!("{name} is set to {lvl} by default\nuse a CLI argument or an attribute to overwrite");
                 report.notes.push(hint)
             }
-
-            report.severity = severity;
-            Some(report.with_code(format!("L{:03}", documentation_id)))
-        } else {
-            Some(self.build_report(root_file, db))
         }
+
+        Some(report)
     }
 }
 

@@ -111,7 +111,7 @@ fn port_decl<const MODULE_HEAD: bool>(p: &mut Parser, m: Marker) {
     if MODULE_HEAD {
         decl_list(p, module_port, T![')'], MODULE_PORT_RECOVERY);
     } else {
-        decl_list(p, decl_name, T![;], NET_RECOVERY);
+        decl_list(p, name, T![;], NET_RECOVERY);
     }
     let finished = m.complete(p, PORT_DECL);
     if !MODULE_HEAD {
@@ -138,7 +138,7 @@ fn net_decl<const NET_TYPE_FIRST: bool>(p: &mut Parser, m: Marker) {
     } else {
         name_ref_r(p, MODULE_ITEM_OR_ATTR_RECOVERY.union(TokenSet::unique(T![;])))
     }
-    decl_list(p, decl_name, T![;], NET_RECOVERY);
+    decl_list(p, name, T![;], NET_RECOVERY);
     p.eat(T![;]);
     m.complete(p, NET_DECL);
 }
@@ -149,7 +149,7 @@ fn branch_decl(p: &mut Parser, m: Marker) {
         p.error(p.err_with_expected_syntax(T!['(']));
     }
     arg_list(p);
-    decl_list(p, decl_name, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
+    decl_list(p, name, T![;], MODULE_ITEM_OR_ATTR_RECOVERY);
     p.eat(T![;]);
     m.complete(p, BRANCH_DECL);
 }
@@ -192,7 +192,7 @@ fn func_arg(p: &mut Parser, m: Marker) {
     p.bump_ts(DIRECTION_TS);
     direction.complete(p, DIRECTION);
 
-    decl_list(p, decl_name, T![;], FUNC_ARG_RECOVERY);
+    decl_list(p, name, T![;], FUNC_ARG_RECOVERY);
     p.eat(T![;]);
     m.complete(p, FUNCTION_ARG);
 }

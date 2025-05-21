@@ -1,0 +1,38 @@
+error: port 'b' was not declared in the module head
+  --> /port_decl.va:3:14
+  |
+2 | module test1(a);
+  |              -- help: add b here
+3 |     inout a, b;
+  |              ^ port not declared in module head
+
+error: ports declared in module head and body
+  --> /port_decl.va:8:5
+  |
+7 | module test2(inout a);
+  |              -------- info: ports already declared in header...
+8 |     inout a;
+  |     ^^^^^^^^ illegal port declaration
+  |
+  = help: either place all port declaration in the header
+  = or place all port declarations in the body
+
+error: module header contains mix of port references and port declarations
+   --> /port_decl.va:12:17
+   |
+12 | module test3(a, inout b);
+   |              -  ^^^^^^^ port declaration not allowed
+   |              |   
+   |              found reference here
+   |
+   = either declare all ports directly in the header: module example(inout foo, inout bar);
+   = or only reference ports in the header: module example(foo, bar);
+
+error: port 'a' was declared multiple times
+   --> /port_decl.va:16:17
+   |
+16 | module test4(a, a, b);
+   |              -  ^ ..redeclared here
+   |              |   
+   |              a first declared here
+

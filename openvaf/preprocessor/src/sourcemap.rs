@@ -85,7 +85,6 @@ impl FileSpan {
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct CtxSpan {
     pub range: TextRange,
-    /// Information about where the code came from
     pub ctx: SourceContextId,
 }
 
@@ -151,7 +150,7 @@ pub struct SourceMap {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct SourceContextId(u32);
 impl_idx_from!(SourceContextId(u32));
-impl_debug_display!(c@SourceContextId => "ctx{}", c.0);
+impl_debug_display!(match SourceContextId {SourceContextId(id) => "ctx{id}";});
 
 impl SourceContextId {
     pub const ROOT: Self = SourceContextId(0);

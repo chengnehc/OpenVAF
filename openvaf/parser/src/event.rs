@@ -74,9 +74,9 @@ impl Event {
     }
 }
 
-/// Generate the syntax tree with the control of events.
+/// Generate the output for building syntax tree with the control of events.
 pub(super) fn process(mut events: Vec<Event>) -> Output {
-    let mut res = Output::default();
+    let mut output = Output::default();
     let mut forward_parents = Vec::new();
 
     for i in 0..events.len() {
@@ -105,17 +105,14 @@ pub(super) fn process(mut events: Vec<Event>) -> Output {
 
                 for kind in forward_parents.drain(..).rev() {
                     if kind != TOMBSTONE {
-                        res.enter_node(kind);
+                        output.enter_node(kind);
                     }
                 }
             }
-            Event::Finish => res.leave_node(),
-            Event::Token(kind) => {
-                res.token(kind);
-            }
-            Event::Error { err: msg } => res.error(msg),
+            Event::Finish => output.leave_node(),
+            Event::Token(kind) => output.token(kind),
+            Event::Error { err: msg } => output.error(msg),
         }
     }
-
-    res
+    output
 }

@@ -1,7 +1,6 @@
 use stdx::{impl_display, pretty};
-use text_size::TextRange;
 
-use crate::{ast, AstPtr, SyntaxKind, SyntaxNodePtr, TextSize};
+use crate::{ast, AstPtr, SyntaxKind, SyntaxNodePtr, TextRange, TextSize};
 
 #[derive(Eq, PartialEq, Debug, Clone, Hash)]
 pub enum SyntaxError {
@@ -60,7 +59,7 @@ pub enum SyntaxError {
         head: TextRange,
         body_ports: Vec<TextRange>,
     },
-    PortNotDeclaredInModule {
+    PortNotDeclaredInModuleHead {
         head: TextRange,
         pos: TextRange,
         name: String,
@@ -140,7 +139,7 @@ impl_display! {
         MissingToken{expected, ..} => "unexpected token; expected {}", expected;
         IllegalDisciplineAttrPath{..} => "illegal discipline attribute path";
         IllegalBodyPorts{..} => "ports declared in module head and body";
-        PortNotDeclaredInModule{name, ..} => "port '{name}' was not declared in the module head";
+        PortNotDeclaredInModuleHead{name, ..} => "port '{name}' was not declared in the module head";
         MixedModuleHead{..} => "module header contains mix of port references and port declarations";
         DuplicatePort{name, ..} => "port '{name}' was declared multiple times";
         IllegalNetType{found, ..} => "{} nets are currently not supported", found;

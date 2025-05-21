@@ -31,8 +31,7 @@
 //! [`Entries`]: loader::Entry
 //!
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust-analyzer/tree/master/crates/vfs
+//! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/vfs
 
 use std::char::REPLACEMENT_CHARACTER;
 use std::ops::Range;
@@ -51,15 +50,29 @@ mod vfs_path;
 use crate::path_interner::PathInterner;
 pub use crate::vfs_path::VfsPath;
 
+/// Virtual File System
+#[derive(Default)]
+pub struct Vfs {
+    interner: PathInterner,
+    data: Vec<VfsEntry>,
+    changes: Vec<ChangedFile>,
+}
+
+impl fmt::Debug for Vfs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Vfs").field("n_files", &self.data.len()).finish()
+    }
+}
+
 /// Handle to a file in [`Vfs`]
 ///
 /// Most functions use this when they need to refer to a file.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FileId(pub u16);
 
+/// Entry of file data stored in [`Vfs`]
 #[derive(Debug, PartialEq, Eq)]
 pub struct VfsEntry {
-    // Use Box<str> to store string with fixed length.
     contents: Box<str>,
     err: Option<FileReadError>,
 }
@@ -116,12 +129,48 @@ impl From<Box<str>> for VfsEntry {
     }
 }
 
-/// Virtual File System
-#[derive(Default)]
-pub struct Vfs {
-    interner: PathInterner,
-    data: Vec<VfsEntry>,
-    changes: Vec<ChangedFile>,
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub enum FileReadError {
+    Io(io::ErrorKind),
+    InvalidTextFormat(InvalidTextFormatErr),
+}
+
+impl FileReadError {
+    pub fn is_io(&self) -> bool {
+        matches!(self, FileReadError::Io(_))
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct InvalidTextFormatErr {
+    pub pos: Arc<[Range<usize>]>,
+}
+
+impl InvalidTextFormatErr {
+    pub fn from_lossy(src: &str) -> InvalidTextFormatErr {
+        let mut start = None;
+        let mut pos = 0;
+        let mut spans = Vec::new();
+        for it in src.chars() {
+            #[allow(clippy::match_same_arms)]
+            match (start, it) {
+                (None, REPLACEMENT_CHARACTER) => start = Some(pos),
+                (Some(_), REPLACEMENT_CHARACTER) => (),
+                (Some(old), _) => {
+                    spans.push(old..pos);
+                    start = None
+                }
+                _ => (),
+            }
+            pos += it.len_utf8();
+        }
+
+        if let Some(start) = start {
+            spans.push(start..src.len());
+        }
+
+        InvalidTextFormatErr { pos: Arc::from(spans.into_boxed_slice()) }
+    }
 }
 
 /// Changed file in the [`Vfs`].
@@ -327,56 +376,6 @@ impl Vfs {
             })
             .collect();
         Ok((path?, ignored_files))
-    }
-}
-
-impl fmt::Debug for Vfs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Vfs").field("n_files", &self.data.len()).finish()
-    }
-}
-
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
-pub struct InvalidTextFormatErr {
-    pub pos: Arc<[Range<usize>]>,
-}
-
-impl InvalidTextFormatErr {
-    pub fn from_lossy(src: &str) -> InvalidTextFormatErr {
-        let mut start = None;
-        let mut pos = 0;
-        let mut spans = Vec::new();
-        for it in src.chars() {
-            #[allow(clippy::match_same_arms)]
-            match (start, it) {
-                (None, REPLACEMENT_CHARACTER) => start = Some(pos),
-                (Some(_), REPLACEMENT_CHARACTER) => (),
-                (Some(old), _) => {
-                    spans.push(old..pos);
-                    start = None
-                }
-                _ => (),
-            }
-            pos += it.len_utf8();
-        }
-
-        if let Some(start) = start {
-            spans.push(start..src.len());
-        }
-
-        InvalidTextFormatErr { pos: Arc::from(spans.into_boxed_slice()) }
-    }
-}
-
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
-pub enum FileReadError {
-    Io(io::ErrorKind),
-    InvalidTextFormat(InvalidTextFormatErr),
-}
-
-impl FileReadError {
-    pub fn is_io(&self) -> bool {
-        matches!(self, FileReadError::Io(_))
     }
 }
 

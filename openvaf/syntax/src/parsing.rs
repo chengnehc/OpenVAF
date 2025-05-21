@@ -16,7 +16,7 @@ mod reparse;
 mod tree_builder;
 use tree_builder::SyntaxTreeBuilder;
 
-/// This Call the `parse()` function in the `parser` crate and make use of
+/// Call the `parse()` function in the `parser` crate and make use of
 /// the tree builder to build AST.
 pub fn parse(
     db: &dyn SourceProvider,
@@ -34,10 +34,10 @@ pub fn parse(
     // parse and build AST
     for step in parser::parse(&tokens).iter() {
         match step {
-            parser::Step::Token { kind } => builder.token(kind),
             parser::Step::Enter { kind } => builder.start_node(kind),
-            parser::Step::Exit => builder.finish_node(),
+            parser::Step::Token { kind } => builder.token(kind),
             parser::Step::Error { err } => builder.error(err.clone()),
+            parser::Step::Exit => builder.finish_node(),
         }
     }
     let (green, errors, ctx_map) = builder.finish();
@@ -80,14 +80,15 @@ impl<T> Parse<T> {
         }
     }
 
+    /// Return the root node of the parsed syntax tree.
     #[inline]
-    pub fn root_node(&self) -> SyntaxNode {
+    pub fn root(&self) -> SyntaxNode {
         SyntaxNode::new_root(self.green.clone())
     }
 
     pub fn errors(&self) -> Vec<SyntaxError> {
         let mut errors = if let Some(e) = self.errors.as_deref() { e.to_vec() } else { vec![] };
-        validation::validate(&self.root_node(), &mut errors);
+        validation::validate(&self.root(), &mut errors);
         errors
     }
 
@@ -144,7 +145,7 @@ impl<T> Parse<T> {
     }
 }
 
-impl<T: AstNode> Parse<T> {
+impl<N: AstNode> Parse<N> {
     /// Erase the type of the parsed syntax tree.
     pub fn to_syntax(self) -> Parse<SyntaxNode> {
         Parse { green: self.green, errors: self.errors, ctx_map: self.ctx_map, _ty: PhantomData }
@@ -156,12 +157,12 @@ impl<T: AstNode> Parse<T> {
     ///
     /// Panics if the root node cannot be casted into the typed ast node
     /// (e.g. if it's an ERROR node).
-    pub fn tree(&self) -> T {
-        T::cast(self.root_node()).unwrap()
+    pub fn tree(&self) -> N {
+        N::cast(self.root()).unwrap()
     }
 
     /// Converts from `Parse<T>` to [`Result<T, Vec<SyntaxError>>`].
-    pub fn ok(self) -> Result<T, Vec<SyntaxError>> {
+    pub fn ok(self) -> Result<N, Vec<SyntaxError>> {
         match self.errors() {
             errors if !errors.is_empty() => Err(errors),
             _ => Ok(self.tree()),

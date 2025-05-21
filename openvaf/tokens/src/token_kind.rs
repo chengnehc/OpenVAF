@@ -1,17 +1,3 @@
-//! See Also: `rustc_lexer` crate
-
-use text_size::TextSize;
-
-/// Parsed token.
-///
-/// It doesn't contain information about data that has been parsed,
-/// only the type and size of the token.
-#[derive(Debug, Clone, Copy)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub len: TextSize,
-}
-
 /// Enum representing common lexeme types.
 ///
 /// # Note

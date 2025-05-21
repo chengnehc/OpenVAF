@@ -10,6 +10,9 @@ use module::{module_items, module_ports};
 pub(super) const ITEM_RECOVERY: TokenSet =
     TokenSet::new(&[T![discipline], T![nature], T![module], EOF]);
 
+pub(super) const MODULE_ITEM_OR_ATTR_RECOVERY: TokenSet =
+    MODULE_ITEM_RECOVERY.union(TokenSet::unique(T!["(*"]));
+
 /// The entry function of parser.
 pub(crate) fn source_file(p: &mut Parser) {
     let m = p.start();
@@ -99,9 +102,6 @@ fn discipline(p: &mut Parser, m: Marker) {
     p.expect(T![enddiscipline]);
     m.complete(p, DISCIPLINE_DECL);
 }
-
-pub(super) const MODULE_ITEM_OR_ATTR_RECOVERY: TokenSet =
-    MODULE_ITEM_RECOVERY.union(TokenSet::unique(T!["(*"]));
 
 fn module(p: &mut Parser, m: Marker) {
     p.bump(T![module]);

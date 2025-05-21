@@ -10,14 +10,14 @@ mod tests;
 mod grammar;
 mod parser;
 mod processor;
-mod scoped_arc_arena;
+mod scoped_arena;
 
 pub mod errors;
 pub mod sourcemap;
 
 use errors::PreprocessError;
 use processor::Processor;
-use scoped_arc_arena::ScopedArena;
+use scoped_arena::ScopedArena;
 use sourcemap::{CtxSpan, SourceMap};
 // use tracing::trace_span;
 

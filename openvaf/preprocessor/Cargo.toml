@@ -9,16 +9,14 @@ license="GPL-3.0"
 doctest = false
 
 [dependencies]
-ahash = "0.8"
-typed-index-collections = "3.1"
-text-size = "1.1"
-
-# tracing = {version="0.1",default-features=false,features=["std"]}
-
 stdx = {version="0.0.0", path="../../lib/stdx"}
 vfs = {version = "0.0.0", path = "../vfs" }
-lexer = {version="0.0.0", path="../lexer"}
 tokens = {version="0.0.0", path="../tokens"}
+lexer = {version="0.0.0", path="../lexer"}
+
+text-size = "1.1"
+ahash = "0.8"
+typed-index-collections = "3.1"
 
 [dev-dependencies]
 expect-test = "1.4.1"

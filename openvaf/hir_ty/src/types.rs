@@ -10,7 +10,7 @@ use hir_def::{
     ParamId, Type, VarId,
 };
 
-/// The type of expression.
+/// The type of expression used by inference.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
     Nature(NatureId),
