@@ -1,0 +1,30 @@
+error: 'foo' was not found in the current scope
+  --> /nature_reference.va:4:18
+  |
+4 |   ddt_nature   = foo;         // idt/ddt nature not defined
+  |                  ^^^ not found
+
+error: 'Voltage' was not found in the current scope
+  --> /nature_reference.va:8:16
+  |
+8 | nature test1 : Voltage        // parent nature not defined
+  |                ^^^^^^^ not found
+
+error: 'foo' was not found in the current scope
+   --> /nature_reference.va:11:16
+   |
+11 | nature test2 : foo.flow
+   |                ^^^^^^^^ not found
+
+error: 'foo' was not found in the current scope
+   --> /nature_reference.va:15:16
+   |
+15 |   potential    foo;           // illegal nature binding
+   |                ^^^ not found
+
+error: 'foo' was not found in the current scope
+   --> /nature_reference.va:15:16
+   |
+15 |   potential    foo;           // illegal nature binding
+   |                ^^^ not found
+

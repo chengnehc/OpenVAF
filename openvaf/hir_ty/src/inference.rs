@@ -271,7 +271,7 @@ impl Context<'_> {
                 ScopeItem::BranchId(branch) => Ty::Branch(branch),
                 ScopeItem::VarId(var) => Ty::Var(self.db.var_data(var).ty.clone(), var),
                 ScopeItem::ParamId(param) => Ty::Param(self.db.param_ty(param), param),
-                ScopeItem::AliasParamId(param) => match self.db.resolve_alias(param)? {
+                ScopeItem::AliasParamId(param) => match self.db.resolve_alias(param).ok()? {
                     Alias::Cycle => return None,
                     Alias::Param(param) => Ty::Param(self.db.param_ty(param), param),
                     Alias::ParamSysFun(param) => {
@@ -511,7 +511,7 @@ impl Context<'_> {
         let node = match *signature {
             NATURE_ACCESS_BRANCH => {
                 let branch = self.result.expr_types[arg].unwrap_branch();
-                let branch_info = self.db.branch_info(branch)?;
+                let branch_info = self.db.branch_info(branch).ok().flatten()?;
                 return branch_info.access(nature, self.db);
             }
             NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
@@ -521,8 +521,8 @@ impl Context<'_> {
             _ => unreachable!(),
         };
 
-        let discipline = self.db.node_discipline(node)?;
-        self.db.discipline_info(discipline).access(nature, self.db)
+        let discipline = self.db.node_discipline(node).ok().flatten()?;
+        self.db.discipline_info(discipline).ok()?.access(nature, self.db)
     }
 
     fn infere_builtin(

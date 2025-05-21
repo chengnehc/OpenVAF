@@ -13,8 +13,8 @@ use syntax::{
     Name, Parse, SourceFile, TextRange,
 };
 
-use crate::db::HirTyDB;
 use crate::inference::BranchWrite;
+use crate::{db::HirTyDB, lower::PathError};
 
 mod body;
 mod ty;
@@ -109,10 +109,7 @@ pub enum IllegalCtxtAccessKind {
 /* Type Diagnostics */
 
 use basedb::ErasedAstId;
-use hir_def::{
-    nameres::PathResolveError, BranchId, DisciplineId, LocalDisciplineAttrId, LocalNatureAttrId,
-};
-use syntax::SyntaxNodePtr;
+use hir_def::{BranchId, DisciplineId, LocalDisciplineAttrId, LocalNatureAttrId};
 
 pub struct TypeDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
@@ -122,7 +119,7 @@ pub struct TypeDiagnosticWrapped<'a> {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TypeDiagnostic {
     /* Name and Path */
-    PathResolveError { err: PathResolveError, src: SyntaxNodePtr },
+    PathResolveError(PathError),
 
     /* Nature and Discipline */
     DuplicateNatureAttr(DuplicateItem<LocalNatureAttrId, NatureId>),

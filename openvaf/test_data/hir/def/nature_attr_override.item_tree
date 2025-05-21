@@ -1,0 +1,23 @@
+nature ttl_curr
+    units = Some(("A", Idx::<NatureAttrData>(0)))
+    access = Some((Name("I"), Idx::<NatureAttrData>(1)))
+    ddt_nature = None
+    idt_nature = None
+    attr0: units
+    attr1: access
+    attr2: abstol
+nature ttl_volt
+    units = Some(("V", Idx::<NatureAttrData>(0)))
+    access = Some((Name("V"), Idx::<NatureAttrData>(1)))
+    ddt_nature = None
+    idt_nature = None
+    attr3: units
+    attr4: access
+    attr5: abstol
+discipline ttl
+    potential = Some(Name("ttl_volt"))
+    flow = Some(Name("ttl_curr"))
+    domain = None
+    attr0: potential (UserDefined)
+    attr1: flow (UserDefined)
+    attr2: abstol (FlowOverride)

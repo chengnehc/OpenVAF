@@ -4,11 +4,11 @@ error: 'foo' was not found in the current scope
 15 |     aliasparam not_found = foo;
    |                            ^^^ not found
 
-error: expected parameter but found variable 'v'
+error: expected parameter or system parameter but found variable 'v'
    --> /aliasparams.va:16:28
    |
 16 |     aliasparam not_param = v;
-   |                            ^ expected parameter
+   |                            ^ expected parameter or system parameter
 
 error: '$temperature' was not found in the current scope
    --> /aliasparams.va:17:35

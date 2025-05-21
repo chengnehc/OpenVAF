@@ -1,6 +1,5 @@
 // Taken from LRM 3.6.2.5: Overriding nature attributes from discipline
 
-// Ok
 nature ttl_curr;
     units = "A";
     access = I;

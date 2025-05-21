@@ -3,25 +3,25 @@ use stdx::Upcast;
 
 use hir_def::{
     db::HirDefDB,
-    nameres::{ItemWithBodyId, ScopeItem},
+    nameres::{ItemWithBodyId, PathResolveError, ScopeItem},
     AliasParamId, BranchId, DisciplineId, Lookup, NatureAttrId, NatureId, NodeId, ParamId,
     ParamSysFun, Type,
 };
 
 use crate::inference::Inference;
-use crate::lower::{BranchTy, DisciplineTy, NatureTy};
+use crate::lower::{BranchTy, DisciplineTy, NatureTy, PathError};
 
 #[salsa::query_group(HirTyDatabase)]
 pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     #[salsa::invoke(NatureTy::nature_info_query)]
     #[salsa::cycle(NatureTy::nature_info_recover)]
-    fn nature_info(&self, nature: NatureId) -> Arc<NatureTy>;
+    fn nature_info(&self, nature: NatureId) -> Result<Arc<NatureTy>, PathError>;
 
     #[salsa::invoke(DisciplineTy::discipline_info_query)]
-    fn discipline_info(&self, discipline: DisciplineId) -> Arc<DisciplineTy>;
+    fn discipline_info(&self, disc: DisciplineId) -> Result<Arc<DisciplineTy>, PathError>;
 
     #[salsa::invoke(BranchTy::branch_info_query)]
-    fn branch_info(&self, branch: BranchId) -> Option<Arc<BranchTy>>;
+    fn branch_info(&self, branch: BranchId) -> Result<Option<Arc<BranchTy>>, PathError>;
 
     #[salsa::invoke(Inference::infere_body_query)]
     fn inference_result(&self, id: ItemWithBodyId) -> Arc<Inference>;
@@ -32,11 +32,10 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     #[salsa::transparent]
     fn param_ty(&self, param: ParamId) -> Type;
 
-    #[salsa::transparent]
-    fn node_discipline(&self, node: NodeId) -> Option<DisciplineId>;
+    fn node_discipline(&self, node: NodeId) -> Result<Option<DisciplineId>, PathError>;
 
     #[salsa::cycle(resolve_alias_recover)]
-    fn resolve_alias(&self, alias: AliasParamId) -> Option<Alias>;
+    fn resolve_alias(&self, alias: AliasParamId) -> Result<Alias, PathResolveError>;
 
     #[salsa::input]
     fn known_limit_functions(&self) -> Option<Arc<[LimitSignature]>>;
@@ -66,24 +65,25 @@ fn nature_attr_ty_recover(
 }
 
 fn param_ty(db: &dyn HirTyDB, param: ParamId) -> Type {
-    match db.param_data(param).ty.clone() {
-        Some(ty) => ty,
-        None => {
-            let default_expr = db.param_exprs(param).default;
-            db.inference_result(param.into()).expr_types[default_expr]
-                .to_value()
-                .unwrap_or(Type::Err)
-        }
-    }
+    db.param_data(param).ty.clone().unwrap_or_else(|| {
+        let default_expr = db.param_exprs(param).default;
+        let default_ty = &db.inference_result(param.into()).expr_types[default_expr];
+        default_ty.to_value().unwrap_or(Type::Err)
+    })
 }
 
-fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
+fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Result<Option<DisciplineId>, PathError> {
     let node = db.node_data(id);
-    let discipline = node.discipline.as_ref()?;
-    let db = db.upcast();
-    let def_map = id.lookup(db).module.lookup(db).def_map(db);
-
-    def_map.resolve_item_name(def_map.root_scope(), discipline).ok()
+    let src = id.lookup(db).ast_ptr(db);
+    node.discipline
+        .as_ref()
+        .map(|discipline| {
+            let db = db.upcast();
+            let def_map = id.lookup(db).module.lookup(db).def_map(db);
+            let root_scope = def_map.root_scope();
+            def_map.resolve_item_name(root_scope, discipline).map_err(|err| PathError { err, src })
+        })
+        .transpose()
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -93,15 +93,20 @@ pub enum Alias {
     ParamSysFun(ParamSysFun),
 }
 
-fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Option<Alias> {
+fn resolve_alias(db: &dyn HirTyDB, id: AliasParamId) -> Result<Alias, PathResolveError> {
     let alias = db.aliasparam_data(id);
     let scope = id.lookup(db.upcast()).scope;
+    let name = &alias.param_ref;
 
-    match scope.resolve_name(db.upcast(), &alias.param_ref).ok()? {
-        ScopeItem::ParamId(param) => Some(Alias::Param(param)),
-        ScopeItem::ParamSysFun(fun) => Some(Alias::ParamSysFun(fun)),
+    match scope.resolve_name(db.upcast(), &alias.param_ref)? {
+        ScopeItem::ParamId(param) => Ok(Alias::Param(param)),
+        ScopeItem::ParamSysFun(fun) => Ok(Alias::ParamSysFun(fun)),
         ScopeItem::AliasParamId(alias) => db.resolve_alias(alias),
-        _ => None,
+        found => Err(PathResolveError::ExpectedItemKind {
+            name: name.clone(),
+            expected: "parameter or system parameter",
+            found: found.into(),
+        }),
     }
 }
 
@@ -110,6 +115,6 @@ fn resolve_alias_recover(
     _db: &dyn HirTyDB,
     _cycel: &salsa::Cycle,
     _id: &AliasParamId,
-) -> Option<Alias> {
-    Some(Alias::Cycle)
+) -> Result<Alias, PathResolveError> {
+    Ok(Alias::Cycle)
 }

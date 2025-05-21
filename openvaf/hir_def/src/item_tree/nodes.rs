@@ -26,6 +26,7 @@ pub struct Nature {
 pub struct NatureRef {
     pub name: Name,
     pub kind: NatureRefKind,
+    pub src: SyntaxNodePtr,
 }
 /// [LRM 3.6.1.1]
 /// [LRM 3.6.2.6]

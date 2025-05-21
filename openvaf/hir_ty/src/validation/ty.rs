@@ -3,10 +3,12 @@ use std::iter;
 use hir_def::{
     nameres::{ScopeId, ScopeItem},
     AliasParamId, BranchId, BranchLoc, DisciplineId, FunctionId, ModuleId, ModuleLoc, NatureId,
-    NodeId, NodeTypeDecl, ParamId, Path,
+    NodeId, NodeTypeDecl, Path,
 };
 use syntax::{ast::ArgListOwner, AstNode, SyntaxNodePtr};
 use typed_index_collections::TiSlice;
+
+use crate::lower::PathError;
 
 use super::diagnostics::DuplicateItem;
 use super::*;
@@ -27,13 +29,17 @@ impl TypeValidator<'_> {
 
     // TODO check natures/discipline (~dspom/OpenVAF#1)
     fn verify_nature(&mut self, nature: NatureId) {
-        // let info = self.db.nature_info(nature);
+        if let Err(err) = self.db.nature_info(nature) {
+            self.report(TypeDiagnostic::PathResolveError(err));
+        }
         let data = self.db.nature_data(nature);
         self.verify_unique_attr(&data.attrs, nature, TypeDiagnostic::DuplicateNatureAttr);
     }
 
     fn verify_discipline(&mut self, discipline: DisciplineId) {
-        // let info = self.db.discipline_info(discipline);
+        if let Err(err) = self.db.discipline_info(discipline) {
+            self.report(TypeDiagnostic::PathResolveError(err));
+        }
         let data = self.db.discipline_data(discipline);
         self.verify_unique_attr(&data.attrs, discipline, TypeDiagnostic::DuplicateDisciplineAttr);
     }
@@ -120,10 +126,10 @@ impl TypeValidator<'_> {
                     .def_map
                     .resolve_item_name::<DisciplineId>(self.def_map.root_scope(), discipline)
                 {
-                    self.report(TypeDiagnostic::PathResolveError {
+                    self.report(TypeDiagnostic::PathResolveError(PathError {
                         err,
                         src: decl.discipline_source(self.db.upcast(), self.root_file),
-                    })
+                    }))
                 }
             }
 
@@ -178,14 +184,14 @@ impl TypeValidator<'_> {
                 let node2 = self.resolve_node(node2, scope, &branch);
                 let (Some(node1), Some(node2)) = (node1, node2) else { return };
 
-                let d1 = self.db.node_discipline(node1);
-                let d2 = self.db.node_discipline(node2);
+                let d1 = self.db.node_discipline(node1).ok().flatten();
+                let d2 = self.db.node_discipline(node2).ok().flatten();
                 if d1 == d2 {
                     // fast path
                     return;
                 }
                 let (Some(d1), Some(d2)) = (d1, d2) else { return };
-                if !self.db.discipline_info(d1).compatible(d2, self.db) {
+                if !self.db.discipline_info(d1).unwrap().compatible(d2, self.db) {
                     self.report(TypeDiagnostic::IncompatibleBranch { branch: id, node1, node2 })
                 }
             }
@@ -199,21 +205,19 @@ impl TypeValidator<'_> {
             .map_err(|err| {
                 let node = branch.source(db).arg_list().unwrap().args().next().unwrap();
                 let src = SyntaxNodePtr::new(node.syntax());
-                self.report(TypeDiagnostic::PathResolveError { err, src });
+                self.report(TypeDiagnostic::PathResolveError(PathError { err, src }));
             })
             .ok()
     }
 
     // TODO: better errors for cycles
     fn verify_alias(&mut self, id: AliasParamId) {
-        if self.db.resolve_alias(id).is_none() {
-            let name = &self.db.aliasparam_data(id).param_ref;
+        if let Err(err) = self.db.resolve_alias(id) {
             let db = self.db.upcast();
             let alias = id.lookup(db);
-            let err = alias.scope.resolve_item_name::<ParamId>(db, name).unwrap_err();
             let node = alias.source(db).param_ref().unwrap();
             let src = SyntaxNodePtr::new(node.syntax());
-            self.report(TypeDiagnostic::PathResolveError { err, src });
+            self.report(TypeDiagnostic::PathResolveError(PathError { err, src }));
         }
     }
 

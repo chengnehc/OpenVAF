@@ -5,7 +5,7 @@ use syntax::ast;
 
 use super::{
     AliasParam, BlockItem, Discipline, Function, FunctionItem, ItemTree, ItemTreeId, Module,
-    ModuleItem, Nature, Param, Var,
+    ModuleItem, Nature, NatureRef, Param, Var,
 };
 
 impl ItemTree {
@@ -57,13 +57,20 @@ impl Printer<'_> {
 
     fn print_nature(&mut self, nature: &Nature) -> fmt::Result {
         let Nature { parent, units, ddt_nature, idt_nature, access, .. } = nature;
+        if let Some(NatureRef { name, kind, .. }) = parent {
+            writeln!(self, "parent = {name:?} ({kind:?})")?;
+        }
         write!(
             self,
-            "parent = {parent:?}\n\
-            units = {units:?}\n\
-            ddt_nature = {ddt_nature:?}\n\
-            idt_nature = {idt_nature:?}\n\
+            "units = {units:?}\n\
             access = {access:?}\n"
+        )?;
+        write!(
+            self,
+            "ddt_nature = {:?}\n\
+            idt_nature = {:?}\n",
+            ddt_nature.as_ref().map(|(nature, _)| &nature.name),
+            idt_nature.as_ref().map(|(nature, _)| &nature.name)
         )?;
         for attr in nature.attrs.clone() {
             writeln!(self, "attr{}: {}", u32::from(attr), self.tree[attr].name)?;
@@ -76,10 +83,12 @@ impl Printer<'_> {
         let Discipline { potential, flow, domain, .. } = discipline;
         write!(
             self,
-            "potential = {potential:?}\n\
-            flow = {flow:?}\n\
-            domain = {domain:?}\n"
+            "potential = {:?}\n\
+            flow = {:?}\n",
+            potential.as_ref().map(|(nature, _)| &nature.name),
+            flow.as_ref().map(|(nature, _)| &nature.name)
         )?;
+        writeln!(self, "domain = {domain:?}")?;
         for attr in discipline.attrs.clone() {
             writeln!(
                 self,

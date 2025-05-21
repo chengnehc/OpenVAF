@@ -1,23 +1,22 @@
 nature ttl_curr
-    parent = None
     units = Some(("A", Idx::<NatureAttrData>(0)))
+    access = Some((Name("I"), Idx::<NatureAttrData>(1)))
     ddt_nature = None
     idt_nature = None
-    access = Some((Name("I"), Idx::<NatureAttrData>(1)))
     attr0: units
     attr1: access
     attr2: abstol
 nature ttl_net_curr
-    parent = Some(NatureRef { name: Name("ttl_curr"), kind: Nature })
+    parent = Name("ttl_curr") (Nature)
     units = None
+    access = None
     ddt_nature = None
     idt_nature = None
-    access = None
 nature new_curr
-    parent = Some(NatureRef { name: Name("ttl_curr"), kind: Nature })
+    parent = Name("ttl_curr") (Nature)
     units = None
+    access = None
     ddt_nature = None
     idt_nature = None
-    access = None
     attr3: abstol
     attr4: maxval

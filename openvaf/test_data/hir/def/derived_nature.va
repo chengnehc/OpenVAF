@@ -11,7 +11,7 @@ nature ttl_net_curr : ttl_curr;
 endnature
 
 nature new_curr : ttl_curr;
-    // derived, but different modified for this nature
+    // derived, but different, modified for this nature
     abstol = 1m;
     // new attribute for this nature
     maxval = 12.3;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arena::{Arena, IdxRange};
 use basedb::{AstId, AstIdMap, FileId};
 use syntax::name::{kw, AsIdent, AsName};
-use syntax::{ast, AstNode, WalkEvent};
+use syntax::{ast, AstNode, SyntaxNodePtr, WalkEvent};
 
 use crate::db::HirDefDB;
 use crate::path::Path;
@@ -143,7 +143,7 @@ impl Context {
             name = segment.as_name();
         }
 
-        Some(NatureRef { name, kind })
+        Some(NatureRef { name, kind, src: SyntaxNodePtr::new(path.syntax()) })
     }
 
     fn lower_discipline(&mut self, decl: ast::DisciplineDecl) -> Option<ItemTreeId<Discipline>> {

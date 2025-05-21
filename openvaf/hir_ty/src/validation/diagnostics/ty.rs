@@ -47,7 +47,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
         let ast_id_map = db.ast_id_map(root_file);
 
         match *self.diag {
-            TypeDiagnostic::PathResolveError { ref err, src } => {
+            TypeDiagnostic::PathResolveError(PathError { ref err, src }) => {
                 let span = parse.to_file_span(src.text_range(), &src_map);
 
                 Report::error()

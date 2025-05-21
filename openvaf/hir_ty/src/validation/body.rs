@@ -188,7 +188,7 @@ impl ExprValidator<'_, '_> {
         match self.parent.infer.resolved_signatures.get(&access_expr).copied() {
             Some(NATURE_ACCESS_BRANCH) => {
                 let branch = self.parent.infer.expr_types[args[0]].unwrap_branch();
-                if let Some(branch_info) = self.parent.db.branch_info(branch) {
+                if let Some(branch_info) = self.parent.db.branch_info(branch).ok().flatten() {
                     self.report_illegal_nature_access(
                         self.parent.db.branch_data(branch).name.to_string(),
                         branch_info.discipline,
@@ -199,7 +199,7 @@ impl ExprValidator<'_, '_> {
             }
             Some(NATURE_ACCESS_NODE_GND) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_node();
-                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
                     let node = self.parent.db.node_data(node);
                     self.report_illegal_nature_access(
                         format!("({})", node.name),
@@ -231,7 +231,7 @@ impl ExprValidator<'_, '_> {
             }
             Some(NATURE_ACCESS_PORT_FLOW) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_port_flow();
-                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
                     let node = self.parent.db.node_data(node);
                     self.report_illegal_nature_access(
                         format!("(<{}>)", node.name),
@@ -253,7 +253,7 @@ impl ExprValidator<'_, '_> {
         access_expr: ExprId,
     ) {
         let db = self.parent.db;
-        let discipline = db.discipline_info(discipline);
+        let discipline = db.discipline_info(discipline).unwrap();
 
         let get_nature_info = |nature: NatureId| {
             let nature = nature.lookup(db);
@@ -339,7 +339,7 @@ impl ExprValidator<'_, '_> {
 
             (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_NODE_GND)) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_node();
-                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
                     self.lint_trivial_branch(
                         BranchWrite::Unnamed { hi: node, lo: None },
                         builtin,
@@ -356,7 +356,7 @@ impl ExprValidator<'_, '_> {
                     self.report(BodyDiagnostic::ExpectedPort { node, expr })
                 }
 
-                if let Some(discipline) = self.parent.db.node_discipline(node) {
+                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
                     self.validate_flow_or_pot(expr, BuiltIn::flow, discipline)
                 }
             }
@@ -368,7 +368,7 @@ impl ExprValidator<'_, '_> {
             (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_BRANCH)) => {
                 let branch = self.parent.infer.expr_types[args[0]].unwrap_branch();
 
-                if let Some(branch_info) = self.parent.db.branch_info(branch) {
+                if let Some(branch_info) = self.parent.db.branch_info(branch).ok().flatten() {
                     match branch_info.kind {
                         BranchKind::PortFlow(_) => {
                             if builtin == BuiltIn::potential {
@@ -508,14 +508,14 @@ impl ExprValidator<'_, '_> {
         node_1: NodeId,
         node_2: NodeId,
     ) -> Option<DisciplineId> {
-        let d_1 = db.node_discipline(node_1)?;
-        let d_2 = db.node_discipline(node_2)?;
-        db.discipline_info(d_2).compatible(d_1, db).then_some(d_1)
+        let d_1 = db.node_discipline(node_1).ok().flatten()?;
+        let d_2 = db.node_discipline(node_2).ok().flatten()?;
+        db.discipline_info(d_2).ok()?.compatible(d_1, db).then_some(d_1)
     }
 
     fn validate_flow_or_pot(&mut self, expr: ExprId, call: BuiltIn, discipline: DisciplineId) {
         let is_pot = call == BuiltIn::potential;
-        let discipline = self.parent.db.discipline_info(discipline);
+        let discipline = self.parent.db.discipline_info(discipline).unwrap();
         if discipline.potential.is_none() && is_pot || discipline.flow.is_none() && !is_pot {
             self.report(BodyDiagnostic::IllegalNatureAccess { is_pot, expr })
         }

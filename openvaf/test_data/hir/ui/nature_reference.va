@@ -1,0 +1,19 @@
+nature Current;
+  units        = "A";
+  access       = I;
+  ddt_nature   = foo;         // idt/ddt nature not defined
+  abstol       = 1e-12;
+endnature
+
+nature test1 : Voltage        // parent nature not defined
+endnature
+
+nature test2 : foo.flow
+endnature
+
+discipline current
+  potential    foo;           // illegal nature binding
+enddiscipline
+
+nature test3 : current.flow;  // potential nature binding not defined
+endnature

@@ -151,10 +151,10 @@ impl Discipline {
         db.discipline_data(self.id).name.to_string()
     }
     pub fn potential(&self, db: &CompilationDB) -> Option<Nature> {
-        db.discipline_info(self.id).potential.map(|id| Nature { id })
+        db.discipline_info(self.id).unwrap().potential.map(|id| Nature { id })
     }
     pub fn flow(&self, db: &CompilationDB) -> Option<Nature> {
-        db.discipline_info(self.id).flow.map(|id| Nature { id })
+        db.discipline_info(self.id).unwrap().flow.map(|id| Nature { id })
     }
 }
 
@@ -213,7 +213,7 @@ impl Node {
         db.node_data(self.id).name.clone().into()
     }
     pub fn discipline(self, db: &CompilationDB) -> Discipline {
-        let id = db.node_discipline(self.id).unwrap();
+        let id = db.node_discipline(self.id).ok().flatten().unwrap();
         Discipline { id }
     }
     pub fn is_input(self, db: &CompilationDB) -> bool {
@@ -241,11 +241,11 @@ impl Branch {
         db.branch_data(self.id).name.to_string()
     }
     pub fn discipline(self, db: &CompilationDB) -> Discipline {
-        let id = db.branch_info(self.id).unwrap().discipline;
+        let id = db.branch_info(self.id).unwrap().unwrap().discipline;
         Discipline { id }
     }
     pub fn kind(self, db: &CompilationDB) -> BranchKind {
-        match db.branch_info(self.id).unwrap().kind {
+        match db.branch_info(self.id).unwrap().unwrap().kind {
             hir_ty::BranchKind::PortFlow(node) => BranchKind::PortFlow(Node { id: node }),
             hir_ty::BranchKind::NodeGnd(node) => BranchKind::NodeGnd(Node { id: node }),
             hir_ty::BranchKind::Nodes(hi, lo) => {
@@ -373,7 +373,7 @@ impl AliasParam {
         db.aliasparam_data(self.id).name.to_string()
     }
     pub fn resolve(self, db: &CompilationDB) -> Option<ResolvedAliasParam> {
-        db.resolve_alias(self.id).and_then(|alias| match alias {
+        db.resolve_alias(self.id).ok().and_then(|alias| match alias {
             hir_ty::db::Alias::Cycle => None,
             hir_ty::db::Alias::Param(id) => Some(ResolvedAliasParam::Parameter(Parameter { id })),
             hir_ty::db::Alias::ParamSysFun(param) => Some(ResolvedAliasParam::Sysfun(param)),
