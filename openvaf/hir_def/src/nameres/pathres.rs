@@ -195,7 +195,9 @@ impl DefMap {
                             });
                         };
                     }
-                    Some(ScopeItem::BranchId(branch)) if segments.get(i + 1) == Some(&kw::potential) => {
+                    Some(ScopeItem::BranchId(branch))
+                        if segments.get(i + 1) == Some(&kw::potential) =>
+                    {
                         let rem = &segments[(i + 1)..];
                         if let [name] = rem {
                             return Ok(ResolvedPath::PotentialAttr {
