@@ -5,7 +5,7 @@ use hir_def::{
     AliasParamId, BranchId, BranchLoc, DisciplineId, FunctionId, ModuleId, ModuleLoc, NatureId,
     NodeId, NodeTypeDecl, ParamId, Path,
 };
-use syntax::{ast::ArgListOwner, AstNode};
+use syntax::{ast::ArgListOwner, AstNode, SyntaxNodePtr};
 use typed_index_collections::TiSlice;
 
 use super::diagnostics::DuplicateItem;
@@ -120,13 +120,9 @@ impl TypeValidator<'_> {
                     .def_map
                     .resolve_item_name::<DisciplineId>(self.def_map.root_scope(), discipline)
                 {
-                    self.report(TypeDiagnostic::PathError {
+                    self.report(TypeDiagnostic::PathResolveError {
                         err,
-                        range: decl
-                            .discipline_source(self.db.upcast(), self.root_file)
-                            .unwrap()
-                            .syntax()
-                            .text_range(),
+                        src: decl.discipline_source(self.db.upcast(), self.root_file),
                     })
                 }
             }
@@ -197,22 +193,15 @@ impl TypeValidator<'_> {
     }
 
     fn resolve_node(&mut self, path: &Path, scope: ScopeId, branch: &BranchLoc) -> Option<NodeId> {
-        match scope.resolve_item_path::<NodeId>(self.db.upcast(), path) {
-            Ok(node) => Some(node),
-            Err(err) => {
-                let range = branch
-                    .source(self.db.upcast())
-                    .arg_list()
-                    .unwrap()
-                    .args()
-                    .next()
-                    .unwrap()
-                    .syntax()
-                    .text_range();
-                self.report(TypeDiagnostic::PathError { err, range });
-                None
-            }
-        }
+        let db = self.db.upcast();
+        scope
+            .resolve_item_path::<NodeId>(db, path)
+            .map_err(|err| {
+                let node = branch.source(db).arg_list().unwrap().args().next().unwrap();
+                let src = SyntaxNodePtr::new(node.syntax());
+                self.report(TypeDiagnostic::PathResolveError { err, src });
+            })
+            .ok()
     }
 
     // TODO: better errors for cycles
@@ -222,8 +211,9 @@ impl TypeValidator<'_> {
             let db = self.db.upcast();
             let alias = id.lookup(db);
             let err = alias.scope.resolve_item_name::<ParamId>(db, name).unwrap_err();
-            let range = alias.source(db).param_ref().unwrap().syntax().text_range();
-            self.report(TypeDiagnostic::PathError { err, range });
+            let node = alias.source(db).param_ref().unwrap();
+            let src = SyntaxNodePtr::new(node.syntax());
+            self.report(TypeDiagnostic::PathResolveError { err, src });
         }
     }
 

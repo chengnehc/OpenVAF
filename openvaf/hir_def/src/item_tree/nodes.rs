@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     LocalDisciplineAttrId, LocalFunctionArgId, LocalNatureAttrId, LocalNodeId, Path, Type,
 };
-use syntax::ast::BlockStmt;
+use syntax::{ast::BlockStmt, SyntaxNodePtr};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Nature {
@@ -168,14 +168,18 @@ impl NodeTypeDecl {
             NodeTypeDecl::Port(port) => &tree[port].discipline,
         }
     }
-    pub fn discipline_source(self, db: &dyn HirDefDB, root_file: FileId) -> Option<ast::NameRef> {
+    pub fn discipline_source(self, db: &dyn HirDefDB, root_file: FileId) -> SyntaxNodePtr {
         let ast_id_map = db.ast_id_map(root_file);
         let tree = db.item_tree(root_file);
-        let ast = db.parse(root_file).root();
+        let cst = db.parse(root_file).root();
         match self {
-            NodeTypeDecl::Net(net) => ast_id_map.get(tree[net].ast_id).to_node(&ast).discipline(),
+            NodeTypeDecl::Net(net) => {
+                let node = ast_id_map.get(tree[net].ast_id).to_node(&cst).discipline().unwrap();
+                SyntaxNodePtr::new(node.syntax())
+            }
             NodeTypeDecl::Port(port) => {
-                ast_id_map.get(tree[port].ast_id).to_node(&ast).discipline()
+                let node = ast_id_map.get(tree[port].ast_id).to_node(&cst).discipline().unwrap();
+                SyntaxNodePtr::new(node.syntax())
             }
         }
     }

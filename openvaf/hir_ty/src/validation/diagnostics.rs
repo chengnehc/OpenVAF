@@ -1,6 +1,6 @@
 use basedb::{
-    diagnostics::{Diagnostic, Label, LabelStyle, Report},
-    lints::{self, Lint, LintSrc},
+    diagnostics::{Diagnostic, Label, LabelStyle, Report, Severity},
+    lints::{self, Lint, LintData, LintLevel, LintSrc},
     AstId, BaseDB, FileId,
 };
 use hir_def::{
@@ -112,6 +112,7 @@ use basedb::ErasedAstId;
 use hir_def::{
     nameres::PathResolveError, BranchId, DisciplineId, LocalDisciplineAttrId, LocalNatureAttrId,
 };
+use syntax::SyntaxNodePtr;
 
 pub struct TypeDiagnosticWrapped<'a> {
     pub db: &'a dyn HirTyDB,
@@ -121,7 +122,7 @@ pub struct TypeDiagnosticWrapped<'a> {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum TypeDiagnostic {
     /* Name and Path */
-    PathError { err: PathResolveError, range: TextRange },
+    PathResolveError { err: PathResolveError, src: SyntaxNodePtr },
 
     /* Nature and Discipline */
     DuplicateNatureAttr(DuplicateItem<LocalNatureAttrId, NatureId>),

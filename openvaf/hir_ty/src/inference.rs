@@ -15,7 +15,7 @@ use hir_def::{
     NatureId, NodeId, ParamSysFun, Path, Type, VarId,
 };
 use syntax::{
-    ast::{self, BinaryOp, UnaryOp},
+    ast::{self, AssignOp, BinaryOp, UnaryOp},
     TextRange, TextSize,
 };
 use typed_index_collections::{TiSlice, TiVec};

@@ -55,11 +55,12 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
         let src_map = db.sourcemap(root_file);
         let parse = db.parse(root_file);
-        let ast_id_map = db.ast_id_map(root_file);
 
         match *self.diag {
             BodyDiagnostic::ExpectedPort { expr, node } => {
                 let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
+
+                let ast_id_map = db.ast_id_map(root_file);
                 let db = self.db.upcast();
                 let node = node.lookup(db);
                 let module = node.module.lookup(db);
@@ -72,6 +73,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     range: range.into(),
                     message: "expected port".to_owned(),
                 }];
+
                 labels.extend(node.decls.iter().map(|decl| {
                     let NodeTypeDecl::Net(net) = *decl else { unreachable!() };
                     let range = ast_id_map.get(tree[net].ast_id).text_range();
@@ -161,6 +163,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
             BodyDiagnostic::IncompatibleUnnamedBranch { expr, node1, node2 } => {
                 let name1 = &self.db.node_data(node1).name;
                 let name2 = &self.db.node_data(node2).name;
+                let ast_id_map = db.ast_id_map(root_file);
 
                 IncompatibleBranchDiagnostic {
                     branch_span: self.expr_span(expr, &src_map, &parse),
@@ -421,28 +424,26 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
     }
 
     fn to_report(&self, root_file: FileId, db: &dyn BaseDB) -> Option<Report> {
+        let mut report = self.build_report(root_file, db);
+
         if let Some((lint, lint_src)) = self.lint(root_file, db) {
             let (lvl, is_default) = match lint_src.overwrite {
                 Some(lvl) => (lvl, false),
                 None => db.lint_lvl(lint, root_file, lint_src.ast),
             };
+            let LintData { name, documentation_id, .. } = db.lint_data(lint);
 
-            let mut report = self.build_report(root_file, db);
-            let basedb::lints::LintData { name, documentation_id, .. } = db.lint_data(lint);
+            report.code = Some(format!("L{:03}", documentation_id));
+            report.severity = match lvl {
+                LintLevel::Deny => Severity::Error,
+                LintLevel::Warn => Severity::Warning,
+                LintLevel::Allow => return None,
+            };
             if is_default {
                 let hint = format!("{name} is set to {lvl} by default");
                 report.notes.push(hint)
             }
-            let severity = match lvl {
-                basedb::lints::LintLevel::Deny => basedb::diagnostics::Severity::Error,
-                basedb::lints::LintLevel::Warn => basedb::diagnostics::Severity::Warning,
-                basedb::lints::LintLevel::Allow => return None,
-            };
-            report.severity = severity;
-
-            Some(report.with_code(format!("L{:03}", documentation_id)))
-        } else {
-            Some(self.build_report(root_file, db))
         }
+        Some(report)
     }
 }

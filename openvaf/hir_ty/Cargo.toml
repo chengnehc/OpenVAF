@@ -15,11 +15,10 @@ doctest = false
 stdx = {version = "0.0.0", path = "../../lib/stdx" }
 arena = {version = "0.0.0", path = "../../lib/arena" }
 
-basedb = {version = "0.0.0", path = "../basedb" }
 syntax = {version = "0.0.0", path = "../syntax"}
+basedb = {version = "0.0.0", path = "../basedb" }
 hir_def = {version = "0.0.0", path = "../hir_def" }
 
 ahash = "0.8"
 typed-index-collections = "3.1"
-
 salsa = "0.17.0-pre.2"
