@@ -22,7 +22,7 @@ codespan-reporting = "0.11"
 
 # Newtype wrappers
 text-size = "1.1"
-typed-index-collections = "3.1"
+typed-index-collections = "3"
 
 # Performant collections
 parking_lot = "0.12"

@@ -1,3 +1,5 @@
+pub use basedb::diagnostics::*;
+
 use hir_def::nameres::{
     DefDiagnosticWrapped, DefMap, ItemWithBodyId, LocalScopeId, ScopeItem, ScopeOrigin,
 };
@@ -6,10 +8,7 @@ use hir_ty::{
     validation::{BodyDiagnostic, BodyDiagnosticWrapped, TypeDiagnostic, TypeDiagnosticWrapped},
 };
 
-pub use basedb::diagnostics::*;
-pub use basedb::{BaseDB, FileId};
-
-use crate::{CompilationDB, HirDB, HirDefDB};
+use crate::{BaseDB, CompilationDB, FileId, HirDB, HirDefDB};
 
 /// Collect all frontend diagnostics to `sink`.
 pub(crate) fn collect(db: &CompilationDB, root_file: FileId, sink: &mut impl DiagnosticSink) {

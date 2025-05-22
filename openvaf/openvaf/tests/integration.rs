@@ -2,18 +2,16 @@ use std::f64::consts;
 use std::path::Path;
 
 use camino::Utf8Path;
-use llvm::OptLevel;
-use openvaf::{CompilationDestination, CompilationTermination};
-use target::spec::Target;
-
 use expect_test::expect_file;
 use float_cmp::assert_approx_eq;
 use mini_harness::{harness, Result};
 use stdx::{ignore_dev_tests, openvaf_test_data, project_root};
+use target::spec::Target;
+
+use openvaf::{CompilationDestination, CompilationTermination, OptLevel};
 
 mod load;
 mod mock_sim;
-
 use self::load::{load_osdi_lib, EvalFlags, OsdiDescriptor};
 use self::mock_sim::{MockSimulation, ALPHA};
 

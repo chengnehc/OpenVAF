@@ -99,25 +99,22 @@ impl<'a> ConsoleSink<'a> {
         ConsoleSink::new_with(db, Box::new(buffer))
     }
 
-    // TODO(JW): use more detailed return type to signify error
-    pub fn summary(&mut self, target_name: &impl Display) -> bool {
-        if self.error_cnt != 0 {
-            let warn = if self.warning_cnt != 0 {
-                format!("; {} warning emitted", self.warning_cnt)
-            } else {
-                String::new()
-            };
-            let message = format!(
-                "could not compile `{}` due to {} previous errors{}",
-                target_name, self.error_cnt, warn
-            );
+    pub fn summary(&mut self, target: &impl Display) -> bool {
+        let Self { error_cnt, warning_cnt, .. } = *self;
 
+        if error_cnt != 0 {
+            let warn = (warning_cnt != 0).then_some(format!("; {} warning emitted", warning_cnt));
+            let message = format!(
+                "could not compile `{target}` due to {} previous errors{}",
+                error_cnt,
+                warn.unwrap_or_default()
+            );
             self.print_simple_message(Severity::Error, message);
             return true;
         }
 
-        if self.warning_cnt != 0 {
-            let message = format!("`{}` generated {} warning", target_name, self.warning_cnt);
+        if warning_cnt != 0 {
+            let message = format!("`{target}` generated {} warning", warning_cnt);
             self.print_simple_message(Severity::Warning, message);
             self.warning_cnt = 0;
         }

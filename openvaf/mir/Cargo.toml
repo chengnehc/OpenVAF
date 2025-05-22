@@ -13,12 +13,11 @@ stdx = {version = "0.0.0", path = "../../lib/stdx" }
 bforest = {version = "0.0.0" , path = "../../lib/bforest"}
 list_pool = {version = "0.0.0" , path = "../../lib/list_pool"}
 bitset = {version = "0.0.0", path = "../../lib/bitset" }
-
-indexmap = "2.0"
 typed_indexmap = { version = "0.0.0", path = "../../lib/typed_indexmap" }
-typed-index-collections = "3.1"
 
 ahash = "0.8"
+indexmap = "2.0"
+typed-index-collections = "3"
 lasso = {version = "0.7", features = ["ahash"]}
 dot = "0.1.4"
 

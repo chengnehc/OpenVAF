@@ -11,7 +11,7 @@ mod preprocess_error;
 mod syntax_error;
 
 pub mod sink;
-pub use sink::{print_all, ConsoleSink, DiagnosticSink};
+pub use sink::{print_all, Buffer, ConsoleSink, DiagnosticSink};
 
 pub trait Diagnostic {
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {

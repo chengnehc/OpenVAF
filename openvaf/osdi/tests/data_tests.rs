@@ -6,7 +6,6 @@ use hir::diagnostics::ConsoleSink;
 use hir::CompilationDB;
 use llvm::OptLevel;
 use mir_llvm::LLVMBackend;
-use sim_back::collect_modules;
 use target::spec::Target;
 
 use mini_harness::{harness, Result};
@@ -15,7 +14,7 @@ use stdx::{ignore_slow_tests, project_root};
 fn test_compile(root_file: &Path) {
     let root_file = AbsPathBuf::assert(root_file.canonicalize().unwrap());
     let db = CompilationDB::new_from_fs(root_file, &[], &[], &[]).unwrap();
-    let modules = collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
+    let modules = hir::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
     let target = Target::host_target().unwrap();
     let back = LLVMBackend::new(&[], &target, "native".to_owned(), &[]);
     const EMIT: bool = !stdx::IS_CI;

@@ -13,7 +13,7 @@ use crate::WITH_CONTRIBUTES;
 
 fn compile(src: &str) -> (Function, Topology, String) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
-    let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
+    let module = hir::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut context = Context::new(&db, &mut literals, &module);
 

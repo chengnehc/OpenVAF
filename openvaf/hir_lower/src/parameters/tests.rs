@@ -1,13 +1,10 @@
-use std::fs;
-use stdx::{integration_test_dir, openvaf_test_data};
+use super::*;
+
+use hir::ScopeDef;
 
 use expect_test::expect_file;
-use hir::{CompilationDB, ScopeDef};
 use indoc::indoc;
-use lasso::Rodeo;
-use mir::Function;
-
-use crate::HirInterner;
+use stdx::{integration_test_dir, openvaf_test_data};
 
 fn test_setup_model(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
@@ -47,13 +44,14 @@ fn test_setup_model(src: &str) {
 
 #[test]
 fn diode() {
-    let src = fs::read_to_string(integration_test_dir("DIODE").join("diode.va")).unwrap();
+    let src = std::fs::read_to_string(integration_test_dir("DIODE").join("diode.va")).unwrap();
     test_setup_model(&src);
 }
 
 #[test]
 fn resistor() {
-    let src = fs::read_to_string(integration_test_dir("RESISTOR").join("resistor.va")).unwrap();
+    let src =
+        std::fs::read_to_string(integration_test_dir("RESISTOR").join("resistor.va")).unwrap();
     test_setup_model(&src);
 }
 

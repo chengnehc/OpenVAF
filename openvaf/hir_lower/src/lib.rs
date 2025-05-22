@@ -127,7 +127,7 @@ impl<'a> MirBuilder<'a> {
 
         // ensure optbarriers for outputs
         // after lowering, the function builder should be positioned at
-        // the block before exit block, optbarriers are created here.
+        // the block before exit block, where optbarriers are created.
         //
         // dbg!(&ctxt.func.cursor().position());
         ctxt.intern.outputs = ctxt

@@ -9,17 +9,17 @@ license="GPL-3.0"
 doctest = false
 
 [dependencies]
-mir = {version = "0.0.0", path = "../mir" }
-
 stdx = {version = "0.0.0", path = "../../lib/stdx" }
 workqueue = {version = "0.0.0", path = "../../lib/workqueue" }
 bitset = {version = "0.0.0", path = "../../lib/bitset" }
 typed_indexmap = { version = "0.0.0", path = "../../lib/typed_indexmap" }
 arena = { version = "0.0.0", path = "../../lib/arena" }
 
-indexmap = "2.0"
-typed-index-collections = "3.1"
+mir = {version = "0.0.0", path = "../mir" }
+
 ahash = "0.8"
+indexmap = "2.0"
+typed-index-collections = "3"
 
 [dev-dependencies]
 mir_reader = {version = "0.0.0", path = "../mir_reader" }

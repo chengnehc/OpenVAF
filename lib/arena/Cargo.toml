@@ -9,4 +9,4 @@ license="GPL-3.0"
 doctest = false
 
 [dependencies]
-typed-index-collections = "3.1"
+typed-index-collections = "3"

@@ -1,4 +1,4 @@
-use hir::CompilationDB;
+use hir::{CompilationDB, ModuleInfo};
 use hir_lower::fmt::{DisplayKind, FmtArg, FmtArgKind};
 use hir_lower::{CallBackKind, HirInterner};
 use lasso::Rodeo;
@@ -14,7 +14,7 @@ use mir_llvm::{CallbackFun, CodegenCx, LLVMBackend, ModuleLlvm};
 use sim_back::dae::DaeSystem;
 use sim_back::init::Initialization;
 use sim_back::node_collapse::NodeCollapse;
-use sim_back::{CompiledModule, ModuleInfo};
+use sim_back::CompiledModule;
 use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 

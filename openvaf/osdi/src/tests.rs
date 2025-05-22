@@ -2,8 +2,7 @@ use std::path::Path;
 use stdx::SKIP_HOST_TESTS;
 
 use camino::Utf8Path;
-use llvm::OptLevel;
-use mir_llvm::LLVMBackend;
+use mir_llvm::{LLVMBackend, OptLevel};
 use paths::AbsPathBuf;
 use sim_back::CompilationDB;
 use target::spec::Target;

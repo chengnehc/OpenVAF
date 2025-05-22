@@ -1,20 +1,18 @@
 //! Metadata of compiled module
 
 use ahash::{AHashSet, RandomState};
-use hir::diagnostics::{BaseDB, ConsoleSink, Diagnostic, FileId, Label, LabelStyle, Report};
-use hir::{
-    CompilationDB, CompilationUnit, DiagnosticSink, ParamSysFun, Parameter, ResolvedAliasParam,
-    ScopeDef, Variable,
-};
 use indexmap::IndexMap;
 use smol_str::SmolStr;
-use syntax::ast;
-use syntax::sourcemap::FileSpan;
-use syntax::AstNode;
+
+use crate::diagnostics::{ConsoleSink, Diagnostic, DiagnosticSink, Label, LabelStyle, Report};
+use crate::{BaseDB, CompilationDB, CompilationUnit, FileId};
+use crate::{Module, ParamSysFun, Parameter, ResolvedAliasParam, ScopeDef, Variable};
+use syntax::{ast, sourcemap::FileSpan, AstNode};
 
 #[cfg(test)]
 mod tests;
 
+/// Emit frontend diagnostics and collect the information of the declared modules.
 pub fn collect_modules(
     db: &CompilationDB,
     all_vars_op: bool,
@@ -23,7 +21,6 @@ pub fn collect_modules(
     let cu = db.compilation_unit();
     let name = cu.name(db);
 
-    // collect and report frontend diagnostics
     cu.collect_diagnostics(db, sink);
     if sink.summary(&name) {
         return None;
@@ -34,7 +31,6 @@ pub fn collect_modules(
         .into_iter()
         .map(|module| ModuleInfo::collect(db, cu, module, all_vars_op, sink))
         .collect();
-
     // report errors occurred during collecting module info
     if sink.summary(&name) {
         return None;
@@ -44,7 +40,7 @@ pub fn collect_modules(
 }
 
 pub struct ModuleInfo {
-    pub module: hir::Module,
+    pub module: Module,
     /// all parameters: including model and instance parameters
     pub params: IndexMap<Parameter, ParamInfo, RandomState>,
     pub param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, RandomState>,
@@ -55,24 +51,25 @@ impl ModuleInfo {
     fn collect(
         db: &CompilationDB,
         cu: CompilationUnit,
-        module: hir::Module,
+        module: Module,
         all_vars_op: bool,
         sink: &mut ConsoleSink,
     ) -> ModuleInfo {
+        let root_file = cu.root_file();
+        let ast = cu.ast_cache(db);
+
         let mut params = IndexMap::default();
-        let mut param_sysfuns: IndexMap<_, Vec<SmolStr>, _> = IndexMap::default();
+        let mut param_sysfuns: IndexMap<_, Vec<_>, _> = IndexMap::default();
         let mut op_vars = IndexMap::default();
 
-        let mut decls = module.rec_declarations(db);
         let mut resolved_attrs = AHashSet::new();
         let mut add_diagnostic = |attr: ast::Attr, diag: &dyn Diagnostic| {
             if resolved_attrs.insert(attr.syntax().text_range()) {
-                sink.add_diagnostic(diag, cu.root_file(), db)
+                sink.add_diagnostic(diag, root_file, db)
             }
         };
 
-        let ast = cu.ast_cache(db);
-
+        let mut decls = module.rec_declarations(db);
         while let Some((name, decl)) = decls.next() {
             match decl {
                 ScopeDef::Variable(var) => {

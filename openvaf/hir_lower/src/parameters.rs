@@ -7,12 +7,11 @@
 use std::mem;
 use stdx::packed_option::ReservedValue;
 
-use hir::{CompilationDB, ConstraintValue, ParamConstraint, Parameter, Type};
+use hir::{CompilationDB, ConstraintKind, ConstraintValue, ParamConstraint, Parameter, Type};
 use lasso::Rodeo;
 use mir::builder::InstBuilder;
 use mir::{Block, FuncRef, Function, Opcode, Value, FALSE, GRAVESTONE};
 use mir_build::{FunctionBuilder, FunctionBuilderContext};
-use syntax::ast::ConstraintKind;
 
 use crate::body::BodyLowerContext;
 use crate::ctx::MainLowerContext;

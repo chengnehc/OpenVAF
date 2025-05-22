@@ -1,7 +1,7 @@
 use stdx::packed_option::PackedOption;
 
 use bitset::{BitSet, SparseBitMatrix};
-use hir::CompilationDB;
+use hir::{CompilationDB, ModuleInfo};
 use hir_lower::{HirInterner, MirBuilder, PlaceKind};
 use lasso::Rodeo;
 use mir::{ControlFlowGraph, DominatorTree, Function, Inst, Value};
@@ -10,8 +10,6 @@ use mir_opt::{
     propagate_taint, simplify_cfg, simplify_cfg_no_phi_merge,
     sparse_conditional_constant_propagation, standard_dead_code_elimination, GVN,
 };
-
-use crate::module_info::ModuleInfo;
 
 pub(crate) struct Context<'a> {
     pub(crate) db: &'a CompilationDB,

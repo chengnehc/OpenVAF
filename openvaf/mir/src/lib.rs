@@ -48,19 +48,19 @@ pub mod cfg;
 pub mod cursor;
 pub mod write;
 
-use crate::write::DummyResolver;
+use write::DummyResolver;
 
-pub use crate::cfg::ControlFlowGraph;
-pub use crate::dfg::consts::*;
-pub use crate::dfg::{
-    Const, DataFlowGraph, DfgValues, InstUseIter, Postorder, UseCursor, UseIter, ValueDef,
+pub use cfg::ControlFlowGraph;
+pub use dfg::{
+    consts::*, Const, DataFlowGraph, DfgValues, InstUseIter, Postorder, UseCursor, UseIter,
+    ValueDef,
 };
-pub use crate::dominators::DominatorTree;
-pub use crate::entities::{AnyEntity, Block, FuncRef, Inst, Param, Unknown, Use, Value};
-pub use crate::instructions::{
+pub use dominators::DominatorTree;
+pub use entities::{AnyEntity, Block, FuncRef, Inst, Param, Unknown, Use, Value};
+pub use instructions::{
     InstructionData, InstructionFormat, Opcode, PhiMap, PhiNode, ValueList, ValueListPool,
 };
-pub use crate::layout::{InstIter, Layout};
+pub use layout::{InstIter, Layout};
 
 /// A MIR function.
 ///

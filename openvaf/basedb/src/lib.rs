@@ -15,12 +15,12 @@ use typed_index_collections::{TiSlice, TiVec};
 
 pub use vfs::{AbsPathBuf, FileId, FileReadError, Vfs, VfsEntry, VfsPath};
 
+pub mod diagnostics;
+pub mod lints;
+
 mod ast_id_map;
 mod line_index;
 mod lint_attrs;
-
-pub mod diagnostics;
-pub mod lints;
 
 pub use ast_id_map::{AstId, AstIdMap, ErasedAstId};
 pub use line_index::{Line, LineIndex};

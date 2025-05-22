@@ -20,7 +20,7 @@
 //! format.
 
 use std::fmt;
-use stdx::{impl_debug_display, impl_idx_from};
+use stdx::{impl_debug_display, impl_from, impl_idx_from};
 
 /// An opaque reference to a [basic block](https://en.wikipedia.org/wiki/Basic_block) in a MIR
 /// function. While the order is stable, it is arbitrary and does not necessarily resemble the
@@ -141,7 +141,8 @@ impl_debug_display! {
     match Unknown {Unknown(i) => "unknown{i}";}
 }
 
-/// An opaque reference to any of the entities defined in this module.
+/// An opaque reference to any of the entities defined in this module
+/// used by MIR writer.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AnyEntity {
     /// The whole function.
@@ -155,6 +156,8 @@ pub enum AnyEntity {
     /// An external function.
     FuncRef(FuncRef),
 }
+
+impl_from!(Block, Inst, Value, FuncRef for AnyEntity);
 
 impl fmt::Display for AnyEntity {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -171,29 +174,5 @@ impl fmt::Display for AnyEntity {
 impl fmt::Debug for AnyEntity {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         (self as &dyn fmt::Display).fmt(f)
-    }
-}
-
-impl From<Block> for AnyEntity {
-    fn from(r: Block) -> Self {
-        Self::Block(r)
-    }
-}
-
-impl From<Inst> for AnyEntity {
-    fn from(r: Inst) -> Self {
-        Self::Inst(r)
-    }
-}
-
-impl From<Value> for AnyEntity {
-    fn from(r: Value) -> Self {
-        Self::Value(r)
-    }
-}
-
-impl From<FuncRef> for AnyEntity {
-    fn from(r: FuncRef) -> Self {
-        Self::FuncRef(r)
     }
 }

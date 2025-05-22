@@ -9,15 +9,15 @@ license="GPL-3.0"
 doctest = false
 
 [dependencies]
-mir = {version = "0.0.0", path = "../mir" }
-
 stdx = {version = "0.0.0", path = "../../lib/stdx" }
 workqueue = {version = "0.0.0", path = "../../lib/workqueue" }
 bitset = {version = "0.0.0", path = "../../lib/bitset" }
 
-typed-index-collections = "3.1"
+mir = {version = "0.0.0", path = "../mir" }
+
 ahash = "0.8"
 hashbrown = {version = "0.14", features = ["raw"]}
+typed-index-collections = "3"
 
 [dev-dependencies]
 mir_reader = {version = "0.0.0", path = "../mir_reader" }

@@ -13,10 +13,8 @@ use std::ptr;
 
 use lasso::Rodeo;
 use libc::c_void;
-use llvm::support::LLVMString;
-use llvm::OptLevel;
 use llvm::{
-    LLVMDisposeMessage, LLVMGetDiagInfoDescription, LLVMGetDiagInfoSeverity,
+    support::LLVMString, LLVMDisposeMessage, LLVMGetDiagInfoDescription, LLVMGetDiagInfoSeverity,
     LLVMGetHostCPUFeatures, LLVMGetHostCPUName, LLVMPassManagerBuilderDispose,
 };
 use target::spec::Target;
@@ -34,6 +32,7 @@ mod types;
 pub use builder::{Builder, BuilderVal, MemLoc};
 pub use callbacks::CallbackFun;
 pub use context::CodegenCx;
+pub use llvm::OptLevel;
 
 /// The LLVM backend is a factory of LLVM modules and codegen contexts.
 /// These two are created based on the target information stored in the LLVM backend

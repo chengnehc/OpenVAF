@@ -6,15 +6,13 @@ use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
-use basedb::diagnostics::{ConsoleSink, DiagnosticSink};
-use basedb::BaseDB;
-use hir::CompilationDB;
+use hir::diagnostics::{ConsoleSink, DiagnosticSink};
+use hir::{BaseDB, CompilationDB};
 use linker::link;
-use mir_llvm::LLVMBackend;
 
 pub use basedb::lints::builtin as builtin_lints;
 pub use basedb::lints::LintLevel;
-pub use llvm::OptLevel;
+pub use mir_llvm::{LLVMBackend, OptLevel};
 pub use paths::AbsPathBuf;
 pub use target::host_triple;
 pub use target::spec::{get_target_names, Target};
@@ -122,21 +120,22 @@ pub fn expand(opts: &Opts) -> Result<CompilationTermination> {
     for token in preprocess.tokens.iter() {
         let span = token.span.to_file_span(&preprocess.source_map);
         let text = db.file_text(span.file).unwrap();
-        match token.kind {
-            tokens::SyntaxKind::COMMENT => {
-                // Block comments are ok
-                // Line comments should be dumped with a newline
-                if !text[span.range].starts_with("/*") {
-                    println!("{}", &text[span.range])
-                } else {
-                    print!("{}", &text[span.range])
-                }
-            }
-            _ => {
-                // Add a space after each token
-                print!("{} ", &text[span.range])
-            }
-        };
+        // match token.kind {
+        //     tokens::SyntaxKind::COMMENT => {
+        //         // Block comments are ok
+        //         // Line comments should be dumped with a newline
+        //         if !text[span.range].starts_with("/*") {
+        //             println!("{}", &text[span.range])
+        //         } else {
+        //             print!("{}", &text[span.range])
+        //         }
+        //     }
+        //     _ => {
+        //         // Add a space after each token
+        //         print!("{} ", &text[span.range])
+        //     }
+        // };
+        print!("{} ", &text[span.range])
     }
     println!();
 
@@ -189,11 +188,10 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
         }
         CompilationDestination::Path { lib_file } => lib_file.clone(),
     };
-    let Some(modules) = sim_back::collect_modules(&db, false, &mut ConsoleSink::new(&db)) else {
+    let Some(modules) = hir::collect_modules(&db, false, &mut ConsoleSink::new(&db)) else {
         return Ok(CompilationTermination::FatalDiagnostic);
     };
     if *dry_run {
-        // dry-run means only run the frontend
         return Ok(CompilationTermination::Compiled { lib_file });
     }
 

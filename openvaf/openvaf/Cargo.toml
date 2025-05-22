@@ -13,16 +13,10 @@ doctest = false
 base_n = { version = "1", path = "../../lib/base_n" }
 paths = { version = "0.0", path = "../../lib/paths" }
 
-tokens = { version = "0.0.0", path = "../tokens" }
 basedb = { version = "0.0.0", path = "../basedb" }
 hir = { version = "0.0.0", path = "../hir" }
-
-llvm = { version = "0.0.0", path = "../llvm" }
 mir_llvm = { version = "0.0.0", path = "../mir_llvm" }
-
-sim_back = { version = "0.0.0", path = "../sim_back" }
 osdi = { version = "0.0.0", path = "../osdi" }
-
 target = { version = "0.0.0", path = "../target" }
 linker = { version = "0.0.0", path = "../linker" }
 

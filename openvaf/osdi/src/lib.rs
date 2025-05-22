@@ -9,11 +9,11 @@ use lasso::Rodeo;
 use salsa::ParallelDatabase;
 use typed_indexmap::TiSet;
 
-use hir::{CompilationDB, ParamSysFun, Type};
+use hir::{CompilationDB, ModuleInfo, ParamSysFun, Type};
 use hir_lower::{CallBackKind, HirInterner, ParamKind};
 use llvm::{LLVMDisposeTargetData, OptLevel};
 use mir_llvm::{CodegenCx, LLVMBackend};
-use sim_back::{CompiledModule, ModuleInfo};
+use sim_back::CompiledModule;
 // use target::spec::Target;
 
 mod bitfield;

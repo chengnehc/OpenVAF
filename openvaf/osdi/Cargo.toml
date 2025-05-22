@@ -23,16 +23,13 @@ mir_llvm = { version = "0.0.0", path = "../mir_llvm" }
 llvm = { version = "0.0.0", path = "../llvm" }
 target = { version = "0.0.0", path = "../target"}
 
-typed-index-collections = "3.1"
+typed-index-collections = "3"
 ahash = "0.8"
-lasso = {version = "0.7", features = ["ahash"]}
-
-salsa = "0.17.0-pre.2"
 indexmap = "2.0"
 smol_str = {version = "0.3", default-features=false}
-
+lasso = {version = "0.7", features = ["ahash"]}
+salsa = "0.17.0-pre.2"
 rayon-core = "1"
-
 camino = "1.1.4"
 log = "0.4.19"
 
@@ -44,10 +41,10 @@ target = { version = "0.0.0", path = "../target" }
 
 [dev-dependencies]
 
-expect-test = "1.4"
 mir_interpret = {version = "0.0.0", path = "../mir_interpret" }
 mini_harness = { version = "0.0.1", path = "../../lib/mini_harness" }
 
+expect-test = "1.4"
 float-cmp =  "0.9"
 
 [[test]]

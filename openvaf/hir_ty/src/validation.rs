@@ -12,9 +12,9 @@ use crate::db::HirTyDB;
 use crate::inference::{BranchWrite, Inference, ResolvedFun};
 
 mod body;
+mod diagnostics;
 mod ty;
 
-mod diagnostics;
 pub use diagnostics::{
     BodyDiagnostic, BodyDiagnosticWrapped, TypeDiagnostic, TypeDiagnosticWrapped,
 };

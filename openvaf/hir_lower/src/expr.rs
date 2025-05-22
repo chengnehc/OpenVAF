@@ -11,11 +11,10 @@ use hir::signatures::{
     NATURE_ACCESS_NODE_GND, NATURE_ACCESS_PORT_FLOW, REAL_EQ, REAL_OP, SIMPARAM_DEFAULT,
     SIMPARAM_NO_DEFAULT, STR_EQ,
 };
-use hir::{Body, BuiltIn, Expr, ExprId, Literal, Ref, ResolvedFun, Type};
+use hir::{BinaryOp, Body, BuiltIn, Expr, ExprId, Literal, Ref, ResolvedFun, Type, UnaryOp};
 use mir::builder::InstBuilder;
 use mir::{Opcode, Value, FALSE, F_ZERO, GRAVESTONE, INFINITY, TRUE, ZERO};
 use mir_build::RetBuilder;
-use syntax::ast::{BinaryOp, UnaryOp};
 
 use crate::body::BodyLowerContext;
 use crate::fmt::DisplayKind;

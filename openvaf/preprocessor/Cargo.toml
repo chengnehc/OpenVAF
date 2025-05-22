@@ -16,7 +16,7 @@ lexer = {version="0.0.0", path="../lexer"}
 
 text-size = "1.1"
 ahash = "0.8"
-typed-index-collections = "3.1"
+typed-index-collections = "3"
 
 [dev-dependencies]
 expect-test = "1.4.1"

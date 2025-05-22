@@ -1,6 +1,6 @@
-use hir::diagnostics::sink::Buffer;
-use hir::diagnostics::ConsoleSink;
-use hir::CompilationDB;
+use super::*;
+
+use crate::diagnostics::Buffer;
 use indoc::indoc;
 
 #[test]
@@ -14,11 +14,12 @@ fn invalid_attr() {
         endmodule
     "#};
     let db = CompilationDB::new_from_vfs(src).unwrap();
+
     let mut buf = Buffer::no_color();
     {
         let mut sink = ConsoleSink::buffer(&db, &mut buf);
         sink.annonymize_paths();
-        super::collect_modules(&db, false, &mut sink);
+        collect_modules(&db, false, &mut sink);
     }
     expect_test::expect![[r#"
         error: illegal expression supplied to 'units' attribute; expected a string literal
@@ -79,7 +80,7 @@ fn parameters() {
         endmodule
     "#};
     let db = CompilationDB::new_from_vfs(src).unwrap();
-    let modules = super::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
+    let modules = collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
     assert_eq!(modules.len(), 1);
     let params: Vec<_> = modules[0].params.iter().map(|(k, v)| (k.name(&db), v)).collect();
     expect_test::expect![[r#"
@@ -134,7 +135,7 @@ fn opvars() {
         endmodule
     "#};
     let db = CompilationDB::new_from_vfs(src).unwrap();
-    let modules = super::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
+    let modules = collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap();
     assert_eq!(modules.len(), 1);
     let params: Vec<_> = modules[0].op_vars.iter().map(|(k, v)| (k.name(&db), v)).collect();
     expect_test::expect![[r#"

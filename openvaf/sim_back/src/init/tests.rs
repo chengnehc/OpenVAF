@@ -16,7 +16,7 @@ use crate::WITH_CONTRIBUTES;
 
 fn run_test(src: &str) {
     let db = CompilationDB::new_from_vfs(src).unwrap();
-    let module = crate::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
+    let module = hir::collect_modules(&db, false, &mut ConsoleSink::new(&db)).unwrap().remove(0);
     let mut literals = Rodeo::new();
     let mut ctx = Context::new(&db, &mut literals, &module);
 

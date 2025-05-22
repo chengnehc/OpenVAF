@@ -2,7 +2,7 @@
 
 use stdx::{impl_debug_display, impl_idx_from};
 
-use hir::{CompilationDB, Node};
+use hir::{CompilationDB, ModuleInfo, Node};
 use hir_lower::{FlowKind, HirInterner, ImplicitEquation};
 use lasso::Rodeo;
 use mir::Function;
@@ -13,11 +13,8 @@ pub mod node_collapse;
 pub mod util;
 
 mod context;
-mod module_info;
 mod noise;
 mod topology;
-
-pub use module_info::{collect_modules, ModuleInfo};
 
 use context::{Context, OptimizationStage};
 use dae::DaeSystem;

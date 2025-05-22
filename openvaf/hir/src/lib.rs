@@ -11,7 +11,6 @@
 use std::sync::Arc;
 use stdx::impl_debug;
 
-use basedb::{BaseDB, FileId};
 use hir_def::db::HirDefDB;
 use hir_def::nameres::{DefMap, ItemWithBodyId, LocalScopeId, ScopeItem};
 use hir_def::{
@@ -22,15 +21,13 @@ use hir_ty::db::HirTyDB as HirDB;
 use hir_ty::inference;
 use salsa::InternKey;
 use smol_str::SmolStr;
-use syntax::ast;
 
-pub use basedb::diagnostics::DiagnosticSink;
+pub use basedb::{BaseDB, FileId, VfsStorage};
 pub use hir_def::body::{Case, CaseCond, ConstraintValue, Literal, ParamConstraint};
 pub use hir_def::nameres::PathResolveError;
 pub use hir_def::{BuiltIn, ParamSysFun, Path, Type};
 pub use hir_ty::builtin;
-pub use rec_declarations::RecDeclarations;
-pub use syntax::name::Name;
+pub use syntax::ast::{self, BinaryOp, ConstraintKind, UnaryOp};
 
 pub mod diagnostics;
 pub mod signatures {
@@ -47,13 +44,17 @@ pub mod signatures {
 mod attributes;
 mod body;
 mod db;
+mod module_info;
 mod rec_declarations;
 
-pub use attributes::AstCache;
-pub use body::{
-    AssignmentLhs, Body, BodyRef, ContributeKind, Expr, ExprId, Ref, ResolvedFun, Stmt, StmtId,
-};
+pub use body::{AssignmentLhs, ContributeKind, Ref, ResolvedFun};
+pub use body::{Body, BodyRef, Expr, ExprId, Stmt, StmtId};
 pub use db::CompilationDB;
+pub use module_info::{collect_modules, ModuleInfo};
+
+use attributes::AstCache;
+use diagnostics::DiagnosticSink;
+use rec_declarations::RecDeclarations;
 
 /// A compilation unit is represented by a root file (entry file).
 ///

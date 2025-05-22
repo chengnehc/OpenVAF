@@ -1,11 +1,9 @@
-use core::slice;
 use std::mem::{size_of, size_of_val};
+use std::slice;
 
-use basedb::lints::LintLevel;
-use basedb::{BaseDB, VfsStorage};
-use hir::CompilationDB;
+use hir::{BaseDB, CompilationDB, VfsStorage};
 
-use crate::Opts;
+use crate::{LintLevel, Opts};
 
 // TODO: use high level hir API instead of low level database API
 fn hash(db: &CompilationDB, defines: &[String]) -> md5::Digest {
