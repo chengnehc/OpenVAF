@@ -157,9 +157,9 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     .with_labels(labels)
             }
 
-            TypeDiagnostic::ExpectedPort { node, src } => {
-                let span = parse.to_file_span(ast_id_map.get_erased(src).text_range(), &src_map);
-                let decl = parse.to_file_span(
+            TypeDiagnostic::ExpectedPort { node, branch } => {
+                let branch_decl = parse.to_file_span(ast_id_map.get(branch).text_range(), &src_map);
+                let node_decl = parse.to_file_span(
                     node.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).text_range(),
                     &src_map,
                 );
@@ -172,14 +172,14 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     .with_labels(vec![
                         Label {
                             style: LabelStyle::Primary,
-                            file_id: span.file,
-                            range: span.range.into(),
+                            file_id: branch_decl.file,
+                            range: branch_decl.range.into(),
                             message: format!("'{node_name}' is not a port"),
                         },
                         Label {
                             style: LabelStyle::Secondary,
-                            file_id: decl.file,
-                            range: decl.range.into(),
+                            file_id: node_decl.file,
+                            range: node_decl.range.into(),
                             message: format!("info: '{node_name}' was declared here"),
                         },
                     ])

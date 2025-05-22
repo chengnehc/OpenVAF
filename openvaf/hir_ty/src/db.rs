@@ -21,7 +21,7 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     fn discipline_info(&self, disc: DisciplineId) -> Result<Arc<DisciplineTy>, PathError>;
 
     #[salsa::invoke(BranchTy::branch_info_query)]
-    fn branch_info(&self, branch: BranchId) -> Result<Option<Arc<BranchTy>>, PathError>;
+    fn branch_info(&self, branch: BranchId) -> Option<Arc<BranchTy>>;
 
     #[salsa::invoke(Inference::infere_body_query)]
     fn inference_result(&self, id: ItemWithBodyId) -> Arc<Inference>;
@@ -32,7 +32,7 @@ pub trait HirTyDB: HirDefDB + Upcast<dyn HirDefDB> {
     #[salsa::transparent]
     fn param_ty(&self, param: ParamId) -> Type;
 
-    fn node_discipline(&self, node: NodeId) -> Result<Option<DisciplineId>, PathError>;
+    fn node_discipline(&self, node: NodeId) -> Option<DisciplineId>;
 
     #[salsa::cycle(resolve_alias_recover)]
     fn resolve_alias(&self, alias: AliasParamId) -> Result<Alias, PathResolveError>;
@@ -72,18 +72,14 @@ fn param_ty(db: &dyn HirTyDB, param: ParamId) -> Type {
     })
 }
 
-fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Result<Option<DisciplineId>, PathError> {
+fn node_discipline(db: &dyn HirTyDB, id: NodeId) -> Option<DisciplineId> {
     let node = db.node_data(id);
-    let src = id.lookup(db).ast_ptr(db);
-    node.discipline
-        .as_ref()
-        .map(|discipline| {
-            let db = db.upcast();
-            let def_map = id.lookup(db).module.lookup(db).def_map(db);
-            let root_scope = def_map.root_scope();
-            def_map.resolve_item_name(root_scope, discipline).map_err(|err| PathError { err, src })
-        })
-        .transpose()
+    node.discipline.as_ref().and_then(|discipline| {
+        let db = db.upcast();
+        let def_map = id.lookup(db).module.lookup(db).def_map(db);
+        let root_scope = def_map.root_scope();
+        def_map.resolve_item_name(root_scope, discipline).ok()
+    })
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]

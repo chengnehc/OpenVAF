@@ -1,8 +1,0 @@
-`include "disciplines.vams"
-
-module test (a, b);
-    inout electrical a;
-    electrical b;
-    input a;
-    thermal a;
-endmodule

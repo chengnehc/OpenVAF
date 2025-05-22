@@ -213,7 +213,7 @@ impl Node {
         db.node_data(self.id).name.clone().into()
     }
     pub fn discipline(self, db: &CompilationDB) -> Discipline {
-        let id = db.node_discipline(self.id).ok().flatten().unwrap();
+        let id = db.node_discipline(self.id).unwrap();
         Discipline { id }
     }
     pub fn is_input(self, db: &CompilationDB) -> bool {
@@ -241,11 +241,11 @@ impl Branch {
         db.branch_data(self.id).name.to_string()
     }
     pub fn discipline(self, db: &CompilationDB) -> Discipline {
-        let id = db.branch_info(self.id).unwrap().unwrap().discipline;
+        let id = db.branch_info(self.id).unwrap().discipline;
         Discipline { id }
     }
     pub fn kind(self, db: &CompilationDB) -> BranchKind {
-        match db.branch_info(self.id).unwrap().unwrap().kind {
+        match db.branch_info(self.id).unwrap().kind {
             hir_ty::BranchKind::PortFlow(node) => BranchKind::PortFlow(Node { id: node }),
             hir_ty::BranchKind::NodeGnd(node) => BranchKind::NodeGnd(Node { id: node }),
             hir_ty::BranchKind::Nodes(hi, lo) => {

@@ -8,6 +8,8 @@ use rowan::{GreenNodeData, GreenTokenData, NodeOrToken};
 use crate::ast::{self, support, ArgListOwner, AstChildren, AstNode};
 use crate::{SyntaxNode, SyntaxToken, TokenText, T};
 
+use super::Expr;
+
 impl ast::Name {
     pub fn text(&self) -> TokenText<'_> {
         text_of_first_token(self.syntax())
@@ -131,10 +133,20 @@ impl ast::ModuleDecl {
 }
 
 impl ast::BranchDecl {
-    pub fn branch_kind(&self) -> Option<BranchKind> {
+    pub fn first_node(&self) -> Option<Expr> {
         let nodes = self.arg_list()?;
-        let node1 = nodes.args().next()?;
-        let node2 = nodes.args().nth(1);
+        nodes.args().next()
+    }
+
+    pub fn second_node(&self) -> Option<Expr> {
+        let nodes = self.arg_list()?;
+        nodes.args().nth(1)
+    }
+
+    pub fn branch_kind(&self) -> Option<BranchKind> {
+        let mut nodes = self.arg_list()?.args();
+        let node1 = nodes.next()?;
+        let node2 = nodes.next();
         let kind = match node2 {
             Some(node2) => BranchKind::Nodes(node1.as_path()?, node2.as_path()?),
             None => {

@@ -188,7 +188,7 @@ impl ExprValidator<'_, '_> {
         match self.parent.infer.resolved_signatures.get(&access_expr).copied() {
             Some(NATURE_ACCESS_BRANCH) => {
                 let branch = self.parent.infer.expr_types[args[0]].unwrap_branch();
-                if let Some(branch_info) = self.parent.db.branch_info(branch).ok().flatten() {
+                if let Some(branch_info) = self.parent.db.branch_info(branch) {
                     self.report_illegal_nature_access(
                         self.parent.db.branch_data(branch).name.to_string(),
                         branch_info.discipline,
@@ -199,7 +199,7 @@ impl ExprValidator<'_, '_> {
             }
             Some(NATURE_ACCESS_NODE_GND) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_node();
-                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
                     let node = self.parent.db.node_data(node);
                     self.report_illegal_nature_access(
                         format!("({})", node.name),
@@ -231,7 +231,7 @@ impl ExprValidator<'_, '_> {
             }
             Some(NATURE_ACCESS_PORT_FLOW) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_port_flow();
-                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
                     let node = self.parent.db.node_data(node);
                     self.report_illegal_nature_access(
                         format!("(<{}>)", node.name),
@@ -263,7 +263,7 @@ impl ExprValidator<'_, '_> {
         let pot = discipline.potential.and_then(get_nature_info);
         let flow = discipline.flow.and_then(get_nature_info);
 
-        self.parent.diagnostics.push(BodyDiagnostic::IncompatibleNatureAccess {
+        self.report(BodyDiagnostic::IncompatibleNatureAccess {
             candidates: [pot, flow],
             access_nature,
             access_expr,
@@ -339,7 +339,7 @@ impl ExprValidator<'_, '_> {
 
             (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_NODE_GND)) => {
                 let node = self.parent.infer.expr_types[args[0]].unwrap_node();
-                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
                     self.lint_trivial_branch(
                         BranchWrite::Unnamed { hi: node, lo: None },
                         builtin,
@@ -356,7 +356,7 @@ impl ExprValidator<'_, '_> {
                     self.report(BodyDiagnostic::ExpectedPort { node, expr })
                 }
 
-                if let Some(discipline) = self.parent.db.node_discipline(node).ok().flatten() {
+                if let Some(discipline) = self.parent.db.node_discipline(node) {
                     self.validate_flow_or_pot(expr, BuiltIn::flow, discipline)
                 }
             }
@@ -368,7 +368,7 @@ impl ExprValidator<'_, '_> {
             (BuiltIn::potential | BuiltIn::flow, Some(NATURE_ACCESS_BRANCH)) => {
                 let branch = self.parent.infer.expr_types[args[0]].unwrap_branch();
 
-                if let Some(branch_info) = self.parent.db.branch_info(branch).ok().flatten() {
+                if let Some(branch_info) = self.parent.db.branch_info(branch) {
                     match branch_info.kind {
                         BranchKind::PortFlow(_) => {
                             if builtin == BuiltIn::potential {
@@ -508,8 +508,8 @@ impl ExprValidator<'_, '_> {
         node_1: NodeId,
         node_2: NodeId,
     ) -> Option<DisciplineId> {
-        let d_1 = db.node_discipline(node_1).ok().flatten()?;
-        let d_2 = db.node_discipline(node_2).ok().flatten()?;
+        let d_1 = db.node_discipline(node_1)?;
+        let d_2 = db.node_discipline(node_2)?;
         db.discipline_info(d_2).ok()?.compatible(d_1, db).then_some(d_1)
     }
 

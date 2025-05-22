@@ -1,0 +1,17 @@
+`include "disciplines.vams"
+
+module test(a);
+    inout electrical a;
+    electrical b;
+    thermal t;
+
+    // Ok
+    branch (a, b) ab1, ab2;
+    branch (a) a_gnd;
+    branch (<$root.test.a>) port_flow_a;
+    
+    // Err
+    branch (a, c) foo;              // node resolution failure
+    branch (a, t) bar;              // incompatible discipline
+    branch (<b>) port_flow_b;       // 'b' is not declared as port
+endmodule

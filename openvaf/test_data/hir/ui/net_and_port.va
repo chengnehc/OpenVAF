@@ -1,0 +1,27 @@
+`include "disciplines.vams"
+
+// disciplineless nets are not allowed in Verilog-A subset
+// ports should be declared with direction
+module test(foo, bar);
+    inout foo;          
+    electrical bar;
+endmodule
+
+// multiple port direction declaration
+// multiple node discipline declaration
+module test2(foo, bar);
+    inout foo;
+    output foo;
+    electrical foo;
+
+    inout electrical bar;
+    current bar;
+endmodule
+
+// only 'ground' is valid net type
+// multiple ground declaration
+module test3;
+    ground bar;
+    gnd bar;
+    ground bar;
+endmodule

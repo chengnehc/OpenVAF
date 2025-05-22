@@ -1,22 +1,37 @@
-error: write to input function argument 'area'
-  --> /function_arg.va:7:13
+error: function argument 'a' is binded with multiple variable declarations
+  --> /function_arg.va:8:14
   |
-4 |         input area, perim;
-  |         ------------------ help: 'area' is defined here
+5 |         real a, b;
+  |              - first declared here
   .
-7 |             area = l * w;
-  |             ^^^^ write to input argument
-  |
-  = help: change direction of 'area' to inout
+8 |         real a;
+  |              ^ redeclared here
+
+error: argument 'c' is not binded with any variable
+   --> /function_arg.va:10:9
+   |
+10 |         input c;
+   |         ^^^^^^^^ 'c' shall have an associated variable declaration
+
+error: write to input function argument 'area'
+   --> /function_arg.va:25:13
+   |
+22 |         input area, perim;
+   |         ------------------ help: 'area' is defined here
+   .
+25 |             area = l * w;
+   |             ^^^^ write to input argument
+   |
+   = help: change direction of 'area' to inout
 
 error: write to input function argument 'perim'
-  --> /function_arg.va:8:13
-  |
-4 |         input area, perim;
-  |         ------------------ help: 'perim' is defined here
-  .
-8 |             perim = 2 * ( l + w );
-  |             ^^^^^ write to input argument
-  |
-  = help: change direction of 'perim' to inout
+   --> /function_arg.va:26:13
+   |
+22 |         input area, perim;
+   |         ------------------ help: 'perim' is defined here
+   .
+26 |             perim = 2 * ( l + w );
+   |             ^^^^^ write to input argument
+   |
+   = help: change direction of 'perim' to inout
 

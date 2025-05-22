@@ -246,40 +246,28 @@ pub struct BranchTy {
 }
 
 impl BranchTy {
-    pub fn branch_info_query(
-        db: &dyn HirTyDB,
-        branch: BranchId,
-    ) -> Result<Option<Arc<BranchTy>>, PathError> {
+    pub fn branch_info_query(db: &dyn HirTyDB, branch: BranchId) -> Option<Arc<BranchTy>> {
         let loc = branch.lookup(db.upcast());
         let scope = loc.scope;
-        let src = loc.ast_ptr(db).into();
 
         let kind = match &db.branch_data(branch).kind {
             hir_def::BranchKind::PortFlow(port) => {
-                let port_flow = scope
-                    .resolve_item_path(db.upcast(), port)
-                    .map_err(|err| PathError { err, src })?;
+                let port_flow = scope.resolve_item_path(db.upcast(), port).ok()?;
                 BranchKind::PortFlow(port_flow)
             }
             hir_def::BranchKind::NodeGnd(node) => {
-                let node = scope
-                    .resolve_item_path(db.upcast(), node)
-                    .map_err(|err| PathError { err, src })?;
+                let node = scope.resolve_item_path(db.upcast(), node).ok()?;
                 BranchKind::NodeGnd(node)
             }
             hir_def::BranchKind::Nodes(node1, node2) => {
-                let node1 = scope
-                    .resolve_item_path(db.upcast(), node1)
-                    .map_err(|err| PathError { err, src })?;
-                let node2 = scope
-                    .resolve_item_path(db.upcast(), node2)
-                    .map_err(|err| PathError { err, src })?;
+                let node1 = scope.resolve_item_path(db.upcast(), node1).ok()?;
+                let node2 = scope.resolve_item_path(db.upcast(), node2).ok()?;
                 BranchKind::Nodes(node1, node2)
             }
-            hir_def::BranchKind::Missing => return Ok(None),
+            hir_def::BranchKind::Missing => return None,
         };
 
-        Ok(kind.discipline(db)?.map(|discipline| Arc::new(BranchTy { discipline, kind })))
+        kind.discipline(db).map(|discipline| Arc::new(BranchTy { discipline, kind }))
     }
 
     pub fn access(&self, nature: NatureId, db: &dyn HirTyDB) -> Option<DisciplineAccess> {
@@ -291,7 +279,7 @@ impl BranchTy {
         branch: BranchId,
         name: &Name,
     ) -> Option<Result<NatureAttrId, PathResolveError>> {
-        let discipline = db.branch_info(branch).transpose()?.unwrap().discipline;
+        let discipline = db.branch_info(branch)?.discipline;
         match db.discipline_info(discipline).unwrap().flow {
             Some(nature) => Some(NatureTy::lookup_attr(db, nature, name)),
             None => Some(Err(PathResolveError::NotFoundIn {
@@ -306,7 +294,7 @@ impl BranchTy {
         branch: BranchId,
         name: &Name,
     ) -> Option<Result<NatureAttrId, PathResolveError>> {
-        let discipline = db.branch_info(branch).transpose()?.unwrap().discipline;
+        let discipline = db.branch_info(branch)?.discipline;
         match db.discipline_info(discipline).unwrap().potential {
             Some(nature) => Some(NatureTy::lookup_attr(db, nature, name)),
             None => Some(Err(PathResolveError::NotFoundIn {
@@ -325,24 +313,24 @@ pub enum BranchKind {
 }
 
 impl BranchKind {
-    pub fn discipline(&self, db: &dyn HirTyDB) -> Result<Option<DisciplineId>, PathError> {
+    pub fn discipline(&self, db: &dyn HirTyDB) -> Option<DisciplineId> {
         match *self {
             BranchKind::PortFlow(node) | BranchKind::NodeGnd(node) => db.node_discipline(node),
             BranchKind::Nodes(node1, node2) => {
                 // Standard dictates that the disciplines of the two nodes need to be compatible.
                 // Compatible disciplines have identical behaviors during type checking, so we
                 // just use the discipline of the first node here.
-                let d1 = db.node_discipline(node1)?;
-                let d2 = db.node_discipline(node2)?;
+                let d1 = db.node_discipline(node1);
+                let d2 = db.node_discipline(node2);
                 // fast path
                 if d1 == d2 {
-                    return Ok(d1);
+                    return d1;
                 }
                 let (d1, d2) = match (d1, d2) {
-                    (None, d) | (d, None) => return Ok(d),
+                    (None, d) | (d, None) => return d,
                     (Some(d1), Some(d2)) => (d1, d2),
                 };
-                Ok(db.discipline_info(d1).unwrap().compatible(d2, db).then_some(d1))
+                db.discipline_info(d1).unwrap().compatible(d2, db).then_some(d1)
             }
         }
     }

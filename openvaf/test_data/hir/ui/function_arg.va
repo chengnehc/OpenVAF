@@ -1,4 +1,22 @@
-module test;
+// argument variable binding
+module test1;
+    analog function real bar;
+        input a;
+        real a, b;
+        
+        // duplicate function argument binding
+        real a;
+        // unbinded function argument 
+        input c;
+
+        begin
+            ;
+        end
+    endfunction
+endmodule
+
+// write to input argument
+module test2;
     analog function real geomcalc;
         input l, w;
         input area, perim;

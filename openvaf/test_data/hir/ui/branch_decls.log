@@ -1,0 +1,31 @@
+error: 'c' was not found in the current scope
+   --> /branch_decls.va:14:16
+   |
+14 |     branch (a, c) foo;              // node resolution failure
+   |                ^ not found
+
+error: nodes 'a' and 't' of branch 'bar' have incompatible disciplines
+   --> /branch_decls.va:15:5
+   |
+ 4 |     inout electrical a;
+   |     ------------------ help: 'a' declared with discipline 'electrical'
+ 5 |     electrical b;
+ 6 |     thermal t;
+   |     ---------- help: 't' declared with discipline 'thermal'
+   .
+15 |     branch (a, t) bar;              // incompatible discipline
+   |     ^^^^^^^^^^^^^^^^^^ branch 'bar' has mismatched disciplines
+   |
+   = help: disciplines are compatible if their potential and flow natures have the same 'units' attribute
+
+error: expected a port reference but no direction was declared for net 'b
+   --> /branch_decls.va:16:5
+   |
+ 5 |     electrical b;
+   |     ------------- info: 'b' was declared here
+   .
+16 |     branch (<b>) port_flow_b;       // 'b' is not declared as port
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ 'b' is not a port
+   |
+   = help: prefix one of the declarations with inout, input or output
+

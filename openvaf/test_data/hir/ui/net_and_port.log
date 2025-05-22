@@ -1,0 +1,51 @@
+error: no discipline for net 'foo'
+  --> /net_and_port.va:5:13
+  |
+5 | module test(foo, bar);
+  |             ^^^ 'foo' is missing a discipline
+  |
+  = info: disciplineless nets are digital and therefore not supported in Verilog-A
+  = help: add a discipline with 'electrical foo'
+
+error[L016]: no direction declared for port 'bar'
+  --> /net_and_port.va:5:18
+  |
+5 | module test(foo, bar);
+  |                  ^^^ 'bar' is declared here without direction
+  |
+  = if port_without_direction is set to warn/allow the direciton will be set to 'inout'.
+  = note: port directions are always required by the language standard.
+  = port_without_direction is set to deny by default
+    use a CLI argument or an attribute to overwrite
+
+error: multiple direction declarations for port 'foo'
+   --> /net_and_port.va:14:5
+   |
+13 |     inout foo;
+   |     --------- first declared here
+14 |     output foo;
+   |     ^^^^^^^^^^ redeclared here
+
+error: multiple discipline declarations for net 'bar'
+   --> /net_and_port.va:18:5
+   |
+17 |     inout electrical bar;
+   |     -------------------- first declared here
+18 |     current bar;
+   |     ^^^^^^^^^^^^ redeclared here
+
+error: 'gnd' was not found in the current scope
+   --> /net_and_port.va:25:5
+   |
+25 |     gnd bar;
+   |     ^^^ not found
+
+error: multiple 'ground' declarations for net 'bar'
+   --> /net_and_port.va:26:5
+   |
+24 |     ground bar;
+   |     ----------- first declared here
+25 |     gnd bar;
+26 |     ground bar;
+   |     ^^^^^^^^^^^ redeclared here
+

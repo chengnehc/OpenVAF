@@ -133,7 +133,7 @@ pub enum TypeDiagnostic {
     MultipleGnds(DuplicateItem<ErasedAstId, NodeId>),
 
     /* Branch */
-    ExpectedPort { node: NodeId, src: ErasedAstId },
+    ExpectedPort { node: NodeId, branch: AstId<ast::BranchDecl> },
     IncompatibleBranch { branch: BranchId, node1: NodeId, node2: NodeId },
 
     /* Function */

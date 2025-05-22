@@ -511,7 +511,7 @@ impl Context<'_> {
         let node = match *signature {
             NATURE_ACCESS_BRANCH => {
                 let branch = self.result.expr_types[arg].unwrap_branch();
-                let branch_info = self.db.branch_info(branch).ok().flatten()?;
+                let branch_info = self.db.branch_info(branch)?;
                 return branch_info.access(nature, self.db);
             }
             NATURE_ACCESS_NODES | NATURE_ACCESS_NODE_GND => {
@@ -521,7 +521,7 @@ impl Context<'_> {
             _ => unreachable!(),
         };
 
-        let discipline = self.db.node_discipline(node).ok().flatten()?;
+        let discipline = self.db.node_discipline(node)?;
         self.db.discipline_info(discipline).ok()?.access(nature, self.db)
     }
 
