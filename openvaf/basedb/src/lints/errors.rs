@@ -14,10 +14,10 @@ pub enum LintAttrDiagnostic {
 
 use LintAttrDiagnostic::*;
 impl_display! {
-    match LintAttrDiagnostic{
-        ExpectedArrayOrLiteral{attr,..} => "'{attr}' attribute expects a string literal or and array of literals";
-        ExpectedLiteral{attr,..} => "'{attr}' attribute expects a string literal here";
-        UnknownLint{lint,..} => "unknown lint '{lint}'";
-        LintOverwrite{name,..} => "lint level for '{name}' was set multiple times";
+    match LintAttrDiagnostic {
+        ExpectedArrayOrLiteral {attr,..} => "'{attr}' attribute expects a string literal or and array of literals";
+        ExpectedLiteral {attr,..} => "'{attr}' attribute expects a string literal here";
+        UnknownLint {lint,..} => "unknown lint '{lint}'";
+        LintOverwrite {name,..} => "lint level for '{name}' was set multiple times";
     }
 }

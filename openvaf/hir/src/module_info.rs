@@ -1,13 +1,15 @@
-//! Metadata of compiled module
+//! Collect the metadata of a module: parameters and op variables.
+
+use stdx::impl_display;
 
 use ahash::{AHashSet, RandomState};
 use indexmap::IndexMap;
 use smol_str::SmolStr;
+use syntax::{ast, sourcemap::FileSpan, AstNode};
 
 use crate::diagnostics::{ConsoleSink, Diagnostic, DiagnosticSink, Label, LabelStyle, Report};
 use crate::{BaseDB, CompilationDB, CompilationUnit, FileId};
 use crate::{Module, ParamSysFun, Parameter, ResolvedAliasParam, ScopeDef, Variable};
-use syntax::{ast, sourcemap::FileSpan, AstNode};
 
 #[cfg(test)]
 mod tests;
@@ -41,10 +43,35 @@ pub fn collect_modules(
 
 pub struct ModuleInfo {
     pub module: Module,
-    /// all parameters: including model and instance parameters
     pub params: IndexMap<Parameter, ParamInfo, RandomState>,
     pub param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, RandomState>,
     pub op_vars: IndexMap<Variable, OpVar, RandomState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ParamInfo {
+    pub name: SmolStr,
+    pub aliases: Vec<SmolStr>,
+    pub units: String,
+    pub desc: String,
+    pub group: String,
+    pub is_instance: bool,
+    pub multiplicity: Multiplicity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpVar {
+    pub units: String,
+    pub desc: String,
+    pub multiplicity: Multiplicity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Multiplicity {
+    #[default]
+    None,
+    Multiply,
+    Divide,
 }
 
 impl ModuleInfo {
@@ -63,10 +90,13 @@ impl ModuleInfo {
         let mut op_vars = IndexMap::default();
 
         let mut resolved_attrs = AHashSet::new();
-        let mut add_diagnostic = |attr: ast::Attr, diag: &dyn Diagnostic| {
-            if resolved_attrs.insert(attr.syntax().text_range()) {
-                sink.add_diagnostic(diag, root_file, db)
+        let mut diagnostics = Vec::new();
+        let mut diagnose = |attr: ast::Attr| {
+            let lit = attr.val().and_then(|e| e.as_str_literal());
+            if lit.is_none() && resolved_attrs.insert(attr.syntax().text_range()) {
+                diagnostics.push(IllegalAttr { attr });
             }
+            lit
         };
 
         let mut decls = module.rec_declarations(db);
@@ -91,80 +121,81 @@ impl ModuleInfo {
                     if path.len() != name_len {
                         continue;
                     }
-                    let units = units
-                        .and_then(|attr| {
-                            let lit = attr.val().and_then(|e| e.as_str_literal());
-                            if lit.is_none() {
-                                add_diagnostic(attr.clone(), &IllegalAttr { attr });
-                            }
-                            lit
-                        })
-                        .unwrap_or_default();
-                    let desc = desc
-                        .and_then(|attr| {
-                            let lit = attr.val().and_then(|e| e.as_str_literal());
-                            if lit.is_none() {
-                                add_diagnostic(attr.clone(), &IllegalAttr { attr });
-                            }
-                            lit
-                        })
-                        .unwrap_or_default();
+                    let units = units.and_then(|attr| diagnose(attr.clone())).unwrap_or_default();
+                    let desc = desc.and_then(|attr| diagnose(attr.clone())).unwrap_or_default();
 
-                    op_vars.insert(var, OpVar { units, desc });
+                    let multiplicity = var
+                        .get_attr(db, &ast, "multiplicity")
+                        .and_then(|attr| diagnose(attr.clone()));
+                    let multiplicity = match multiplicity.as_deref() {
+                        Some("multiply") => Multiplicity::Multiply,
+                        Some("divide") => Multiplicity::Divide,
+                        Some("none") | None => Multiplicity::None,
+                        Some(found) => {
+                            let attr = var.get_attr(db, &ast, "multiplicity").unwrap();
+                            sink.add_diagnostic(
+                                &UnknownMultiplicity { attr, found: found.to_owned() },
+                                root_file,
+                                db,
+                            );
+                            Multiplicity::None
+                        }
+                    };
+
+                    op_vars.insert(var, OpVar { units, desc, multiplicity });
                 }
 
                 ScopeDef::Parameter(param) => {
                     let units = param
                         .get_attr(db, &ast, "units")
-                        .and_then(|attr| {
-                            let lit = attr.val().and_then(|e| e.as_str_literal());
-                            if lit.is_none() {
-                                add_diagnostic(attr.clone(), &IllegalAttr { attr });
-                            }
-                            lit
-                        })
+                        .and_then(|attr| diagnose(attr.clone()))
                         .unwrap_or_default();
 
                     let desc = param
                         .get_attr(db, &ast, "desc")
-                        .and_then(|attr| {
-                            let lit = attr.val().and_then(|e| e.as_str_literal());
-                            if lit.is_none() {
-                                add_diagnostic(attr.clone(), &IllegalAttr { attr });
-                            }
-                            lit
-                        })
+                        .and_then(|attr| diagnose(attr.clone()))
                         .unwrap_or_default();
 
                     // "group" is not a standard attribute, but is used by VerilogAE
                     // for parameter extraction
                     let group = param
                         .get_attr(db, &ast, "group")
-                        .and_then(|attr| {
-                            let lit = attr.val().and_then(|e| e.as_str_literal());
-                            if lit.is_none() {
-                                add_diagnostic(attr.clone(), &IllegalAttr { attr });
-                            }
-                            lit
-                        })
+                        .and_then(|attr| diagnose(attr.clone()))
                         .unwrap_or_default();
 
                     // "type" is not a standard attribute, but is used by compact models
                     // comprehensively to distinguish between instance and model params.
-                    let type_ = param.get_attr(db, &ast, "type").and_then(|attr| {
-                        let lit = attr.val().and_then(|e| e.as_str_literal());
-                        if lit.is_none() {
-                            add_diagnostic(attr.clone(), &IllegalAttr { attr });
-                        }
-                        lit
-                    });
+                    let type_ =
+                        param.get_attr(db, &ast, "type").and_then(|attr| diagnose(attr.clone()));
                     let is_instance = match type_.as_deref() {
                         Some("instance") => true,
                         Some("model") | None => false,
                         Some(found) => {
                             let attr = param.get_attr(db, &ast, "type").unwrap();
-                            add_diagnostic(attr.clone(), &UnknownType { attr, found });
+                            sink.add_diagnostic(
+                                &UnknownParamType { attr, found: found.to_owned() },
+                                root_file,
+                                db,
+                            );
                             false
+                        }
+                    };
+
+                    let multiplicity = param
+                        .get_attr(db, &ast, "multiplicity")
+                        .and_then(|attr| diagnose(attr.clone()));
+                    let multiplicity = match multiplicity.as_deref() {
+                        Some("multiply") => Multiplicity::Multiply,
+                        Some("divide") => Multiplicity::Divide,
+                        Some("none") | None => Multiplicity::None,
+                        Some(found) => {
+                            let attr = param.get_attr(db, &ast, "multiplicity").unwrap();
+                            sink.add_diagnostic(
+                                &UnknownMultiplicity { attr, found: found.to_owned() },
+                                root_file,
+                                db,
+                            );
+                            Multiplicity::None
                         }
                     };
 
@@ -177,6 +208,7 @@ impl ModuleInfo {
                             desc,
                             group,
                             is_instance,
+                            multiplicity,
                         },
                     );
                 }
@@ -194,73 +226,79 @@ impl ModuleInfo {
             }
         }
 
+        sink.add_diagnostics(diagnostics.iter(), root_file, db);
+
         ModuleInfo { module, params, param_sysfuns, op_vars }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ParamInfo {
-    pub name: SmolStr,
-    pub aliases: Vec<SmolStr>,
-    pub units: String,
-    pub desc: String,
-    pub group: String,
-    pub is_instance: bool,
+/// Refer to [LRM 2.9.2] standard attributes
+enum StdAttrDiagnostic {
+    IllegalAttr { attr: ast::Attr },
+    UnknownParamType { attr: ast::Attr, found: String },
+    UnknownMultiplicity { attr: ast::Attr, found: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpVar {
-    pub units: String,
-    pub desc: String,
-    // TODO(JW) add standard attribute 'multiplicity'. [LRM 2.9.2]
-    // pub multiplicity
-}
+use StdAttrDiagnostic::*;
+impl_display! {
+    match StdAttrDiagnostic {
+        IllegalAttr { attr } => "illegal expression supplied to '{}' attribute; expected a string literal", attr.name().unwrap();
+        UnknownParamType { found, .. } => r#"unknown parameter type "{}"; expected "model" or "instance""#, found;
+        UnknownMultiplicity { found, .. } => r#"unknown multiplicity attribute value "{}"; expected "multiply", "divide" or "none""#, found;
 
-struct IllegalAttr {
-    attr: ast::Attr,
-}
-
-impl Diagnostic for IllegalAttr {
-    fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
-        let FileSpan { range, file } = db
-            .parse(root_file)
-            .to_file_span(self.attr.syntax().text_range(), &db.sourcemap(root_file));
-
-        Report::error()
-            .with_message(format!(
-                "illegal expression supplied to '{}' attribute; expected a string literal",
-                self.attr.name().unwrap(),
-            ))
-            .with_labels(vec![Label {
-                style: LabelStyle::Primary,
-                file_id: file,
-                range: range.into(),
-                message: "expected a string literal".to_owned(),
-            }])
     }
 }
 
-struct UnknownType<'a> {
-    attr: ast::Attr,
-    found: &'a str,
-}
-
-impl Diagnostic for UnknownType<'_> {
+impl Diagnostic for StdAttrDiagnostic {
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
-        let FileSpan { range, file } = db
-            .parse(root_file)
-            .to_file_span(self.attr.syntax().text_range(), &db.sourcemap(root_file));
+        let src_map = db.sourcemap(root_file);
+        let parse = db.parse(root_file);
 
-        Report::warning()
-            .with_message(format!(
-                "unknown type \"{}\" expected \"model\" or \"instance\"",
-                self.found
-            ))
-            .with_labels(vec![Label {
-                style: LabelStyle::Primary,
-                file_id: file,
-                range: range.into(),
-                message: "unknown type".to_owned(),
-            }])
+        let report = match self {
+            IllegalAttr { attr } => {
+                let FileSpan { range, file } =
+                    parse.to_file_span(attr.syntax().text_range(), &src_map);
+
+                Report::error().with_labels(vec![Label {
+                    style: LabelStyle::Primary,
+                    file_id: file,
+                    range: range.into(),
+                    message: "expected a string literal".to_owned(),
+                }])
+            }
+            UnknownParamType { attr, .. } => {
+                let FileSpan { range, file } =
+                    parse.to_file_span(attr.syntax().text_range(), &src_map);
+
+                Report::warning()
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Primary,
+                        file_id: file,
+                        range: range.into(),
+                        message: "unknown parameter type".to_owned(),
+                    }])
+                    .with_notes(
+                        vec!["note: parameter type is set to 'model' by default".to_owned()],
+                    )
+            }
+            UnknownMultiplicity { attr, .. } => {
+                let FileSpan { range, file } =
+                    parse.to_file_span(attr.syntax().text_range(), &src_map);
+
+                Report::warning()
+                    .with_labels(vec![Label {
+                        style: LabelStyle::Primary,
+                        file_id: file,
+                        range: range.into(),
+                        message: "unknown multiplicity attribute value".to_owned(),
+                    }])
+                    .with_notes(vec![
+                        "note: multiplicity is set to 'none' by default, no scaling is performed"
+                            .to_owned(),
+                    ])
+            }
+        };
+
+        report.with_message(self.to_string())
     }
 }

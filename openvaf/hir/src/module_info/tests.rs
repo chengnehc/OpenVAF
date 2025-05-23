@@ -7,9 +7,9 @@ use indoc::indoc;
 fn invalid_attr() {
     let src = indoc! {r#"
         module test;
-            (* units=1, desc=xx, group=foo*bar, type=2  *) parameter real foo=2.0, bar=3.0;
-            (* type="foo"  *) parameter real test=1.0;
-            (* units=1, desc=xx *) real init;
+            (* units=1, desc=xx, group=foo*bar, type *) parameter real foo=2.0, bar=3.0;
+            (* type="foo" *) parameter real test=1.0;
+            (* units=1, desc=xx, multiplicity="foo" *) real init;
             aliasparam alias=foo;
         endmodule
     "#};
@@ -22,49 +22,59 @@ fn invalid_attr() {
         collect_modules(&db, false, &mut sink);
     }
     expect_test::expect![[r#"
+        warning: unknown parameter type "foo"; expected "model" or "instance"
+          --> /root.va:3:8
+          |
+        3 |     (* type="foo" *) parameter real test=1.0;
+          |        ^^^^^^^^^^ unknown parameter type
+          |
+          = note: parameter type is set to 'model' by default
+
+        warning: unknown multiplicity attribute value "foo"; expected "multiply", "divide" or "none"
+          --> /root.va:4:26
+          |
+        4 |     (* units=1, desc=xx, multiplicity="foo" *) real init;
+          |                          ^^^^^^^^^^^^^^^^^^ unknown multiplicity attribute value
+          |
+          = note: multiplicity is set to 'none' by default, no scaling is performed
+
         error: illegal expression supplied to 'units' attribute; expected a string literal
           --> /root.va:2:8
           |
-        2 |     (* units=1, desc=xx, group=foo*bar, type=2  *) parameter real foo=2.0, bar=3.0;
+        2 |     (* units=1, desc=xx, group=foo*bar, type *) parameter real foo=2.0, bar=3.0;
           |        ^^^^^^^ expected a string literal
 
         error: illegal expression supplied to 'desc' attribute; expected a string literal
           --> /root.va:2:17
           |
-        2 |     (* units=1, desc=xx, group=foo*bar, type=2  *) parameter real foo=2.0, bar=3.0;
+        2 |     (* units=1, desc=xx, group=foo*bar, type *) parameter real foo=2.0, bar=3.0;
           |                 ^^^^^^^ expected a string literal
 
         error: illegal expression supplied to 'group' attribute; expected a string literal
           --> /root.va:2:26
           |
-        2 |     (* units=1, desc=xx, group=foo*bar, type=2  *) parameter real foo=2.0, bar=3.0;
+        2 |     (* units=1, desc=xx, group=foo*bar, type *) parameter real foo=2.0, bar=3.0;
           |                          ^^^^^^^^^^^^^ expected a string literal
 
         error: illegal expression supplied to 'type' attribute; expected a string literal
           --> /root.va:2:41
           |
-        2 |     (* units=1, desc=xx, group=foo*bar, type=2  *) parameter real foo=2.0, bar=3.0;
-          |                                         ^^^^^^ expected a string literal
-
-        warning: unknown type "foo" expected "model" or "instance"
-          --> /root.va:3:8
-          |
-        3 |     (* type="foo"  *) parameter real test=1.0;
-          |        ^^^^^^^^^^ unknown type
+        2 |     (* units=1, desc=xx, group=foo*bar, type *) parameter real foo=2.0, bar=3.0;
+          |                                         ^^^^ expected a string literal
 
         error: illegal expression supplied to 'units' attribute; expected a string literal
           --> /root.va:4:8
           |
-        4 |     (* units=1, desc=xx *) real init;
+        4 |     (* units=1, desc=xx, multiplicity="foo" *) real init;
           |        ^^^^^^^ expected a string literal
 
         error: illegal expression supplied to 'desc' attribute; expected a string literal
           --> /root.va:4:17
           |
-        4 |     (* units=1, desc=xx *) real init;
+        4 |     (* units=1, desc=xx, multiplicity="foo" *) real init;
           |                 ^^^^^^^ expected a string literal
 
-        error: could not compile `root.va` due to 6 previous errors; 1 warning emitted
+        error: could not compile `root.va` due to 6 previous errors; 2 warning emitted
 
     "#]]
     .assert_eq(&String::from_utf8(buf.into_inner()).unwrap());
@@ -76,7 +86,7 @@ fn parameters() {
         module test;
             (* units="m", desc="hmm", group="foo", type="instance" *) parameter real foo=2.0, bar=3.0;
             aliasparam alias=foo;
-            (* type="model" *) parameter real module_param=3.0;
+            (* type="model", multiplicity="divide" *) parameter real module_param=3.0;
         endmodule
     "#};
     let db = CompilationDB::new_from_vfs(src).unwrap();
@@ -96,6 +106,7 @@ fn parameters() {
                     desc: "hmm",
                     group: "foo",
                     is_instance: true,
+                    multiplicity: None,
                 },
             ),
             (
@@ -107,6 +118,7 @@ fn parameters() {
                     desc: "hmm",
                     group: "foo",
                     is_instance: true,
+                    multiplicity: None,
                 },
             ),
             (
@@ -118,6 +130,7 @@ fn parameters() {
                     desc: "",
                     group: "",
                     is_instance: false,
+                    multiplicity: Divide,
                 },
             ),
         ]
@@ -132,6 +145,7 @@ fn opvars() {
             (* units="m", desc="hmm" *) real both1, both2=3.0;
             (* units="m" *) real units_;
             (* desc="hmm" *) real desc_;
+            (* desc="op", multiplicity="multiply" *) real Ids;
         endmodule
     "#};
     let db = CompilationDB::new_from_vfs(src).unwrap();
@@ -145,6 +159,7 @@ fn opvars() {
                 OpVar {
                     units: "m",
                     desc: "hmm",
+                    multiplicity: None,
                 },
             ),
             (
@@ -152,6 +167,7 @@ fn opvars() {
                 OpVar {
                     units: "m",
                     desc: "hmm",
+                    multiplicity: None,
                 },
             ),
             (
@@ -159,6 +175,7 @@ fn opvars() {
                 OpVar {
                     units: "m",
                     desc: "",
+                    multiplicity: None,
                 },
             ),
             (
@@ -166,6 +183,15 @@ fn opvars() {
                 OpVar {
                     units: "",
                     desc: "hmm",
+                    multiplicity: None,
+                },
+            ),
+            (
+                "Ids",
+                OpVar {
+                    units: "",
+                    desc: "op",
+                    multiplicity: Multiply,
                 },
             ),
         ]
