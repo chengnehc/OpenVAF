@@ -14,7 +14,6 @@ doctest = false
 [dependencies]
 stdx = { version = "0.0.0", path = "../../lib/stdx" }
 arena = { version = "0.0.0", path = "../../lib/arena" }
-
 syntax = { version = "0.0.0", path = "../syntax" }
 basedb = { version = "0.0.0", path = "../basedb" }
 
@@ -25,8 +24,8 @@ indexmap = "2.0"
 salsa = "0.17.0-pre.2"
 
 [dev-dependencies]
-expect-test = "1.4"
 mini_harness = { version = "0.0.1", path = "../../lib/mini_harness" }
+expect-test = "1.4"
 parking_lot = "0.12"
 
 [[test]]

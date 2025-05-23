@@ -12,7 +12,6 @@ use crate::{Branch, BranchWrite, Function, FunctionArg, NatureAttr, Node, Parame
 use crate::{CompilationDB, HirDB, HirDefDB};
 
 mod expr;
-
 pub use expr::{AssignmentLhs, ContributeKind, Expr, Ref, ResolvedFun, Stmt};
 
 #[derive(Debug, Clone)]
@@ -134,8 +133,8 @@ impl<'a> BodyRef<'a> {
     fn resolve_path(&self, expr: ExprId) -> Ref {
         match self.infere.expr_types[expr] {
             Ty::NatureAttr(_, id) => Ref::NatureAttr(NatureAttr { id }),
-            Ty::Var(_, id) => Ref::Variable(Variable { id }),
             Ty::Param(_, id) => Ref::Parameter(Parameter { id }),
+            Ty::Var(_, id) => Ref::Variable(Variable { id }),
             Ty::FunctionVar { fun, arg: Some(arg), .. } => {
                 Ref::FunctionArg(FunctionArg { fun, arg })
             }

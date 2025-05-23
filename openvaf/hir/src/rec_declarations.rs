@@ -1,9 +1,8 @@
 //! Define an iterator that recursively visit all of the declarations within a Scope,
 //! that is, module, named block, analog function.
 
-use std::iter;
-use std::mem;
 use std::sync::Arc;
+use std::{iter, mem};
 
 use hir_def::nameres::{DefMap, LocalScopeId, ScopeItem};
 use syntax::name::{Name, SmolStr};

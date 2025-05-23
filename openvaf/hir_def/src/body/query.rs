@@ -10,15 +10,15 @@ use crate::{HirDefDB, Lookup, Type};
 impl Body {
     pub fn body_with_srcmap_query(
         db: &dyn HirDefDB,
-        def: ItemWithBodyId,
+        item: ItemWithBodyId,
     ) -> (Arc<Body>, Arc<BodySourceMap>) {
         let mut body = Body::default();
         let mut src_map = BodySourceMap::default();
 
-        let root_file = def.file(db);
+        let root_file = item.file(db);
         let ast_id_map = &db.ast_id_map(root_file);
 
-        match def {
+        match item {
             ItemWithBodyId::NatureAttrId(attr) => {
                 let root = db.parse(root_file).root();
                 let item_tree = db.item_tree(root_file);

@@ -31,7 +31,6 @@ use ctx::MainLowerContext;
 pub use callbacks::{CallBackKind, NoiseTable};
 pub use params::ParamInfoKind;
 
-/// A builder to lower HIR into MIR
 pub struct MirBuilder<'a> {
     module: Module,
     db: &'a CompilationDB,
@@ -74,8 +73,8 @@ impl<'a> MirBuilder<'a> {
         }
     }
 
-    pub fn with_func_builder_context(mut self, func_ctxt: &'a mut FunctionBuilderContext) -> Self {
-        self.func_ctxt = Some(func_ctxt);
+    pub fn with_func_builder_context(mut self, ctxt: &'a mut FunctionBuilderContext) -> Self {
+        self.func_ctxt = Some(ctxt);
         self
     }
 
@@ -99,41 +98,53 @@ impl<'a> MirBuilder<'a> {
     }
 
     pub fn build(self, literals: &mut Rodeo) -> (Function, HirInterner) {
+        let MirBuilder {
+            db,
+            module,
+            func_ctxt,
+            lower_equations,
+            required_vars,
+            tagged_reads,
+            tag_writes,
+            is_output,
+        } = self;
+
         let mut function = Function::default();
         let mut interner = HirInterner::default();
-        let func_ctxt = match self.func_ctxt {
-            Some(func_ctxt) => func_ctxt,
+        let func_ctxt = match func_ctxt {
+            Some(ctxt) => ctxt,
             None => &mut FunctionBuilderContext::new(),
         };
-        let func_builder =
-            FunctionBuilder::new(&mut function, literals, func_ctxt, self.tag_writes);
-        let mut ctxt = MainLowerContext::new(self.db, func_builder, &mut interner)
-            .with_equations(self.lower_equations)
-            .with_tagged_reads(self.tagged_reads);
+        // let func_ctxt = func_ctxt.unwrap_or(&mut FunctionBuilderContext::new());
+        let func_builder = FunctionBuilder::new(&mut function, literals, func_ctxt, tag_writes);
+        let mut ctxt = MainLowerContext::new(db, func_builder, &mut interner)
+            .with_equations(lower_equations)
+            .with_tagged_reads(tagged_reads);
 
-        let path = self.module.name(self.db);
-        let body = self.module.analog_initial_body(self.db);
+        let path = module.name(db);
+        let body = module.analog_initial_body(db);
         let mut body_ctxt = BodyLowerContext { ctxt: &mut ctxt, body: body.borrow(), path: &path };
         body_ctxt.lower_entry_stmts();
 
-        let body = self.module.analog_body(self.db);
+        let body = module.analog_body(db);
         body_ctxt.with_body(body.borrow()).lower_entry_stmts();
 
-        // declare places at entry block for op variables
-        for var in self.required_vars {
+        // After lowering, the function builder should be positioned at
+        // the block before exit block.
+        //
+        // dbg!(&ctxt.func.cursor().position());
+
+        // declare places for op variables
+        for var in required_vars {
             ctxt.dec_place(PlaceKind::Var(var));
         }
 
         // ensure optbarriers for outputs
-        // after lowering, the function builder should be positioned at
-        // the block before exit block, where optbarriers are created.
-        //
-        // dbg!(&ctxt.func.cursor().position());
         ctxt.intern.outputs = ctxt
             .places
             .iter_enumerated()
             .map(|(place, kind)| {
-                if (self.is_output)(*kind) {
+                if (is_output)(*kind) {
                     let val = ctxt.func.use_var(place);
                     let val = ctxt.func.ins().ensure_optbarrier(val);
                     (*kind, val.into())

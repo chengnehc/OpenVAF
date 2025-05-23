@@ -21,15 +21,14 @@ mod types;
 
 pub use body::{Body, Expr, Stmt};
 pub use builtin::{BuiltIn, ParamSysFun};
+pub use db::HirDefDB;
 pub use item_tree::{
     AliasParam, Branch, BranchKind, Discipline, DisciplineAttr, Function, ItemTree, ItemTreeId,
     ItemTreeNode, Module, Nature, NatureAttr, NatureRef, NatureRefKind, NodeTypeDecl, Param, Var,
 };
+pub use nameres::{DefMap, ScopeId};
 pub use path::Path;
 pub use types::Type;
-
-use db::HirDefDB;
-use nameres::{DefMap, ScopeId};
 
 #[derive(Debug)]
 pub struct ItemLoc<N: ItemTreeNode> {
