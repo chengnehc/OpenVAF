@@ -51,7 +51,7 @@ impl Inference {
     pub fn infere_body_query(db: &dyn HirTyDB, id: ItemWithBodyId) -> Arc<Inference> {
         let body = db.body(id);
         let result = Inference {
-            expr_types: ArenaMap::from(vec![Ty::Val(Type::Err); body.exprs.len()]),
+            expr_types: ArenaMap::from(vec![Ty::Val(Type::Err); body.capacity().0]),
             ..Default::default()
         };
         let mut ctxt = Context { result, body: &body, db, expr_stmt_ty: None };
@@ -63,7 +63,7 @@ impl Inference {
                 // If the type of a parameter is omitted, it shall be inferred through
                 // the parameter's default value. Refer to [LRM 3.4.1]
                 None => {
-                    let stmt = body.entry_stmts[0];
+                    let Some(&stmt) = body.entry_stmts().first() else { unreachable!() };
                     let expr = db.param_exprs(param).default;
                     ctxt.infere_expr(stmt, expr).and_then(|ty| ty.to_value())
                 }
@@ -73,7 +73,7 @@ impl Inference {
             _ => None,
         };
 
-        for stmt in &body.entry_stmts {
+        for stmt in body.entry_stmts() {
             ctxt.infere_stmt(*stmt);
         }
 
@@ -115,7 +115,7 @@ struct Context<'a> {
 
 impl Context<'_> {
     pub fn infere_stmt(&mut self, stmt: StmtId) {
-        match self.body.stmts[stmt] {
+        match self.body[stmt] {
             Stmt::Expr(expr) => {
                 // TODO lint for side effect free expressions
                 self.infere_assignment(stmt, expr, self.expr_stmt_ty.clone());
@@ -142,7 +142,7 @@ impl Context<'_> {
             }
             _ => (),
         };
-        self.body.stmts[stmt].walk_child_stmts(|stmt| self.infere_stmt(stmt));
+        self.body[stmt].walk_child_stmts(|stmt| self.infere_stmt(stmt));
     }
 
     fn infere_assignment(&mut self, stmt: StmtId, expr: ExprId, dst_ty: Option<Type>) {
@@ -189,7 +189,7 @@ impl Context<'_> {
             {
                 // deal with contribution LHS
                 let mut args = Vec::new();
-                self.body.exprs[expr].walk_child_exprs(|e| args.push(&self.result.expr_types[e]));
+                self.body[expr].walk_child_exprs(|e| args.push(&self.result.expr_types[e]));
                 let kind = match *self.result.resolved_signatures.get(&expr)? {
                     NATURE_ACCESS_BRANCH => BranchWrite::Named(args[0].unwrap_branch()),
                     NATURE_ACCESS_NODES => BranchWrite::Unnamed {
@@ -254,7 +254,7 @@ impl Context<'_> {
     }
 
     fn infere_expr(&mut self, stmt: StmtId, expr: ExprId) -> Option<Ty> {
-        let ty = match self.body.exprs[expr] {
+        let ty = match self.body[expr] {
             Expr::Missing => return None,
             Expr::Path { ref path, port: true } => {
                 let port = self.resolve_item_path(stmt, expr, path)?;
@@ -949,7 +949,7 @@ impl Context<'_> {
         let mut i = 0;
         while let Some(fmt_expr) = args.get(i) {
             i += 1;
-            if let Expr::Literal(Literal::String(ref lit)) = self.body.exprs[*fmt_expr] {
+            if let Expr::Literal(Literal::String(ref lit)) = self.body[*fmt_expr] {
                 let mut chars = lit.char_indices();
                 while let Some((start, c)) = chars.next() {
                     if c == '%' {
@@ -1109,7 +1109,7 @@ impl Context<'_> {
         expr: ExprId,
         path: &Path,
     ) -> Option<T> {
-        match self.body.stmt_scopes[stmt].resolve_item_path(self.db.upcast(), path) {
+        match self.body.get_scope_of(stmt).resolve_item_path(self.db.upcast(), path) {
             Ok(item) => Some(item),
             Err(err) => {
                 self.result.diagnostics.push(InferDiagnostic::PathResolveError { err, expr });
@@ -1119,7 +1119,8 @@ impl Context<'_> {
     }
 
     fn resolve_path(&mut self, stmt: StmtId, expr: ExprId, path: &Path) -> Option<ScopeItem> {
-        let resolved_path = match self.body.stmt_scopes[stmt].resolve_path(self.db.upcast(), path) {
+        let resolved_path = match self.body.get_scope_of(stmt).resolve_path(self.db.upcast(), path)
+        {
             Ok(resolved_path) => resolved_path,
             Err(err) => {
                 self.result.diagnostics.push(InferDiagnostic::PathResolveError { err, expr });

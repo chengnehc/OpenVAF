@@ -50,7 +50,8 @@ pub struct LimitSignature {
 fn nature_attr_ty(db: &dyn HirTyDB, id: NatureAttrId) -> Option<Type> {
     let id = id.into();
     let body = db.body(id);
-    let expr = body.stmts[body.entry_stmts[0]].unwrap_expr();
+    let stmt_expr = body.entry_stmts()[0];
+    let expr = body[stmt_expr].unwrap_expr();
     db.inference_result(id).expr_types.get(expr).and_then(|ty| ty.to_value())
 }
 

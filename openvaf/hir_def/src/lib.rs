@@ -19,7 +19,7 @@ mod item_tree;
 mod path;
 mod types;
 
-pub use body::{Expr, Stmt};
+pub use body::{Body, Expr, Stmt};
 pub use builtin::{BuiltIn, ParamSysFun};
 pub use item_tree::{
     AliasParam, Branch, BranchKind, Discipline, DisciplineAttr, Function, ItemTree, ItemTreeId,

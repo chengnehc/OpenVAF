@@ -6,7 +6,7 @@ use hir_def::{ItemLoc, NodeTypeDecl};
 impl BodyDiagnosticWrapped<'_> {
     #[inline]
     fn expr_span(&self, expr: ExprId, src_map: &SourceMap, parse: &Parse<SourceFile>) -> FileSpan {
-        let range = self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range();
+        let range = self.body_src_map[expr].as_ref().unwrap().text_range();
         parse.to_file_span(range, src_map)
     }
 
@@ -235,7 +235,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
             /* Context violation */
             BodyDiagnostic::IllegalContribute { stmt, ctxt } => {
-                let range = self.body_src_map.stmt_map_back[stmt].as_ref().unwrap().text_range();
+                let range = self.body_src_map[stmt].as_ref().unwrap().text_range();
                 let FileSpan { range, file } = parse.to_file_span(range, &src_map);
 
                 Report::error()

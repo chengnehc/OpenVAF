@@ -155,7 +155,7 @@ fn opvars() {
         [
             (
                 "both1",
-                OpVar {
+                OpVarInfo {
                     units: "m",
                     desc: "hmm",
                     multiplicity: None,
@@ -163,7 +163,7 @@ fn opvars() {
             ),
             (
                 "both2",
-                OpVar {
+                OpVarInfo {
                     units: "m",
                     desc: "hmm",
                     multiplicity: None,
@@ -171,7 +171,7 @@ fn opvars() {
             ),
             (
                 "units_",
-                OpVar {
+                OpVarInfo {
                     units: "m",
                     desc: "",
                     multiplicity: None,
@@ -179,7 +179,7 @@ fn opvars() {
             ),
             (
                 "desc_",
-                OpVar {
+                OpVarInfo {
                     units: "",
                     desc: "hmm",
                     multiplicity: None,
@@ -187,7 +187,7 @@ fn opvars() {
             ),
             (
                 "Ids",
-                OpVar {
+                OpVarInfo {
                     units: "",
                     desc: "op",
                     multiplicity: Multiply,

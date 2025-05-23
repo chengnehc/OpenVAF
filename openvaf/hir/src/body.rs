@@ -17,7 +17,7 @@ pub use expr::{AssignmentLhs, ContributeKind, Expr, Ref, ResolvedFun, Stmt};
 
 #[derive(Debug, Clone)]
 pub struct Body {
-    body: Arc<hir_def::body::Body>,
+    body: Arc<hir_def::Body>,
     infere: Arc<inference::Inference>,
 }
 impl Body {
@@ -39,11 +39,11 @@ pub struct BodyRef<'a> {
 /// Statements
 impl<'a> BodyRef<'a> {
     pub fn entry_stmts(&self) -> &'a [StmtId] {
-        &self.body.entry_stmts
+        self.body.entry_stmts()
     }
 
     pub fn get_stmt(&self, stmt: StmtId) -> Option<Stmt<'a>> {
-        match self.body.stmts[stmt] {
+        match self.body[stmt] {
             hir_def::Stmt::Missing | hir_def::Stmt::Empty => None,
             hir_def::Stmt::Expr(e) => Some(Stmt::Expr(e)),
             hir_def::Stmt::Block { ref body } => Some(Stmt::Block { body }),
@@ -100,7 +100,7 @@ impl<'a> BodyRef<'a> {
     /* Body-related */
 
     pub fn get_expr(&self, expr: ExprId) -> Expr<'a> {
-        match self.body.exprs[expr] {
+        match self.body[expr] {
             hir_def::Expr::Path { .. } => Expr::Read(self.resolve_path(expr)),
             hir_def::Expr::UnaryOp { arg, op } => Expr::UnaryOp { arg, op },
             hir_def::Expr::BinaryOp { lhs, rhs, op: Some(op) } => Expr::BinaryOp { lhs, rhs, op },
@@ -120,14 +120,14 @@ impl<'a> BodyRef<'a> {
                         return Expr::Read(Ref::ParamSysFun(param));
                     }
                     inference::ResolvedFun::InvalidNatureAccess(_) => {
-                        panic!("invalid HIR: invalid nature access {:?}", self.body.exprs[expr])
+                        panic!("invalid HIR: invalid nature access {:?}", self.body[expr])
                     }
                 };
                 Expr::Call { fun, args }
             }
             hir_def::Expr::Literal(ref literal) => Expr::Literal(literal),
             hir_def::Expr::Array(ref args) => Expr::Array(args),
-            _ => panic!("invalid HIR: {:?}", self.body.exprs[expr]),
+            _ => panic!("invalid HIR: {:?}", self.body[expr]),
         }
     }
 
@@ -147,21 +147,21 @@ impl<'a> BodyRef<'a> {
                 {
                     Ref::ParamSysFun(param)
                 } else {
-                    panic!("invalid HIR: path {:?} was not resolved {it:?}", self.body.exprs[expr])
+                    panic!("invalid HIR: path {:?} was not resolved {it:?}", self.body[expr])
                 }
             }
         }
     }
 
     pub fn as_literal(&self, expr: ExprId) -> Option<&'a Literal> {
-        match &self.body.exprs[expr] {
+        match &self.body[expr] {
             hir_def::Expr::Literal(lit) => Some(lit),
             _ => None,
         }
     }
 
     pub fn as_signed_int_literal(&self, expr: ExprId) -> Option<i32> {
-        match &self.body.exprs[expr] {
+        match &self.body[expr] {
             // Int literal
             hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
             // Int literal with `-` prefix
@@ -173,7 +173,7 @@ impl<'a> BodyRef<'a> {
     }
 
     fn as_int_literal(&self, expr: ExprId) -> Option<i32> {
-        match &self.body.exprs[expr] {
+        match &self.body[expr] {
             hir_def::Expr::Literal(Literal::Int(ii)) => Some(*ii),
             _ => None,
         }

@@ -8,6 +8,7 @@ use syntax::name::AsName;
 
 use super::*;
 
+use crate::nameres::DefMapSource;
 use crate::{BlockLoc, Intern, Path};
 
 pub(super) struct Context<'a> {
@@ -102,15 +103,16 @@ impl Context<'_> {
 
     #[inline]
     fn alloc_expr(&mut self, expr: Expr, src: AstPtr<ast::Expr>) -> ExprId {
-        let id = self.make_expr(expr, Some(src.clone()));
-        self.src_map.expr_map.insert(src, id);
-        id
+        self.make_expr(expr, Some(src))
+        // let id = self.make_expr(expr, Some(src.clone()));
+        // self.src_map.expr_map.insert(src, id);
+        // id
     }
 
     #[inline]
     fn make_expr(&mut self, expr: Expr, src: Option<AstPtr<ast::Expr>>) -> ExprId {
         let id = self.body.exprs.push_and_get_key(expr);
-        self.src_map.expr_map_back.insert(id, src);
+        self.src_map.expr_map.insert(id, src);
         id
     }
 
@@ -226,9 +228,10 @@ impl Context<'_> {
         let registry = &self.db.lint_registry();
         let attrs =
             LintAttrs::resolve(registry, attrs, &mut self.src_map.diagnostics, self.curr_scope.1);
-        let id = self.make_stmt(stmt, Some(src.clone()), attrs);
-        self.src_map.stmt_map.insert(src, id);
-        id
+        self.make_stmt(stmt, Some(src.clone()), attrs)
+        // let id = self.make_stmt(stmt, Some(src.clone()), attrs);
+        // self.src_map.stmt_map.insert(src, id);
+        // id
     }
 
     /// By 'desugared', it means that the statement has no corresponding node in the AST.
@@ -253,7 +256,7 @@ impl Context<'_> {
         let id3 = self.src_map.lint_map.push_and_get_key(attrs);
         debug_assert_eq!(id, id2);
         debug_assert_eq!(id2, id3);
-        self.src_map.stmt_map_back.insert(id, src);
+        self.src_map.stmt_map.insert(id, src);
         id
     }
 }

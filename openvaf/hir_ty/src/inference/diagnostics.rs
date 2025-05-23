@@ -28,7 +28,7 @@ impl InferDiagnosticWrapped<'_> {
     }
     #[inline]
     fn expr_range(&self, expr: ExprId) -> TextRange {
-        self.body_src_map.expr_map_back[expr].as_ref().unwrap().text_range()
+        self.body_src_map[expr].as_ref().unwrap().text_range()
     }
 }
 
@@ -147,10 +147,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                         .iter()
                         .map(|it| {
                             parse.to_ctx_span(
-                                self.body_src_map.expr_map_back[it.expr]
-                                    .as_ref()
-                                    .unwrap()
-                                    .text_range(),
+                                self.body_src_map[it.expr].as_ref().unwrap().text_range(),
                                 &src_map,
                             )
                         })

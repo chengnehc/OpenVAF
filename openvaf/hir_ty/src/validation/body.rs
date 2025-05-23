@@ -19,7 +19,7 @@ use super::*;
 
 impl BodyValidator<'_> {
     pub(super) fn validate(mut self) -> Vec<BodyDiagnostic> {
-        for stmt in &self.body.entry_stmts {
+        for stmt in self.body.entry_stmts() {
             self.validate_stmt(*stmt)
         }
         for (branch, exprs) in self.trivial_probes {
@@ -32,7 +32,7 @@ impl BodyValidator<'_> {
     }
 
     fn validate_stmt(&mut self, stmt: StmtId) {
-        match self.body.stmts[stmt] {
+        match self.body[stmt] {
             Stmt::Missing | Stmt::Empty => (),
             Stmt::Expr(expr) => self.validate_expr(expr, stmt),
             Stmt::Block { ref body } => body.iter().for_each(|stmt| self.validate_stmt(*stmt)),
@@ -51,8 +51,7 @@ impl BodyValidator<'_> {
             | Stmt::WhileLoop { cond, .. }
             | Stmt::Case { discr: cond, .. } => {
                 self.validate_condition(cond, stmt, |validator| {
-                    validator.body.stmts[stmt]
-                        .walk_child_stmts(|stmt| validator.validate_stmt(stmt))
+                    validator.body[stmt].walk_child_stmts(|stmt| validator.validate_stmt(stmt))
                 });
             }
             Stmt::EventControl { body, .. } => {
@@ -109,7 +108,7 @@ impl BodyValidator<'_> {
 
 impl ExprValidator<'_, '_> {
     fn validate_expr(&mut self, expr: ExprId) {
-        match self.parent.body.exprs[expr] {
+        match self.parent.body[expr] {
             Expr::Path { port: false, .. } => {
                 match self.parent.infer.expr_types[expr] {
                     Ty::Param(_, param) => {
@@ -176,7 +175,7 @@ impl ExprValidator<'_, '_> {
             _ => (),
         }
 
-        self.parent.body.exprs[expr].walk_child_exprs(|child| self.validate_expr(child))
+        self.parent.body[expr].walk_child_exprs(|child| self.validate_expr(child))
     }
 
     fn validate_nature_access(
@@ -420,27 +419,26 @@ impl ExprValidator<'_, '_> {
 
             (func @ (BuiltIn::simparam | BuiltIn::simparam_str), _) => {
                 if self.parent.ctxt == BodyContext::Const {
-                    let known = if let Expr::Literal(Literal::String(name)) =
-                        &self.parent.body.exprs[args[0]]
-                    {
-                        matches!(
-                            (func, &**name),
-                            (
-                                BuiltIn::simparam,
-                                "minr"
-                                    | "rthresh"
-                                    | "imax"
-                                    | "imelt"
-                                    | "scale"
-                                    | "shrink"
-                                    | "simulatorSubversion"
-                                    | "simulatorVersion"
-                                    | "tnom"
-                            ) | (BuiltIn::simparam_str, "cwd" | "module" | "instance" | "path")
-                        )
-                    } else {
-                        false
-                    };
+                    let known =
+                        if let Expr::Literal(Literal::String(name)) = &self.parent.body[args[0]] {
+                            matches!(
+                                (func, &**name),
+                                (
+                                    BuiltIn::simparam,
+                                    "minr"
+                                        | "rthresh"
+                                        | "imax"
+                                        | "imelt"
+                                        | "scale"
+                                        | "shrink"
+                                        | "simulatorSubversion"
+                                        | "simulatorVersion"
+                                        | "tnom"
+                                ) | (BuiltIn::simparam_str, "cwd" | "module" | "instance" | "path")
+                            )
+                        } else {
+                            false
+                        };
 
                     self.report(BodyDiagnostic::ConstSimparam { known, expr, stmt: self.stmt });
                 }
