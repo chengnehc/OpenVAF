@@ -1,0 +1,16 @@
+error: 'openvaf_deny' attribute expects a string literal or and array of literals
+  --> /illegal_lint_value.va:1:16
+  |
+1 | (*openvaf_deny=1*)
+  |                ^ expected a literal or an array
+  |
+  = help: valid examples are openvaf_deny="foo" and openvaf_deny='{"foo","bar"}
+
+error: 'openvaf_allow' attribute expects a string literal or and array of literals
+  --> /illegal_lint_value.va:3:21
+  |
+3 |     (*openvaf_allow=3.14*)
+  |                     ^^^^ expected a literal or an array
+  |
+  = help: valid examples are openvaf_allow="foo" and openvaf_allow='{"foo","bar"}
+

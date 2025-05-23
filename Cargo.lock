@@ -152,13 +152,13 @@ dependencies = [
  "arena",
  "codespan-reporting",
  "expect-test",
- "indexmap",
  "mini_harness",
  "parking_lot",
  "salsa",
  "stdx",
  "syntax",
  "typed-index-collections",
+ "typed_indexmap",
  "vfs",
 ]
 

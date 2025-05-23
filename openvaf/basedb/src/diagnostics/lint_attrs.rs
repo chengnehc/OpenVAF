@@ -1,35 +1,15 @@
-use stdx::impl_display;
 use syntax::sourcemap::FileSpan;
-use syntax::TextRange;
 
-use crate::diagnostics::{text_ranges_to_unified_spans, Diagnostic, Label, LabelStyle, Report};
-use crate::lints::builtin::{lint_level_overwrite, lint_not_found};
-use crate::lints::{Lint, LintSrc};
-use crate::{BaseDB, ErasedAstId, FileId};
+use crate::lints::builtin as builtins;
+use crate::lints::LintAttrDiagnostic::{self, *};
 
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub enum AttrDiagnostic {
-    ExpectedArrayOrLiteral { range: TextRange, attr: &'static str },
-    ExpectedLiteral { range: TextRange, attr: &'static str },
-    UnknownLint { range: TextRange, lint: String, src: ErasedAstId },
-    LintOverwrite { old: TextRange, new: TextRange, name: String, src: ErasedAstId },
-}
+use super::*;
 
-use AttrDiagnostic::*;
-impl_display! {
-    match AttrDiagnostic{
-        ExpectedArrayOrLiteral{attr,..} => "'{attr}' attribute expects a string literal or and array of literals";
-        ExpectedLiteral{attr,..} => "'{attr}' attribute expects a string literal here";
-        UnknownLint{lint,..} => "unknown lint '{lint}'";
-        LintOverwrite{name,..} => "lint level for '{name}' was set multiple times";
-    }
-}
-
-impl Diagnostic for AttrDiagnostic {
+impl Diagnostic for LintAttrDiagnostic {
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
         match *self {
-            UnknownLint { src, .. } => Some((lint_not_found, src.into())),
-            LintOverwrite { src, .. } => Some((lint_level_overwrite, src.into())),
+            UnknownLint { src, .. } => Some((builtins::lint_not_found, LintSrc::item(src))),
+            LintOverwrite { src, .. } => Some((builtins::lint_level_overwrite, LintSrc::item(src))),
             _ => None,
         }
     }

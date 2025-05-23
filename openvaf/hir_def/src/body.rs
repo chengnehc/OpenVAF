@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use ahash::AHashMap as HashMap;
 use arena::{Arena, ArenaMap};
-use basedb::lints::{Lint, LintSrc};
-use basedb::{AttrDiagnostic, LintAttrs};
+use basedb::lints::{Lint, LintAttrDiagnostic, LintAttrs, LintSrc};
 use syntax::{ast, AstPtr};
 
 use crate::db::HirDefDB;
@@ -50,7 +49,7 @@ pub struct BodySourceMap {
     lint_map: ArenaMap<Stmt, LintAttrs>,
     /// Diagnostics accumulated during body lowering.
     /// These contain `AstPtr`s and so are stored in the source map (since they're just as volatile).
-    pub diagnostics: Vec<AttrDiagnostic>,
+    pub diagnostics: Vec<LintAttrDiagnostic>,
 }
 
 impl BodySourceMap {

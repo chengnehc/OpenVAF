@@ -1,0 +1,5 @@
+(*openvaf_deny=1*)
+module test;
+    (*openvaf_allow=3.14*)
+    parameter real foo = 1;
+endmodule

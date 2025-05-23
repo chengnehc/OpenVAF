@@ -4,19 +4,13 @@ use ahash::AHashMap;
 use syntax::ast::{self, AstToken, LiteralKind};
 use syntax::{AstNode, TextRange};
 
-use crate::lints::{Lint, LintLevel, LintRegistry, LintSrc};
+use super::{Lint, LintAttrDiagnostic, LintLevel, LintRegistry, LintSrc};
 use crate::{AstIdMap, BaseDB, ErasedAstId, FileId};
-
-mod diagnostics;
-pub use diagnostics::AttrDiagnostic;
-
-// #[cfg(test)]
-// mod tests;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct LintAttrTree {
     overwrites: AHashMap<(ErasedAstId, Lint), LintLevel>,
-    pub diagnostics: Vec<AttrDiagnostic>,
+    pub diagnostics: Vec<LintAttrDiagnostic>,
 }
 
 impl LintAttrTree {
@@ -30,11 +24,11 @@ impl LintAttrTree {
 
         for (id, entry) in map.entries() {
             // quick reject to avoid looking at the ast when not necessary
-            let has_attr = entry
+            let has_lint_attr = entry
                 .attrs
                 .iter()
                 .any(|attr| matches!(&**attr, "openvaf_allow" | "openvaf_warn" | "openvaf_deny"));
-            if has_attr {
+            if has_lint_attr {
                 let cst = entry.syntax.to_node(cst);
                 if ast::Var::can_cast(cst.kind()) || ast::Param::can_cast(cst.kind()) {
                     continue;
@@ -61,12 +55,12 @@ impl LintAttrTree {
 pub fn resolve_overwrites(
     registry: &LintRegistry,
     attrs: impl Iterator<Item = ast::Attr>,
-    err: &mut Vec<AttrDiagnostic>,
+    err: &mut Vec<LintAttrDiagnostic>,
     src: ErasedAstId,
 ) -> impl Iterator<Item = (Lint, LintLevel)> {
     fn insert_lint(
         lit: ast::Literal,
-        err: &mut Vec<AttrDiagnostic>,
+        err: &mut Vec<LintAttrDiagnostic>,
         registry: &LintRegistry,
         overwrites: &mut AHashMap<Lint, (LintLevel, TextRange)>,
         lvl: LintLevel,
@@ -81,12 +75,12 @@ pub fn resolve_overwrites(
                 } else {
                     if !lint_name.contains("::") {
                         // Plugins use plugin::lint_name. Plugin lints for unused plugins are fine
-                        err.push(AttrDiagnostic::UnknownLint { range, lint: lint_name, src });
+                        err.push(LintAttrDiagnostic::UnknownLint { range, lint: lint_name, src });
                     }
                     return;
                 };
                 if let Some((_, old)) = overwrites.insert(lint, (lvl, range)) {
-                    err.push(AttrDiagnostic::LintOverwrite {
+                    err.push(LintAttrDiagnostic::LintOverwrite {
                         old,
                         new: range,
                         name: lint_name,
@@ -95,12 +89,13 @@ pub fn resolve_overwrites(
                 }
             }
 
-            _ => err.push(AttrDiagnostic::ExpectedLiteral {
+            _ => err.push(LintAttrDiagnostic::ExpectedLiteral {
                 range: lit.syntax().text_range(),
                 attr: lvl.attr(),
             }),
         }
     }
+
     let mut overwrites = AHashMap::new();
     for attr in attrs {
         let lvl = match attr.name() {
@@ -114,25 +109,23 @@ pub fn resolve_overwrites(
             Some(ast::Expr::Literal(lit)) if matches!(lit.kind(), LiteralKind::StrLit(_)) => {
                 insert_lint(lit, err, registry, &mut overwrites, lvl, src)
             }
-
             Some(ast::Expr::ArrayExpr(e)) => {
                 for expr in e.exprs() {
                     if let ast::Expr::Literal(lit) = expr {
                         insert_lint(lit, err, registry, &mut overwrites, lvl, src)
                     } else {
-                        err.push(AttrDiagnostic::ExpectedLiteral {
+                        err.push(LintAttrDiagnostic::ExpectedLiteral {
                             range: expr.syntax().text_range(),
                             attr: lvl.attr(),
                         });
                     }
                 }
             }
-            Some(e) => err.push(AttrDiagnostic::ExpectedArrayOrLiteral {
+            Some(e) => err.push(LintAttrDiagnostic::ExpectedArrayOrLiteral {
                 range: e.syntax().text_range(),
                 attr: lvl.attr(),
             }),
-
-            None => err.push(AttrDiagnostic::ExpectedArrayOrLiteral {
+            None => err.push(LintAttrDiagnostic::ExpectedArrayOrLiteral {
                 range: attr.syntax().text_range(),
                 attr: lvl.attr(),
             }),
@@ -155,7 +148,7 @@ impl LintAttrs {
     pub fn resolve(
         registry: &LintRegistry,
         attrs: impl Iterator<Item = ast::Attr>,
-        err: &mut Vec<AttrDiagnostic>,
+        err: &mut Vec<LintAttrDiagnostic>,
         parent: ErasedAstId,
     ) -> LintAttrs {
         let overwrites = resolve_overwrites(registry, attrs, err, parent).collect();

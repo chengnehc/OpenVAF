@@ -150,23 +150,23 @@ pub(crate) mod support {
         AstChildTokens, AstChildren, AstNode, AstToken, RevAstChildren, SyntaxKind, SyntaxNode,
         SyntaxToken,
     };
-    /// Return the first immediate child node typed `N` of `parent`.
+    /// Return the first immediate child node of `parent` typed `N`.
     pub(crate) fn child<N: AstNode>(parent: &SyntaxNode) -> Option<N> {
         parent.children().find_map(N::cast)
     }
-    /// Iterate through children nodes typed `N` of `parent`.
+    /// Iterate through children nodes of `parent` typed `N`.
     pub(crate) fn children<N: AstNode>(parent: &SyntaxNode) -> AstChildren<N> {
         AstChildren::new(parent)
     }
-    /// Iterate reversely through children nodes typed `N` of `parent`.
+    /// Iterate reversely through children nodes of `parent` typed `N`.
     pub(crate) fn rev_children<N: AstNode>(parent: &SyntaxNode) -> RevAstChildren<N> {
         RevAstChildren::new(parent)
     }
-    /// Iterate through child token nodes typed `N` of `parent`.
+    /// Iterate through child tokens of `parent` typed `N`.
     pub(crate) fn child_tokens<N: AstToken>(parent: &SyntaxNode) -> AstChildTokens<N> {
         AstChildTokens::new(parent)
     }
-    /// Get the child token of `parent` according to specified syntax `kind`.
+    /// Get the child token of `parent` with syntax `kind`.
     pub(crate) fn token(parent: &SyntaxNode, kind: SyntaxKind) -> Option<SyntaxToken> {
         parent.children_with_tokens().filter_map(|it| it.into_token()).find(|it| it.kind() == kind)
     }

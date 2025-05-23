@@ -51,6 +51,13 @@ where
     }
 }
 
+impl<I, K, V> Eq for TiMap<I, K, V>
+where
+    K: Hash + Eq,
+    V: Eq,
+{
+}
+
 impl<I, K, V> TiMap<I, K, V> {
     pub fn len(&self) -> usize {
         self.raw.len()

@@ -2,9 +2,28 @@ use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 use stdx::{impl_debug_display, impl_idx_from};
 
-use indexmap::IndexMap;
+use typed_indexmap::TiMap;
 
 use crate::{BaseDB, ErasedAstId, FileId};
+
+mod attrs;
+mod errors;
+pub use attrs::{LintAttrTree, LintAttrs};
+pub use errors::LintAttrDiagnostic;
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct Lint(u16);
+impl_idx_from!(Lint(u16));
+impl_debug_display!(c@Lint => "lint{}", c.0);
+
+impl Lint {
+    /// You should not use this function directly.
+    /// It is only public for use in the exported macros
+    #[doc(hidden)]
+    pub const fn _from_raw(raw: u16) -> Lint {
+        Lint(raw)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LintLevel {
@@ -21,9 +40,9 @@ pub enum LintLevel {
 impl LintLevel {
     pub fn attr(self) -> &'static str {
         match self {
-            LintLevel::Deny => "openvaf_allow",
+            LintLevel::Deny => "openvaf_deny",
             LintLevel::Warn => "openvaf_warn",
-            LintLevel::Allow => "openvaf_deny",
+            LintLevel::Allow => "openvaf_allow",
         }
     }
 }
@@ -47,6 +66,8 @@ pub struct LintSrc {
 }
 
 impl LintSrc {
+    pub const GLOBAL: LintSrc = LintSrc { overwrite: None, ast: None };
+
     pub fn item(ast: ErasedAstId) -> LintSrc {
         Self { overwrite: None, ast: Some(ast) }
     }
@@ -58,30 +79,6 @@ impl LintSrc {
         }
     }
 }
-
-impl From<ErasedAstId> for LintSrc {
-    fn from(src: ErasedAstId) -> Self {
-        LintSrc { overwrite: None, ast: Some(src) }
-    }
-}
-
-impl LintSrc {
-    pub const GLOBAL: LintSrc = LintSrc { overwrite: None, ast: None };
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct Lint(u16);
-
-impl Lint {
-    /// You should not use this function directly it is only public for use in the exported macros
-    #[doc(hidden)]
-    pub const fn _from_raw(raw: u16) -> Lint {
-        Lint(raw)
-    }
-}
-
-impl_idx_from!(Lint(u16));
-impl_debug_display!(c@Lint => "lint{}",c.0);
 
 /// The data associated with a lint
 #[derive(Copy, Clone, PartialEq, Debug, Eq)]
@@ -95,9 +92,9 @@ pub struct LintData {
 ///
 /// Can be used to map `str (lint name) -> Lint`, `Lint -> LintData`
 /// and `str (lint name) -> LintData`
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct LintRegistry {
-    lints: IndexMap<&'static str, LintData, ahash::RandomState>,
+    lints: TiMap<Lint, &'static str, LintData>,
 }
 
 impl LintRegistry {
@@ -107,15 +104,15 @@ impl LintRegistry {
     }
 
     pub fn lint_from_name(&self, name: &str) -> Option<Lint> {
-        Some(self.lints.get_index_of(name)?.into())
+        Some(self.lints.raw.get_index_of(name)?.into())
     }
 
     pub fn lintdata_from_name(&self, name: &str) -> Option<LintData> {
-        self.lints.get(name).copied()
+        self.lints.get(&name).copied()
     }
 
     pub fn lint_data(&self, lint: Lint) -> LintData {
-        *self.lints.get_index(lint.into()).expect("Lint was not found in the registry!").1
+        *self.lints.get_index(lint).expect("Lint was not found in the registry!").1
     }
 }
 

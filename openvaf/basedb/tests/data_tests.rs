@@ -10,6 +10,7 @@ use parking_lot::RwLock;
 use stdx::{ignore_dev_tests, ignore_never, is_va_file, openvaf_test_data, project_root};
 use vfs::{AbsPathBuf, FileId, Vfs, VfsEntry};
 
+#[derive(Default)]
 #[salsa::database(SourceDatabase)]
 pub struct TestDataBase {
     storage: salsa::Storage<TestDataBase>,
@@ -18,28 +19,24 @@ pub struct TestDataBase {
 }
 
 impl TestDataBase {
-    pub fn new(root_file_path: VfsPath, root_file: VfsEntry) -> Self {
-        let mut res = Self { storage: salsa::Storage::default(), vfs: None, root_file: None };
-        let vfs = RwLock::new(Vfs::default());
+    pub fn new(path: VfsPath, contents: VfsEntry) -> Self {
+        let mut res = Self::default();
         let db: &mut dyn BaseDB = &mut res;
-        let root_file = db.setup_test_db(root_file_path, root_file, &mut vfs.write());
-        res.root_file = Some(root_file);
+        let vfs = RwLock::new(Vfs::default());
+        let root_file = db.setup_test_db(path, contents, &mut vfs.write());
         res.vfs = Some(vfs);
+        res.root_file = Some(root_file);
         res
     }
 
     pub fn new_from_fs(path: &Path) -> Self {
         let path = AbsPathBuf::assert(path.canonicalize().unwrap());
-        let file_contents = std::fs::read(&path);
-        TestDataBase::new(path.into(), file_contents.into())
+        let contents = std::fs::read(&path);
+        TestDataBase::new(path.into(), contents.into())
     }
 
     pub fn root_file(&self) -> FileId {
         self.root_file.unwrap()
-    }
-
-    pub fn vfs(&self) -> &RwLock<Vfs> {
-        self.vfs.as_ref().unwrap()
     }
 
     pub fn parse_and_check(&self) -> (Parse<SourceFile>, String) {
@@ -68,7 +65,7 @@ impl salsa::Database for TestDataBase {}
 
 impl VfsStorage for TestDataBase {
     fn vfs(&self) -> &RwLock<Vfs> {
-        self.vfs()
+        self.vfs.as_ref().unwrap()
     }
 }
 
@@ -76,19 +73,18 @@ fn integration(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
     let main_file = dir.join(format!("{name}.va"));
     let db = TestDataBase::new_from_fs(&main_file);
-    let (_, actual) = db.parse_and_check();
+    let (_, diagnostics) = db.parse_and_check();
 
-    expect_file![dir.join("parser_diagnostics.log")].assert_eq(&actual);
+    expect_file![dir.join("parser_diagnostics.log")].assert_eq(&diagnostics);
 
     Ok(())
 }
 
 fn syntax_ui(file: &Path) -> Result {
     let db = TestDataBase::new_from_fs(file);
-    let (_, actual) = db.parse_and_check();
+    let (_, diagnostics) = db.parse_and_check();
 
-    // std::fs::write(file.with_extension("log"), actual)?;
-    expect_file![file.with_extension("log")].assert_eq(&actual);
+    expect_file![file.with_extension("log")].assert_eq(&diagnostics);
 
     Ok(())
 }
@@ -98,7 +94,6 @@ fn ast(file: &Path) -> Result {
     let (parse, _) = db.parse_and_check();
     let actual = parse.debug_dump();
 
-    //std::fs::write(file.with_extension("vast"), actual)?;
     expect_file![file.with_extension("vast")].assert_eq(&actual);
 
     Ok(())

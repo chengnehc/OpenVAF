@@ -1,7 +1,6 @@
 use std::iter::{once, zip};
 
-use syntax::SyntaxKind::BLOCK_STMT;
-use syntax::{AstNode, SyntaxError};
+use syntax::{ast, AstNode, SyntaxError};
 
 use super::*;
 
@@ -527,7 +526,7 @@ impl Diagnostic for SyntaxError {
                 Report::error().with_labels(labels)
             }
             SyntaxError::MultipleFuncBodies { ref additional_bodies, ref body } => {
-                let (range, message) = if body.syntax_kind() == BLOCK_STMT {
+                let (range, message) = if ast::BlockStmt::can_cast(body.syntax_kind()) {
                     (body.text_range(), "help: add these statements to this block".to_owned())
                 } else {
                     (

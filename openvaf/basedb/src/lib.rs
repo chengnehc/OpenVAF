@@ -9,7 +9,6 @@ use std::mem::transmute;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use salsa::Durability;
 use syntax::{Parse, Preprocess, SourceFile, SourceMap, SourceProvider, TextRange, TextSize};
 use typed_index_collections::{TiSlice, TiVec};
 
@@ -17,15 +16,16 @@ pub use vfs::{AbsPathBuf, FileId, FileReadError, Vfs, VfsEntry, VfsPath};
 
 pub mod diagnostics;
 pub mod lints;
+use lints::{Lint, LintAttrTree, LintData, LintLevel, LintRegistry};
 
 mod ast_id_map;
 mod line_index;
-mod lint_attrs;
-
 pub use ast_id_map::{AstId, AstIdMap, ErasedAstId};
 pub use line_index::{Line, LineIndex};
-pub use lint_attrs::{AttrDiagnostic, LintAttrTree, LintAttrs};
-use lints::{Lint, LintData, LintLevel, LintRegistry};
+
+/// Refer to LRM chapter 10.5: Predined Macros
+pub const PREDEFINED_MACROS: [&str; 3] =
+    ["__OPENVAF__", "__VAMS_ENABLE__", "__VAMS_COMPACT_MODELING__"];
 
 pub trait VfsStorage {
     fn vfs(&self) -> &RwLock<Vfs>;
@@ -128,7 +128,7 @@ fn line_range(db: &dyn BaseDB, line: Line, file: FileId) -> TextRange {
 
 #[inline]
 fn file_text(db: &dyn BaseDB, file: FileId) -> Result<Arc<str>, FileReadError> {
-    db.salsa_runtime().report_synthetic_read(Durability::LOW);
+    db.salsa_runtime().report_synthetic_read(salsa::Durability::LOW);
     let vfs = db.vfs().read();
     // TODO request file from FS
 
@@ -189,7 +189,6 @@ fn empty_global_lint_overwrites(db: &dyn BaseDB) -> TiVec<Lint, Option<LintLevel
     vec![None; db.plugin_lints().len() + lints::builtin::ALL.len()].into()
 }
 
-/// BaseDB is a kind of SourceProvider
 struct SourceProviderDelegate<'a>(&'a dyn BaseDB);
 
 impl dyn BaseDB + '_ {
@@ -224,11 +223,6 @@ impl SourceProvider for SourceProviderDelegate<'_> {
         self.0.file_id(path)
     }
 }
-
-// TODO(JW) relocate this
-/// Refer to LRM chapter 10.5: Predined Macros
-pub const PREDEFINED_MACROS: [&str; 3] =
-    ["__OPENVAF__", "__VAMS_ENABLE__", "__VAMS_COMPACT_MODELING__"];
 
 // for testing
 impl dyn BaseDB {
