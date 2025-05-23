@@ -14,8 +14,8 @@ use hir::{
 use hir_lower::FlowKind;
 use indexmap::IndexMap;
 use lasso::{Rodeo, Spur};
-use smol_str::SmolStr;
 use syntax::ast::{self, Attr, Expr, LiteralKind, PathExpr};
+use syntax::name::SmolStr;
 use syntax::sourcemap::FileSpan;
 use syntax::{AstNode, TextRange};
 

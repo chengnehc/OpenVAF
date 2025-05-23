@@ -20,7 +20,7 @@ use hir_def::{
 use hir_ty::db::HirTyDB as HirDB;
 use hir_ty::inference;
 use salsa::InternKey;
-use smol_str::SmolStr;
+use syntax::name::SmolStr;
 
 pub use basedb::{BaseDB, FileId, VfsStorage};
 pub use hir_def::body::{Case, CaseCond, ConstraintValue, Literal, ParamConstraint};

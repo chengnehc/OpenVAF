@@ -25,7 +25,6 @@ target = { version = "0.0.0", path = "../target"}
 typed-index-collections = "3"
 ahash = "0.8"
 indexmap = "2.0"
-smol_str = {version = "0.3", default-features=false}
 lasso = {version = "0.7", features = ["ahash"]}
 rayon-core = "1"
 camino = "1.1.4"

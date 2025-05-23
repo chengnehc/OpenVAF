@@ -6,8 +6,7 @@ use std::mem;
 use std::sync::Arc;
 
 use hir_def::nameres::{DefMap, LocalScopeId, ScopeItem};
-use smol_str::SmolStr;
-use syntax::name::Name;
+use syntax::name::{Name, SmolStr};
 
 use crate::{AliasParam, Block, Branch, Module, Node, Parameter, ScopeDef, Variable};
 use crate::{CompilationDB, HirDefDB};

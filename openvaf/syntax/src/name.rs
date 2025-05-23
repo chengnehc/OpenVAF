@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use smol_str::SmolStr;
+pub use smol_str::SmolStr;
 
 use crate::{ast, SyntaxToken};
 

@@ -4,8 +4,7 @@ use stdx::impl_display;
 
 use ahash::{AHashSet, RandomState};
 use indexmap::IndexMap;
-use smol_str::SmolStr;
-use syntax::{ast, sourcemap::FileSpan, AstNode};
+use syntax::{ast, name::SmolStr, sourcemap::FileSpan, AstNode};
 
 use crate::diagnostics::{ConsoleSink, Diagnostic, DiagnosticSink, Label, LabelStyle, Report};
 use crate::{BaseDB, CompilationDB, CompilationUnit, FileId};

@@ -8,7 +8,6 @@ use mir::{ValueDef, F_ZERO};
 use mir_llvm::CodegenCx;
 use sim_back::dae::MatrixEntry;
 use sim_back::SimUnknownKind;
-use smol_str::SmolStr;
 
 use crate::compilation_unit::{OsdiCompilationUnit, OsdiModule};
 use crate::inst_data::{
@@ -240,7 +239,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             OsdiInstanceParam::Builtin(builtin) => {
                 let mut name = vec![format!("${builtin:?}")];
                 if let Some(alias) = self.module.info.param_sysfuns.get(builtin) {
-                    name.extend(alias.iter().map(SmolStr::to_string))
+                    name.extend(alias.iter().map(|it| it.to_string()))
                 }
                 OsdiParamOpvar {
                     num_alias: name.len() as u32 - 1,
@@ -265,7 +264,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 OsdiParamOpvar {
                     name: iter::once(&param_info.name)
                         .chain(&*param_info.aliases)
-                        .map(SmolStr::to_string)
+                        .map(|it| it.to_string())
                         .collect(),
                     num_alias: param_info.aliases.len() as u32,
                     description: param_info.desc.clone(),
@@ -286,7 +285,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let param_opvar = OsdiParamOpvar {
                 name: iter::once(&param_info.name)
                     .chain(&*param_info.aliases)
-                    .map(SmolStr::to_string)
+                    .map(|it| it.to_string())
                     .collect(),
                 num_alias: param_info.aliases.len() as u32,
                 description: param_info.desc.clone(),
