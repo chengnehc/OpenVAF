@@ -154,7 +154,7 @@ impl ExprValidator<'_, '_> {
                     _ => (),
                 }
             }
-            Expr::Select { cond, then_val, else_val } => {
+            Expr::Select { cond, then_expr, else_expr } => {
                 if let Some(non_const_dominators) =
                     self.parent.validate_condition(cond, self.stmt, |body_validator| {
                         let mut validator = ExprValidator {
@@ -163,8 +163,8 @@ impl ExprValidator<'_, '_> {
                             is_write: false,
                             stmt: self.stmt,
                         };
-                        validator.validate_expr(then_val);
-                        validator.validate_expr(else_val);
+                        validator.validate_expr(then_expr);
+                        validator.validate_expr(else_expr);
                     })
                 {
                     if let Some(sink) = &mut self.sink {

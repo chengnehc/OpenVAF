@@ -345,12 +345,12 @@ impl Context<'_> {
                 self.infere_bin_op(stmt, expr, lhs, rhs, op)?
             }
 
-            Expr::Select { cond, then_val, else_val } => {
+            Expr::Select { cond, then_expr, else_expr } => {
                 self.infere_cond(stmt, cond);
                 self.infere_fun_args(
                     stmt,
                     expr,
-                    &[then_val, else_val],
+                    &[then_expr, else_expr],
                     Cow::Borrowed(TiSlice::from_ref(SignatureData::SELECT_OP)),
                     None,
                 )
@@ -363,6 +363,7 @@ impl Context<'_> {
 
             Expr::Literal(Literal::Int(_)) => Ty::Literal(Type::Integer),
             Expr::Literal(Literal::Float(_)) => Ty::Literal(Type::Real),
+            Expr::Literal(Literal::String(_)) => Ty::Literal(Type::String),
             // +/- inf can only appear in param bounds.
             // This is checked during ast validation and when it appears it is always correct
             Expr::Literal(Literal::Inf) => {
@@ -371,7 +372,6 @@ impl Context<'_> {
                 }
                 return None;
             }
-            Expr::Literal(Literal::String(_)) => Ty::Literal(Type::String),
 
             Expr::Array(ref args) if args.is_empty() => Ty::Val(Type::EmptyArray),
             Expr::Array(ref args) => self.infere_array(stmt, args)?,

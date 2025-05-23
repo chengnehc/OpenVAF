@@ -64,9 +64,9 @@ impl Context<'_> {
             }
             ast::Expr::SelectExpr(e) => {
                 let cond = self.collect_expr_opt(e.condition());
-                let then_val = self.collect_expr_opt(e.then_val());
-                let else_val = self.collect_expr_opt(e.else_val());
-                Expr::Select { cond, then_val, else_val }
+                let then_expr = self.collect_expr_opt(e.then_val());
+                let else_expr = self.collect_expr_opt(e.else_val());
+                Expr::Select { cond, then_expr, else_expr }
             }
             ast::Expr::ArrayExpr(e) => {
                 let vals = e.exprs().map(|expr| self.collect_expr(expr)).collect();

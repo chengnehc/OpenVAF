@@ -19,7 +19,7 @@ mod body;
 mod callbacks;
 mod ctx;
 mod expr;
-mod parameters;
+mod params;
 mod state;
 mod stmt;
 
@@ -29,7 +29,7 @@ use body::BodyLowerContext;
 use ctx::MainLowerContext;
 
 pub use callbacks::{CallBackKind, NoiseTable};
-pub use parameters::ParamInfoKind;
+pub use params::ParamInfoKind;
 
 /// A builder to lower HIR into MIR
 pub struct MirBuilder<'a> {

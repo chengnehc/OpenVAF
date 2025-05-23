@@ -1,17 +1,9 @@
-//! Collect the metadata of a module: parameters and op variables.
+use super::std_attrs::StdAttrDiagnostic::*;
+use super::*;
 
-use stdx::impl_display;
+use ahash::AHashSet;
 
-use ahash::{AHashSet, RandomState};
-use indexmap::IndexMap;
-use syntax::{ast, name::SmolStr, sourcemap::FileSpan, AstNode};
-
-use crate::diagnostics::{ConsoleSink, Diagnostic, DiagnosticSink, Label, LabelStyle, Report};
-use crate::{BaseDB, CompilationDB, CompilationUnit, FileId};
-use crate::{Module, ParamSysFun, Parameter, ResolvedAliasParam, ScopeDef, Variable};
-
-#[cfg(test)]
-mod tests;
+use crate::{CompilationUnit, ResolvedAliasParam, ScopeDef};
 
 /// Emit frontend diagnostics and collect the information of the declared modules.
 pub fn collect_modules(
@@ -38,39 +30,6 @@ pub fn collect_modules(
     }
 
     Some(module_infos)
-}
-
-pub struct ModuleInfo {
-    pub module: Module,
-    pub params: IndexMap<Parameter, ParamInfo, RandomState>,
-    pub param_sysfuns: IndexMap<ParamSysFun, Vec<SmolStr>, RandomState>,
-    pub op_vars: IndexMap<Variable, OpVar, RandomState>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ParamInfo {
-    pub name: SmolStr,
-    pub aliases: Vec<SmolStr>,
-    pub units: String,
-    pub desc: String,
-    pub group: String,
-    pub is_instance: bool,
-    pub multiplicity: Multiplicity,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpVar {
-    pub units: String,
-    pub desc: String,
-    pub multiplicity: Multiplicity,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Multiplicity {
-    #[default]
-    None,
-    Multiply,
-    Divide,
 }
 
 impl ModuleInfo {
@@ -141,7 +100,7 @@ impl ModuleInfo {
                         }
                     };
 
-                    op_vars.insert(var, OpVar { units, desc, multiplicity });
+                    op_vars.insert(var, OpVarInfo { units, desc, multiplicity });
                 }
 
                 ScopeDef::Parameter(param) => {
@@ -228,76 +187,5 @@ impl ModuleInfo {
         sink.add_diagnostics(diagnostics.iter(), root_file, db);
 
         ModuleInfo { module, params, param_sysfuns, op_vars }
-    }
-}
-
-/// Refer to [LRM 2.9.2] standard attributes
-enum StdAttrDiagnostic {
-    IllegalAttr { attr: ast::Attr },
-    UnknownParamType { attr: ast::Attr, found: String },
-    UnknownMultiplicity { attr: ast::Attr, found: String },
-}
-
-use StdAttrDiagnostic::*;
-impl_display! {
-    match StdAttrDiagnostic {
-        IllegalAttr { attr } => "illegal expression supplied to '{}' attribute; expected a string literal", attr.name().unwrap();
-        UnknownParamType { found, .. } => r#"unknown parameter type "{}"; expected "model" or "instance""#, found;
-        UnknownMultiplicity { found, .. } => r#"unknown multiplicity attribute value "{}"; expected "multiply", "divide" or "none""#, found;
-
-    }
-}
-
-impl Diagnostic for StdAttrDiagnostic {
-    fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
-        let src_map = db.sourcemap(root_file);
-        let parse = db.parse(root_file);
-
-        let report = match self {
-            IllegalAttr { attr } => {
-                let FileSpan { range, file } =
-                    parse.to_file_span(attr.syntax().text_range(), &src_map);
-
-                Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "expected a string literal".to_owned(),
-                }])
-            }
-            UnknownParamType { attr, .. } => {
-                let FileSpan { range, file } =
-                    parse.to_file_span(attr.syntax().text_range(), &src_map);
-
-                Report::warning()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unknown parameter type".to_owned(),
-                    }])
-                    .with_notes(
-                        vec!["note: parameter type is set to 'model' by default".to_owned()],
-                    )
-            }
-            UnknownMultiplicity { attr, .. } => {
-                let FileSpan { range, file } =
-                    parse.to_file_span(attr.syntax().text_range(), &src_map);
-
-                Report::warning()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unknown multiplicity attribute value".to_owned(),
-                    }])
-                    .with_notes(vec![
-                        "note: multiplicity is set to 'none' by default, no scaling is performed"
-                            .to_owned(),
-                    ])
-            }
-        };
-
-        report.with_message(self.to_string())
     }
 }

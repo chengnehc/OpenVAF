@@ -2,7 +2,7 @@ use hir::{Node, Parameter};
 use mir::{FunctionSignature, Ieee64, Param, Spur};
 
 use crate::fmt::{DisplayKind, FmtArg};
-use crate::parameters::ParamInfoKind;
+use crate::params::ParamInfoKind;
 use crate::LimitState;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]

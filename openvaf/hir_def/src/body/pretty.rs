@@ -142,12 +142,12 @@ impl Printer<'_> {
                 }
                 self.pretty_print_expr(rhs)?;
             }
-            Expr::Select { cond, then_val, else_val } => {
+            Expr::Select { cond, then_expr, else_expr } => {
                 self.pretty_print_expr(cond)?;
                 write!(self, "?")?;
-                self.pretty_print_expr(then_val)?;
+                self.pretty_print_expr(then_expr)?;
                 write!(self, ":")?;
-                self.pretty_print_expr(else_val)?;
+                self.pretty_print_expr(else_expr)?;
             }
             Expr::Call { ref fun, ref args } => {
                 match fun {

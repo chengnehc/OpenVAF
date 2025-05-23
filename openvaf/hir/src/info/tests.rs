@@ -1,6 +1,5 @@
 use super::*;
 
-use crate::diagnostics::Buffer;
 use indoc::indoc;
 
 #[test]
@@ -15,7 +14,7 @@ fn invalid_attr() {
     "#};
     let db = CompilationDB::new_from_vfs(src).unwrap();
 
-    let mut buf = Buffer::no_color();
+    let mut buf = crate::diagnostics::Buffer::no_color();
     {
         let mut sink = ConsoleSink::buffer(&db, &mut buf);
         sink.annonymize_paths();

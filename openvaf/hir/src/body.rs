@@ -104,8 +104,8 @@ impl<'a> BodyRef<'a> {
             hir_def::Expr::Path { .. } => Expr::Read(self.resolve_path(expr)),
             hir_def::Expr::UnaryOp { arg, op } => Expr::UnaryOp { arg, op },
             hir_def::Expr::BinaryOp { lhs, rhs, op: Some(op) } => Expr::BinaryOp { lhs, rhs, op },
-            hir_def::Expr::Select { cond, then_val, else_val } => {
-                Expr::Select { cond, then_expr: then_val, else_expr: else_val }
+            hir_def::Expr::Select { cond, then_expr, else_expr } => {
+                Expr::Select { cond, then_expr, else_expr }
             }
             hir_def::Expr::Call { ref args, .. } => {
                 let fun = match self.infere.resolved_calls[&expr] {

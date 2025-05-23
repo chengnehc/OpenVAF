@@ -57,9 +57,9 @@ pub enum Stmt<'a> {
     Assignment { lhs: AssignmentLhs, rhs: ExprId },
     Contribute { kind: ContributeKind, lhs: BranchWrite, rhs: ExprId },
     If { cond: ExprId, then_stmt: StmtId, else_stmt: StmtId },
+    Case { discr: ExprId, case_arms: &'a [Case] }, // TODO lint on unreachable
     WhileLoop { cond: ExprId, body: StmtId },
     ForLoop { init: StmtId, cond: ExprId, incr: StmtId, body: StmtId },
-    Case { discr: ExprId, case_arms: &'a [Case] }, // TODO lint on unreachable
     EventControl { event: &'a Event, body: StmtId },
 }
 

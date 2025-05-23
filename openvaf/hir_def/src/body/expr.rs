@@ -39,8 +39,8 @@ pub enum Expr {
     },
     Select {
         cond: ExprId,
-        then_val: ExprId,
-        else_val: ExprId,
+        then_expr: ExprId,
+        else_expr: ExprId,
     },
     Call {
         fun: Option<Path>,
@@ -60,10 +60,10 @@ impl Expr {
                 f(lhs);
                 f(rhs);
             }
-            Expr::Select { cond, then_val, else_val } => {
+            Expr::Select { cond, then_expr, else_expr } => {
                 f(cond);
-                f(then_val);
-                f(else_val);
+                f(then_expr);
+                f(else_expr);
             }
             Expr::Call { args: ref exprs, .. } | Expr::Array(ref exprs) => {
                 for e in exprs {
