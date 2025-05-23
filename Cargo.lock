@@ -158,7 +158,6 @@ dependencies = [
  "salsa",
  "stdx",
  "syntax",
- "text-size",
  "typed-index-collections",
  "vfs",
 ]
@@ -522,7 +521,6 @@ dependencies = [
  "hir",
  "indexmap",
  "indoc",
- "lasso",
  "mini_harness",
  "mir",
  "mir_build",
@@ -670,7 +668,6 @@ dependencies = [
 name = "llvm"
 version = "0.0.0"
 dependencies = [
- "ahash",
  "cc",
  "libc",
 ]
@@ -922,7 +919,6 @@ dependencies = [
  "mini_harness",
  "mir_llvm",
  "osdi",
- "paths",
  "stdx",
  "target",
  "termcolor",
@@ -970,7 +966,6 @@ dependencies = [
  "mir_llvm",
  "paths",
  "rayon-core",
- "salsa",
  "sim_back",
  "smol_str",
  "stdx",

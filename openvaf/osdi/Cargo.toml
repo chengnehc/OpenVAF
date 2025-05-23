@@ -11,7 +11,6 @@ doctest = false
 [dependencies]
 
 stdx = { version = "0.0.0", path = "../../lib/stdx" }
-paths = {version = "0.0", path = "../../lib/paths"}
 base_n = {version = "1", path="../../lib/base_n"}
 typed_indexmap = {version = "0.0.0", path = "../../lib/typed_indexmap"}
 
@@ -28,7 +27,6 @@ ahash = "0.8"
 indexmap = "2.0"
 smol_str = {version = "0.3", default-features=false}
 lasso = {version = "0.7", features = ["ahash"]}
-salsa = "0.17.0-pre.2"
 rayon-core = "1"
 camino = "1.1.4"
 log = "0.4.19"
@@ -40,7 +38,7 @@ stdx = {version ="0.0.0", path ="../../lib/stdx"}
 target = { version = "0.0.0", path = "../target" }
 
 [dev-dependencies]
-
+paths = {version = "0.0", path = "../../lib/paths"}
 mir_interpret = {version = "0.0.0", path = "../mir_interpret" }
 mini_harness = { version = "0.0.1", path = "../../lib/mini_harness" }
 

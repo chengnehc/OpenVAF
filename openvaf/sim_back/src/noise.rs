@@ -1,6 +1,4 @@
-use lasso::Spur;
-use mir::Value;
-use stdx::Ieee64;
+use mir::{Ieee64, Spur, Value};
 
 use crate::SimUnknown;
 

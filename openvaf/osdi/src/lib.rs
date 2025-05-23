@@ -6,10 +6,9 @@ use stdx::{impl_debug_display, impl_idx_from};
 use base_n::CASE_INSENSITIVE;
 use camino::{Utf8Path, Utf8PathBuf};
 use lasso::Rodeo;
-use salsa::ParallelDatabase;
 use typed_indexmap::TiSet;
 
-use hir::{CompilationDB, ModuleInfo, ParamSysFun, Type};
+use hir::{CompilationDB, ModuleInfo, ParallelDatabase, ParamSysFun, Type};
 use hir_lower::{CallBackKind, HirInterner, ParamKind};
 use llvm::{LLVMDisposeTargetData, OptLevel};
 use mir_llvm::{CodegenCx, LLVMBackend};
@@ -116,8 +115,7 @@ pub fn compile<const EMIT: bool>(
                 let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
                 cu.setup_model_fn();
-                std::fs::write(dst.with_extension("setup_model.ll"), llmod.print().to_string())
-                    .ok();
+                // std::fs::write(dst.with_extension("setup_model.ll"), llmod.print().to_string()).ok();
                 debug_assert!(llmod.verify_and_print());
 
                 if EMIT {
@@ -136,7 +134,7 @@ pub fn compile<const EMIT: bool>(
                 let mut cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
 
                 cu.setup_instance_fn();
-                std::fs::write(dst.with_extension("setup_inst.ll"), llmod.print().to_string()).ok();
+                // std::fs::write(dst.with_extension("setup_inst.ll"), llmod.print().to_string()).ok();
                 debug_assert!(llmod.verify_and_print());
 
                 if EMIT {
@@ -157,7 +155,7 @@ pub fn compile<const EMIT: bool>(
                 std::fs::write(dst.with_extension("eval.mir"), module.eval.to_debug_string()).ok();
                 // println!("{:?}", module.eval);
                 cu.eval_fn();
-                std::fs::write(dst.with_extension("eval.ll"), llmod.print().to_string()).ok();
+                // std::fs::write(dst.with_extension("eval.ll"), llmod.print().to_string()).ok();
                 // println!("{}", llmod.to_str());
                 debug_assert!(llmod.verify_and_print());
 

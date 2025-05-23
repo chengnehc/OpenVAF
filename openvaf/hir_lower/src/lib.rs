@@ -9,9 +9,8 @@ use hir::{
     Branch, BranchWrite, CompilationDB, Module, Node, ParamSysFun, Parameter, Type, Variable,
 };
 use indexmap::IndexMap;
-use lasso::Rodeo;
 use mir::builder::InstBuilder;
-use mir::{DataFlowGraph, FuncRef, Function, Inst, KnownDerivatives, Param, Value};
+use mir::{DataFlowGraph, FuncRef, Function, Inst, KnownDerivatives, Param, Rodeo, Value};
 use mir_build::{FunctionBuilder, FunctionBuilderContext, RetBuilder};
 use typed_index_collections::TiVec;
 use typed_indexmap::{TiMap, TiSet};

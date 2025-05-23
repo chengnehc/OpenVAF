@@ -25,7 +25,6 @@ env_logger = { version = "0.10.0", default-features = false, features = ["auto-c
 log = "0.4.19"
 backtrace-ext = "0.2.1"
 backtrace = "0.3.68"
-
 mimalloc = { version = "*", default-features = false}
 
 [dev-dependencies]

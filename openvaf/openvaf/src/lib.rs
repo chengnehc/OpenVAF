@@ -12,8 +12,8 @@ use linker::link;
 
 pub use basedb::lints::builtin as builtin_lints;
 pub use basedb::lints::LintLevel;
+pub use basedb::AbsPathBuf;
 pub use mir_llvm::{LLVMBackend, OptLevel};
-pub use paths::AbsPathBuf;
 pub use target::host_triple;
 pub use target::spec::{get_target_names, Target};
 

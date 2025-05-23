@@ -32,7 +32,7 @@ use bitset::HybridBitSet;
 use typed_index_collections::TiVec;
 use typed_indexmap::TiSet;
 
-pub use lasso::{Interner, Spur};
+pub use lasso::{Rodeo, Spur};
 pub use stdx::Ieee64;
 
 mod dfg;

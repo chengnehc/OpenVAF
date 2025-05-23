@@ -11,7 +11,6 @@ doctest = false
 [dependencies]
 
 base_n = { version = "1", path = "../../lib/base_n" }
-paths = { version = "0.0", path = "../../lib/paths" }
 
 basedb = { version = "0.0.0", path = "../basedb" }
 hir = { version = "0.0.0", path = "../hir" }

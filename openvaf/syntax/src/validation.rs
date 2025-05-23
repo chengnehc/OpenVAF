@@ -1,12 +1,12 @@
 use rowan::TextRange;
-use tokens::SyntaxKind;
+use tokens::{SyntaxKind, T};
 
 use crate::ast::{
     self, support, ArgListOwner, BlockItem, ConstraintValue, Expr, FunctionItem, LiteralKind,
     ModulePorts, Name, PathSegmentKind, Stmt,
 };
 use crate::name::{kw, kw_comp};
-use crate::{match_ast, AsName, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr, T};
+use crate::{match_ast, AsName, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr};
 
 pub(crate) fn validate(root: &SyntaxNode, errors: &mut Vec<SyntaxError>) {
     for node in root.descendants() {

@@ -14,6 +14,7 @@ use parking_lot::RwLock;
 use typed_index_collections::TiSlice;
 
 use crate::CompilationUnit;
+pub use salsa::{Database, ParallelDatabase};
 
 #[salsa::database(SourceDatabase, InternDatabase, HirDefDatabase, HirTyDatabase)]
 pub struct CompilationDB {
@@ -39,9 +40,9 @@ impl VfsStorage for CompilationDB {
 }
 
 /// This impl tells salsa where to find the salsa runtime.
-impl salsa::Database for CompilationDB {}
+impl Database for CompilationDB {}
 
-impl salsa::ParallelDatabase for CompilationDB {
+impl ParallelDatabase for CompilationDB {
     fn snapshot(&self) -> salsa::Snapshot<Self> {
         let db = CompilationDB {
             storage: self.storage.snapshot(),

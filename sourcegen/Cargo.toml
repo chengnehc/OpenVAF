@@ -8,19 +8,16 @@ license="GPL-3.0"
 [lib]
 doctest = false
 
-[badges]
-maintenance = { status = "actively-developed" }
-
 [dev-dependencies]
+stdx = {version = "0.0.0", path = "../lib/stdx" }
+target = {version = "0.0.0", path = "../openvaf/target" }
+
 xshell = "0.2.7"
-indexmap = "2.0"
 proc-macro2 = "=1.0.69"
 quote = "1.0"
 ungrammar = "1.16"
 ahash = "0.8"
-
-stdx = {version = "0.0.0", path = "../lib/stdx" }
-target = {version = "0.0.0", path = "../openvaf/target" }
+indexmap = "2.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cross_compile)'] }

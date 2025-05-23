@@ -3,10 +3,8 @@
 //! The order of basic blocks in a function and the order of instructions in a block is
 //! determined by the `Layout` data structure defined in this module.
 
-use std::{
-    iter::{IntoIterator, Iterator},
-    vec,
-};
+use std::iter::{IntoIterator, Iterator};
+use std::vec;
 use stdx::packed_option::PackedOption;
 
 use typed_index_collections::TiVec;

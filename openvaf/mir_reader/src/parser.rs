@@ -242,6 +242,7 @@ impl<'a> Parser<'a> {
             err!(self.loc, err_msg)
         }
     }
+
     // Match and consume a function reference.
     fn match_fn(&mut self, err_msg: &str) -> ParseResult<FuncRef> {
         if let Some(Token::FuncRef(fnref)) = self.token() {
@@ -297,7 +298,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Match and consume a boolean immediate.
+    // Match and consume a string literal
     fn match_str(&mut self, err_msg: &str) -> ParseResult<Spur> {
         if let Some(Token::String(text)) = self.token() {
             self.consume();

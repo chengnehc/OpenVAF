@@ -8,7 +8,7 @@
 use std::iter;
 
 use ahash::AHashMap as HashMap;
-use text_size::{TextRange, TextSize};
+use syntax::{TextRange, TextSize};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LineIndex {

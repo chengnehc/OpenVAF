@@ -49,7 +49,7 @@ mod rec_declarations;
 
 pub use body::{AssignmentLhs, ContributeKind, Ref, ResolvedFun};
 pub use body::{Body, BodyRef, Expr, ExprId, Stmt, StmtId};
-pub use db::CompilationDB;
+pub use db::{CompilationDB, Database, ParallelDatabase};
 pub use module_info::{collect_modules, ModuleInfo};
 
 use attributes::AstCache;

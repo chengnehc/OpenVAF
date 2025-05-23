@@ -2,8 +2,7 @@
 // cause hidden state, which should not be used by compact models.
 
 use hir::CompilationDB;
-use lasso::Rodeo;
-use mir::Function;
+use mir::{Function, Rodeo};
 use mir_build::{FunctionBuilder, FunctionBuilderContext};
 
 use crate::ctx::MainLowerContext;

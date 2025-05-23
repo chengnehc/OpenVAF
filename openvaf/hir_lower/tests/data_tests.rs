@@ -2,8 +2,7 @@ use std::path::Path;
 
 use hir::CompilationDB;
 use hir_lower::{MirBuilder, PlaceKind};
-use lasso::Rodeo;
-use mir::Function;
+use mir::{Function, Rodeo};
 
 use basedb::AbsPathBuf;
 use expect_test::expect_file;

@@ -1,9 +1,9 @@
 //! Initialization routines which must be called before using library features.
 
+use std::collections::HashSet;
 use std::ffi::CString;
 use std::sync::Once;
 
-use ahash::AHashSet;
 use libc::{c_char, c_int};
 
 use crate::{Bool, LLVMParseCommandLineOptions, PassRegistry};
@@ -70,7 +70,7 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
 
     let args = cg_opts.iter().chain(tg_opts.iter());
 
-    let user_specified_args: AHashSet<_> =
+    let user_specified_args: HashSet<_> =
         args.clone().map(|s| llvm_arg_to_arg_name(s)).filter(|s| !s.is_empty()).collect();
 
     {

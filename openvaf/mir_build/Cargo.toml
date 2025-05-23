@@ -15,8 +15,8 @@ bitset = {version = "0.0.0", path = "../../lib/bitset" }
 
 mir = {version = "0.0.0", path = "../mir" }
 
-smallvec = {version = "1.10", features = ["const_new", "union"]}
 typed-index-collections = "3"
+smallvec = {version = "1.10", features = ["const_new", "union"]}
 lasso = {version = "0.7", features = ["ahash"]}
 
 [dev-dependencies]
