@@ -1,7 +1,7 @@
 use std::mem;
 
 use crate::instructions::{PhiEdges, PhiNode};
-use crate::{Block, DataFlowGraph, Inst, Value, GRAVESTONE};
+use crate::{Block, DataFlowGraph, Inst, InstructionData, Value, GRAVESTONE};
 
 impl DataFlowGraph {
     pub fn phi_edges(&self, phi: &PhiNode) -> PhiEdges {
@@ -16,29 +16,23 @@ impl DataFlowGraph {
         phi1.eq(phi2, &self.insts.value_lists, &self.phi_forest)
     }
 
-    /// Insert `(block, val)` as an edge of phi instruction `inst`.
-    /// If the edge has been inserted before, update it with `val`, otherwise create a new one.
-    ///
-    /// # Panics
-    /// panics when `inst` is not a phi.
     #[inline]
     pub fn insert_phi_edge(&mut self, inst: Inst, block: Block, val: Value) {
-        let PhiNode { mut blocks, mut args } = self.insts[inst].unwrap_phi().clone();
+        let PhiNode { mut args, mut blocks } = self.insts[inst].unwrap_phi().clone();
         blocks.update_or_insert_with(
             block,
-            |pos| {
-                if let Some(pos) = pos {
-                    let use_ = self.insts.operands(inst)[*pos as usize];
+            |arg| {
+                if let Some(arg) = arg {
+                    let use_ = self.insts.operands(inst)[*arg as usize];
                     self.values.detach_use(use_, &self.insts);
-                    args.as_mut_slice(&mut self.insts.value_lists)[*pos as usize] = val;
+                    args.as_mut_slice(&mut self.insts.value_lists)[*arg as usize] = val;
                     self.values.attach_use(use_, val);
-                    *pos
+                    *arg
                 } else {
-                    let pos = args.push(val, &mut self.insts.value_lists) as u32;
-                    let use_ = self.values.make_use(val, inst, pos as u16);
-                    // update use list
+                    let arg = args.push(val, &mut self.insts.value_lists) as u32;
+                    let use_ = self.values.make_use(val, inst, arg as u16);
                     self.insts.uses[inst].push(use_, &mut self.insts.use_lists);
-                    pos
+                    arg
                 }
             },
             &mut self.phi_forest,
@@ -48,12 +42,31 @@ impl DataFlowGraph {
         self.insts[inst] = PhiNode { blocks, args }.into();
     }
 
-    /// Remove phi edge with respect to block parameter `block`.
-    ///
-    /// Returns `None` if `inst` is not a phi, or there is no edge related to `block`.
     #[inline]
-    pub fn try_remove_phi_edge(&mut self, inst: Inst, block: Block) -> Option<Value> {
-        let PhiNode { mut blocks, mut args } = self.insts[inst].as_phi().cloned()?;
+    pub fn try_remove_phi_edge_at(&mut self, inst: Inst, block: Block) -> Option<(Value, u32)> {
+        let InstructionData::PhiNode(PhiNode { args, mut blocks }) = self.insts[inst].clone()
+        else {
+            return None;
+        };
+        let pos = blocks.remove(block, &mut self.phi_forest, &())?;
+        self.detach_operand(inst, pos as u16);
+
+        // this use might be reattached again so we replace the value with a constant where
+        // uses currently don't matter that much
+        // TODO introduce dedicated gravestone value
+        let val = mem::replace(&mut self.instr_args_mut(inst)[pos as usize], GRAVESTONE);
+        self.insts[inst] = PhiNode { blocks, args }.into();
+
+        Some((val, pos))
+    }
+
+    #[inline]
+    pub fn try_remove_phi_edge(
+        &mut self,
+        PhiNode { args, blocks }: &mut PhiNode,
+        inst: Inst,
+        block: Block,
+    ) -> Option<(Value, u32)> {
         let pos = blocks.remove(block, &mut self.phi_forest, &())?;
         self.detach_operand(inst, pos as u16);
 
@@ -64,8 +77,7 @@ impl DataFlowGraph {
             &mut args.as_mut_slice(&mut self.insts.value_lists)[pos as usize],
             GRAVESTONE,
         );
-        self.insts[inst] = PhiNode { blocks, args }.into();
 
-        Some(val)
+        Some((val, pos))
     }
 }

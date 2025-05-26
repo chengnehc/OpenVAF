@@ -154,9 +154,12 @@ impl Function {
     /// Update the `old_pred` in the phi node with `new_pred`.
     pub fn update_phi_edges(&mut self, bb: Block, old_pred: Block, new_pred: Block) {
         for inst in self.layout.block_insts(bb) {
-            let Some(PhiNode { blocks, .. }) = self.dfg.insts[inst].as_phi_mut() else { break };
-            let pos = blocks.remove(old_pred, &mut self.dfg.phi_forest, &()).unwrap();
-            blocks.insert(new_pred, pos, &mut self.dfg.phi_forest, &());
+            if let InstructionData::PhiNode(PhiNode { ref mut blocks, .. }) = self.dfg.insts[inst] {
+                let pos = blocks.remove(old_pred, &mut self.dfg.phi_forest, &()).unwrap();
+                blocks.insert(new_pred, pos, &mut self.dfg.phi_forest, &());
+            } else {
+                break;
+            }
         }
     }
 

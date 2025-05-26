@@ -310,5 +310,5 @@ fn cmu() {
         }
         "#]];
 
-    check_with_phi_merge(raw, expect);
+    check_no_phi_merge(raw, expect);
 }
