@@ -76,7 +76,7 @@ pub trait AstToken {
     where
         Self: Sized;
 
-    /// Erase the type of the `AstToken` to get inner `SynatxToken`
+    /// Erase the type of the `AstToken` to get inner `SyntaxToken`
     fn syntax(&self) -> &SyntaxToken;
 
     /// Return the text string of this token

@@ -1,6 +1,6 @@
 //! [LRM 9.4]: Display system tasks
 //!
-//! For displaying real numbers, the foramt specifications have the full formatting capabilities
+//! For displaying real numbers, the format specifications have the full formatting capabilities
 //! available in the C language (in terms of width and precision).
 //!
 //! See also:
@@ -20,7 +20,7 @@ enum ParserState {
     DynamicWidth,
     AnyPrecision,
     FixedPrecision,
-    DynamicPrecsion,
+    DynamicPrecision,
 }
 
 impl ParserState {
@@ -49,7 +49,7 @@ impl ParserState {
                 '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'e', 'E', 'f', 'F', 'g', 'G',
                 'r', 'R',
             ],
-            ParserState::DynamicPrecsion => &['e', 'E', 'f', 'F', 'g', 'G', 'r', 'R'],
+            ParserState::DynamicPrecision => &['e', 'E', 'f', 'F', 'g', 'G', 'r', 'R'],
         }
     }
 }
@@ -91,7 +91,7 @@ pub fn parse_real_fmt_spec(
                 }
                 '*' if state == ParserState::AnyPrecision => {
                     dynamic_args.push(off.try_into().unwrap());
-                    state = ParserState::DynamicPrecsion
+                    state = ParserState::DynamicPrecision
                 }
                 '0'..='9' if state.eat_number() => (),
                 'e'..='g' | 'E'..='G' | 'r' | 'R' if state != ParserState::AnyPrecision => {

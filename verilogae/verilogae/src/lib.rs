@@ -126,7 +126,7 @@ fn build_model(
         );
 
         // ensure all voltage/current names are in the interner so that the interner can be
-        // shared (readonly) betwenn threads
+        // shared (readonly) between threads
         cx.ensure_names(&db, &intern);
 
         rayon_core::scope(|s| {

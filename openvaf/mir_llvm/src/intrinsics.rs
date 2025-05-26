@@ -46,7 +46,7 @@ impl<'ll> crate::CodegenCx<'_, 'll> {
         // TODO link custom mathematical libraries
 
         // # Note
-        // Declare instrinsics like `llvm.tan.f64` could cause LLVM to use TAN instruction of
+        // Declare intrinsics like `llvm.tan.f64` could cause LLVM to use TAN instruction of
         // specific CPU target for better performance, but imprecision could also occur.
         //
         // not technically intrinsics but part of the C standard library(libm)

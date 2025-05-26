@@ -42,7 +42,7 @@ impl SimulationMatrix {
     fn reset(mut self, builder: &MatrixBuilder) -> SimulationMatrix {
         let nonlinear_matrix_alloc = self.nonlinear_matrix.into_alloc();
         let ac_matrix_alloc = self.ac_matrix.into_alloc();
-        let spec = Rc::get_mut(&mut self.spec).expect("matrix spec is only borrowed by matricies");
+        let spec = Rc::get_mut(&mut self.spec).expect("matrix spec is only borrowed by matrices");
         builder.inner.reinit(spec);
         let nonlinear_matrix =
             RealMatrix::new_with_alloc(self.spec.clone(), nonlinear_matrix_alloc)
@@ -136,7 +136,7 @@ impl<'a> Iterator for MatrixEntryIter<'a> {
                 as *const Cell<Complex64> as *const Cell<[f64; 2]>;
 
             // this is save because the original cell is still valid and because Complex64 is
-            // garunteed to be layout compatible with [f64;2]
+            // guaranteed to be layout compatible with [f64;2]
             // FIXME us as_array_of_cells instead when it becomes stable
             // SAFETY: `Cell<T>` has the same memory layout as `T`.
             let complex = unsafe { &*(complex as *const [Cell<f64>; 2]) };

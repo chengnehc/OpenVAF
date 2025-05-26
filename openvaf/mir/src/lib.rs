@@ -20,7 +20,7 @@
 //! found in the `hir_lower` crate which is the only bridge between various MIR crates and the HIR.
 //!
 //! [`cranelift`]: https://github.com/bytecodealliance/wasmtime/tree/main/cranelift
-//! [`cranelift_codgen`]: https://docs.rs/cranelift-codegen/latest/cranelift_codegen/index.html
+//! [`cranelift_codegen`]: https://docs.rs/cranelift-codegen/latest/cranelift_codegen/index.html
 //! [`llvm`]: https://github.com/llvm/llvm-project
 //! [SSA]: https://en.wikipedia.org/wiki/Static_single_assignment_form
 

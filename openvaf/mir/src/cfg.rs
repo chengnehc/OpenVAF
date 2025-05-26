@@ -21,7 +21,7 @@ use traversal::{Postorder, ReversePostorder};
 /// The Control Flow Graph maintains a mapping of blocks to their predecessors
 /// and successors.
 ///
-/// For each basic block, at leaset 1 predecessors and at most 2 successors are allowed.
+/// For each basic block, at least 1 predecessors and at most 2 successors are allowed.
 /// This means that each node in the CFG has >=1 in-degree and 0, 1 or 2 out-degree.
 #[derive(Clone, Default)]
 pub struct ControlFlowGraph {

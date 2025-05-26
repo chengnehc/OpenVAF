@@ -87,7 +87,7 @@ impl<N: AstNode> fmt::Debug for AstId<N> {
     }
 }
 
-/// Does this kind of synatx node have an entry in `AstIdMap`?
+/// Does this kind of syntax node have an entry in `AstIdMap`?
 pub(crate) fn has_map_entry(kind: SyntaxKind) -> bool {
     if ast::BodyPortDecl::can_cast(kind) {
         // This just adds a semicolon to a port decl... No need to add the same port twice

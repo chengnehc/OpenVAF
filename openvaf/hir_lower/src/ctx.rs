@@ -24,7 +24,7 @@ pub struct MainLowerContext<'a, 'c> {
     pub no_equations: bool,
     pub inside_lim: bool,
     /// We create a dedicated callback for each noise source
-    /// by giving each callback a unique index. Kind of ineffcient
+    /// by giving each callback a unique index. Kind of inefficient
     /// but necessary to avoid accidental correlation/opimization.
     /// For example white_noise(x) - white_noise(x) is not zero.
     pub num_noise_sources: u32,
@@ -226,7 +226,7 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     /// for the limit call. `probe` is the first argument (voltage or current probe)
     /// to `$limit`.
     ///
-    /// The returned limit state *must* be passed to `finish_limit` to ensure corectness
+    /// The returned limit state *must* be passed to `finish_limit` to ensure correctness
     pub fn start_limit(&mut self, probe: Value) -> LimitState {
         let mut unknown = probe;
         if let Some(inst) = self.dfg().value_def(unknown).inst() {

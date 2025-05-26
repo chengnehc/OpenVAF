@@ -56,7 +56,7 @@ Unpack the sources. This creates directory `llvm-project-llvmorg-15.0.7`. Create
 
 Start Visual Studio x64 native command prompt. 
 Run CMake, use Ninja as build system. Do not use default (nmake) because for me it always built the Debug version, even when I specified Release. 
-Replace `e:\llvm` with the path where you want yout LLVM and Clang binaries and libraries to be installed. 
+Replace `e:\llvm` with the path where you want your LLVM and Clang binaries and libraries to be installed. 
 ```
 cmake -G Ninja -S llvm-project-llvmorg-15.0.7\llvm -B build -DCMAKE_INSTALL_PREFIX=e:\LLVM -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64" -DLLVM_ENABLE_PROJECTS="llvm;clang"
 ```

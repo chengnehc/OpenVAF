@@ -26,7 +26,7 @@ pub(super) enum Evaluation {
     /// without the need for an additional unknown
     Linear {
         /// The contribute that this linear equation writes to.
-        /// - the first is the orginal contribution
+        /// - the first is the original contribution
         /// - the second is the separate dimension it is mapped to
         contributes: Box<[(Value, Value)]>,
     },

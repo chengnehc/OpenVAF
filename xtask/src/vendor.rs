@@ -89,7 +89,7 @@ fi"#,
     If you are a maintainer please add the .maintainer file and try uploading again (cargo xtask vendor --force)");
         }
 
-        eprintln!("\x1b[33;1mwarning\x1b[0m: .vendor has changed! Please make sure to commit these changes before any changes that require these changed dependenceis");
+        eprintln!("\x1b[33;1mwarning\x1b[0m: .vendor has changed! Please make sure to commit these changes before any changes that require these changed dependencies");
         // cleanup
         rm_rf("vendor")?;
         rm_rf(vendor_file)?;

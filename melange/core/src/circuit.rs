@@ -321,11 +321,11 @@ impl Circuit {
             if let Some(old_dev) = self.devices.raw.get(name) {
                 match &old_dev.va_file {
                     Some(old_va) => {
-                        warn!("device '{name}' (first defined in {old_va}) was redfined in {path}! ignoring...")
+                        warn!("device '{name}' (first defined in {old_va}) was redefined in {path}! ignoring...")
                     }
 
                     None => {
-                        warn!("builtin device '{name}' was redfined in {path}! ignoring...")
+                        warn!("builtin device '{name}' was redefined in {path}! ignoring...")
                     }
                 }
                 continue;

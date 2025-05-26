@@ -384,7 +384,7 @@ macro_rules! impl_debug {
 /// # Example
 ///
 /// ```rust
-/// impl_debug_isplay! {
+/// impl_debug_display! {
 ///     match Test{
 ///         Test::Bar(i) => "bar {}", i;
 ///         Test::Foo => "foo";

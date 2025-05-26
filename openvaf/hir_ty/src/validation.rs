@@ -117,7 +117,7 @@ struct ExprValidator<'a, 'b> {
     parent: &'a mut BodyValidator<'b>,
     sink: Option<&'a mut Vec<ExprId>>,
     stmt: StmtId,
-    is_write: bool, // Is this expression a assigment dst?
+    is_write: bool, // Is this expression a assignment dst?
 }
 
 impl BodyDiagnostic {

@@ -1,4 +1,4 @@
-//! Utilites for source generation
+//! Utilities for source generation
 //!
 //! See Also: https://github.com/rust-lang/rust/blob/master/src/tools/rust-analyzer/xtask/src/codegen.rs
 

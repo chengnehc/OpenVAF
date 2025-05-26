@@ -337,7 +337,7 @@ fn generate_syntax_kinds(grammar: KindsSrc<'_>) -> String {
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
         #[repr(u16)]
         pub enum SyntaxKind {
-            // Technical SyntaxKinds: they appear temporaily during parsing,
+            // Technical SyntaxKinds: they appear temporarily during parsing,
             // but never end up in the final tree
             #[doc(hidden)]
             TOMBSTONE,
@@ -543,7 +543,7 @@ fn lower(grammar: &Grammar) -> AstSrc {
     res
 }
 
-/// Lower 'alterative' rule into rust `enum`.
+/// Lower 'alternative' rule into rust `enum`.
 fn lower_enum(grammar: &Grammar, rule: &Rule) -> Option<(Vec<AstEnumVariant>, Option<String>)> {
     let Rule::Alt(alts) = rule else { return None };
     let mut variants = Vec::new();

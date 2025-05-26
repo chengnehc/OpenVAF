@@ -33,7 +33,7 @@
 //! DF(N) = { Y | N dom pred(Y) AND !(N sdom Y)}
 //!
 //! See Also:
-//! - [module `dominator-tree` of `cranelift-codgen`](https://docs.rs/cranelift-codegen/latest/cranelift_codegen/dominator_tree/index.html)
+//! - [module `dominator-tree` of `cranelift-codegen`](https://docs.rs/cranelift-codegen/latest/cranelift_codegen/dominator_tree/index.html)
 
 use std::cmp::Ordering;
 use stdx::packed_option::PackedOption;

@@ -240,7 +240,7 @@ fn conditional_ddt() {
 }
 
 /// Test the phi add chain optimization, which should reduce the number of generated
-/// implict equations.
+/// implicit equations.
 #[test]
 fn phi_add_chain() {
     let src = indoc! {r#"

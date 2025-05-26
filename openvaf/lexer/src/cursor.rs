@@ -15,7 +15,7 @@ pub(crate) struct Cursor<'a> {
     prev: char,
     // for '`define' macro expansion
     marker: Option<usize>,
-    // ouptut
+    // output
     dst: Vec<Token>,
 }
 

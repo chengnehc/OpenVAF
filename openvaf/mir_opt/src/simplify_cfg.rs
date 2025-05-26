@@ -34,7 +34,7 @@ struct SimplifyCtx<'a> {
     /// Has the iterative simplification process converged?
     local_changed: bool,
     /// Blocks that needs to be revisited since the values within it has
-    /// been changed as the result of previous simplication
+    /// been changed as the result of previous simplification
     vals_changed: BitSet<Block>,
 }
 
@@ -99,7 +99,7 @@ impl SimplifyCtx<'_> {
         self.const_fold_terminator(bb);
 
         // Try simplifying trivial and duplicate phis when phi edge values have
-        // changed as a result of other simplication processes
+        // changed as a result of other simplification processes
         if self.vals_changed.remove(bb) {
             self.simplify_trivial_phis(bb);
             self.simplify_duplicate_phis(bb);
@@ -167,7 +167,7 @@ impl SimplifyCtx<'_> {
     /// - phi only has a single edge
     /// - all edge values are identical
     ///
-    /// Phis could become trivial as a result of previous simplication.
+    /// Phis could become trivial as a result of previous simplification.
     fn simplify_trivial_phis(&mut self, bb: Block) {
         // skip entry block
         if Some(bb) == self.func.layout.entry_block() {
@@ -244,7 +244,7 @@ impl SimplifyCtx<'_> {
 
     //     while let Some(inst) = cursor.next(&self.func.layout) {
     //         if let InstructionData::PhiNode(phi) = self.func.dfg.insts[inst] {
-    //             let mut hasher = self.hash_builer.build_hasher();
+    //             let mut hasher = self.hash_builder.build_hasher();
     //             self.func.dfg.phi_edges(phi).for_each(|(_, val)| val.hash(&mut hasher));
     //             let hash = hasher.finish();
 

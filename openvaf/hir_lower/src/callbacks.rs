@@ -22,7 +22,7 @@ pub enum CallBackKind {
     WhiteNoise { name: Spur, idx: u32 },
     FlickerNoise { name: Spur, idx: u32 },
     NoiseTable(Box<NoiseTable>),
-    ParamInfo(ParamInfoKind, Parameter), // for paramter setup
+    ParamInfo(ParamInfoKind, Parameter), // for parameter setup
 }
 
 impl CallBackKind {

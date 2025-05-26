@@ -103,7 +103,7 @@ impl FileSpan {
     // }
 }
 
-/// Represents a (local) continous range of text within a `SourceContext`
+/// Represents a (local) continuous range of text within a `SourceContext`
 /// (macro expansion or included file).
 ///
 /// The spanning range is relative to `SourceContext`.

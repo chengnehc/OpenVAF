@@ -1126,7 +1126,7 @@ fn raise_eval_illegal_array_exception(
         //     ))
         // }
         Err(PyArrayError::UnsupportedDataType) => {
-            format!("eval() received numpy array with unsupprted data type for '{}'", name,)
+            format!("eval() received numpy array with unsupported data type for '{}'", name,)
         }
     };
 
@@ -1136,7 +1136,7 @@ fn raise_eval_illegal_array_exception(
 #[cold]
 #[inline(never)]
 fn raise_eval_illegal_data_type_exception(name: &str) -> *mut PyObject {
-    raise_eval_exception(&format!("eval() received unsupprted data type for '{}'", name,))
+    raise_eval_exception(&format!("eval() received unsupported data type for '{}'", name,))
 }
 
 #[cold]

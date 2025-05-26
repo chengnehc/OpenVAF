@@ -1,5 +1,5 @@
 //! See Also:
-//! [ DFG module of `cranelift-codgen`](https://docs.rs/cranelift-codegen/0.116.1/cranelift_codegen/ir/dfg/index.html)
+//! [ DFG module of `cranelift-codegen`](https://docs.rs/cranelift-codegen/0.116.1/cranelift_codegen/ir/dfg/index.html)
 
 use std::fmt;
 

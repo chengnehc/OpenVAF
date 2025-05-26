@@ -221,7 +221,7 @@ impl Body {
                 Some(ParamConstraint { kind, val })
             })
             .collect();
-        // entry stmts contain constexprs of parameter default values and contraints
+        // entry stmts contain constexprs of parameter default values and constraints
         body.entry_stmts = Box::from(entry_stmts);
 
         (Arc::new(body), Arc::new(src_map), ParamExprs { default, constraints })

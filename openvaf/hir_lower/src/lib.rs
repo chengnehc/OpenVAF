@@ -399,7 +399,7 @@ impl PlaceKind {
         }
     }
 
-    // /// This place is only used in intialization function
+    // /// This place is only used in initialization function
     // pub fn is_init_only(&self) -> bool {
     //     matches!(self, Self::CollapseImplicitEquation(_))
     // }

@@ -72,7 +72,7 @@ impl BodyLowerContext<'_, '_, '_> {
         // Lower the RHS expression
         let rhs = self.lower_expr(rhs);
         if rhs == F_ZERO {
-            // if the RHS expression evalutes to 0 then this is a useless contribution,
+            // if the RHS expression evaluates to 0 then this is a useless contribution,
             // there's no need to build instruction.
             return;
         }

@@ -2,7 +2,7 @@
 //! In general it contains code that runs towards the end of the compilation process.
 //!
 //! See Also:
-//! - [`rustc_codgen_llvm`](https://github.com/rust-lang/rust/tree/master/compiler/rustc_codegen_llvm)
+//! - [`rustc_codegen_llvm`](https://github.com/rust-lang/rust/tree/master/compiler/rustc_codegen_llvm)
 
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;

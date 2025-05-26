@@ -144,7 +144,7 @@ impl ModelInfo {
         cu.collect_diagnostics(db, &mut sink);
 
         if sink.summary(&file_name) {
-            bail!("compiation failed");
+            bail!("compilation failed");
         }
 
         let module = match cu.modules(db).get(0) {

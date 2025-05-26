@@ -15,7 +15,7 @@ use std::marker::PhantomData;
 use crate::syntax_node::VerilogALanguage;
 use crate::{AstNode, SyntaxKind, SyntaxNode, TextRange};
 
-/// A "pointer" to a `SynatxNode`, via location in the source code.
+/// A "pointer" to a `SyntaxNode`, via location in the source code.
 /// It can be used to remember a specific node across reparses of the same file.
 ///
 /// It's a small type which can be cheaply stored, and which can be resolved

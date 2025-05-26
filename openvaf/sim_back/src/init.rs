@@ -111,7 +111,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    // Copy op-indepedent instructions from the `block` of evaluation function
+    // Copy op-independent instructions from the `block` of evaluation function
     // to the same `block` of initialization function.
     fn split_block(&mut self, block: Block) {
         let mut insts = self.func.layout.block_inst_cursor(block);
@@ -204,7 +204,7 @@ impl<'a> Builder<'a> {
             let arg = strip_optbarrier(self.func, val);
 
             // we only cache outputsunless the argument of optbarrier instruction has
-            // been cached, i.e., the variable correspondng to the argument is not tagged.
+            // been cached, i.e., the variable corresponding to the argument is not tagged.
             if let Some(inst) =
                 self.func.dfg.value_def(arg).inst().filter(|_| self.func.dfg.get_tag(arg).is_none())
             {

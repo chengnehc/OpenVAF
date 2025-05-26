@@ -91,7 +91,7 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     "'{name}' is declared here without direction")
                 ))
                 .with_notes(vec![
-                    "if port_without_direction is set to warn/allow the direciton will be set to 'inout'.".to_owned(), 
+                    "if port_without_direction is set to warn/allow the direction will be set to 'inout'.".to_owned(), 
                     "note: port directions are always required by the language standard.".to_owned()])
             }
             TypeDiagnostic::NodeWithoutDiscipline { decl, ref name } => {

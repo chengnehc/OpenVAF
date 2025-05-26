@@ -4,7 +4,7 @@
 // This means when `I(branch)` appears at the RHS of some expression, it should be divided by
 // $mfactor, but it seems that OpenVAF does not handle this for now.
 //
-// However, for compact models, `I(branch)` seldomly appears at RHS. One common exception is
+// However, for compact models, `I(branch)` seldom appears at RHS. One common exception is
 // that when modeling an inductor: `V(branch) <+ ddt(L * I(branch))`
 
 use std::mem;

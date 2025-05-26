@@ -86,7 +86,7 @@ pub enum BodyDiagnostic {
         arg: FunctionArgLoc,
     },
 
-    /* Buitin function */
+    /* Builtin function */
     UnsupportedFunction {
         expr: ExprId,
         func: BuiltIn,

@@ -92,7 +92,7 @@ use crate::{
     ModuleId, NatureAccess, NatureAttrId, NatureId, NodeId, ParamId, VarId,
 };
 
-/// Verilog-A lanaguage builtin item definitions
+/// Verilog-A language builtin item definitions
 pub static BUILTIN_ITEM_DEF: Lazy<IndexMap<Name, ScopeItem, ahash::RandomState>> =
     Lazy::new(|| {
         let mut defs = IndexMap::default();
