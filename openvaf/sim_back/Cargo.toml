@@ -11,11 +11,11 @@ doctest = false
 [dependencies]
 
 stdx = { version = "0.0.0", path = "../../lib/stdx" }
-bitset = {version = "0.0.0", path = "../../lib/bitset"}
-typed_indexmap = {version = "0.0.0", path = "../../lib/typed_indexmap"}
+bitset = { version = "0.0.0", path = "../../lib/bitset" }
+typed_indexmap = { version = "0.0.0", path = "../../lib/typed_indexmap" }
 
 hir = { version = "0.0.0", path = "../hir" }
-hir_lower = {version ="0.0.0", path ="../hir_lower"}
+hir_lower = { version = "0.0.0", path = "../hir_lower" }
 mir = { version = "0.0.0", path = "../mir" }
 mir_build = { version = "0.0.0", path = "../mir_build" }
 mir_autodiff = { version = "0.0.0", path = "../mir_autodiff" }
@@ -24,13 +24,13 @@ mir_opt = { version = "0.0.0", path = "../mir_opt" }
 ahash = "0.8"
 indexmap = "2.0"
 typed-index-collections = "3"
-lasso = {version = "0.7", features = ["ahash"]}
+lasso = { version = "0.7", features = ["ahash"] }
 cov-mark = { version = "1.1.0", default-features = false }
 
 [dev-dependencies]
 
-mir_interpret = {version = "0.0.0", path = "../mir_interpret" }
+mir_interpret = { version = "0.0.0", path = "../mir_interpret" }
 
 expect-test = "1.4"
 indoc = "2"
-float-cmp =  "0.9"
+float-cmp = "0.9"

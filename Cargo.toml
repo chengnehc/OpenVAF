@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["openvaf/*","melange/*", "verilogae/*", "xtask/", "lib/*", "sourcegen"]
+members = [
+    "openvaf/*",
+    "melange/*",
+    "verilogae/*",
+    "xtask/",
+    "lib/*",
+    "sourcegen",
+]
 exclude = ["melange/examples", "verilogae/tests", "openvaf/test_data"]
 
 [profile.release]
@@ -40,4 +47,4 @@ mir_build.opt-level = 2
 mir_opt.opt-level = 2
 
 [patch.crates-io]
-salsa = { git = "https://github.com/chengnehc/salsa", branch = "salsa-0.17"}
+salsa = { git = "https://github.com/chengnehc/salsa", branch = "salsa-0.17" }

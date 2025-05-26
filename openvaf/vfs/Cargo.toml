@@ -1,14 +1,14 @@
 [package]
 name = "vfs"
 version = "0.0.0"
-license="GPL-3.0"
+license = "GPL-3.0"
 edition = "2021"
 
 [lib]
 doctest = false
 
 [dependencies]
-paths = { path="../../lib/paths", version="0.0.0" }
+paths = { path = "../../lib/paths", version = "0.0.0" }
 
 indexmap = "2.0"
 ahash = "0.8"

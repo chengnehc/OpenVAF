@@ -3,7 +3,7 @@ name = "syntax"
 version = "0.0.0"
 authors = ["DSPOM"]
 edition = "2021"
-license="GPL-3.0"
+license = "GPL-3.0"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -12,11 +12,11 @@ maintenance = { status = "actively-developed" }
 doctest = false
 
 [dependencies]
-stdx = {version = "0.0.0", path = "../../lib/stdx" }
-vfs = {version = "0.0.0", path = "../vfs" }
-tokens = {version="0.0.0", path="../tokens"}
-preprocessor = {version = "0.0.0", path = "../preprocessor" }
-parser = {version = "0.0.0", path = "../parser" }
+stdx = { version = "0.0.0", path = "../../lib/stdx" }
+vfs = { version = "0.0.0", path = "../vfs" }
+tokens = { version = "0.0.0", path = "../tokens" }
+preprocessor = { version = "0.0.0", path = "../preprocessor" }
+parser = { version = "0.0.0", path = "../parser" }
 
 rowan = "0.16"
-smol_str = {version = "0.3", default-features = false}
+smol_str = { version = "0.3", default-features = false }

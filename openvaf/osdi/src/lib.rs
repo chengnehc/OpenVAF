@@ -152,7 +152,7 @@ pub fn compile<const EMIT: bool>(
                 let tys = OsdiTys::new(&cx, target_data_);
                 let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, true);
 
-                std::fs::write(dst.with_extension("eval.mir"), module.eval.to_debug_string()).ok();
+                // std::fs::write(dst.with_extension("eval.mir"), module.eval.to_debug_string()).ok();
                 // println!("{:?}", module.eval);
                 cu.eval_fn();
                 // std::fs::write(dst.with_extension("eval.ll"), llmod.print().to_string()).ok();

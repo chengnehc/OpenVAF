@@ -10,7 +10,7 @@ doctest = false
 
 [dependencies]
 
-base_n = {version = "1", path="../../lib/base_n"}
+base_n = { version = "1", path = "../../lib/base_n" }
 
 mir = { version = "0.0.0", path = "../mir" }
 llvm = { version = "0.0.0", path = "../llvm" }

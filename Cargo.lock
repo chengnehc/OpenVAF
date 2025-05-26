@@ -516,7 +516,6 @@ version = "0.0.0"
 dependencies = [
  "ahash",
  "basedb",
- "bitset",
  "expect-test",
  "hir",
  "indexmap",

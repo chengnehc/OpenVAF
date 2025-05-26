@@ -10,4 +10,4 @@ doctest = false
 
 [build-dependencies]
 xshell = "0.2.7"
-stdx = {version ="0.0.0", path ="../../lib/stdx"}
+stdx = { version = "0.0.0", path = "../../lib/stdx" }

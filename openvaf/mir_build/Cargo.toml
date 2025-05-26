@@ -3,23 +3,23 @@ name = "mir_build"
 version = "0.0.0"
 authors = ["DSPOM"]
 edition = "2021"
-license="GPL-3.0"
+license = "GPL-3.0"
 
 [lib]
 doctest = false
 
 [dependencies]
-stdx = {version = "0.0.0", path = "../../lib/stdx" }
-bforest = {version = "0.0.0" , path = "../../lib/bforest"}
-bitset = {version = "0.0.0", path = "../../lib/bitset" }
+stdx = { version = "0.0.0", path = "../../lib/stdx" }
+bforest = { version = "0.0.0", path = "../../lib/bforest" }
+bitset = { version = "0.0.0", path = "../../lib/bitset" }
 
-mir = {version = "0.0.0", path = "../mir" }
+mir = { version = "0.0.0", path = "../mir" }
 
 typed-index-collections = "3"
-smallvec = {version = "1.10", features = ["const_new", "union"]}
-lasso = {version = "0.7", features = ["ahash"]}
+smallvec = { version = "1.10", features = ["const_new", "union"] }
+lasso = { version = "0.7", features = ["ahash"] }
 
 [dev-dependencies]
-mir_reader = {version = "0.0.0", path = "../mir_reader" }
+mir_reader = { version = "0.0.0", path = "../mir_reader" }
 
 expect-test = "1.4"
