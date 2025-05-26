@@ -13,7 +13,7 @@ error[L016]: no direction declared for port 'bar'
 5 | module test(foo, bar);
   |                  ^^^ 'bar' is declared here without direction
   |
-  = if port_without_direction is set to warn/allow the direciton will be set to 'inout'.
+  = if port_without_direction is set to warn/allow the direction will be set to 'inout'.
   = note: port directions are always required by the language standard.
   = port_without_direction is set to deny by default
     use a CLI argument or an attribute to overwrite
