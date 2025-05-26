@@ -3,7 +3,7 @@ use std::sync::Arc;
 use stdx::{impl_debug_display, impl_idx_from};
 
 use ahash::AHashMap;
-use text_size::{TextRange, TextSize};
+use tokens::{TextRange, TextSize};
 use typed_index_collections::TiVec;
 use vfs::{FileId, VfsPath};
 

@@ -2,8 +2,7 @@
 //! representation.
 //!
 //! See Also:
-//! - https://github.com/rust-lang/rust-analyzer/tree/master/lib/line-index
-//! - https://docs.rs/line-index/0.1.2/line_index/
+//! - [`line_index`](https://docs.rs/line-index/0.1.2/line_index/)
 
 use std::iter;
 
@@ -12,7 +11,7 @@ use syntax::{TextRange, TextSize};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LineIndex {
-    /// Offset the the beginning of each line, zero-based
+    /// Offset of the beginning of each line, zero-based
     pub newlines: Vec<TextSize>,
     /// List of non-ASCII characters on each line
     pub utf16_lines: HashMap<u32, Vec<Utf16Char>>,

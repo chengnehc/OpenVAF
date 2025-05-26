@@ -17,8 +17,8 @@ error: illegal nature identifier
    |                  ^^^^^^^^ illegal nature identifier
    |
    = help: expected one of the following
-   = an identifier: Voltage
-   = an identifier preceded by a discipline: electrical.potential
+     - an identifier: 'Voltage'
+     - an identifier preceded by a discipline: 'electrical.potential'
 
 error: illegal value provided for units attribute
    --> /nature_attr.va:10:18

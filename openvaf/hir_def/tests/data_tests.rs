@@ -39,17 +39,13 @@ impl TestDataBase {
         self.root_file.unwrap()
     }
 
-    pub fn vfs(&self) -> &RwLock<Vfs> {
-        self.vfs.as_ref().unwrap()
-    }
-
     pub fn lower_and_check(&self) -> String {
         let root_file = self.root_file();
         let root_def_map = self.root_def_map(root_file);
         let mut buf = sink::Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(self, &mut buf);
-            sink.annonymize_paths();
+            sink.anonymize_paths();
             let root_scope = root_def_map.entry_scope();
             self.lower_and_check_rec(root_scope, &root_def_map, &mut sink);
         }
@@ -85,7 +81,7 @@ impl salsa::Database for TestDataBase {}
 
 impl VfsStorage for TestDataBase {
     fn vfs(&self) -> &RwLock<Vfs> {
-        self.vfs()
+        self.vfs.as_ref().unwrap()
     }
 }
 

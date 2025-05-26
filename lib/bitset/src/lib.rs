@@ -1,6 +1,5 @@
 //! See Also:
-//! - https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs
-//! - https://doc.rust-lang.org/stable/nightly-rustc/rustc_index/bit_set/struct.BitSet.html
+//! - [`rustc_index`](https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs)
 
 // TODO(JW): update this crate?
 // BitSet -> DenseBitSet, SparseBitSet -> ChunkedBitSet, HybridBitSet -> MixedBitSet

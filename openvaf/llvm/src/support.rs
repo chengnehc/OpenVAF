@@ -9,9 +9,8 @@ use crate::{LLVMCreateMessage, LLVMDisposeMessage};
 
 /// An owned LLVM String, also known as a LLVM Message.
 ///
-/// See also: crate 'inkwell'
-/// - https://thedan64.github.io/inkwell/inkwell/support/struct.LLVMString.html
-/// - https://docs.rs/crate/inkwell/latest/source/src/support/mod.rs
+/// See also:
+/// - [`inkwell`](https://docs.rs/crate/inkwell/latest/source/src/support/mod.rs)
 #[derive(Eq)]
 #[repr(transparent)]
 pub struct LLVMString {

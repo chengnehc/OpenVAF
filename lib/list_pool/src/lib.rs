@@ -1,9 +1,7 @@
 //! Small lists of entity references.
 //!
 //! See Also:
-//!
-//! - https://github.com/bytecodealliance/wasmtime/blob/main/cranelift/entity/src/list.rs
-//! - https://docs.rs/crate/cranelift-entity/0.116.0/source/src/list.rs
+//! - [`cranelift-entity`](https://docs.rs/crate/cranelift-entity/0.116.0/source/src/list.rs)
 
 use std::marker::PhantomData;
 use std::mem;

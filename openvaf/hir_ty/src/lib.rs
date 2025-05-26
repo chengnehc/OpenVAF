@@ -1,6 +1,5 @@
 //! See Also:
-//!
-//! https://docs.rs/ra_ap_hir_ty/latest/ra_ap_hir_ty/
+//! - [rust-analyzer `hir_ty`](https://docs.rs/ra_ap_hir_ty/latest/ra_ap_hir_ty/)
 
 pub mod builtin;
 pub mod db;

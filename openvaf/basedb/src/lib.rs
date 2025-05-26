@@ -1,11 +1,7 @@
-//! Define trait `BaseDB` salsa query group.
-//!
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust-analyzer/tree/master/crates/base-db
+//! - [rust-analyzer `basedb`](https://github.com/rust-lang/rust-analyzer/tree/master/crates/base-db)
 
 use std::fs;
-use std::mem::transmute;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
@@ -16,14 +12,17 @@ pub use vfs::{AbsPathBuf, FileId, FileReadError, Vfs, VfsEntry, VfsPath};
 
 pub mod diagnostics;
 pub mod lints;
+
 use lints::{Lint, LintAttrTree, LintData, LintLevel, LintRegistry};
 
 mod ast_id_map;
 mod line_index;
+mod testing;
+
 pub use ast_id_map::{AstId, AstIdMap, ErasedAstId};
 pub use line_index::{Line, LineIndex};
 
-/// Refer to LRM chapter 10.5: Predined Macros
+/// Refer to LRM chapter 10.5
 pub const PREDEFINED_MACROS: [&str; 3] =
     ["__OPENVAF__", "__VAMS_ENABLE__", "__VAMS_COMPACT_MODELING__"];
 
@@ -47,12 +46,12 @@ pub trait BaseDB: VfsStorage {
 
     /* line index */
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
-    // #[salsa::transparent]
-    // fn line_col(&self, span: FileSpan) -> LineCol;
     #[salsa::transparent]
     fn line(&self, pos: TextSize, file: FileId) -> Line;
     #[salsa::transparent]
     fn line_range(&self, line: Line, file: FileId) -> TextRange;
+    // #[salsa::transparent]
+    // fn line_col(&self, span: FileSpan) -> LineCol;
 
     /* vfs */
     fn file_text(&self, file: FileId) -> Result<Arc<str>, FileReadError>;
@@ -85,6 +84,8 @@ pub trait BaseDB: VfsStorage {
     ) -> (LintLevel, bool);
 }
 
+/* Source Database */
+
 fn preprocess(db: &dyn BaseDB, root_file: FileId) -> Preprocess {
     syntax::preprocess(&db.as_src_provider(), root_file)
 }
@@ -95,7 +96,8 @@ fn sourcemap(db: &dyn BaseDB, root_file: FileId) -> Arc<SourceMap> {
 }
 
 fn parse(db: &dyn BaseDB, root_file: FileId) -> Parse<SourceFile> {
-    syntax::parse(&db.as_src_provider(), root_file, &db.preprocess(root_file))
+    let preprocess = &db.preprocess(root_file);
+    syntax::parse(&db.as_src_provider(), root_file, preprocess)
 }
 
 fn ast_id_map(db: &dyn BaseDB, root_file: FileId) -> Arc<AstIdMap> {
@@ -103,6 +105,8 @@ fn ast_id_map(db: &dyn BaseDB, root_file: FileId) -> Arc<AstIdMap> {
     let ast_id_map = AstIdMap::from_source(&ast);
     Arc::new(ast_id_map)
 }
+
+/* Line Index */
 
 #[inline]
 fn line_index(db: &dyn BaseDB, file_id: FileId) -> Arc<LineIndex> {
@@ -126,6 +130,8 @@ fn line_range(db: &dyn BaseDB, line: Line, file: FileId) -> TextRange {
 //     db.line_index(span.file).line_col(span.range.start())
 // }
 
+/* VFS */
+
 #[inline]
 fn file_text(db: &dyn BaseDB, file: FileId) -> Result<Arc<str>, FileReadError> {
     db.salsa_runtime().report_synthetic_read(salsa::Durability::LOW);
@@ -139,8 +145,7 @@ fn file_text(db: &dyn BaseDB, file: FileId) -> Result<Arc<str>, FileReadError> {
                 drop(vfs);
                 let mut vfs = db.vfs().write();
                 vfs.set_file_contents(file, fs::read(path).into());
-                let contents = vfs.file_contents(file);
-                contents.map(Arc::from)
+                vfs.file_contents(file).map(Arc::from)
             } else {
                 Err(err)
             }
@@ -155,6 +160,8 @@ fn file_path(db: &dyn BaseDB, file: FileId) -> VfsPath {
 fn file_id(db: &dyn BaseDB, path: VfsPath) -> FileId {
     db.vfs().write().ensure_file_id(path)
 }
+
+/* Linting */
 
 fn lint(db: &dyn BaseDB, name: &str) -> Option<Lint> {
     db.lint_registry().lint_from_name(name)
@@ -171,13 +178,11 @@ fn lint_lvl(
     ast: Option<ErasedAstId>,
 ) -> (LintLevel, bool) {
     if let Some(ast) = ast {
-        if let Some(lvl) =
-            db.lint_attr_tree(root_file).lint_lvl(&db.ast_id_map(root_file), ast, lint)
-        {
+        let map = &db.ast_id_map(root_file);
+        if let Some(lvl) = db.lint_attr_tree(root_file).lint_lvl(map, ast, lint) {
             return (lvl, false);
         }
     }
-
     if let Some(lvl) = db.global_lint_overwrites(root_file)[lint] {
         return (lvl, false);
     }
@@ -221,46 +226,5 @@ impl SourceProvider for SourceProviderDelegate<'_> {
     #[inline(always)]
     fn file_id(&self, path: VfsPath) -> FileId {
         self.0.file_id(path)
-    }
-}
-
-// for testing
-impl dyn BaseDB {
-    pub fn setup_test_db(
-        &mut self,
-        root_file_path: VfsPath,
-        root_file_contents: VfsEntry,
-        vfs: &mut Vfs,
-    ) -> FileId {
-        let root_file = vfs.ensure_file_id(root_file_path);
-        vfs.set_file_contents(root_file, root_file_contents);
-        vfs.insert_std_lib();
-
-        let include_dirs = vec![VfsPath::new_virtual_path("/std".to_owned())];
-        self.set_include_dirs(root_file, Arc::from(include_dirs));
-
-        let macro_flags: Vec<_> = PREDEFINED_MACROS.iter().map(|x| Arc::from(*x)).collect();
-        self.set_macro_flags(root_file, Arc::from(macro_flags));
-
-        self.set_plugin_lints(&[]);
-
-        let overwrites: Arc<[_]> = Arc::from(self.empty_global_lint_overwrites().as_ref());
-        let overwrites = unsafe {
-            transmute::<Arc<[Option<LintLevel>]>, Arc<TiSlice<Lint, Option<LintLevel>>>>(overwrites)
-        };
-        self.set_global_lint_overwrites(root_file, overwrites);
-
-        root_file
-    }
-
-    pub fn apply_vfs_changes(&mut self) {
-        let changes = self.vfs().write().take_changes();
-        for change in changes {
-            self.invalidate_file(change.file_id);
-        }
-    }
-
-    pub fn invalidate_file(&mut self, file: FileId) {
-        FileTextQuery.in_db_mut(self).invalidate(&file)
     }
 }

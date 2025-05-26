@@ -5,8 +5,8 @@ error: illegal nature identifier
   |               ^^^^^^^^^^ illegal nature identifier
   |
   = help: expected one of the following
-  = an identifier: Voltage
-  = an identifier preceded by a discipline: electrical.potential
+    - an identifier: 'Voltage'
+    - an identifier preceded by a discipline: 'electrical.potential'
 
 error: illegal nature identifier
   --> /parent_nature.va:4:15
@@ -15,8 +15,8 @@ error: illegal nature identifier
   |               ^^^^^^^ illegal nature identifier
   |
   = help: expected one of the following
-  = an identifier: Voltage
-  = an identifier preceded by a discipline: electrical.potential
+    - an identifier: 'Voltage'
+    - an identifier preceded by a discipline: 'electrical.potential'
 
 error: illegal nature identifier
   --> /parent_nature.va:7:15
@@ -25,6 +25,6 @@ error: illegal nature identifier
   |               ^^^^^^^^^^^^ illegal nature identifier
   |
   = help: expected one of the following
-  = an identifier: Voltage
-  = an identifier preceded by a discipline: electrical.potential
+    - an identifier: 'Voltage'
+    - an identifier preceded by a discipline: 'electrical.potential'
 

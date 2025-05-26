@@ -48,7 +48,7 @@ impl TestDataBase {
         let mut buf = sink::Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(self, &mut buf);
-            sink.annonymize_paths();
+            sink.anonymize_paths();
             sink.add_diagnostics(preprocess.errors(), root_file, self);
             sink.add_diagnostics(parse.errors().as_slice(), root_file, self);
             sink.add_diagnostics(attr_tree.diagnostics.as_slice(), root_file, self);

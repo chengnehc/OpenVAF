@@ -15,8 +15,7 @@
 //!   with the `Function` that you are building.
 //!
 //! See Also:
-//!
-//! https://docs.rs/cranelift-frontend/latest/cranelift_frontend/
+//! - [`cranelift-frontend`](https://docs.rs/cranelift-frontend/latest/cranelift_frontend/)
 
 use stdx::{impl_debug_display, impl_idx_from};
 

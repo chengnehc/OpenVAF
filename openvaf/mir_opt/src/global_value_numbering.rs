@@ -9,7 +9,8 @@
 //! run in multiple iterations, to improve the quality of the optimization and to handle
 //! loops and other control flow structures.
 //!
-//! See also: https://doc.rust-lang.org/beta/nightly-rustc/rustc_mir_transform/gvn/index.html
+//! See also:
+//! - <https://doc.rust-lang.org/beta/nightly-rustc/rustc_mir_transform/gvn/index.html>
 
 use std::cmp::Ordering;
 use std::ops::{Index, IndexMut};

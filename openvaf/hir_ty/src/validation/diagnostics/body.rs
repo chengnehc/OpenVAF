@@ -67,24 +67,14 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                 let tree = module.item_tree(db);
                 let node = &tree[module.id].nodes[node.id];
 
-                let mut labels = vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "expected port".to_owned(),
-                }];
-
-                labels.extend(node.decls.iter().map(|decl| {
-                    let NodeTypeDecl::Net(net) = *decl else { unreachable!() };
+                let mut labels = vec![Label::primary(file, range).with_message("expected port")];
+                labels.extend(node.decls.iter().map(|&decl| {
+                    let NodeTypeDecl::Net(net) = decl else { unreachable!() };
                     let range = ast_id_map.get(tree[net].ast_id).text_range();
                     let FileSpan { range, file } = parse.to_file_span(range, &src_map);
 
-                    Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: format!("info: '{}' was declared here", node.name),
-                    }
+                    Label::secondary(file, range)
+                        .with_message(format!("info: '{}' was declared here", node.name))
                 }));
 
                 Report::error()
@@ -93,41 +83,27 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                         node.name
                     ))
                     .with_labels(labels)
-                    .with_notes(vec![
-                        "help: prefix one of the declarations with inout, input or output"
-                            .to_owned(),
-                    ])
+                    .with_note("help: prefix one of the declarations with inout, input or output")
             }
 
             /* Branch access */
             BodyDiagnostic::PotentialOfPortFlow { expr, branch } => {
                 let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
-
-                let mut labels = vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "invalid potential access".to_owned(),
-                }];
-
+                let mut labels =
+                    vec![Label::primary(file, range).with_message("invalid potential access")];
                 if let Some(branch) = branch {
                     let (name, range) = self.lookup(branch);
                     let FileSpan { range, file } = parse.to_file_span(range, &src_map);
-                    labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: format!("info: '{name}' was declared here"),
-                    });
+                    labels.push(
+                        Label::secondary(file, range)
+                            .with_message(format!("info: '{name}' was declared here")),
+                    );
                 }
 
                 Report::error()
                     .with_message("access of port-branch potential")
                     .with_labels(labels)
-                    .with_notes(vec![
-                        "help: only the flow of port branches like <foo> can be accessed"
-                            .to_owned(),
-                    ])
+                    .with_note("help: only the flow of port branches like <foo> can be accessed")
             }
             BodyDiagnostic::TrivialBranchAccess { branch, expr, .. } => {
                 let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
@@ -146,19 +122,16 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     BranchWrite::Named(_) => &branch_name,
                     BranchWrite::Unnamed { .. } => &branch_name[1..branch_name.len() - 1],
                 };
-                let res = Report::error()
-                    .with_message("Current probe always returns zero".to_owned())
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "always returns zero".to_owned(),
-                    }]);
 
-                res.with_notes(vec![
-                    format!("help: there are no contributions to branch {branch_name}"),
-                    format!("info: branches are open circuted by default: I({branch_probe}) <+ 0"),
-                ])
+                Report::error()
+                    .with_message("Current probe always returns zero")
+                    .with_label(Label::primary(file, range).with_message("always returns zero"))
+                    .with_notes(vec![
+                        format!("help: there are no contributions to branch {branch_name}"),
+                        format!(
+                            "info: branches are open circuted by default: I({branch_probe}) <+ 0"
+                        ),
+                    ])
             }
             BodyDiagnostic::IncompatibleUnnamedBranch { expr, node1, node2 } => {
                 let name1 = &self.db.node_data(node1).name;
@@ -187,13 +160,7 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                 } else {
                     "illegal access".to_owned()
                 };
-                let labels = vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message,
-                }];
-                let msg = format!("illegal access of branch '{branch}'");
+                let label = Label::primary(file, range).with_message(message);
                 let help_msg = match candidates {
                     [None, None] => {
                         "help: this branch has a natureless discipline and can't be accessed"
@@ -213,24 +180,23 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                     }
                 };
 
-                Report::error().with_labels(labels).with_message(msg).with_notes(vec![help_msg])
+                Report::error()
+                    .with_message(format!("illegal access of branch '{branch}'"))
+                    .with_label(label)
+                    .with_note(help_msg)
             }
             // this is for potential() or flow() access functions
             BodyDiagnostic::IllegalNatureAccess { is_pot, expr } => {
                 let name = if is_pot { "potential" } else { "flow" };
                 let span = self.expr_span(expr, &src_map, &parse);
 
+                let msg = format!("access of branch without {name}");
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: span.file,
-                        range: span.range.into(),
-                        message: format!("access of branch without {name}"),
-                    }])
                     .with_message(format!("'{name}' access of branch without {name}"))
-                    .with_notes(vec![format!(
+                    .with_label(Label::primary(span.file, span.range).with_message(msg))
+                    .with_note(format!(
                         "help: this branch belongs to a discipline without '{name}' attribute"
-                    )])
+                    ))
             }
 
             /* Context violation */
@@ -240,79 +206,59 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
                 Report::error()
                     .with_message(format!("branch contributions are not allowed in {ctxt}"))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "not allowed here".to_owned(),
-                    }])
-                    .with_notes(vec![
-                        "help: branch contributions are only allowed in module-level analog blocks"
-                            .to_owned(),
-                    ])
+                    .with_label(Label::secondary(file, range).with_message("not allowed here"))
+                    .with_note(
+                        "help: branch contributions are only allowed in module-level analog blocks",
+                    )
             }
             BodyDiagnostic::IllegalCtxtAccess { ref kind, ctxt, expr } => {
                 let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
-                let mut res = Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "not allowed here".to_owned(),
-                }]);
-
+                let mut report = Report::error()
+                    .with_label(Label::primary(file, range).with_message("not allowed here"));
                 match kind {
-                    IllegalCtxtAccessKind::NatureAccess => res
+                    IllegalCtxtAccessKind::NatureAccess => report
                         .with_message(format!("nature access is not allowed in {ctxt}"))
-                        .with_notes(vec![
-                            "help: nature access is only allowed in module-level analog blocks"
-                                .to_owned(),
-                        ]),
+                        .with_note(
+                            "help: nature access is only allowed in module-level analog blocks",
+                        ),
                     IllegalCtxtAccessKind::AnalogOperator {
                         name,
                         is_standard: _, // TODO add a note?
                         non_const_dominator,
                     } => {
-                        let notes = if ctxt == BodyContext::Conditional {
-                            vec![
-                                "help: analog operators shall not be used inside conditional (if, case, or ?:) \n\
+                        let note = if ctxt == BodyContext::Conditional {
+                            "help: analog operators shall not be used inside conditional (if, case, or ?:) \n\
                                 statements unless the conditional expression controlling the statement consists\n\
-                                of terms which can not change their value during simulation".to_owned(),
-                            ]
+                                of terms which can not change their value during simulation"
                         } else {
-                            vec!["help: analog operators are only allowed in module-level analog blocks"
-                                .to_owned()]
+                            "help: analog operators are only allowed in module-level analog blocks"
                         };
-                        res.labels.extend(non_const_dominator.iter().map(|&expr| {
+                        report.labels.extend(non_const_dominator.iter().map(|&expr| {
                             let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
-                            Label {
-                                style: LabelStyle::Secondary,
-                                file_id: file,
-                                range: range.into(),
-                                message: "help: this condition is not a constant".to_owned(),
-                            }
+                            Label::secondary(file, range)
+                                .with_message("help: this condition is not a constant")
                         }));
-                        res.with_message(format!(
-                            "analog operator '{name}' is not allowed in {ctxt}",
-                        ))
-                        .with_notes(notes)
+                        report
+                            .with_message(format!(
+                                "analog operator '{name}' is not allowed in {ctxt}"
+                            ))
+                            .with_note(note)
                     }
-                    IllegalCtxtAccessKind::AnalysisFun { name } => res.with_message(format!(
+                    IllegalCtxtAccessKind::AnalysisFun { name } => report.with_message(format!(
                         "analysis function '{name}' is not allowed in constants",
                     )),
                     IllegalCtxtAccessKind::Var(var) => {
-                        let name = var.lookup(self.db.upcast()).name(self.db.upcast());
-                        let def =
-                            var.lookup(self.db.upcast()).ast_ptr(self.db.upcast()).text_range();
+                        let db = self.db.upcast();
+                        let name = var.lookup(db).name(db);
+                        let def = var.lookup(db).ast_ptr(db).text_range();
                         let FileSpan { range, file } = parse.to_file_span(def, &src_map);
-                        res.labels.push(Label {
-                            style: LabelStyle::Secondary,
-                            file_id: file,
-                            range: range.into(),
-                            message: format!("help: '{name}' was declared here"),
-                        });
-                        res.with_message(
-                            "constant expressions must not contain variable references".to_owned(),
+                        report.labels.push(
+                            Label::secondary(file, range)
+                                .with_message(format!("help: '{name}' was declared here")),
+                        );
+                        report.with_message(
+                            "constant expressions must not contain variable references",
                         )
                     }
                 }
@@ -331,29 +277,15 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
                         "definition of '{def_name}' references parameter '{ref_name}' defined afterwards",
                     ))
                     .with_labels(vec![
-                        Label {
-                            style: LabelStyle::Primary,
-                            file_id: file,
-                            range: range.into(),
-                            message: "illegal reference".to_owned(),
-                        },
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: def_span.file,
-                            range: def_span.range.into(),
-                            message: format!("help: '{def_name}' is defined here"),
-                        },
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: ref_span.file,
-                            range: ref_span.range.into(),
-                            message: format!(".. to parameter '{ref_name}' defined here"),
-                        }
+                        Label::primary(file, range).with_message("illegal reference"),
+                        Label::secondary(def_span.file, def_span.range).with_message(format!(
+                            "help: '{def_name}' is defined here")
+                        ),
+                        Label::secondary(ref_span.file, ref_span.range).with_message(format!(
+                            ".. to parameter '{ref_name}' defined here")
+                        ),
                     ])
-                    .with_notes(vec![
-                            "help: parameters may only refer to parameters (textually) defined before them"
-                            .to_owned(),
-                    ])
+                    .with_note("help: parameters may only refer to parameters (textually) defined before them")
             }
 
             /* Function */
@@ -365,58 +297,38 @@ impl Diagnostic for BodyDiagnosticWrapped<'_> {
 
                 Report::error()
                     .with_message(format!("write to input function argument '{arg_name}'"))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Secondary,
-                        file_id: arg_src.file,
-                        range: arg_src.range.into(),
-                        message: format!("help: '{arg_name}' is defined here"),
-                    }])
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "write to input argument".to_owned(),
-                    }])
-                    .with_notes(vec![format!("help: change direction of '{arg_name}' to inout")])
+                    .with_labels(vec![
+                        Label::primary(file, range).with_message("write to input argument"),
+                        Label::secondary(arg_src.file, arg_src.range)
+                            .with_message(format!("help: '{arg_name}' is defined here")),
+                    ])
+                    .with_note(format!("help: change direction of '{arg_name}' to inout"))
             }
             BodyDiagnostic::UnsupportedFunction { expr, func } => {
                 let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 Report::error()
-                    .with_message(format!(
-                        "function '{func:?}' is currently not supported by OpenVAF"
-                    ))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unsupported function".to_owned(),
-                    }])
-                    .with_notes(vec![
+                    .with_message(format!("function '{func:?}' is currently not supported by OpenVAF"))
+                    .with_label(Label::primary(file, range).with_message("unsupported function"))
+                    .with_note(
                         "This function is part of the Verilog-A standard but currently not implemented by OpenVAF\n\
                         If this function is important to your application, create an issue:\n\
-                        https://github.com/pascalkuthe/openvaf/issues/new".to_owned()
-                    ])
+                        https://github.com/pascalkuthe/openvaf/issues/new"
+                    )
             }
             BodyDiagnostic::ConstSimparam { known, expr, .. } => {
                 let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
-
                 let mut report = Report::warning()
                     .with_message(
-                        "call to $simparam in a constant is evaluated before simulation starts"
-                            .to_owned(),
+                        "call to $simparam in a constant is evaluated before simulation starts",
                     )
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "call to $simparam in a constant".to_owned(),
-                    }]);
+                    .with_label(
+                        Label::primary(file, range).with_message("call to $simparam in a constant"),
+                    );
                 if !known {
-                    report = report.with_notes(vec![
+                    report = report.with_note(
                         "help: the value of parameters like \"gmin\" or \"sourceScaleFactor\" may vary between iterations"
-                            .to_owned(),
-                    ])
+                    )
                 }
                 report
             }

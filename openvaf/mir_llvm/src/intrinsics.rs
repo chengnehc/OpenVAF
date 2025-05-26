@@ -1,4 +1,5 @@
-//! See Also: https://llvm.org/docs/LangRef.html#intrinsic-functions
+//! See Also:
+//! - <https://llvm.org/docs/LangRef.html#intrinsic-functions>
 
 use llvm::{Type, Value};
 

@@ -2,8 +2,7 @@
 //! and successors.
 //!
 //! See Also:
-//!
-//! https://docs.rs/cranelift-codegen/latest/cranelift_codegen/flowgraph/index.html
+//! - [cranelift_codegen::flowgraph](https://docs.rs/cranelift-codegen/latest/cranelift_codegen/flowgraph/index.html)
 
 use std::iter::FilterMap;
 use std::ops::Index;

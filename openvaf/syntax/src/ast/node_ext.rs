@@ -6,7 +6,8 @@ use std::iter::successors;
 use rowan::{GreenNodeData, GreenTokenData, NodeOrToken};
 
 use crate::ast::{self, support, ArgListOwner, AstChildren, AstNode};
-use crate::{SyntaxNode, SyntaxToken, TokenText, T};
+use crate::token_text::TokenText;
+use crate::{SyntaxNode, SyntaxToken, T};
 
 use super::Expr;
 

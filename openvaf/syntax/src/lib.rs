@@ -7,16 +7,18 @@
 //! The `parsing` module serves as the bridge and build the syntax tree.
 //!
 //! See Also:
-//! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/syntax
-//! - https://docs.rs/ra_ap_syntax/latest/ra_ap_syntax/index.html
-//! - https://github.com/rust-lang/rfcs/pull/2256
-//! - https://github.com/apple/swift/blob/13d593df6f359d0cb2fc81cfaac273297c539455/lib/Syntax/README.md
+//! - [`syntax` crate of rust-analyzer](https://docs.rs/ra_ap_syntax/latest/ra_ap_syntax/index.html)
+//! - [This RFC](https://github.com/rust-lang/rfcs/pull/2256)
+//! - [`libsyntax` of swift](https://github.com/apple/swift/blob/13d593df6f359d0cb2fc81cfaac273297c539455/lib/Syntax/README.md)
 
 pub use preprocessor::errors::PreprocessError;
 pub use preprocessor::sourcemap::{self, SourceMap};
 pub use preprocessor::{preprocess, Preprocess, SourceProvider};
-pub use rowan::{Direction, GreenNode, NodeOrToken, TextRange, TextSize, WalkEvent};
+pub use rowan::{GreenNode, NodeOrToken, TextRange, TextSize, WalkEvent};
 pub use tokens::{SyntaxKind, T};
+
+pub mod ast;
+pub mod name;
 
 mod parsing;
 mod ptr;
@@ -25,13 +27,9 @@ mod syntax_node;
 mod token_text;
 mod validation;
 
-pub mod ast;
-pub mod name;
-
 pub use ast::{AstNode, SourceFile};
 pub use name::{AsIdent, AsName, Name};
 pub use parsing::{parse, Parse};
 pub use ptr::{AstPtr, SyntaxNodePtr};
 pub use syntax_error::SyntaxError;
 pub use syntax_node::{SyntaxNode, SyntaxToken};
-use token_text::TokenText;

@@ -21,32 +21,24 @@ impl Diagnostic for PreprocessError {
             PreprocessError::MacroArgCountMismatch { expected, found, span } => {
                 let FileSpan { file, range } = span.to_file_span(&sm);
 
-                Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: format!("expected {} arguments, but found {}", expected, found),
-                }])
+                Report::error().with_label(
+                    Label::primary(file, range).with_message(format!(
+                        "expected {} arguments, but found {}",
+                        expected, found
+                    )),
+                )
             }
             PreprocessError::MacroNotFound { span, .. } => {
                 let FileSpan { range, file } = span.to_file_span(&sm);
 
-                Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "macro not found here".to_owned(),
-                }])
+                Report::error()
+                    .with_label(Label::primary(file, range).with_message("macro not found here"))
             }
             PreprocessError::MacroNotDefined { span, .. } => {
                 let FileSpan { range, file } = span.to_file_span(&sm);
 
-                Report::warning().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "macro not defined here".to_owned(),
-                }])
+                Report::warning()
+                    .with_label(Label::primary(file, range).with_message("macro not defined here"))
             }
             PreprocessError::MacroRecursion { .. } => {
                 todo!("macro recursion diagnosis is not supported")
@@ -54,81 +46,52 @@ impl Diagnostic for PreprocessError {
             PreprocessError::UnsupportedCompDir { span, .. } => {
                 let FileSpan { range, file } = span.to_file_span(&sm);
 
-                Report::warning().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "directive ignored".to_owned(),
-                }])
+                Report::warning()
+                    .with_label(Label::primary(file, range).with_message("directive ignored"))
             }
             PreprocessError::FileNotFound { span, .. } => {
-                let labels = if let Some(span) = span {
+                if let Some(span) = span {
                     let FileSpan { range, file } = span.to_file_span(&sm);
-                    vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "failed to read file".to_owned(),
-                    }]
+                    Report::error()
+                        .with_label(Label::primary(file, range).with_message("failed to read file"))
                 } else {
-                    vec![]
-                };
-                Report::error().with_labels(labels)
+                    Report::error()
+                }
             }
             PreprocessError::InvalidTextFormat { span, ref file, ref err, .. } => {
                 let file = db.vfs().read().file_id(file).unwrap();
                 let mut labels: Vec<_> = err
                     .pos
                     .iter()
-                    .map(|range| Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.clone(),
-                        message: "invalid text format!".to_owned(),
+                    .map(|range| {
+                        Label::primary(file, range.clone()).with_message("invalid text format!")
                     })
                     .collect();
                 if let Some(span) = span {
                     let FileSpan { range, file } = span.to_file_span(&sm);
-                    labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "file was read here".to_owned(),
-                    })
+                    labels.push(Label::secondary(file, range).with_message("file was read here"))
                 };
 
                 Report::error()
                     .with_labels(labels)
-                    .with_notes(vec!["only UTF-8 files are accepted".to_owned()])
-                    .with_notes(vec!["help: use --encode-lossy to use the file as-is".to_owned()])
+                    .with_note("only UTF-8 files are accepted")
+                    .with_note("help: use --encode-lossy to use the file as-is")
             }
             PreprocessError::UnexpectedEof { expected, span } => {
                 let FileSpan { range, file } = span.to_file_span(&sm);
 
-                Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: format!("expected {}", expected),
-                }])
+                Report::error().with_label(
+                    Label::primary(file, range).with_message(format!("expected {}", expected)),
+                )
             }
             PreprocessError::MissingOrUnexpectedToken { expected, expected_at, found_at } => {
                 let (file, [expected_at, found_at]) =
                     to_unified_spans(&sm, [expected_at, found_at]);
 
                 Report::error().with_labels(vec![
-                    Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: found_at.into(),
-                        message: "unexpected token".to_owned(),
-                    },
-                    Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: expected_at.into(),
-                        message: format!("expected {}", expected),
-                    },
+                    Label::primary(file, found_at).with_message("unexpected token"),
+                    Label::secondary(file, expected_at)
+                        .with_message(format!("expected {}", expected)),
                 ])
             }
             PreprocessError::UnexpectedToken(span) => {
@@ -246,12 +209,7 @@ impl Diagnostic for PreprocessError {
                 }
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unexpected token".to_owned(),
-                    }])
+                    .with_label(Label::primary(file, range).with_message("unexpected token"))
                     .with_notes(notes)
             }
             PreprocessError::MacroOverwritten { old, new, ref name } => {
@@ -259,22 +217,14 @@ impl Diagnostic for PreprocessError {
                 let old = old.to_file_span(&sm);
 
                 Report::warning().with_labels(vec![
-                    Label {
-                        style: LabelStyle::Secondary,
-                        file_id: old.file,
-                        range: old.range.into(),
-                        message: format!("'`{name}' was first defined here"),
-                    },
-                    Label {
-                        style: LabelStyle::Primary,
-                        file_id: new.file,
-                        range: new.range.into(),
-                        message: format!("'`{name}' is redefined here"),
-                    },
+                    Label::secondary(old.file, old.range)
+                        .with_message(format!("'`{name}' was first defined here")),
+                    Label::primary(new.file, new.range)
+                        .with_message(format!("'`{name}' is redefined here")),
                 ])
             }
         };
 
-        report.with_message(self.to_string())
+        report.with_message(self)
     }
 }

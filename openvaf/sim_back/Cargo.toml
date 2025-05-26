@@ -16,7 +16,6 @@ typed_indexmap = {version = "0.0.0", path = "../../lib/typed_indexmap"}
 
 hir = { version = "0.0.0", path = "../hir" }
 hir_lower = {version ="0.0.0", path ="../hir_lower"}
-
 mir = { version = "0.0.0", path = "../mir" }
 mir_build = { version = "0.0.0", path = "../mir_build" }
 mir_autodiff = { version = "0.0.0", path = "../mir_autodiff" }

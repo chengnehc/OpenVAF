@@ -31,7 +31,9 @@
 //! [`Entries`]: loader::Entry
 //!
 //! See Also:
-//! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/vfs
+//! - [rust analyzer vfs](https://github.com/rust-lang/rust-analyzer/tree/master/crates/vfs)
+
+#![allow(rustdoc::broken_intra_doc_links)]
 
 use std::char::REPLACEMENT_CHARACTER;
 use std::ops::Range;

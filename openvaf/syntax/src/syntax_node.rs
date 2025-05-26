@@ -20,7 +20,7 @@ impl rowan::Language for VerilogALanguage {
     }
 
     fn kind_to_raw(kind: Self::Kind) -> rowan::SyntaxKind {
-        rowan::SyntaxKind(kind.into())
+        rowan::SyntaxKind(kind as u16)
     }
 }
 

@@ -9,8 +9,9 @@
 //! solely on their classification(kind).
 //!
 //! See Also:
-//! - https://docs.rs/ra_ap_parser/0.0.259/ra_ap_parser/
-//! - https://github.com/rust-lang/rust-analyzer/tree/master/crates/parser
+//! - [`parser` crate of rust-analyzer](https://docs.rs/ra_ap_parser/0.0.259/ra_ap_parser/)
+
+#![allow(rustdoc::private_intra_doc_links)]
 
 use stdx::pretty;
 use tokens::{SyntaxKind, T};

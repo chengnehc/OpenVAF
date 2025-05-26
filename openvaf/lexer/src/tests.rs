@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use expect_test::{expect, Expect};
-use text_size::{TextRange, TextSize};
+use tokens::{TextRange, TextSize};
 
 use super::tokenize;
 

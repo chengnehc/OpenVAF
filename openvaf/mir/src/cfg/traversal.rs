@@ -1,6 +1,5 @@
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust/blob/master/compiler/rustc_middle/src/mir/traversal.rs
+//! - [`rust-middle`](https://github.com/rust-lang/rust/blob/master/compiler/rustc_middle/src/mir/traversal.rs)
 
 use bitset::BitSet;
 

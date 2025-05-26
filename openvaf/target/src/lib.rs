@@ -1,8 +1,8 @@
 //! This crate contains specifications on how to build native code with OpenVAF for native targets
 //!
 //! It is heavily inspired by:
-//! - [rustc_target] (https://github.com/rust-lang/rust/tree/master/compiler/rustc_target) and
-//! - [mun_target] (https://github.com/mun-lang/mun/tree/main/crates/mun_target) openvaf.
+//! - [rustc_target](https://github.com/rust-lang/rust/tree/master/compiler/rustc_target)
+//! - [mun_target](https://github.com/mun-lang/mun/tree/main/crates/mun_target)
 
 pub mod spec;
 

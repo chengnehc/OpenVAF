@@ -1,5 +1,5 @@
 //! See Also:
-//! - https://docs.rs/ra_ap_hir_def/latest/ra_ap_hir_def/index.html
+//! - [rust-analyzer `hir_def`](https://docs.rs/ra_ap_hir_def/latest/ra_ap_hir_def/index.html)
 
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;

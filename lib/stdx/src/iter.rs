@@ -1,6 +1,5 @@
 //! See Also:
-//!
-//! https://docs.rs/itertools/0.14.0/itertools/fn.multiunzip.html
+//! - [multiunzip of `itertools`](https://docs.rs/itertools/0.14.0/itertools/fn.multiunzip.html)
 
 /// Converts an iterator of tuples into a tuple of containers.
 ///

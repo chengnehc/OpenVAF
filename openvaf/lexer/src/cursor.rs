@@ -1,7 +1,6 @@
 use std::str::Chars;
 
-use text_size::TextSize;
-use tokens::{Token, TokenKind};
+use tokens::{TextSize, Token, TokenKind};
 
 /// Peekable iterator over a char sequence.
 ///

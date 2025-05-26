@@ -2,10 +2,6 @@
 //!
 //! A instruction builder provides a convenient interface for inserting instructions into a MIR
 //! function. Many of its methods are generated from the meta language instruction definitions.
-//!
-//! See Also:
-//!
-//! https://docs.rs/crate/cranelift-codegen/latest/source/src/ir/builder.rs
 
 use crate::instructions::{PhiMap, PhiNode, ValueList};
 use crate::{Block, DataFlowGraph, FuncRef, Inst, InstructionData, Opcode, Value, ValueDef};

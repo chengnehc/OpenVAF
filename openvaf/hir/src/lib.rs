@@ -104,7 +104,7 @@ impl CompilationUnit {
         let mut buf = Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(db, &mut buf);
-            sink.annonymize_paths();
+            sink.anonymize_paths();
             self.collect_diagnostics(db, &mut sink);
         }
         let data = buf.into_inner();

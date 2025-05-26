@@ -3,8 +3,8 @@ use std::{io, iter};
 use stdx::{impl_debug_display, impl_idx_from};
 
 use ahash::AHashMap;
-use text_size::{TextRange, TextSize};
 use tokens::SyntaxKind::{self, L_PAREN, R_PAREN};
+use tokens::{TextRange, TextSize};
 // use tracing::{debug, debug_span, trace};
 use typed_index_collections::{TiSlice, TiVec};
 use vfs::{FileId, VfsPath};

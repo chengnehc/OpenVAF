@@ -1,6 +1,6 @@
 use stdx::{impl_display, pretty};
 
-use basedb::diagnostics::{Diagnostic, Label, LabelStyle, Report};
+use basedb::diagnostics::{Diagnostic, Label, Report};
 use basedb::{BaseDB, FileId};
 use syntax::name::Name;
 use syntax::sourcemap::FileSpan;
@@ -71,28 +71,21 @@ impl Diagnostic for DefDiagnosticWrapped<'_> {
             DefDiagnostic::AlreadyDeclared { old, new, name } => {
                 let FileSpan { range, file } =
                     parse.to_file_span(new.text_range(self.db).unwrap(), &sm);
-
-                let mut labels = vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "already declared in this scope".to_owned(),
-                }];
-
+                let mut labels = vec![
+                    Label::primary(file, range).with_message("already declared in this scope")
+                ];
                 if let Some(def) = old.text_range(self.db) {
                     let FileSpan { range, file } = parse.to_file_span(def, &sm);
-                    labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: file,
-                        range: range.into(),
-                        message: format!("help: '{name}' was first declared here"),
-                    })
+                    labels.push(
+                        Label::secondary(file, range)
+                            .with_message(format!("help: '{name}' was first declared here")),
+                    )
                 }
 
                 Report::error().with_labels(labels)
             }
         };
 
-        report.with_message(self.diag.to_string())
+        report.with_message(self.diag)
     }
 }

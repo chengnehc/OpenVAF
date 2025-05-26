@@ -2,10 +2,7 @@
 //! Bases up to and including 36 can be used for case-insensitive things.
 //!
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust/blob/master/compiler/rustc_data_structures/src/base_n.rs
-
-// TODO(JW) update this crate
+//! - <https://github.com/rust-lang/rust/blob/master/compiler/rustc_data_structures/src/base_n.rs>
 
 use std::str;
 

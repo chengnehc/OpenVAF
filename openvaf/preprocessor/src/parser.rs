@@ -2,8 +2,7 @@ use std::cmp::min;
 use std::ops::Range;
 use stdx::impl_idx_math_from;
 
-use text_size::{TextRange, TextSize};
-use tokens::{LexerError, LiteralKind, SyntaxKind, Token, TokenKind};
+use tokens::{LexerError, LiteralKind, SyntaxKind, TextRange, TextSize, Token, TokenKind};
 use typed_index_collections::{TiSlice, TiVec};
 use vfs::VfsPath;
 

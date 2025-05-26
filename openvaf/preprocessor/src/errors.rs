@@ -1,6 +1,6 @@
 use std::io;
-
 use stdx::impl_display;
+
 use vfs::{InvalidTextFormatErr, VfsPath};
 
 use crate::sourcemap::CtxSpan;

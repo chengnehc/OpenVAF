@@ -1,11 +1,8 @@
 use super::*;
 
-use std::iter::zip;
 use stdx::pretty;
 
-use basedb::diagnostics::{
-    to_unified_span_list, to_unified_spans, Diagnostic, Label, LabelStyle, Report,
-};
+use basedb::diagnostics::{to_unified_span_list, to_unified_spans, Diagnostic, Label, Report};
 use basedb::lints::builtin::non_standard_code;
 use basedb::lints::{Lint, LintSrc};
 use basedb::{BaseDB, FileId};
@@ -47,54 +44,39 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
         match *self.diag {
             InferDiagnostic::PathResolveError { ref err, expr } => {
-                let src = self.expr_span(expr, &src_map, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: err.message(),
-                    }])
-                    .with_message(err.to_string())
+                    .with_message(err)
+                    .with_label(Label::primary(file, range).with_message(err.message()))
             }
 
             InferDiagnostic::InvalidAssignDst { expr, op_kind, maybe_different_op } => {
-                let src = self.expr_span(expr, &src_map, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
-                let report = Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: src.file,
-                    range: src.range.into(),
-                    message: "invalid destination".to_owned(),
-                }]);
-
+                let report = Report::error()
+                    .with_label(Label::primary(file, range).with_message("invalid destination"));
                 let report = match op_kind {
                     AssignOp::Contribute => report
                         .with_message("invalid destination for branch contribution")
-                        .with_notes(vec![
-                            "help: expected nature access such as V(foo) or I(foo)".to_owned()
-                        ]),
+                        .with_note("help: expected nature access such as V(foo) or I(foo)"),
                     AssignOp::Assign => report
                         .with_message("invalid destination for assignment")
-                        .with_notes(vec!["help: expected a variable".to_owned()]),
+                        .with_note("help: expected a variable"),
                 };
-
                 match maybe_different_op {
-                    Some(ast::AssignOp::Contribute) => report.with_notes(vec![
-                        "help: found a branch access\nperhaps you mean to contribute (<+)"
-                            .to_owned(),
-                    ]),
-                    Some(ast::AssignOp::Assign) => report.with_notes(vec![
-                        "help: found a variable\nperhaps you meant to assign (=) a value"
-                            .to_owned(),
-                    ]),
+                    Some(ast::AssignOp::Contribute) => report.with_note(
+                        "help: found a branch access\nperhaps you mean to contribute (<+)",
+                    ),
+                    Some(ast::AssignOp::Assign) => report.with_note(
+                        "help: found a variable\nperhaps you meant to assign (=) a value",
+                    ),
                     None => report,
                 }
             }
 
             InferDiagnostic::ArgCntMismatch { expected, found, expr, exact } => {
-                let src = self.expr_span(expr, &src_map, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 let message = match (expected < found, exact) {
                     (_, true) => format!("expected {} arguments", expected),
@@ -104,25 +86,15 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
 
                 Report::error()
                     .with_message(format!("invalid argument count: {message} but found {found}",))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message,
-                    }])
+                    .with_label(Label::primary(file, range).with_message(message))
             }
 
             InferDiagnostic::TypeMismatch(ref err) => {
-                let src = self.expr_span(err.expr, &src_map, &parse);
+                let FileSpan { range, file } = self.expr_span(err.expr, &src_map, &parse);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: err.to_string(),
-                    }])
-                    .with_message(format!("type mismatch: {} but found {}", &err, err.found_ty))
+                    .with_message(format!("type mismatch: {} but found {}", err, err.found_ty))
+                    .with_label(Label::primary(file, range).with_message(err.to_string()))
             }
 
             InferDiagnostic::SignatureMismatch(ref err) => {
@@ -130,17 +102,11 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     let FileSpan { file, range } = self.expr_span(ty_err.expr, &src_map, &parse);
 
                     Report::error()
-                        .with_labels(vec![])
                         .with_message(format!(
                             "type mismatch: {} but found {}",
-                            &ty_err, ty_err.found_ty
+                            ty_err, ty_err.found_ty
                         ))
-                        .with_labels(vec![Label {
-                            style: LabelStyle::Primary,
-                            file_id: file,
-                            range: range.into(),
-                            message: ty_err.to_string(),
-                        }])
+                        .with_label(Label::primary(file, range).with_message(ty_err.to_string()))
                 } else {
                     let mut spans: Vec<_> = err
                         .type_mismatches
@@ -155,11 +121,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     let (file, ranges) = to_unified_span_list(&src_map, &mut spans);
 
                     let labels = zip(ranges, &*err.type_mismatches)
-                        .map(|(range, ty_err)| Label {
-                            style: LabelStyle::Primary,
-                            file_id: file,
-                            range: range.into(),
-                            message: ty_err.to_string(),
+                        .map(|(range, ty_err)| {
+                            Label::primary(file, range).with_message(ty_err.to_string())
                         })
                         .collect();
 
@@ -170,7 +133,7 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     notes.extend(err.signatures.iter().map(|sig| format!("expected {sig}")));
 
                     Report::error()
-                        .with_message("type mismatch: invalid function arguments".to_owned())
+                        .with_message("type mismatch: invalid function arguments")
                         .with_labels(labels)
                         .with_notes(notes)
                 };
@@ -180,15 +143,13 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                     let fun = src.lookup(db);
                     let name = fun.item_tree(db)[fun.id].name.clone();
                     let range = fun.ast_ptr(db).text_range();
-                    let span = parse.to_file_span(range, &src_map);
-
-                    report.labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: span.file,
-                        range: span.range.into(),
-                        message: format!("info: '{name}' was declared here"),
-                    })
+                    let FileSpan { range, file } = parse.to_file_span(range, &src_map);
+                    report.labels.push(
+                        Label::secondary(file, range)
+                            .with_message(format!("info: '{name}' was declared here")),
+                    );
                 }
+
                 report
             }
 
@@ -202,56 +163,44 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 let expected_range = self.expr_range(expected_expr);
                 let found_span = parse.to_ctx_span(found_range, &src_map);
                 let expected_span = parse.to_ctx_span(expected_range, &src_map);
-
                 let (file, [found_range, expected_range]) =
                     to_unified_spans(&src_map, [found_span, expected_span]);
 
                 Report::error()
+                    .with_message(format!(
+                        "type mismatch: expected {} but found {}",
+                        expected, found_ty
+                    ))
                     .with_labels(vec![
-                        Label {
-                            style: LabelStyle::Primary,
-                            file_id: file,
-                            range: found_range.into(),
-                            message: format!("expected {}", expected),
-                        },
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: file,
-                            range: expected_range.into(),
-                            message: format!("expected because this is {}", found_ty),
-                        },
+                        Label::primary(file, found_range)
+                            .with_message(format!("expected {}", expected)),
+                        Label::secondary(file, expected_range)
+                            .with_message(format!("expected because this is {}", found_ty)),
                     ])
-                    .with_message(format!("type mismatch: {} but found {}", expected, found_ty))
-                    .with_notes(vec!["help: all array elements must have the same type".to_owned()])
+                    .with_note("help: all array elements must have the same type")
             }
 
             InferDiagnostic::InvalidUnknown { expr } => {
-                let src = self.expr_span(expr, &src_map, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: "invalid ddx unknown".to_owned(),
-                    }])
                     .with_message("invalid unknown was supplied to the ddx operator")
-                    .with_notes(vec![
-                        "help: expected one of the following\nbranch current access: I(branch), I(a,b)\nnode voltage: V(x)\nexplicit voltage: V(x,y)\ntemperature: $temperature".to_owned(),
-                    ])
+                    .with_label(Label::primary(file, range).with_message("invalid ddx unknown"))
+                    .with_note(
+                        "help: expected one of the following\n\
+                        branch current access: I(branch), I(a,b)\n\
+                        node voltage: V(x)\n\
+                        explicit voltage: V(x,y)\n\
+                        temperature: $temperature",
+                    )
             }
 
             InferDiagnostic::NonStandardUnknown { expr, .. } => {
-                let src = self.expr_span(expr, &src_map, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 Report::warning()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: "unknown is not standard compliant".to_owned(),
-                    }])
                     .with_message("unknown supplied to the ddx operator is not standard compliant")
+                    .with_label(Label::primary(file, range).with_message("unknown is not standard compliant"))
                     .with_notes(vec![
                         "note: this functionality is fully supported by openvaf\nbut other Verilog-A compilers might not support it".to_owned(),
                         "help: expected one of the following\nbranch current access: I(branch), I(a,b)\nnode voltage: V(x)".to_owned(),
@@ -259,19 +208,12 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
             }
 
             InferDiagnostic::ExpectedProbe { expr } => {
-                let src = self.expr_span(expr, &src_map, &parse);
+                let FileSpan { range, file } = self.expr_span(expr, &src_map, &parse);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: "expected a branch probe".to_owned(),
-                    }])
                     .with_message("'$limit' expected a branch probe as the first argument")
-                    .with_notes(vec![
-                        "help: expected nature access such as V(foo) or I(foo)".to_owned()
-                    ])
+                    .with_label(Label::primary(file, range).with_message("expected a branch probe"))
+                    .with_note("help: expected nature access such as V(foo) or I(foo)")
             }
 
             InferDiagnostic::InvalidLimitFunction {
@@ -295,54 +237,36 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 let decl = parse.to_file_span(decl, &src_map);
 
                 let mut labels = vec![
-                    Label {
-                        style: LabelStyle::Primary,
-                        file_id: decl.file,
-                        range: decl.range.into(),
-                        message: "invalid $limit function".to_owned(),
-                    },
-                    Label {
-                        style: LabelStyle::Secondary,
-                        file_id: src.file,
-                        range: src.range.into(),
-                        message: format!("info: {name} is used in $limit here"),
-                    },
+                    Label::primary(decl.file, decl.range).with_message("invalid $limit function"),
+                    Label::secondary(src.file, src.range)
+                        .with_message(format!("info: {name} is used in $limit here")),
                 ];
-
                 if invalid_arg0 {
                     let decl = tree[tree[func.id].args.raw[0].var_binds[0]].ast_id;
                     let decl = id_map.get(decl).text_range();
-                    let decl = parse.to_file_span(decl, &src_map);
-                    labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: decl.file,
-                        range: decl.range.into(),
-                        message: "help: first argument must have 'real' type".to_owned(),
-                    })
+                    let FileSpan { range, file } = parse.to_file_span(decl, &src_map);
+                    labels.push(
+                        Label::secondary(file, range)
+                            .with_message("help: first argument must have 'real' type"),
+                    )
                 }
-
                 if invalid_arg1 {
                     let decl = tree[tree[func.id].args.raw[1].var_binds[0]].ast_id;
                     let decl = id_map.get(decl).text_range();
-                    let decl = parse.to_file_span(decl, &src_map);
-                    labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: decl.file,
-                        range: decl.range.into(),
-                        message: "help: second argument must have 'real' type".to_owned(),
-                    })
+                    let FileSpan { range, file } = parse.to_file_span(decl, &src_map);
+                    labels.push(
+                        Label::secondary(file, range)
+                            .with_message("help: second argument must have 'real' type"),
+                    )
                 }
-
                 for arg in output_args {
                     let decl = tree[func.id].args[*arg].ast_id;
                     let decl = id_map.get(decl).text_range();
-                    let decl = parse.to_file_span(decl, &src_map);
-                    labels.push(Label {
-                        style: LabelStyle::Secondary,
-                        file_id: decl.file,
-                        range: decl.range.into(),
-                        message: "help: argument must have direction 'input'".to_owned(),
-                    })
+                    let FileSpan { range, file } = parse.to_file_span(decl, &src_map);
+                    labels.push(
+                        Label::secondary(file, range)
+                            .with_message("help: argument must have direction 'input'"),
+                    )
                 }
 
                 let mut notes = Vec::new();
@@ -351,8 +275,8 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 }
 
                 Report::error()
-                    .with_labels(labels)
                     .with_message(format!("{name} is not a valid function for use with $limit"))
+                    .with_labels(labels)
                     .with_notes(notes)
             }
 
@@ -362,35 +286,24 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 let val_src = self.expr_span(err.expr, &src_map, &parse);
 
                 Report::error()
-                    .with_labels(vec![
-                        Label {
-                            style: LabelStyle::Primary,
-                            file_id: val_src.file,
-                            range: val_src.range.into(),
-                            message: err.to_string(),
-                        },
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: lit_src.file,
-                            range: lit_src.range.into(),
-                            message: "help: expected because of this fmt specifier".to_owned(),
-                        },
-                    ])
                     .with_message(format!("type mismatch: {} but found {}", err, err.found_ty))
+                    .with_labels(vec![
+                        Label::primary(val_src.file, val_src.range).with_message(err.to_string()),
+                        Label::secondary(lit_src.file, lit_src.range)
+                            .with_message("help: expected because of this fmt specifier"),
+                    ])
             }
 
             InferDiagnostic::MissingFmtArg { fmt_lit, lit_range } => {
                 let range = lit_range + self.expr_range(fmt_lit).start() + TextSize::from(1u32);
-                let lit_src = parse.to_file_span(range, &src_map);
+                let FileSpan { range, file } = parse.to_file_span(range, &src_map);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: lit_src.file,
-                        range: lit_src.range.into(),
-                        message: "value for this fmt specifier is missing".to_owned(),
-                    }])
                     .with_message("$display system task is missing an argument")
+                    .with_label(
+                        Label::primary(file, range)
+                            .with_message("value for this fmt specifier is missing"),
+                    )
             }
 
             InferDiagnostic::InvalidFmtSpecifierChar {
@@ -400,40 +313,33 @@ impl Diagnostic for InferDiagnosticWrapped<'_> {
                 candidates,
             } => {
                 let range = lit_range + self.expr_range(fmt_lit).start() + TextSize::from(1u32);
-                let lit_src = parse.to_file_span(range, &src_map);
+                let FileSpan { range, file } = parse.to_file_span(range, &src_map);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: lit_src.file,
-                        range: lit_src.range.into(),
-                        message: "unexpected character in fmt specifier".to_owned(),
-                    }])
                     .with_message(format!(
                         "failed to parse format specifier; unexpected character {err_char}",
                     ))
-                    .with_notes(vec![format!(
+                    .with_label(
+                        Label::primary(file, range)
+                            .with_message("unexpected character in fmt specifier"),
+                    )
+                    .with_note(format!(
                         "help: expected {}",
                         pretty::List::new(candidates)
                             .surround("'")
                             .with_first_break_after(15)
                             .with_break_after(18)
-                    )])
+                    ))
             }
 
             InferDiagnostic::InvalidFmtSpecifierEnd { fmt_lit, lit_range } => {
                 let range = lit_range + self.expr_range(fmt_lit).start() + TextSize::from(1u32);
-                let lit_src = parse.to_file_span(range, &src_map);
+                let FileSpan { range, file } = parse.to_file_span(range, &src_map);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: lit_src.file,
-                        range: lit_src.range.into(),
-                        message: "unexpected end of fmt specifier".to_owned(),
-                    }])
-                    .with_message(
-                        "failed to parse format specifier; unexpected end of literal".to_owned(),
+                    .with_message("failed to parse format specifier; unexpected end of literal")
+                    .with_label(
+                        Label::primary(file, range).with_message("unexpected end of fmt specifier"),
                     )
             }
         }

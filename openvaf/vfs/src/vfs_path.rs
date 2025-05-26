@@ -1,4 +1,5 @@
 //! Abstract-ish representation of paths for VFS.
+
 use std::fmt;
 
 use paths::{AbsPath, AbsPathBuf};

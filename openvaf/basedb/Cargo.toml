@@ -14,12 +14,12 @@ doctest = false
 [dependencies]
 stdx = { version = "0.0.0", path = "../../lib/stdx" }
 arena = { version = "0.0.0", path = "../../lib/arena" }
-typed_indexmap = {version = "0.0.0", path = "../../lib/typed_indexmap"}
+typed_indexmap = { version = "0.0.0", path = "../../lib/typed_indexmap" }
 vfs = { version = "0.0.0", path = "../vfs" }
 syntax = { version = "0.0.0", path = "../syntax" }
 
 salsa = "0.17.0-pre.2"
-codespan-reporting = "0.11"
+codespan-reporting = { version = "0.12" }
 parking_lot = "0.12"
 ahash = "0.8"
 typed-index-collections = "3"

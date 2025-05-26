@@ -8,12 +8,11 @@
 //! them as flags on the token.
 //!
 //! See Also:
-//! - https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer
-//! - https://docs.rs/ra-ap-rustc_lexer/0.97.0/ra_ap_rustc_lexer/
+//! - [rustc lexer](https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer)
+//! - [rust-analyzer lexer](https://docs.rs/ra-ap-rustc_lexer/0.97.0/ra_ap_rustc_lexer/)
 
-use tokens::LiteralKind::*;
-use tokens::TokenKind::*;
 use tokens::{LiteralKind, Token, TokenKind};
+use tokens::{LiteralKind::*, TokenKind::*};
 
 #[cfg(test)]
 mod tests;

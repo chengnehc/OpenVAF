@@ -17,7 +17,7 @@ fn invalid_attr() {
     let mut buf = crate::diagnostics::Buffer::no_color();
     {
         let mut sink = ConsoleSink::buffer(&db, &mut buf);
-        sink.annonymize_paths();
+        sink.anonymize_paths();
         collect_modules(&db, false, &mut sink);
     }
     expect_test::expect![[r#"

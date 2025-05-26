@@ -1,8 +1,7 @@
 //! Thin wrappers around `std::path`, distinguishing between absolute and relative paths.
 //!
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust-analyzer/tree/master/crates/paths
+//! - [`paths`](https://github.com/rust-lang/rust-analyzer/tree/master/crates/paths)
 
 use std::borrow::Borrow;
 use std::ffi::OsStr;

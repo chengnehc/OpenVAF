@@ -3,7 +3,8 @@
 //! For displaying real numbers, the foramt specifications have the full formatting capabilities
 //! available in the C language (in terms of width and precision).
 //!
-//! See also: https://cplusplus.com/reference/cstdio/printf/
+//! See also:
+//! - [`printf` function of C language](https://cplusplus.com/reference/cstdio/printf/)
 
 use std::str::CharIndices;
 

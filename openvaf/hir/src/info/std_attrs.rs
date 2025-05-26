@@ -3,7 +3,7 @@ use super::*;
 use stdx::impl_display;
 use syntax::sourcemap::FileSpan;
 
-use crate::diagnostics::{Diagnostic, Label, LabelStyle, Report};
+use crate::diagnostics::{Diagnostic, Label, Report};
 
 /// Refer to [LRM 2.9.2] standard attributes
 pub(super) enum StdAttrDiagnostic {
@@ -32,46 +32,33 @@ impl Diagnostic for StdAttrDiagnostic {
                 let FileSpan { range, file } =
                     parse.to_file_span(attr.syntax().text_range(), &src_map);
 
-                Report::error().with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: file,
-                    range: range.into(),
-                    message: "expected a string literal".to_owned(),
-                }])
+                Report::error().with_label(
+                    Label::primary(file, range).with_message("expected a string literal"),
+                )
             }
             UnknownParamType { attr, .. } => {
                 let FileSpan { range, file } =
                     parse.to_file_span(attr.syntax().text_range(), &src_map);
 
                 Report::warning()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unknown parameter type".to_owned(),
-                    }])
-                    .with_notes(
-                        vec!["note: parameter type is set to 'model' by default".to_owned()],
-                    )
+                    .with_label(Label::primary(file, range).with_message("unknown parameter type"))
+                    .with_note("note: parameter type is set to 'model' by default")
             }
             UnknownMultiplicity { attr, .. } => {
                 let FileSpan { range, file } =
                     parse.to_file_span(attr.syntax().text_range(), &src_map);
 
                 Report::warning()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: file,
-                        range: range.into(),
-                        message: "unknown multiplicity attribute value".to_owned(),
-                    }])
-                    .with_notes(vec![
-                        "note: multiplicity is set to 'none' by default, no scaling is performed"
-                            .to_owned(),
-                    ])
+                    .with_label(
+                        Label::primary(file, range)
+                            .with_message("unknown multiplicity attribute value"),
+                    )
+                    .with_note(
+                        "note: multiplicity is set to 'none' by default, no scaling is performed",
+                    )
             }
         };
 
-        report.with_message(self.to_string())
+        report.with_message(self)
     }
 }

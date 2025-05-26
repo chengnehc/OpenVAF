@@ -1,10 +1,10 @@
-use text_size::TextSize;
+pub use text_size::{TextLen, TextRange, TextSize};
 
 mod syntax_kind;
 mod token_kind;
 
 pub use syntax_kind::SyntaxKind;
-pub use token_kind::{LiteralKind, TokenKind, TokenKind::*};
+pub use token_kind::{LiteralKind, TokenKind};
 
 /// Lexed token.
 ///
@@ -22,6 +22,7 @@ pub enum LexerError {
     UnexpectedToken,
 }
 
+use TokenKind::*;
 impl TokenKind {
     /// Convert this `TokenKind` with identifier `src` to corresponding `SyntaxKind`
     /// if possible, and emit lexer errors.

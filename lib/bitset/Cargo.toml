@@ -9,5 +9,5 @@ license="GPL-3.0"
 doctest = false
 
 [dependencies]
-arrayvec = "0.7"
 stdx = {version ="0.0.0", path = "../stdx"}
+arrayvec = "0.7"

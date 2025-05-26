@@ -17,18 +17,12 @@ impl From<u16> for SyntaxKind {
     }
 }
 
-impl From<SyntaxKind> for u16 {
-    #[inline]
-    fn from(k: SyntaxKind) -> u16 {
-        k as u16
-    }
-}
-
 impl SyntaxKind {
     #[inline]
     pub fn is_trivia(self) -> bool {
         matches!(self, SyntaxKind::WHITESPACE | SyntaxKind::COMMENT)
     }
+
     #[inline]
     pub fn is_non_trivia(self) -> bool {
         !self.is_trivia()

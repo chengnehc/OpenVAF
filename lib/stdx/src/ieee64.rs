@@ -1,7 +1,5 @@
 //! See Also:
-//!
-//! - https://docs.rs/crate/cranelift-codegen/0.116.0/source/src/ir/immediates.rs
-//! - https://docs.rs/cranelift-codegen/0.116.0/cranelift_codegen/ir/immediates/struct.Ieee64.html
+//! - [`Ieee64`](https://docs.rs/cranelift-codegen/0.116.0/cranelift_codegen/ir/immediates/struct.Ieee64.html)
 
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};

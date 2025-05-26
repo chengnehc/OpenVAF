@@ -1,7 +1,7 @@
-use super::std_attrs::StdAttrDiagnostic::*;
-use super::*;
-
 use ahash::AHashSet;
+
+use super::std_attrs::StdAttrDiagnostic;
+use super::*;
 
 use crate::{CompilationUnit, ResolvedAliasParam, ScopeDef};
 
@@ -52,7 +52,7 @@ impl ModuleInfo {
         let mut diagnose = |attr: ast::Attr| {
             let lit = attr.val().and_then(|e| e.as_str_literal());
             if lit.is_none() && resolved_attrs.insert(attr.syntax().text_range()) {
-                diagnostics.push(IllegalAttr { attr });
+                diagnostics.push(StdAttrDiagnostic::IllegalAttr { attr });
             }
             lit
         };
@@ -92,7 +92,10 @@ impl ModuleInfo {
                         Some(found) => {
                             let attr = var.get_attr(db, &ast, "multiplicity").unwrap();
                             sink.add_diagnostic(
-                                &UnknownMultiplicity { attr, found: found.to_owned() },
+                                &StdAttrDiagnostic::UnknownMultiplicity {
+                                    attr,
+                                    found: found.to_owned(),
+                                },
                                 root_file,
                                 db,
                             );
@@ -131,7 +134,10 @@ impl ModuleInfo {
                         Some(found) => {
                             let attr = param.get_attr(db, &ast, "type").unwrap();
                             sink.add_diagnostic(
-                                &UnknownParamType { attr, found: found.to_owned() },
+                                &StdAttrDiagnostic::UnknownParamType {
+                                    attr,
+                                    found: found.to_owned(),
+                                },
                                 root_file,
                                 db,
                             );
@@ -149,7 +155,10 @@ impl ModuleInfo {
                         Some(found) => {
                             let attr = param.get_attr(db, &ast, "multiplicity").unwrap();
                             sink.add_diagnostic(
-                                &UnknownMultiplicity { attr, found: found.to_owned() },
+                                &StdAttrDiagnostic::UnknownMultiplicity {
+                                    attr,
+                                    found: found.to_owned(),
+                                },
                                 root_file,
                                 db,
                             );

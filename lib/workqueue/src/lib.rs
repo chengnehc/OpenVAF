@@ -1,6 +1,5 @@
 //! See Also:
-//!
-//! - https://github.com/rust-lang/rust/blob/master/compiler/rustc_data_structures/src/work_queue.rs
+//! - <https://github.com/rust-lang/rust/blob/master/compiler/rustc_data_structures/src/work_queue.rs>
 
 use core::fmt::Formatter;
 use std::collections::VecDeque;
@@ -62,7 +61,7 @@ impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> WorkQueue<T> {
     /// This is useful when you want to write a worklist based algorithm
     /// that processes every element exactly once.
     ///
-    /// [pop]: crate::work_queue::WorkQueue
+    /// [pop]: crate::WorkQueue
     #[inline]
     pub fn take(&mut self) -> Option<T> {
         self.deque.pop_front()
@@ -158,7 +157,7 @@ impl<T: From<usize> + Into<usize> + Copy + PartialEq + Debug> WorkStack<T> {
     /// This is useful when you want to write a worklist based algorithm
     /// that processes every element exactly once
     ///
-    /// [pop]: crate::work_queue::WorkQueue
+    /// [pop]: crate::WorkQueue
     #[inline]
     pub fn take(&mut self) -> Option<T> {
         self.deque.pop()

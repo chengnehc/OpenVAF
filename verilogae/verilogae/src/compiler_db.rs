@@ -4,7 +4,7 @@ use std::iter::zip;
 
 use ahash::{AHashMap, AHashSet};
 use anyhow::{bail, Result};
-use basedb::diagnostics::{ConsoleSink, Diagnostic, DiagnosticSink, Label, LabelStyle, Report};
+use basedb::diagnostics::{ConsoleSink, Diagnostic, DiagnosticSink, Label, Report};
 use basedb::lints::LintLevel;
 use basedb::{BaseDB, FileId, VfsPath};
 use camino::Utf8Path;
@@ -84,17 +84,13 @@ impl Diagnostic for IllegalExpr {
         let FileSpan { range, file } = db
             .parse(root_file)
             .to_file_span(self.expr.syntax().text_range(), &db.sourcemap(root_file));
+
         Report::error()
             .with_message(format!(
                 "illegal expression supplied to '{}' attribute; expected {}",
                 self.attr, self.expected
             ))
-            .with_labels(vec![Label {
-                style: LabelStyle::Primary,
-                file_id: file,
-                range: range.into(),
-                message: "illegal expression".to_owned(),
-            }])
+            .with_label(Label::primary(file, range).with_message("illegal expression"))
     }
 }
 
@@ -107,14 +103,10 @@ impl Diagnostic for IllegalType {
     fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report {
         let FileSpan { range, file } =
             db.parse(root_file).to_file_span(self.range, &db.sourcemap(root_file));
+
         Report::error()
             .with_message(format!("VerilogAE only supports {}", self.allowed))
-            .with_labels(vec![Label {
-                style: LabelStyle::Primary,
-                file_id: file,
-                range: range.into(),
-                message: "unsupported type".to_owned(),
-            }])
+            .with_label(Label::primary(file, range).with_message("unsupported type"))
     }
 }
 
@@ -491,17 +483,13 @@ impl Diagnostic for IllegalAttr {
         let FileSpan { range, file } = db
             .parse(root_file)
             .to_file_span(self.attr.syntax().text_range(), &db.sourcemap(root_file));
+
         Report::error()
             .with_message(format!(
                 "illegal expression supplied to '{}' attribute; expected a string literal",
                 self.attr.name().unwrap(),
             ))
-            .with_labels(vec![Label {
-                style: LabelStyle::Primary,
-                file_id: file,
-                range: range.into(),
-                message: "expected a string literal".to_owned(),
-            }])
+            .with_label(Label::primary(file, range).with_message("expected a string literal"))
     }
 }
 
@@ -515,11 +503,9 @@ impl Diagnostic for IllegalPath {
         let FileSpan { range, file } = db
             .parse(root_file)
             .to_file_span(self.expr.syntax().text_range(), &db.sourcemap(root_file));
-        Report::error().with_message(self.err.to_string()).with_labels(vec![Label {
-            style: LabelStyle::Primary,
-            file_id: file,
-            range: range.into(),
-            message: self.err.message(),
-        }])
+
+        Report::error()
+            .with_message(self.err.to_string())
+            .with_label(Label::primary(file, range).with_message(self.err.message()))
     }
 }

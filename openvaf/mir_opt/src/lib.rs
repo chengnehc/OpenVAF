@@ -1,8 +1,8 @@
 //! Optimization passes of OpenVAF MIR
 //!
 //! See Also:
-//! - https://github.com/rust-lang/rust/tree/master/compiler/rustc_mir_transform/
-//! - https://llvm.org/docs/Passes.html
+//! - [`rustc_mir_transform`](https://github.com/rust-lang/rust/tree/master/compiler/rustc_mir_transform/)
+//! - <https://llvm.org/docs/Passes.html>
 
 mod const_eval;
 mod const_prop;

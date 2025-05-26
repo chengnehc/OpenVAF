@@ -16,9 +16,9 @@ mir = { version = "0.0.0", path = "../mir" }
 llvm = { version = "0.0.0", path = "../llvm" }
 target = { version = "0.0.0", path = "../target" }
 
-typed-index-collections = "3"
-arrayvec = "0.7"
 ahash = "0.8"
+arrayvec = "0.7"
+typed-index-collections = "3"
 lasso = { version = "0.7", features = ["ahash"] }
 libc = "0.2"
 log = "0.4.19"

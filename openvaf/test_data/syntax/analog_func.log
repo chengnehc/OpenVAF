@@ -22,7 +22,7 @@ error: functions may not contain any items after the function body
 17 | |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
 18 | |         end
    | \-----------' help: move all declarations before this statement
-   . |
+   .  
 26 |           output y;
    |           ^^^^^^^^^ analog function arguments are not allowed after the function body
 27 |           real y;
@@ -37,7 +37,7 @@ error: functions may only contain one body
 17 |   |             hypsmooth = 0.5*(x+sqrt(x*x+4.0*c*c));
 18 |   |         end
    |   \-----------' help: add these statements to this block
-   .   |
+   .    
 21 | /           begin
 22 | |               ;
 23 | |           end

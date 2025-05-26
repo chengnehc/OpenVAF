@@ -8,8 +8,7 @@
 //! to represent `None`.
 //!
 //! See Also:
-//!
-//! https://docs.rs/cranelift-codegen/0.116.0/cranelift_codegen/packed_option/index.html
+//! - [`packed_option` module of `cranelift-codgen`](https://docs.rs/cranelift-codegen/0.116.0/cranelift_codegen/packed_option/index.html)
 
 use core::fmt;
 use core::mem;

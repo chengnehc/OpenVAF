@@ -6,8 +6,7 @@
 //! changes.
 //!
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust-analyzer/blob/master/crates/span/src/ast_id.rs
+//! - [rust-analyzer `span` crate](https://github.com/rust-lang/rust-analyzer/blob/master/crates/span/src/ast_id.rs)
 
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -88,7 +87,7 @@ impl<N: AstNode> fmt::Debug for AstId<N> {
     }
 }
 
-/// Does this kind of CST node have an entry in `AstIdMap`?
+/// Does this kind of synatx node have an entry in `AstIdMap`?
 pub(crate) fn has_map_entry(kind: SyntaxKind) -> bool {
     if ast::BodyPortDecl::can_cast(kind) {
         // This just adds a semicolon to a port decl... No need to add the same port twice
@@ -132,8 +131,8 @@ impl AstIdMap {
     }
 
     /// What is the ID of this `AstNode` in the map?
-    pub fn id_of<N: AstNode>(&self, item: &N) -> AstId<N> {
-        let raw = self.erased_ast_id(item.syntax());
+    pub fn id_of<N: AstNode>(&self, node: &N) -> AstId<N> {
+        let raw = self.erased_ast_id(node.syntax());
         AstId { raw, _ty: PhantomData }
     }
 
@@ -142,12 +141,12 @@ impl AstIdMap {
         self.arena[id.raw].syntax.cast::<N>().unwrap()
     }
 
-    /// Obtain a type-erased pointer to the AST node with the given AST ID.
+    /// Obtain a type-erased pointer to the AST node with the given type-erased AST ID.
     pub fn get_erased(&self, id: ErasedAstId) -> SyntaxNodePtr {
         self.arena[id].syntax
     }
 
-    /// Get the position of attribute with `name` of AST node `id`, if any.
+    /// Get the position of attribute with `name` of node with `id`, if any.
     pub fn get_attr<N: AstNode>(&self, id: AstId<N>, name: &str) -> Option<usize> {
         self.arena[id.raw].attrs.iter().position(|attr| attr.deref() == name)
     }
@@ -157,7 +156,7 @@ impl AstIdMap {
         self.parents[id]
     }
 
-    pub(crate) fn nearest_ast_id_to_ptr(
+    pub(crate) fn nearest_ast_id_to(
         &self,
         ptr: SyntaxNodePtr,
         db: &dyn BaseDB,

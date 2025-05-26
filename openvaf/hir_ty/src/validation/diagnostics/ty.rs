@@ -1,5 +1,7 @@
 use super::*;
 
+use std::iter;
+
 use basedb::AstIdMap;
 use hir_def::{DisciplineAttr, NatureAttr};
 
@@ -9,25 +11,14 @@ impl TypeDiagnosticWrapped<'_> {
         info: &DuplicateItem<Item, Def>,
         mut to_span: impl FnMut(Item) -> FileSpan,
     ) -> Vec<Label> {
-        let span = to_span(info.first);
-        let mut labels = vec![Label {
-            style: LabelStyle::Secondary,
-            file_id: span.file,
-            range: span.range.into(),
-            message: "first declared here".to_owned(),
-        }];
+        let FileSpan { range, file } = to_span(info.first);
+        let label = Label::secondary(file, range).with_message("first declared here");
         let subsequent = info.subsequent.iter().map(|&item| {
-            let span = to_span(item);
-            Label {
-                style: LabelStyle::Primary,
-                file_id: span.file,
-                range: span.range.into(),
-                message: "redeclared here".to_owned(),
-            }
+            let FileSpan { range, file } = to_span(item);
+            Label::primary(file, range).with_message("redeclared here")
         });
-        labels.extend(subsequent);
 
-        labels
+        iter::once(label).chain(subsequent).collect()
     }
 }
 
@@ -48,16 +39,11 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
 
         match *self.diag {
             TypeDiagnostic::PathResolveError(PathError { ref err, src }) => {
-                let span = parse.to_file_span(src.text_range(), &src_map);
+                let FileSpan { range, file } = parse.to_file_span(src.text_range(), &src_map);
 
                 Report::error()
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: span.file,
-                        range: span.range.into(),
-                        message: err.message(),
-                    }])
-                    .with_message(err.to_string())
+                    .with_label(Label::primary(file, range).with_message(err.message()))
+                    .with_message(err)
             }
 
             TypeDiagnostic::DuplicateNatureAttr(ref info) => {
@@ -96,31 +82,27 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
             }
 
             TypeDiagnostic::PortWithoutDirection { decl, ref name } => {
-                let span = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &src_map);
+                let FileSpan { range, file } =
+                    parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &src_map);
 
                 Report::error()
                 .with_message(format!("no direction declared for port '{name}'"))
-                .with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: span.file,
-                    range: span.range.into(),
-                    message: format!("'{name}' is declared here without direction"),
-                }])
+                .with_label(Label::primary(file, range).with_message(format!(
+                    "'{name}' is declared here without direction")
+                ))
                 .with_notes(vec![
                     "if port_without_direction is set to warn/allow the direciton will be set to 'inout'.".to_owned(), 
                     "note: port directions are always required by the language standard.".to_owned()])
             }
             TypeDiagnostic::NodeWithoutDiscipline { decl, ref name } => {
-                let span = parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &src_map);
+                let FileSpan { range, file } =
+                    parse.to_file_span(ast_id_map.get_erased(decl).text_range(), &src_map);
 
                 Report::error()
                 .with_message(format!("no discipline for net '{name}'"))
-                .with_labels(vec![Label {
-                    style: LabelStyle::Primary,
-                    file_id: span.file,
-                    range: span.range.into(),
-                    message: format!("'{name}' is missing a discipline"),
-                }])
+                .with_label(Label::primary(file, range).with_message(format!(
+                    "'{name}' is missing a discipline"
+                )))
                 .with_notes(vec![
                     "info: disciplineless nets are digital and therefore not supported in Verilog-A".to_owned(),
                     format!("help: add a discipline with 'electrical {name}'"),
@@ -170,23 +152,14 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                         "expected a port reference but no direction was declared for net '{node_name}"
                     ))
                     .with_labels(vec![
-                        Label {
-                            style: LabelStyle::Primary,
-                            file_id: branch_decl.file,
-                            range: branch_decl.range.into(),
-                            message: format!("'{node_name}' is not a port"),
-                        },
-                        Label {
-                            style: LabelStyle::Secondary,
-                            file_id: node_decl.file,
-                            range: node_decl.range.into(),
-                            message: format!("info: '{node_name}' was declared here"),
-                        },
+                        Label::primary(branch_decl.file, branch_decl.range).with_message(format!(
+                            "'{node_name}' is not a port"
+                        )),
+                        Label::secondary(node_decl.file, node_decl.range).with_message(format!(
+                            "info: '{node_name}' was declared here"
+                        ))
                     ])
-                    .with_notes(vec![
-                        "help: prefix one of the declarations with inout, input or output"
-                            .to_owned(),
-                    ])
+                    .with_note("help: prefix one of the declarations with inout, input or output")
             }
             TypeDiagnostic::IncompatibleBranch { branch, node1, node2 } => {
                 let db = self.db.upcast();
@@ -216,16 +189,14 @@ impl Diagnostic for TypeDiagnosticWrapped<'_> {
                     .with_labels(labels)
             }
             TypeDiagnostic::FuncArgWithoutVarBind { decl, ref name } => {
-                let span = parse.to_file_span(ast_id_map.get(decl).text_range(), &src_map);
+                let FileSpan { range, file } =
+                    parse.to_file_span(ast_id_map.get(decl).text_range(), &src_map);
 
                 Report::error()
                     .with_message(format!("argument '{name}' is not binded with any variable"))
-                    .with_labels(vec![Label {
-                        style: LabelStyle::Primary,
-                        file_id: span.file,
-                        range: span.range.into(),
-                        message: format!("'{name}' shall have an associated variable declaration"),
-                    }])
+                    .with_label(Label::primary(file, range).with_message(format!(
+                        "'{name}' shall have an associated variable declaration"
+                    )))
             }
         }
     }
@@ -260,27 +231,18 @@ impl IncompatibleBranchDiagnostic {
         Report::error()
             .with_message(msg)
             .with_labels(vec![
-                Label {
-                    style: LabelStyle::Primary,
-                    file_id: branch_span.file,
-                    range: branch_span.range.into(),
-                    message: format!("branch '{}' has mismatched disciplines", branch_name),
-                },
-                Label {
-                    style: LabelStyle::Secondary,
-                    file_id: span1.file,
-                    range: span1.range.into(),
-                    message: format!("help: '{}' declared with discipline '{}'", node1.name, node1.discipline.as_ref().unwrap()),
-                },
-                Label {
-                    style: LabelStyle::Secondary,
-                    file_id: span2.file,
-                    range: span2.range.into(),
-                    message: format!("help: '{}' declared with discipline '{}'", node2.name, node2.discipline.as_ref().unwrap()),
-                }
+                Label::primary(branch_span.file, branch_span.range).with_message(format!(
+                    "branch '{}' has mismatched disciplines", branch_name
+                )),
+                Label::secondary(span1.file, span1.range).with_message(format!(
+                    "help: '{}' declared with discipline '{}'", node1.name, node1.discipline.as_ref().unwrap()
+                )),
+                Label::secondary(span2.file, span2.range).with_message(format!(
+                    "help: '{}' declared with discipline '{}'", node2.name, node2.discipline.as_ref().unwrap()
+                )),
             ])
-            .with_notes(vec![
-                "help: disciplines are compatible if their potential and flow natures have the same 'units' attribute".to_owned()
-            ])
+            .with_note(
+                "help: disciplines are compatible if their potential and flow natures have the same 'units' attribute"
+            )
     }
 }

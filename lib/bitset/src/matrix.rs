@@ -1,6 +1,5 @@
 //! See Also:
-//!
-//! https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs#L1398
+//! - [`rust-index`](https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs#L1398)
 
 use std::fmt::{self, Debug};
 use std::iter::{self, zip};

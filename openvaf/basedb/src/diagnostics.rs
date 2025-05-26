@@ -1,8 +1,10 @@
-pub use codespan_reporting::diagnostic::{LabelStyle, Severity};
-pub type Report = codespan_reporting::diagnostic::Diagnostic<FileId>;
-pub type Label = codespan_reporting::diagnostic::Label<FileId>;
+use codespan_reporting::diagnostic;
 use syntax::sourcemap::{CtxSpan, FileSpan, SourceMap};
 use syntax::{Parse, SourceFile, TextRange, TextSize};
+
+pub use diagnostic::Severity;
+pub type Report = diagnostic::Diagnostic<FileId>;
+pub type Label = diagnostic::Label<FileId>;
 
 use crate::lints::{self, Lint, LintData, LintLevel, LintSrc};
 use crate::{BaseDB, FileId};
@@ -12,14 +14,14 @@ mod preprocess_error;
 mod syntax_error;
 
 pub mod sink;
-pub use sink::{print_all, Buffer, ConsoleSink, DiagnosticSink};
+pub use sink::{Buffer, ConsoleSink, DiagnosticSink};
 
 pub trait Diagnostic {
+    fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report;
+
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
         None
     }
-
-    fn build_report(&self, root_file: FileId, db: &dyn BaseDB) -> Report;
 
     fn to_report(&self, root_file: FileId, db: &dyn BaseDB) -> Option<Report> {
         let mut report = self.build_report(root_file, db);
@@ -35,7 +37,10 @@ pub trait Diagnostic {
                 LintLevel::Allow => return None,
             };
             if is_default {
-                let hint = format!("{name} is set to {lvl} by default\nuse a CLI argument or an attribute to overwrite");
+                let hint = format!(
+                    "{name} is set to {lvl} by default\n\
+                    use a CLI argument or an attribute to overwrite"
+                );
                 report.notes.push(hint)
             }
         }
@@ -44,7 +49,9 @@ pub trait Diagnostic {
     }
 }
 
-pub const HINT_UNSUPPORTED: &str = "this is allowed by VerilogAMS language spec but was purposefully excluded from the supported language subset\nmore details can be found in the OpenVAF documentation";
+pub const HINT_UNSUPPORTED: &str = "this is allowed by VerilogAMS language spec but was \
+purposefully excluded from the supported language subset\n\
+more details can be found in the OpenVAF documentation";
 
 // TODO support (macro) expansion span backtrace
 
@@ -68,7 +75,6 @@ pub fn to_unified_span_list(sm: &SourceMap, spans: &mut [CtxSpan]) -> (FileId, V
     }
 }
 
-// TODO(JW) refactor these functions to methods of `Parse<T>`?
 pub fn text_ranges_to_unified_spans<const N: usize>(
     sm: &SourceMap,
     parse: &Parse<SourceFile>,

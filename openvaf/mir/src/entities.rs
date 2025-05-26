@@ -100,7 +100,7 @@ impl_debug_display! {
 /// An opaque reference to an instruction in a [`Function`](super::Function).
 ///
 /// Most usage of `Inst` is internal. `Inst`ructions are returned by
-/// [`InstBuilder`](super::InstBuilder) instructions that do not return a
+/// [`InstBuilder`](crate::builder::InstBuilder) instructions that do not return a
 /// [`Value`], such as control flow and trap instructions.
 ///
 /// While the order is stable, it is arbitrary and does not necessarily resemble the layout order.

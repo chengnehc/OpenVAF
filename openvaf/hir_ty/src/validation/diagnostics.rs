@@ -1,5 +1,5 @@
 use basedb::{
-    diagnostics::{Diagnostic, Label, LabelStyle, Report, Severity},
+    diagnostics::{Diagnostic, Label, Report, Severity},
     lints::{self, Lint, LintData, LintLevel, LintSrc},
     AstId, BaseDB, FileId,
 };

@@ -1,5 +1,4 @@
 use std::fmt::Write;
-
 use std::sync::Arc;
 use std::{cell::RefCell, path::PathBuf};
 

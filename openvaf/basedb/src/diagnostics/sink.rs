@@ -4,20 +4,20 @@ use std::sync::Arc;
 use codespan_reporting::{
     diagnostic::Severity,
     files::Files,
-    term::termcolor::{StandardStream, WriteColor},
-    term::{self, Chars, Config},
+    term::{self, termcolor, Chars, Config},
 };
+use termcolor::{ColorChoice, StandardStream, WriteColor};
 
-pub use codespan_reporting::term::termcolor::{Buffer, ColorChoice};
+pub use termcolor::Buffer;
 
 use super::{Diagnostic, Report};
 use crate::{BaseDB, FileId, VfsPath};
 
 pub trait DiagnosticSink {
-    fn add_report(&mut self, report: Report);
+    fn emit_report(&mut self, report: Report);
     fn add_diagnostic(&mut self, diagnostic: &dyn Diagnostic, root_file: FileId, db: &dyn BaseDB) {
         if let Some(report) = diagnostic.to_report(root_file, db) {
-            self.add_report(report)
+            self.emit_report(report)
         }
     }
     fn add_diagnostics<'a>(
@@ -32,62 +32,12 @@ pub trait DiagnosticSink {
     }
 }
 
-struct FileSrc<'a> {
-    db: &'a dyn BaseDB,
-    anon_paths: bool,
-}
-
-impl Files<'_> for FileSrc<'_> {
-    type FileId = FileId;
-
-    type Name = VfsPath;
-
-    type Source = Arc<str>;
-
-    fn name(&self, id: FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
-        let mut path = self.db.file_path(id);
-        if self.anon_paths {
-            path = VfsPath::new_virtual_path(format!("/{}", path.name().unwrap()))
-        }
-
-        Ok(path)
-    }
-
-    fn source(&self, id: Self::FileId) -> Result<Self::Source, codespan_reporting::files::Error> {
-        match self.db.file_text(id) {
-            Ok(src) => Ok(src),
-            Err(_) => {
-                let vfs = self.db.vfs().read();
-                let contents = Arc::from(vfs.file_contents_unchecked(id));
-                Ok(contents)
-            }
-        }
-    }
-
-    fn line_index(
-        &self,
-        file: Self::FileId,
-        byte_index: usize,
-    ) -> Result<usize, codespan_reporting::files::Error> {
-        Ok(self.db.line(byte_index.try_into().unwrap(), file).into())
-    }
-
-    fn line_range(
-        &self,
-        file: Self::FileId,
-        line_index: usize,
-    ) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
-        Ok(self.db.line_range(line_index.into(), file).into())
-    }
-}
-
 pub struct ConsoleSink<'a> {
+    dst: Box<dyn WriteColor + 'a>,
+    config: Config,
+    files: FileSrc<'a>,
     warning_cnt: usize,
     error_cnt: usize,
-    config: Config,
-    db: &'a dyn BaseDB,
-    dst: Box<dyn WriteColor + 'a>,
-    anon_paths: bool,
 }
 
 impl<'a> ConsoleSink<'a> {
@@ -100,7 +50,7 @@ impl<'a> ConsoleSink<'a> {
     }
 
     pub fn summary(&mut self, target: &impl Display) -> bool {
-        let Self { error_cnt, warning_cnt, .. } = *self;
+        let Self { warning_cnt, error_cnt, .. } = *self;
 
         if error_cnt != 0 {
             let warn = (warning_cnt != 0).then_some(format!("; {} warning emitted", warning_cnt));
@@ -122,17 +72,19 @@ impl<'a> ConsoleSink<'a> {
         false
     }
 
-    pub fn print_simple_message(&mut self, severity: Severity, msg: String) {
+    fn print_simple_message(&mut self, severity: Severity, msg: String) {
         term::emit(
             &mut self.dst,
             &self.config,
-            &FileSrc { db: self.db, anon_paths: self.anon_paths },
+            &self.files,
             &Report::new(severity).with_message(msg),
         )
         .expect("Span emitting should never fail");
     }
 
-    pub fn new_with(db: &'a dyn BaseDB, dst: Box<dyn WriteColor + 'a>) -> ConsoleSink<'a> {
+    fn new_with(db: &'a dyn BaseDB, dst: Box<dyn WriteColor + 'a>) -> ConsoleSink<'a> {
+        let files = FileSrc { db, anon_paths: false };
+
         let mut config = Config { chars: Chars::ascii(), ..Config::default() };
         config.styles.header_error.set_intense(false);
         config.styles.header_warning.set_intense(false);
@@ -150,12 +102,25 @@ impl<'a> ConsoleSink<'a> {
         config.styles.primary_label_warning.set_bold(true);
         config.styles.secondary_label.set_bold(true);
 
-        ConsoleSink { warning_cnt: 0, error_cnt: 0, config, db, dst, anon_paths: false }
+        ConsoleSink { dst, config, files, warning_cnt: 0, error_cnt: 0 }
     }
 
-    /// only print the filename instead of the full path, this is useful for UI tests where we do not want to expose the full path
-    pub fn annonymize_paths(&mut self) {
-        self.anon_paths = true;
+    /// only print the filename instead of the full path, this is useful for UI tests
+    pub fn anonymize_paths(&mut self) {
+        self.files.anon_paths = true;
+    }
+}
+
+impl DiagnosticSink for ConsoleSink<'_> {
+    fn emit_report(&mut self, report: Report) {
+        match report.severity {
+            Severity::Error => self.error_cnt += 1,
+            Severity::Warning => self.warning_cnt += 1,
+            _ => (),
+        }
+
+        term::emit(&mut self.dst, &self.config, &self.files, &report)
+            .expect("Span emitting should never fail");
     }
 }
 
@@ -173,28 +138,55 @@ impl<'a> ConsoleSink<'a> {
 //     }
 // }
 
-impl DiagnosticSink for ConsoleSink<'_> {
-    fn add_report(&mut self, report: Report) {
-        match report.severity {
-            Severity::Error => self.error_cnt += 1,
-            Severity::Warning => self.warning_cnt += 1,
-            _ => (),
-        }
+// pub fn print_all<'a>(
+//     diagnostics: impl IntoIterator<Item = &'a (impl Diagnostic + 'a)>,
+//     db: &dyn BaseDB,
+//     root_file: FileId,
+// ) {
+//     ConsoleSink::new(db).add_diagnostics(diagnostics, root_file, db)
+// }
 
-        term::emit(
-            &mut self.dst,
-            &self.config,
-            &FileSrc { db: self.db, anon_paths: self.anon_paths },
-            &report,
-        )
-        .expect("Span emitting should never fail");
-    }
+struct FileSrc<'a> {
+    db: &'a dyn BaseDB,
+    anon_paths: bool,
 }
 
-pub fn print_all<'a>(
-    diagnostics: impl IntoIterator<Item = &'a (impl Diagnostic + 'a)>,
-    db: &dyn BaseDB,
-    root_file: FileId,
-) {
-    ConsoleSink::new(db).add_diagnostics(diagnostics, root_file, db)
+impl Files<'_> for FileSrc<'_> {
+    type FileId = FileId;
+    type Name = VfsPath;
+    type Source = Arc<str>;
+
+    fn name(&self, id: FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
+        let mut path = self.db.file_path(id);
+        if self.anon_paths {
+            path = VfsPath::new_virtual_path(format!("/{}", path.name().unwrap()))
+        }
+
+        Ok(path)
+    }
+
+    fn source(&self, id: Self::FileId) -> Result<Self::Source, codespan_reporting::files::Error> {
+        let src = self.db.file_text(id).unwrap_or_else(|_| {
+            let vfs = self.db.vfs().read();
+            Arc::from(vfs.file_contents_unchecked(id))
+        });
+
+        Ok(src)
+    }
+
+    fn line_index(
+        &self,
+        file: Self::FileId,
+        byte_index: usize,
+    ) -> Result<usize, codespan_reporting::files::Error> {
+        Ok(self.db.line(byte_index.try_into().unwrap(), file).into())
+    }
+
+    fn line_range(
+        &self,
+        file: Self::FileId,
+        line_index: usize,
+    ) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
+        Ok(self.db.line_range(line_index.into(), file).into())
+    }
 }
