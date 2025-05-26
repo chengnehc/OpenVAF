@@ -75,8 +75,6 @@ impl<'a> CompiledModule<'a> {
     ) -> CompiledModule<'a> {
         let mut ctxt = Context::new(db, literals, info);
 
-        dbg!(&ctxt.func);
-
         // compute the output values (with contributions)
         ctxt.compute_outputs::<WITH_CONTRIBUTES>();
 

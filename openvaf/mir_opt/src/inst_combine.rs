@@ -1,4 +1,4 @@
-//! Combine instructions. This is done after DCE and SCCP.
+//! Combine instructions after simplication. This is done after DCE and SCCP.
 
 use mir::{Function, Inst, Value};
 

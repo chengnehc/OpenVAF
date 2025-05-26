@@ -196,7 +196,7 @@ impl Layout {
         }
     }
 
-    pub fn clear_and_remove_block(&mut self, block: Block) {
+    pub fn remove_and_clear_block(&mut self, block: Block) {
         self.clear_block(block);
         self.remove_empty_block(block);
     }
@@ -318,12 +318,6 @@ impl Layout {
         self.blocks[block].last_inst.into()
     }
 
-    // TODO(JW): same as `last_inst()`
-    /// Fetch the terminator of `block`, which is the last instruction within the block.
-    pub fn block_terminator(&self, block: Block) -> Option<Inst> {
-        self.blocks[block].last_inst.into()
-    }
-
     /// Fetch the instruction following `inst`.
     pub fn next_inst(&self, inst: Inst) -> Option<Inst> {
         self.insts[inst].next.expand()
@@ -342,6 +336,11 @@ impl Layout {
 
     pub fn block_inst_cursor(&self, block: Block) -> InstCursor {
         InstCursor { head: self.first_inst(block).into(), tail: self.last_inst(block).into() }
+    }
+
+    /// Fetch the terminator of `block`, which is the last instruction within the block.
+    pub fn block_terminator(&self, block: Block) -> Option<Inst> {
+        self.blocks[block].last_inst.into()
     }
 
     /// Append `inst` to the end of `block`.

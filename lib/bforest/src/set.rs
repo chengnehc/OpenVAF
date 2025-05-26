@@ -1,12 +1,10 @@
 //! Forest of sets.
-
-use std::marker::PhantomData;
-
 #[cfg(test)]
 mod tests;
 
 use super::{Comparator, Forest, Node, NodeData, NodePool, Path, SetValue, INNER_SIZE};
 use crate::packed_option::PackedOption;
+use core::marker::PhantomData;
 
 /// Tag type defining forest types for a set.
 struct SetTypes<K>(PhantomData<K>);

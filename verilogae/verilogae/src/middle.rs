@@ -5,7 +5,7 @@ use lasso::Rodeo;
 use mir::{ControlFlowGraph, DominatorTree, Function, ValueDef};
 use mir_autodiff::auto_diff;
 use mir_opt::{
-    aggressive_dead_code_elimination, standard_dead_code_elimination, inst_combine, simplify_cfg,
+    aggressive_dead_code_elimination, dead_code_elimination, inst_combine, simplify_cfg,
     sparse_conditional_constant_propagation,
 };
 
@@ -109,7 +109,7 @@ pub fn build_module_mir(
         }
     }
 
-    standard_dead_code_elimination(&mut func, &output_values);
+    dead_code_elimination(&mut func, &output_values);
 
     let mut dom_tree = DominatorTree::default();
     dom_tree.compute::<true, false>(&func, &cfg);

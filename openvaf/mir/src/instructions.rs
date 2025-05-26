@@ -153,27 +153,13 @@ impl InstructionData {
         }
     }
 
-    pub fn as_phi(&self) -> Option<&PhiNode> {
-        match self {
-            PhiNode(node) => Some(node),
-            _ => None,
-        }
-    }
-
-    pub fn as_phi_mut(&mut self) -> Option<&mut PhiNode> {
-        match self {
-            PhiNode(node) => Some(node),
-            _ => None,
-        }
-    }
-
     pub fn unwrap_phi(&self) -> &PhiNode {
-        let PhiNode(node) = self else { unreachable!("The instruction should be a phi node") };
+        let PhiNode(node) = self else { unreachable!() };
         node
     }
 
     pub fn unwrap_phi_mut(&mut self) -> &mut PhiNode {
-        let PhiNode(node) = self else { unreachable!("The instruction should be a phi node") };
+        let PhiNode(node) = self else { unreachable!() };
         node
     }
 
@@ -305,21 +291,26 @@ pub type PhiMap = bforest::Map<Block, u32>;
 /// Memory pool for `PhiMap`s
 pub type PhiForest = bforest::MapForest<Block, u32>;
 
-/// PHI (Φ) nodes are required at the path convergence of control flow. It appears when
-/// there are at least two predecessors and a new value can result from different predecessors.
-/// `PhiNode` is represented by a list of values and a mapping from block parameters to the
-/// position of its corresponding value in the list.
+/// PHI (Φ) nodes are required when a variable can be assigned a different value based on
+/// the path of control flow, for instance:
+///
+/// ```text
+/// v6 = phi [v4, block5], [v5, block6]
+/// ```
 ///
 /// If a basic block contains phi instruction(s), it/they should precede(s) other ordinary
 /// instructions in this block, just like a terminator must be the last instruction in the
 /// basic block.
 ///
-/// # Note
-/// Cloning `PhiNode` does not allocate new memory and only creates an alias of it.
+/// Phi node appears when there are at least two predecessors and a new value can result
+/// from different predecessors.
+///
+/// A `PhiNode` is represented by a list of values and a mapping from basic block to the
+/// position of value in the list.
 #[derive(Clone, Debug)]
 pub struct PhiNode {
-    pub blocks: PhiMap,
     pub args: ValueList,
+    pub blocks: PhiMap,
 }
 
 #[derive(Clone, Copy)]

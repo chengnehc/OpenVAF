@@ -182,29 +182,24 @@ impl ControlFlowGraph {
         self.compute_block(func, block);
     }
 
-    /// Replace block `old` with `new`.
     pub fn replace(&mut self, old: Block, new: Block) {
         debug_assert_ne!(old, new);
         debug_assert!(self.is_valid());
-
         let mut pos = self.data[old].predecessors.read_cursor();
         let old_ = old.into();
         let new_ = new.into();
-
-        // update predecessors of `old` block
         while let Some(pred) = pos.next(&self.pred_forest) {
-            let Successors(first, second) = &mut self.data[pred].successors;
-            if *first == old_ {
-                *first = new_;
-                if *second == new_ {
-                    second.take();
+            if self.data[pred].successors.0 == old_ {
+                self.data[pred].successors.0 = new_;
+                if self.data[pred].successors.1 == new_ {
+                    self.data[pred].successors.1.take();
                 }
             } else {
-                debug_assert_eq!(*second, old_);
-                if *first == new_ {
-                    second.take();
+                debug_assert_eq!(self.data[pred].successors.1, old_);
+                if self.data[pred].successors.0 == new_ {
+                    self.data[pred].successors.1.take();
                 } else {
-                    *second = new_;
+                    self.data[pred].successors.1 = new_;
                 }
             }
             self.data[new].predecessors.insert(pred, &mut self.pred_forest, &());
@@ -252,15 +247,15 @@ impl ControlFlowGraph {
         self.data[block].successors
     }
 
-    /// Returns the single, distinct successor of `block`, if any.
+    /// Returns the unique successor of `block`, if any.
     #[inline]
-    pub fn single_successor_of(&self, block: Block) -> Option<Block> {
+    pub fn unique_successor_of(&self, block: Block) -> Option<Block> {
         let mut iter = self.succ_iter(block);
         let res = iter.next()?;
         iter.next().is_none().then_some(res)
     }
 
-    /// Returns the single, distinct predecessor of `block`, if any.
+    /// Returns the single predecessor of `block`, if any.
     #[inline]
     pub fn single_predecessor_of(&self, block: Block) -> Option<Block> {
         let mut iter = self.pred_iter(block);

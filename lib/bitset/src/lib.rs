@@ -1,6 +1,9 @@
 //! See Also:
+//!
 //! - https://github.com/rust-lang/rust/blob/master/compiler/rustc_index/src/bit_set.rs
 //! - https://doc.rust-lang.org/stable/nightly-rustc/rustc_index/bit_set/struct.BitSet.html
+//!
+//! mainly used for MIR data flow analysis and optimization
 
 // TODO(JW): update this crate?
 // BitSet -> DenseBitSet, SparseBitSet -> ChunkedBitSet, HybridBitSet -> MixedBitSet
