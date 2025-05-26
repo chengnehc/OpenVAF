@@ -17,15 +17,16 @@ pub(crate) struct SyntaxTreeBuilder<'a> {
     state: State,
 
     db: &'a dyn SourceProvider,
-    tokens: &'a [Token],
     sm: &'a SourceMap,
+
+    tokens: &'a [Token],
+    token_pos: usize,
 
     current_span: CtxSpan,
     current_text: Text,
     text_pos: TextSize,
-    token_pos: usize,
     /// (context range, context id, offset)
-    ranges: Vec<(TextRange, SourceContextId, TextSize)>,
+    ctx_map: Vec<(TextRange, SourceContextId, TextSize)>,
 
     errors: Vec<SyntaxError>,
     last_error: Option<SyntaxError>,
@@ -48,41 +49,40 @@ impl<'a> SyntaxTreeBuilder<'a> {
     ) -> Self {
         let current_text = db.file_text(root_file).unwrap_or_else(|_| Arc::from(""));
         Self {
-            db,
             inner: Default::default(),
             state: State::PendingStart,
+            db,
+            sm,
             tokens,
-            text_pos: 0.into(),
             token_pos: 0,
+            current_text,
+            text_pos: 0.into(),
             panic: false,
             err_depth: u32::MAX,
             errors: Vec::new(),
             last_error: None,
-            sm,
-            current_text,
             current_span: CtxSpan {
                 ctx: SourceContextId::ROOT,
                 range: TextRange::empty(TextSize::from(0)),
             },
-            ranges: Vec::with_capacity(128),
+            ctx_map: Vec::with_capacity(128),
         }
     }
 
     pub(super) fn finish(
         mut self,
     ) -> (GreenNode, Vec<SyntaxError>, Vec<(TextRange, SourceContextId, TextSize)>) {
-        match mem::replace(&mut self.state, State::Normal) {
-            State::PendingFinish => {
-                self.eat_trivia();
-                self.inner.finish_node()
-            }
-            State::PendingStart | State::Normal => unreachable!(),
-        }
-        let start = self.ranges.last().map_or(0.into(), |(range, _, _)| range.end());
-        let range = TextRange::new(start, self.text_pos);
-        self.ranges.push((range, self.current_span.ctx, self.current_span.range.start()));
+        let State::PendingFinish = mem::replace(&mut self.state, State::Normal) else {
+            unreachable!()
+        };
+        self.eat_trivia();
+        self.inner.finish_node();
 
-        (self.inner.finish(), self.errors, self.ranges)
+        let start = self.ctx_map.last().map_or(0.into(), |(range, _, _)| range.end());
+        let range = TextRange::new(start, self.text_pos);
+        self.ctx_map.push((range, self.current_span.ctx, self.current_span.range.start()));
+
+        (self.inner.finish(), self.errors, self.ctx_map)
     }
 
     pub(super) fn token(&mut self, kind: SyntaxKind) {
@@ -96,14 +96,16 @@ impl<'a> SyntaxTreeBuilder<'a> {
             kind,
             T![;] | T![end] | T![endnature] | T![endmodule] | T![enddiscipline] | T![endfunction]
         ) || self.err_depth != u32::MAX;
-        let span = self.tokens[self.token_pos].span;
+
+        let span = self.current_token().span;
         self.do_token(kind, span);
     }
 
     pub(super) fn start_node(&mut self, kind: SyntaxKind) {
         match mem::replace(&mut self.state, State::Normal) {
             State::PendingStart => {
-                self.inner.start_node(VerilogALanguage::kind_to_raw(kind));
+                let kind = VerilogALanguage::kind_to_raw(kind);
+                self.inner.start_node(kind);
                 return; // No need to attach trivia to previous node: there is no previous node.
             }
             State::PendingFinish => self.inner.finish_node(),
@@ -117,7 +119,9 @@ impl<'a> SyntaxTreeBuilder<'a> {
         } else {
             self.eat_trivia();
         }
-        self.inner.start_node(VerilogALanguage::kind_to_raw(kind));
+
+        let kind = VerilogALanguage::kind_to_raw(kind);
+        self.inner.start_node(kind);
     }
 
     pub(super) fn finish_node(&mut self) {
@@ -148,7 +152,7 @@ impl<'a> SyntaxTreeBuilder<'a> {
         let expected_at = expected
             .data
             .iter()
-            .any(|t| *t == T![;] || *t == T![')'])
+            .any(|&t| t == T![;] || t == T![')'])
             .then(|| TextRange::at(self.text_pos, 0.into()));
         let n_trivia =
             self.tokens[self.token_pos..].iter().take_while(|it| it.kind.is_trivia()).count();
@@ -178,7 +182,8 @@ impl<'a> SyntaxTreeBuilder<'a> {
 
         let trivia = &self.tokens[self.token_pos..self.token_pos + n_trivia];
         let offset: TextSize = trivia.iter().map(|it| it.span.range.len()).sum();
-        let len = self.tokens[self.token_pos + n_trivia].span.range.len();
+        let len = self.nth_token(n_trivia).span.range.len();
+
         let error = SyntaxError::UnexpectedToken {
             expected,
             found,
@@ -200,31 +205,41 @@ impl<'a> SyntaxTreeBuilder<'a> {
         }
     }
 
+    fn current_token(&self) -> Token {
+        self.nth_token(0)
+    }
+
+    fn nth_token(&self, n: usize) -> Token {
+        self.tokens[self.token_pos + n]
+    }
+
     fn do_token(&mut self, kind: SyntaxKind, span: CtxSpan) {
-        let is_same_ctxt = span.ctx == self.current_span.ctx;
-        let is_continuous = is_same_ctxt && span.range.start() == self.current_span.range.end();
+        let is_same_ctx = span.ctx == self.current_span.ctx;
+        let is_continuous = is_same_ctx && span.range.start() == self.current_span.range.end();
 
         if is_continuous {
             self.current_span.range = self.current_span.range.cover(span.range);
         } else {
-            let start = self.ranges.last().map_or(0.into(), |(range, _, _)| range.end());
+            let start = self.ctx_map.last().map_or(0.into(), |(range, _, _)| range.end());
             let range = TextRange::new(start, self.text_pos);
-            self.ranges.push((range, self.current_span.ctx, self.current_span.range.start()));
+            self.ctx_map.push((range, self.current_span.ctx, self.current_span.range.start()));
             self.current_span = span;
         }
 
-        if !is_same_ctxt {
+        if !is_same_ctx {
             // The source text comes from somewhere else, so context switch is needed.
             // Unwrap is okay here because the file was already read successfully by the
             // preprocessor, otherwise the SourceContext wouldn't exist.
-            let decl = self.sm.ctx_data(span.ctx).decl;
-            let text = self.db.file_text(decl.file).unwrap();
+            let file = self.sm.ctx_data(span.ctx).file_span.file;
+            let text = self.db.file_text(file).unwrap();
             self.current_text = text;
         }
 
+        let kind = VerilogALanguage::kind_to_raw(kind);
         let range = span.to_file_span(self.sm).range;
         let text = &self.current_text[range];
-        self.inner.token(VerilogALanguage::kind_to_raw(kind), text);
+        self.inner.token(kind, text);
+
         self.text_pos += range.len();
         self.token_pos += 1;
     }

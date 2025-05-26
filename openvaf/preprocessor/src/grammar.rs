@@ -9,12 +9,12 @@
  */
 
 use tokens::TextRange;
-// use tracing::{debug, trace, trace_span};
 use typed_index_collections::TiVec;
 
-use crate::errors::PreprocessError::{self, UnexpectedEof};
+use crate::errors::PreprocessError;
+use crate::macros::{Macro, MacroArg, MacroCall, ParsedToken, ParsedTokenKind};
 use crate::parser::{CompilerDirective, FullTokenIdx, Parser, PreprocessorToken};
-use crate::processor::{Macro, MacroArg, MacroCall, ParsedToken, ParsedTokenKind, Processor};
+use crate::processor::Processor;
 use crate::sourcemap::{CtxSpan, SourceMap};
 
 pub(crate) fn parse_condition<'a>(
@@ -23,13 +23,9 @@ pub(crate) fn parse_condition<'a>(
     processor: &mut Processor<'a>,
     inverted: bool,
 ) {
-    // let tspan = trace_span!("parsing macro condition");
-    // let _tspan = tspan.enter();
-
     let name = p.current_text();
 
     if p.expect(PreprocessorToken::SimpleIdent, "an identifier", err) {
-        // trace!(name = name, "condition");
         if processor.is_macro_defined(name) != inverted {
             parse_if_body::<true, false>(p, err, processor); // condition is true
         } else {
@@ -51,34 +47,32 @@ fn parse_if_body<'a, const PROCESS: bool, const CONSIDER_ELSE: bool>(
         match p.current() {
             PreprocessorToken::CompilerDirective => match p.compiler_directive() {
                 CompilerDirective::IfDef | CompilerDirective::IfNotDef if !PROCESS => depth += 1,
-
                 CompilerDirective::EndIf if depth == 0 => {
                     p.bump();
                     break;
                 }
-
                 CompilerDirective::Else | CompilerDirective::ElseIf if PROCESS && depth == 0 => {
                     parse_if_body::<false, false>(p, err, processor);
                     return;
                 }
-
                 CompilerDirective::Else if CONSIDER_ELSE && depth == 0 => {
                     p.bump();
                     parse_if_body::<true, false>(p, err, processor);
                     break;
                 }
-
                 CompilerDirective::ElseIf if CONSIDER_ELSE && depth == 0 => {
                     p.bump();
                     parse_condition(p, err, processor, false);
                     break;
                 }
-
                 CompilerDirective::EndIf => depth -= 1,
                 _ => (),
             },
             PreprocessorToken::Eof => {
-                err.push(UnexpectedEof { expected: "`endif", span: p.current_span() });
+                err.push(PreprocessError::UnexpectedEof {
+                    expected: "`endif",
+                    span: p.current_span(),
+                });
                 break;
             }
             _ => (),
@@ -97,9 +91,6 @@ pub(crate) fn parse_include<'a>(
     p: &mut Parser<'a, '_>,
     err: &mut Vec<PreprocessError>,
 ) -> Option<(&'a str, TextRange)> {
-    // let tspan = trace_span!("parsing `include");
-    // let _tspan = tspan.enter();
-
     let start = p.current_range().start();
     p.bump();
     let path = p.current_text();
@@ -136,7 +127,7 @@ pub(crate) fn parse_define<'a>(
         loop {
             if !p.before(end) {
                 success = false;
-                err.push(UnexpectedEof {
+                err.push(PreprocessError::UnexpectedEof {
                     expected: ")",
                     span: CtxSpan { ctx: p.ctx(), range: p.current_range() },
                 });
@@ -149,7 +140,7 @@ pub(crate) fn parse_define<'a>(
 
             if !p.before(end) {
                 success = false;
-                err.push(UnexpectedEof {
+                err.push(PreprocessError::UnexpectedEof {
                     expected: ")",
                     span: CtxSpan { ctx: p.ctx(), range: p.current_range() },
                 });
@@ -178,14 +169,10 @@ pub(crate) fn parse_define<'a>(
     // p.bump();
 
     let range = TextRange::new(start.start(), p.end_pos(end));
-    if success {
-        Some((
-            name,
-            Macro { head, body, arg_cnt: args.len(), span: p.current_span().with_range(range) },
-        ))
-    } else {
-        None
-    }
+    success.then_some((
+        name,
+        Macro { head, body, arg_cnt: args.len(), span: p.current_span().with_range(range) },
+    ))
 }
 
 fn parse_macro_token<'a>(
@@ -196,11 +183,8 @@ fn parse_macro_token<'a>(
     sm: &mut SourceMap,
     end: FullTokenIdx,
 ) {
-    // trace!(token = display(p.current()), "parse macro token");
-
     if p.at(PreprocessorToken::SimpleIdent) {
         if let Some(arg) = args.iter().position(|x| *x == p.current_text()) {
-            // debug!(name = p.current_text(), idx = arg, "macro arg reference");
             p.bump();
             dst.push(ParsedToken {
                 range: p.current_range(),
@@ -260,7 +244,7 @@ pub(crate) fn parse_macro_call<'a>(
                     _ => {
                         let end = p.previous_range().end();
                         arg_bindings.push((dst, TextRange::new(start, end)));
-                        err.push(UnexpectedEof {
+                        err.push(PreprocessError::UnexpectedEof {
                             expected: ")",
                             span: CtxSpan { ctx: p.ctx(), range: p.current_range() },
                         });

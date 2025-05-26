@@ -2,14 +2,13 @@ use std::cmp::min;
 use std::ops::Range;
 use stdx::impl_idx_math_from;
 
-use tokens::{LexerError, LiteralKind, SyntaxKind, TextRange, TextSize, Token, TokenKind};
+use lexer::LexerError;
+use tokens::{LiteralKind, SyntaxKind, TextRange, TextSize, TokenKind};
 use typed_index_collections::{TiSlice, TiVec};
 use vfs::VfsPath;
 
-// use tracing::debug;
-
 use crate::errors::PreprocessError;
-use crate::processor::ParsedToken;
+use crate::macros::ParsedToken;
 use crate::sourcemap::{CtxSpan, SourceContextId};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
@@ -21,20 +20,47 @@ pub struct RelevantTokenIdx(u32);
 impl_idx_math_from!(RelevantTokenIdx(u32));
 
 pub(crate) struct Parser<'a, 'd> {
-    full_tokens: TiVec<FullTokenIdx, Token>,
-    relevant_tokens: TiVec<RelevantTokenIdx, (PreprocessorToken, FullTokenIdx)>,
-    previous_offset: TextSize,
-    offset: TextSize,
-    token: PreprocessorToken,
-    pos: RelevantTokenIdx,
-    full_token_pos: FullTokenIdx,
     src: &'a str,
+    full_tokens: TiVec<FullTokenIdx, lexer::Token>,
+    full_token_pos: FullTokenIdx,
+    relevant_tokens: TiVec<RelevantTokenIdx, (PreprocessorToken, FullTokenIdx)>,
+    pos: RelevantTokenIdx,
+    offset: TextSize,
+    previous_offset: TextSize,
+    token: PreprocessorToken,
     pub(crate) ctx: SourceContextId,
     pub(crate) dst: &'d mut Vec<crate::Token>,
     pub(crate) cwd: VfsPath,
 }
 
-fn mk_token(
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum PreprocessorToken {
+    Define { end: FullTokenIdx },
+    StrLit,
+    SimpleIdent,
+    OpenParen,
+    CloseParen,
+    CompilerDirective,
+    Comma,
+    Other,
+    Eof,
+}
+
+/// Refer to LRM chapter 10
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum CompilerDirective {
+    Include,
+    IfDef,
+    IfNotDef,
+    Else,
+    ElseIf,
+    EndIf,
+    Undef,
+    ResetAll,
+    Macro,
+}
+
+fn make_token(
     pos: RelevantTokenIdx,
     relevant_tokens: &TiSlice<RelevantTokenIdx, (PreprocessorToken, FullTokenIdx)>,
     file_end: FullTokenIdx,
@@ -81,7 +107,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         dst.reserve(full_tokens.len());
 
         let (token, full_token_pos) =
-            mk_token(RelevantTokenIdx(0), &relevant_tokens, full_tokens.next_key());
+            make_token(RelevantTokenIdx(0), &relevant_tokens, full_tokens.next_key());
 
         let mut res = Self {
             relevant_tokens,
@@ -157,7 +183,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         let start = self.full_token_pos;
 
         let (token, full_token_pos) =
-            mk_token(self.pos + 1u32, &self.relevant_tokens, self.full_tokens.next_key());
+            make_token(self.pos + 1u32, &self.relevant_tokens, self.full_tokens.next_key());
         self.token = token;
         self.full_token_pos = full_token_pos;
         self.pos += 1u32;
@@ -180,7 +206,7 @@ impl<'a, 'd> Parser<'a, 'd> {
     }
 
     fn convert_lexer_token(
-        token: Token,
+        token: lexer::Token,
         offset: TextSize,
         src: &str,
         err: &mut Vec<PreprocessError>,
@@ -203,6 +229,7 @@ impl<'a, 'd> Parser<'a, 'd> {
 
         syntax.map(|kind| (kind, range))
     }
+
     fn save_tokens_to_macro(
         &mut self,
         range: Range<FullTokenIdx>,
@@ -231,7 +258,7 @@ impl<'a, 'd> Parser<'a, 'd> {
         let start = self.full_token_pos;
 
         let (token, full_token_pos) =
-            mk_token(self.pos + 1u32, &self.relevant_tokens, self.full_tokens.next_key());
+            make_token(self.pos + 1u32, &self.relevant_tokens, self.full_tokens.next_key());
         self.token = token;
         self.full_token_pos = full_token_pos;
         self.pos += 1u32;
@@ -282,10 +309,6 @@ impl<'a, 'd> Parser<'a, 'd> {
         self.do_bump(false, &mut Vec::new())
     }
 
-    // pub(crate) fn bump(&mut self) {
-    //     self.do_bump(false);
-    // }
-
     /// Advances the parser by one token
     pub(crate) fn save_token(&mut self, err: &mut Vec<PreprocessError>) {
         self.do_bump(true, err)
@@ -304,31 +327,4 @@ impl<'a, 'd> Parser<'a, 'd> {
             _ => CompilerDirective::Macro,
         }
     }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum PreprocessorToken {
-    Define { end: FullTokenIdx },
-    StrLit,
-    SimpleIdent,
-    OpenParen,
-    CloseParen,
-    CompilerDirective,
-    Comma,
-    Other,
-    Eof,
-}
-
-/// Refer to LRM chapter 10
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum CompilerDirective {
-    Include,
-    IfDef,
-    IfNotDef,
-    Else,
-    ElseIf,
-    EndIf,
-    Undef,
-    ResetAll,
-    Macro,
 }
