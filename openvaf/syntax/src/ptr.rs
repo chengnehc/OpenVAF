@@ -10,78 +10,18 @@
 //! necessary.
 
 use std::hash::{Hash, Hasher};
-use std::iter::successors;
 use std::marker::PhantomData;
 
-use crate::{AstNode, SyntaxKind, SyntaxNode, /* SyntaxToken, */ TextRange};
-
-// TODO(JW) migrate to `SyntaxNodePtr` in native rowan?
-// use crate::syntax_node::VerilogALanguage;
-// pub type SyntaxNodePtr = rowan::ast::SyntaxNodePtr<VerilogALanguage>;
+use crate::syntax_node::VerilogALanguage;
+use crate::{AstNode, SyntaxKind, SyntaxNode, TextRange};
 
 /// A "pointer" to a `SynatxNode`, via location in the source code.
-///
 /// It can be used to remember a specific node across reparses of the same file.
 ///
 /// It's a small type which can be cheaply stored, and which can be resolved
 /// to a real [`SyntaxNode`] when necessary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SyntaxNodePtr {
-    // Don't expose this field further. At some point, we might want to replace
-    // range with node id.
-    range: TextRange,
-    kind: SyntaxKind,
-}
-
-impl SyntaxNodePtr {
-    #[inline]
-    pub fn new(node: &SyntaxNode) -> Self {
-        Self { range: node.text_range(), kind: node.kind() }
-    }
-
-    // #[inline]
-    // pub fn new_token(node: &SyntaxToken) -> Self {
-    //     Self { range: node.text_range(), kind: node.kind() }
-    // }
-
-    /// Returns the range of the syntax node this pointer points to.
-    #[inline]
-    pub fn text_range(&self) -> TextRange {
-        self.range
-    }
-
-    /// Returns the kind of the syntax node this pointer points to.
-    #[inline]
-    pub fn syntax_kind(&self) -> SyntaxKind {
-        self.kind
-    }
-
-    /// "Dereference" the pointer to get the node it points to.
-    ///
-    /// Panics if node is not found, so make sure that `root` syntax tree is
-    /// equivalent (is build from the same text) to the tree which was
-    /// originally used to get this [`SyntaxNodePtr`].
-    ///
-    /// The complexity is linear in the depth of the tree and logarithmic in
-    /// tree width. As most trees are shallow, thinking about this as
-    /// `O(log(N))` in the size of the tree is not too wrong!
-    pub fn to_node(&self, root: &SyntaxNode) -> SyntaxNode {
-        assert!(root.parent().is_none());
-        successors(Some(root.clone()), |node| {
-            node.child_or_token_at_range(self.range).and_then(|it| it.into_node())
-        })
-        .find(|it| it.text_range() == self.range && it.kind() == self.kind)
-        .unwrap_or_else(|| panic!("can't resolve local ptr to SyntaxNode: {:?}", self))
-    }
-
-    /// Cast a `SyntaxNodePtr` to a `AstPtr`, if possible.
-    pub fn cast<N: AstNode>(self) -> Option<AstPtr<N>> {
-        if !N::can_cast(self.kind) {
-            return None;
-        }
-        Some(AstPtr { raw: self, _ty: PhantomData })
-    }
-}
+///
+pub type SyntaxNodePtr = rowan::ast::SyntaxNodePtr<VerilogALanguage>;
 
 /// Like `SyntaxNodePtr`, but remembers the type of node
 #[derive(Debug)]
@@ -126,10 +66,15 @@ impl<N: AstNode> AstPtr<N> {
     /// Cast the `AstPtr` to point to type `U`, if possible.
     #[inline]
     pub fn cast<U: AstNode>(self) -> Option<AstPtr<U>> {
-        if !U::can_cast(self.raw.kind) {
+        if !U::can_cast(self.raw.kind()) {
             return None;
         }
         Some(AstPtr { raw: self.raw, _ty: PhantomData })
+    }
+
+    /// Like `SyntaxNodePtr::cast` but the trait bounds work out.
+    pub fn try_from_raw(raw: SyntaxNodePtr) -> Option<AstPtr<N>> {
+        N::can_cast(raw.kind()).then_some(AstPtr { raw, _ty: PhantomData })
     }
 
     #[inline]
@@ -139,7 +84,7 @@ impl<N: AstNode> AstPtr<N> {
 
     #[inline]
     pub fn syntax_kind(&self) -> SyntaxKind {
-        self.raw.syntax_kind()
+        self.raw.kind()
     }
 }
 
@@ -148,14 +93,3 @@ impl<N: AstNode> From<AstPtr<N>> for SyntaxNodePtr {
         ptr.raw
     }
 }
-
-// #[test]
-// fn test_local_syntax_ptr() {
-//     use crate::{ast, AstNode, SourceFile};
-
-//     let file = SourceFile::parse("struct Foo { f: u32, }").ok().unwrap();
-//     let field = file.syntax().descendants().find_map(ast::RecordField::cast).unwrap();
-//     let ptr = SyntaxNodePtr::new(field.syntax());
-//     let field_syntax = ptr.to_node(file.syntax());
-//     assert_eq!(field.syntax(), &field_syntax);
-// }

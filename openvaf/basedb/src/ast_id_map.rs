@@ -138,7 +138,7 @@ impl AstIdMap {
 
     /// Obtain a pointer to the AST node with the given AST ID.
     pub fn get<N: AstNode>(&self, id: AstId<N>) -> AstPtr<N> {
-        self.arena[id.raw].syntax.cast::<N>().unwrap()
+        AstPtr::try_from_raw(self.arena[id.raw].syntax).unwrap()
     }
 
     /// Obtain a type-erased pointer to the AST node with the given type-erased AST ID.
@@ -162,7 +162,7 @@ impl AstIdMap {
         db: &dyn BaseDB,
         root_file: FileId,
     ) -> Option<ErasedAstId> {
-        if has_map_entry(ptr.syntax_kind()) {
+        if has_map_entry(ptr.kind()) {
             Some(self.erased_ast_id_for_ptr(ptr))
         } else {
             let root = db.parse(root_file).tree();

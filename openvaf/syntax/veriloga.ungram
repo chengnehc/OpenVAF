@@ -16,13 +16,13 @@
 //  label:A     -- suggested name for field of AST node
 //
 // TODO: more accurate token type
-//  'ident'     -- keyword or punct token
+//  'integer'   -- keyword or punct token
 //  '#ident'    -- generic token
-//  '@ident'    -- literal token
+//  '@str_lit'  -- literal token
 
 
 //**********************//
-//     Names, Paths     //
+//        Paths         //
 //**********************//
 
 Name =
@@ -30,6 +30,9 @@ Name =
 
 NameRef =
   'ident'
+
+SysFun =
+  'sysfun'
 
 Path =
   (qualifier:Path '.')? ('ident' | 'root')
@@ -135,7 +138,6 @@ Expr =
 | PortFlow
 | Call
 
-
 Literal =
   'int_number' | 'std_real_number' | 'si_real_number' | 'str_lit' | 'inf'
 
@@ -180,9 +182,6 @@ Call =
 
 FunctionRef =
   Path | SysFun
-
-SysFun =
-  'sysfun'
 
 ArgList =
   '(' args:(Expr (',' Expr)*)? ')'

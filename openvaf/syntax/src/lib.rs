@@ -11,9 +11,8 @@
 //! - [This RFC](https://github.com/rust-lang/rfcs/pull/2256)
 //! - [`libsyntax` of swift](https://github.com/apple/swift/blob/13d593df6f359d0cb2fc81cfaac273297c539455/lib/Syntax/README.md)
 
-pub use preprocessor::errors::PreprocessError;
-pub use preprocessor::sourcemap::{self, SourceMap};
-pub use preprocessor::{preprocess, Preprocess, SourceProvider};
+pub use preprocessor::sourcemap;
+pub use preprocessor::{preprocess, Preprocess, PreprocessError, SourceMap, SourceProvider};
 pub use rowan::{GreenNode, NodeOrToken, TextRange, TextSize, WalkEvent};
 pub use tokens::{SyntaxKind, T};
 

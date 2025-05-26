@@ -21,7 +21,8 @@ impl VfsPath {
     /// # Panics
     ///
     /// Panics if `path` does not start with `'/'`.
-    pub fn new_virtual_path(path: String) -> VfsPath {
+    pub fn new_virtual_path(path: impl ToString) -> VfsPath {
+        let path = path.to_string();
         assert!(path.starts_with('/'));
         VfsPath(VfsPathRepr::VirtualPath(VirtualPath(path)))
     }

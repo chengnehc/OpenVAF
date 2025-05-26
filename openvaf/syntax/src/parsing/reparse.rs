@@ -1,4 +1,4 @@
-//! todo
+//! Incremental reparsing (todo)
 
 use super::Parse;
 use crate::SourceFile;

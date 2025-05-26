@@ -16,7 +16,7 @@ impl TestSourceProvider {
     pub fn new(mut include_dirs: Vec<VfsPath>) -> Self {
         let mut vfs = Vfs::default();
         vfs.insert_std_lib();
-        include_dirs.push(VfsPath::new_virtual_path("/std".to_owned()));
+        include_dirs.push(VfsPath::new_virtual_path("/std"));
         Self { vfs: RefCell::new(vfs), include_dirs: Arc::from(include_dirs) }
     }
 }
@@ -44,9 +44,9 @@ impl SourceProvider for TestSourceProvider {
     }
 }
 
-fn check_prepocessor(sources: TestSourceProvider, root_file: FileId, test_name: &'static str) {
+fn check_preprocessor(sources: TestSourceProvider, root_file: FileId, test_name: &'static str) {
     let Preprocess { tokens, errors, source_map } = preprocess(&sources, root_file);
-    assert_eq!(errors.as_slice(), &[]);
+    assert!(errors.is_empty());
     let actual_tokens: String = tokens.iter().fold(String::new(), |mut output, token| {
         let _ = writeln!(output, "{:?}", token.kind,);
         output
@@ -63,16 +63,15 @@ fn check_prepocessor(sources: TestSourceProvider, root_file: FileId, test_name: 
             &src[filespan.range]
         })
         .collect();
-
     let expected = PathBuf::from(".").join("test_data").join(format!("{}_expanded.va", test_name));
     expect_file![expected].assert_eq(&actual_content);
 }
 
-fn check_prepocessor_single_file(src: &str, test_name: &'static str) {
+fn check_preprocess_single_file(src: &str, test_name: &'static str) {
     let sources = TestSourceProvider::new(vec![]);
     let file =
         sources.vfs.borrow_mut().add_virt_file("/macro_expansion_test.va", src.to_owned().into());
-    check_prepocessor(sources, file, test_name)
+    check_preprocessor(sources, file, test_name)
 }
 
 #[test]
@@ -113,12 +112,12 @@ ERROR
 `test6(a,b,c)
 "#;
 
-    check_prepocessor_single_file(SRC, "smoke_test")
+    check_preprocess_single_file(SRC, "smoke_test")
 }
 
 #[test]
 fn whitespaces() {
-    check_prepocessor_single_file(
+    check_preprocess_single_file(
         r#"
         `define FOO BAR
         // foo
@@ -131,7 +130,7 @@ fn whitespaces() {
 
 #[test]
 fn condition_enabled() {
-    check_prepocessor_single_file(
+    check_preprocess_single_file(
         r#"
 `ifdef DISABLE_STROBE
 	`define STROBE(X)
@@ -151,7 +150,7 @@ fn condition_enabled() {
 
 #[test]
 fn condition_disabled() {
-    check_prepocessor_single_file(
+    check_preprocess_single_file(
         r#"
 `define DISABLE_STROBE
 `ifdef DISABLE_STROBE
@@ -172,7 +171,7 @@ fn condition_disabled() {
 
 #[test]
 fn source_map_triple_replacement() {
-    check_prepocessor_single_file(
+    check_preprocess_single_file(
         r#"
 `include "constants.va"
 

@@ -6,15 +6,12 @@ use drop_bomb::DropBomb;
 use crate::SyntaxKind::{self, EOF, ERROR, TOMBSTONE};
 use crate::{Error, Event, TokenSet};
 
-/// `Parser` struct provides the low-level API for
-/// navigating through the stream of tokens and
-/// constructing the parse tree. The actual parsing
-/// happens in the `grammar` module.
+/// `Parser` struct provides the low-level API for navigating through
+/// the stream of tokens and constructing the parse tree.
 ///
-/// However, the result of this `Parser` is not a real
-/// tree, but rather a flat stream of events of the form
-/// "start expression, consume number literal,
-/// finish expression". See `Event` docs for more.
+/// However, the result of this `Parser` is not a real tree, but rather
+/// a flat stream of `Event`s. the tree structure is constructed in a
+/// separate pass.
 pub(crate) struct Parser<'t> {
     tokens: &'t [SyntaxKind],
     pos: u32,
@@ -244,9 +241,9 @@ impl Marker {
         Marker { pos, bomb: DropBomb::new("Marker must be either completed or abandoned") }
     }
 
-    /// Finishes the syntax tree node and assigns `kind` to it,
-    /// and mark the create a `CompletedMarker` for possible future
-    /// operation like `.precede()` to deal with forward_parent.
+    /// Finishes the syntax tree node and assigns `kind` to it.
+    /// Create a `CompletedMarker` for possible future operation
+    /// like `.precede()` to deal with forward_parent.
     pub(crate) fn complete(mut self, p: &mut Parser, kind: SyntaxKind) -> CompletedMarker {
         self.bomb.defuse();
         let idx = self.pos as usize;
@@ -256,9 +253,6 @@ impl Marker {
             }
             _ => unreachable!(),
         }
-        // JW: swap the order according to rust-analyzer
-        // it makes more sense pushing the event first and then
-        // getting the finish position.
         p.push_event(Event::Finish);
         let finish_pos = p.events.len() as u32;
         CompletedMarker::new(self.pos, finish_pos)

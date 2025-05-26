@@ -21,6 +21,14 @@ impl NameRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SysFun {
+    pub(crate) syntax: SyntaxNode,
+}
+impl SysFun {
+    pub fn sysfun_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![sysfun]) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Path {
     pub(crate) syntax: SyntaxNode,
 }
@@ -321,14 +329,6 @@ impl ArgList {
     pub fn l_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T!['(']) }
     pub fn args(&self) -> AstChildren<Expr> { support::children(&self.syntax) }
     pub fn r_paren_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![')']) }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SysFun {
-    pub(crate) syntax: SyntaxNode,
-}
-impl SysFun {
-    pub fn sysfun_token(&self) -> Option<SyntaxToken> { support::token(&self.syntax, T![sysfun]) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -687,6 +687,17 @@ impl AstNode for NameRef {
     }
     fn syntax(&self) -> &SyntaxNode { &self.syntax }
 }
+impl AstNode for SysFun {
+    fn can_cast(kind: SyntaxKind) -> bool { kind == SYS_FUN }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}
 impl AstNode for Path {
     fn can_cast(kind: SyntaxKind) -> bool { kind == PATH }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
@@ -986,17 +997,6 @@ impl AstNode for Call {
 }
 impl AstNode for ArgList {
     fn can_cast(kind: SyntaxKind) -> bool { kind == ARG_LIST }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode { &self.syntax }
-}
-impl AstNode for SysFun {
-    fn can_cast(kind: SyntaxKind) -> bool { kind == SYS_FUN }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         if Self::can_cast(syntax.kind()) {
             Some(Self { syntax })
@@ -1631,6 +1631,11 @@ impl std::fmt::Display for NameRef {
         std::fmt::Display::fmt(self.syntax(), f)
     }
 }
+impl std::fmt::Display for SysFun {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.syntax(), f)
+    }
+}
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
@@ -1767,11 +1772,6 @@ impl std::fmt::Display for Call {
     }
 }
 impl std::fmt::Display for ArgList {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self.syntax(), f)
-    }
-}
-impl std::fmt::Display for SysFun {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.syntax(), f)
     }

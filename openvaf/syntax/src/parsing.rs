@@ -86,6 +86,7 @@ impl<T> Parse<T> {
         SyntaxNode::new_root(self.green.clone())
     }
 
+    /// Validate and return all the syntax errors.
     pub fn errors(&self) -> Vec<SyntaxError> {
         let mut errors = if let Some(e) = self.errors.as_deref() { e.to_vec() } else { vec![] };
         validation::validate(&self.root(), &mut errors);

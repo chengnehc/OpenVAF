@@ -61,7 +61,7 @@ pub trait AstNode {
     where
         Self: Sized;
 
-    /// Unwrap the typed `AstNode` to get inner untyped `SyntaxNode`.
+    /// Erase the type of `AstNode` to get inner untyped `SyntaxNode`.
     fn syntax(&self) -> &SyntaxNode;
 }
 
@@ -71,21 +71,20 @@ pub trait AstToken {
     where
         Self: Sized;
 
-    /// cast a `SyntaxToken` to an `AstToken`, if possible
+    /// Cast a `SyntaxToken` to an `AstToken`, if possible
     fn cast(syntax: SyntaxToken) -> Option<Self>
     where
         Self: Sized;
 
-    /// unwrap the `AstNode` to get inner `SynatxNode`
+    /// Erase the type of the `AstToken` to get inner `SynatxToken`
     fn syntax(&self) -> &SyntaxToken;
 
-    /// return the text string of this token
+    /// Return the text string of this token
     fn text(&self) -> &str {
         self.syntax().text()
     }
 }
 
-/// An iterator over `SyntaxNode` children of a particular AST type.
 #[derive(Debug, Clone)]
 pub struct AstChildren<N> {
     inner: SyntaxNodeChildren,
@@ -105,7 +104,6 @@ impl<N: AstNode> Iterator for AstChildren<N> {
     }
 }
 
-// in reverse order
 #[derive(Debug, Clone)]
 pub struct RevAstChildren<N> {
     inner: RevSyntaxNodeChildren,

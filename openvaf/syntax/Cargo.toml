@@ -18,5 +18,5 @@ tokens = {version="0.0.0", path="../tokens"}
 preprocessor = {version = "0.0.0", path = "../preprocessor" }
 parser = {version = "0.0.0", path = "../parser" }
 
-rowan = "0.15"
+rowan = "0.16"
 smol_str = {version = "0.3", default-features = false}

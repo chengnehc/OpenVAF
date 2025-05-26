@@ -11,8 +11,10 @@
 //! - [rustc lexer](https://github.com/rust-lang/rust/tree/master/compiler/rustc_lexer)
 //! - [rust-analyzer lexer](https://docs.rs/ra-ap-rustc_lexer/0.97.0/ra_ap_rustc_lexer/)
 
-use tokens::{LiteralKind, Token, TokenKind};
-use tokens::{LiteralKind::*, TokenKind::*};
+pub use tokens::{LexerError, Token};
+
+use tokens::LiteralKind::{self, *};
+use tokens::TokenKind::{self, *};
 
 #[cfg(test)]
 mod tests;
@@ -122,6 +124,7 @@ impl Cursor<'_> {
                 SimpleIdent
             }
 
+            // System function
             '$' if is_ident_start(self.first()) => {
                 self.bump();
                 self.eat_identifier();

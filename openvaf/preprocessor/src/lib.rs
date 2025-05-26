@@ -5,20 +5,24 @@ use std::sync::Arc;
 use vfs::{FileId, FileReadError, VfsPath};
 
 #[cfg(test)]
-#[rustfmt::skip]
 mod tests;
+
+mod errors;
 mod grammar;
+mod macros;
 mod parser;
 mod processor;
 mod scoped_arena;
 
-pub mod errors;
 pub mod sourcemap;
 
-use errors::PreprocessError;
+pub use errors::PreprocessError;
+pub use sourcemap::SourceMap;
+
 use processor::Processor;
 use scoped_arena::ScopedArena;
-use sourcemap::{CtxSpan, SourceMap};
+use sourcemap::CtxSpan;
+
 // use tracing::trace_span;
 
 /// A `Token` with source context span information
@@ -47,8 +51,6 @@ type ScopedTextArena = ScopedArena<Text>;
 /// # Panics
 /// This function panics if called multiple times in the same OpenVAF session
 pub fn preprocess(sources: &dyn SourceProvider, file: FileId) -> Preprocess {
-    // let span = trace_span!("preprocessor", main_file = display(sources.file_path(file)));
-    // let _scope = span.enter();
     let storage = ScopedTextArena::new();
     let (tokens, errors, source_map) = match Processor::new(&storage, file, sources) {
         Ok(mut processor) => {
