@@ -1,5 +1,5 @@
 //! Make use of the numeric functions in Rust stdlib for constant evaluation during
-//! compile time. On the other hand, run-time evaluations depend on LLVM instrinsics.
+//! compile time. On the other hand, run-time evaluations depend on LLVM intrinsics.
 //! Although both of them kind of depend on libm under the hood, there are some
 //! inconsistent behaviors between them, and some functions have unspecified precision
 //! , so be careful.

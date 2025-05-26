@@ -534,7 +534,7 @@ impl BodyLowerContext<'_, '_, '_> {
             }
             BuiltIn::white_noise => {
                 // we create a dedicated callback for each noise source
-                // by giving every source a unique index. Kind of ineffcient
+                // by giving every source a unique index. Kind of inefficient
                 // but necessary to avoid accidental correlation/opimization
                 // (for example white_noise(x) - white_noise(x) is not zero)
                 let idx = self.ctxt.num_noise_sources;

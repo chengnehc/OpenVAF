@@ -130,7 +130,7 @@ impl<'a> Builder<'a> {
                     }
                     // Some callbacks have no meaning if op-dependent, especially, collapse hints:
                     // a model's topology must not be op-dependent.
-                    // TODO(JW): make this a switch branch or a complie error
+                    // TODO(JW): make this a switch branch or a compile error
                     InstructionData::Call { func_ref, .. }
                         if self.intern.callbacks[func_ref].ignore_if_op_dependent() =>
                     {
