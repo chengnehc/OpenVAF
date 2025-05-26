@@ -85,11 +85,11 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         }
     }
 
+    /// Simplify phi when all edges values are identical.
     pub fn simplify_phi(&mut self, phi: PhiNode) -> Option<Value> {
         let mut iter = self.func.dfg.phi_edges(&phi);
         let (_, all_eq_val) = iter.next()?;
         let all_eq_val = self.map_val(all_eq_val);
-        // simplify when all the values of phi edges are identical
         iter.all(|(_, val)| self.map_val(val) == all_eq_val).then_some(all_eq_val)
     }
 

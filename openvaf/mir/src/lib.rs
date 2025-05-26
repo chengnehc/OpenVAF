@@ -151,6 +151,7 @@ impl Function {
         self.dfg.signatures.push_and_get_key(signature)
     }
 
+    /// Update the `old_pred` in the phi node with `new_pred`.
     pub fn update_phi_edges(&mut self, bb: Block, old_pred: Block, new_pred: Block) {
         for inst in self.layout.block_insts(bb) {
             if let InstructionData::PhiNode(PhiNode { ref mut blocks, .. }) = self.dfg.insts[inst] {
@@ -162,7 +163,9 @@ impl Function {
         }
     }
 
-    /// Split the block containing `before` into two and update phis within the block.
+    /// Split the block into two and update phis within the block.
+    ///
+    /// The old block will be truncated and the new block will be starting with `before`.
     pub fn split_block(&mut self, new_block: Block, before: Inst) {
         let old_block = self.layout.inst_block(before).unwrap();
         self.layout.split_block(new_block, before);

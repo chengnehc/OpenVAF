@@ -1,6 +1,8 @@
 //! Standard DCE: skim through DFG and remove dead instructions.
 //!
 //! This optimization is local, as it does not take control flow into account.
+//! Therefore, it may leave zombies. See aggressive dead code elimination for
+//! further optimization.
 //!
 //! See also: Todd C. Mowry, Lecture 14: SSA-Style Optimizations, CMU
 
@@ -10,7 +12,10 @@ use bitset::BitSet;
 use mir::{Function, Inst, Value, ValueDef};
 use workqueue::WorkQueue;
 
-pub fn dead_code_elimination(func: &mut Function, output_values: &BitSet<Value>) {
+#[cfg(test)]
+mod tests;
+
+pub fn standard_dead_code_elimination(func: &mut Function, output_values: &BitSet<Value>) {
     let mut workq =
         WorkQueue { deque: VecDeque::new(), set: BitSet::new_filled(func.dfg.num_insts()) };
 
