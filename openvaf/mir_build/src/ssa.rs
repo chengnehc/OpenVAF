@@ -390,7 +390,7 @@ impl<C: ControlFlowGraph> SSABuilder<C> {
     /// marking visited blocks and aborting if we find a previously seen block.
     /// We stop the search if we find a block with multiple predecessors since the
     /// original algorithm can handle these cases.
-    fn can_optimize_var_lookup(&mut self, block: Block, block_cnt: usize) -> bool {
+    fn can_optimize_var_lookup(&self, block: Block, block_cnt: usize) -> bool {
         // Check that the initial block only has one predecessor.
         // This is only a requirement for the initial block.
         if !self.cfg.has_single_predecessor(block) {

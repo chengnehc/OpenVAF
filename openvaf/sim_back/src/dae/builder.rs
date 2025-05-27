@@ -121,7 +121,7 @@ impl<'a> Builder<'a> {
 
         // Now that we have all the derivatives, we can build the DAE.
         self.build_jacobian(&sim_unknown_reads, &derivative_info, &derivatives);
-        self.build_lim_rhs(&derivative_info, derivatives);
+        self.build_lim_rhs(&derivative_info, &derivatives);
 
         // Ensure the optbarriers for DAE related SSA values and apply $mfactor
         self.ensure_optbarriers();
@@ -619,7 +619,7 @@ impl Builder<'_> {
     fn build_lim_rhs(
         &mut self,
         derivative_info: &KnownDerivatives,
-        derivatives: AHashMap<(Value, Unknown), Value>,
+        derivatives: &AHashMap<(Value, Unknown), Value>,
     ) {
         for residual in &mut self.dae.residual {
             for (state, (unchanged, lim_vals)) in self.intern.lim_state.iter_enumerated() {

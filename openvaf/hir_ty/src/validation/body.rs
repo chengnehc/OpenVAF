@@ -143,7 +143,7 @@ impl ExprValidator<'_, '_> {
                     Some(ResolvedFun::BuiltIn(builtin)) => {
                         let name = fun.as_ref().and_then(|p| p.as_ident()).unwrap();
                         let signature = self.parent.infer.resolved_signatures.get(&expr);
-                        self.validate_builtin(*builtin, args, name, expr, signature.cloned());
+                        self.validate_builtin(*builtin, args, name, expr, signature.copied());
                         return;
                     }
                     Some(ResolvedFun::InvalidNatureAccess(nature)) => {

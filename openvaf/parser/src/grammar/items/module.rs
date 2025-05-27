@@ -95,6 +95,11 @@ const MODULE_PORT_RECOVERY: TokenSet =
 
 // using const generics here for compile-time evaluation and optimization
 fn port_decl<const MODULE_HEAD: bool>(p: &mut Parser, m: Marker) {
+    fn module_port(p: &mut Parser) -> bool {
+        name_r(p, MODULE_PORT_RECOVERY.union(TokenSet::unique(T![,])));
+        !(p.at(T![,]) && p.nth_at_ts(1, MODULE_PORT_RECOVERY))
+    }
+
     // port direction is always required
     let direction = p.start();
     p.bump_ts(DIRECTION_TS);
@@ -118,11 +123,6 @@ fn port_decl<const MODULE_HEAD: bool>(p: &mut Parser, m: Marker) {
         let m = finished.precede(p);
         p.eat(T![;]);
         m.complete(p, BODY_PORT_DECL);
-    }
-
-    fn module_port(p: &mut Parser) -> bool {
-        name_r(p, MODULE_PORT_RECOVERY.union(TokenSet::unique(T![,])));
-        !(p.at(T![,]) && p.nth_at_ts(1, MODULE_PORT_RECOVERY))
     }
 }
 

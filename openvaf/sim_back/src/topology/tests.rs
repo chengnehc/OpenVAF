@@ -69,9 +69,9 @@ fn linear_analog_operators() {
 ///
 /// See also:
 /// 1. C. C. McAndrew et al., “Best Practices for Compact Modeling in Verilog-A,”
-/// IEEE Journal of the Electron Devices Society, vol. 3, no. 5, pp. 383–396, Sep. 2015
+///    IEEE Journal of the Electron Devices Society, vol. 3, no. 5, pp. 383–396, Sep. 2015
 /// 2. M. Mierzwinski, P. O’Halloran, and B. Troyanovsky, “Developing and releasing compact models using Verilog-A,”
-/// in MOS-AK Workshop, San Francisco, CA, USA, Dec. 2008
+///    in MOS-AK Workshop, San Francisco, CA, USA, Dec. 2008
 #[test]
 fn ddt() {
     let form_1 = indoc! {r#"

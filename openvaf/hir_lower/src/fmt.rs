@@ -159,7 +159,6 @@ impl BodyLowerContext<'_, '_, '_> {
     pub fn resolved_ty(&self, expr: ExprId) -> Type {
         self.body
             .need_type_cast(expr)
-            .map(|(_, dst)| dst.to_owned())
-            .unwrap_or_else(|| self.body.expr_type(expr))
+            .map_or_else(|| self.body.expr_type(expr), |(_, dst)| dst.to_owned())
     }
 }

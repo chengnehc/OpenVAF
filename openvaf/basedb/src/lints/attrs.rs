@@ -70,9 +70,7 @@ pub fn resolve_overwrites(
             LiteralKind::StrLit(lit) => {
                 let lint_name = lit.unescaped_value();
                 let range = lit.syntax().text_range();
-                let lint = if let Some(lint) = registry.lint_from_name(&lint_name) {
-                    lint
-                } else {
+                let Some(lint) = registry.lint_from_name(&lint_name) else {
                     if !lint_name.contains("::") {
                         // Plugins use plugin::lint_name. Plugin lints for unused plugins are fine
                         err.push(LintAttrDiagnostic::UnknownLint { range, lint: lint_name, src });

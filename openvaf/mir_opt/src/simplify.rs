@@ -85,7 +85,9 @@ impl<'a, FP: Arithmetic, M: Fn(Value, &Function) -> Value> SimplifyCtx<'a, FP, M
         }
     }
 
+    // TODO(JW) this needs to be re-considered
     /// Simplify phi when all edges values are identical.
+    #[allow(clippy::needless_pass_by_ref_mut)]
     pub fn simplify_phi(&mut self, phi: PhiNode) -> Option<Value> {
         let mut iter = self.func.dfg.phi_edges(&phi);
         let (_, all_eq_val) = iter.next()?;

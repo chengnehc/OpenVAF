@@ -354,10 +354,7 @@ impl VirtualPath {
     /// assert_eq!(path.0, "");
     /// ```
     fn pop(&mut self) -> bool {
-        let pos = match self.0.rfind('/') {
-            Some(pos) => pos,
-            None => return false,
-        };
+        let Some(pos) = self.0.rfind('/') else { return false };
         self.0 = self.0[..pos].to_string();
         true
     }

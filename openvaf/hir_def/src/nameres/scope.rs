@@ -1,6 +1,6 @@
 use super::*;
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use stdx::impl_from_typed;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -93,8 +93,8 @@ use crate::{
 };
 
 /// Verilog-A language builtin item definitions
-pub static BUILTIN_ITEM_DEF: Lazy<IndexMap<Name, ScopeItem, ahash::RandomState>> =
-    Lazy::new(|| {
+pub static BUILTIN_ITEM_DEF: LazyLock<IndexMap<Name, ScopeItem, ahash::RandomState>> =
+    LazyLock::new(|| {
         let mut defs = IndexMap::default();
         builtin::insert_builtin_def(&mut defs);
         defs

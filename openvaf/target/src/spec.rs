@@ -104,7 +104,7 @@ impl Default for TargetOptions {
         TargetOptions {
             is_builtin: true,
             cpu: "generic".to_string(),
-            features: "".to_string(),
+            features: String::default(),
             linker_flavor: LinkerFlavor::Ld,
             pre_link_args: BTreeMap::default(),
             post_link_args: BTreeMap::default(),

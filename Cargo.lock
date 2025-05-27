@@ -502,7 +502,6 @@ dependencies = [
  "expect-test",
  "indexmap",
  "mini_harness",
- "once_cell",
  "parking_lot",
  "salsa",
  "stdx",

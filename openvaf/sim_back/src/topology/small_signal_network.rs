@@ -367,7 +367,7 @@ impl Builder<'_> {
     /// these contributions value into a separate dimension is valid. Specifically that
     /// means that all partial deriveves of these contrbituions (and the contributions themselves)
     /// do not changed their value if `val` zero (unless derived by itself)
-    fn collect_linear_contributes(&mut self, postorder: &[Inst]) -> Option<Vec<Value>> {
+    fn collect_linear_contributes(&self, postorder: &[Inst]) -> Option<Vec<Value>> {
         let dfg = &self.func.dfg;
         let is_op_dependent = |val| {
             if let Some(inst) = dfg.value_def(val).inst() {

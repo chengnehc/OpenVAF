@@ -3,7 +3,7 @@ use tokens::{SyntaxKind, T};
 
 use crate::ast::{
     self, support, ArgListOwner, BlockItem, ConstraintValue, Expr, FunctionItem, LiteralKind,
-    ModulePorts, Name, PathSegmentKind, Stmt,
+    PathSegmentKind, Stmt,
 };
 use crate::name::{kw, kw_comp};
 use crate::{match_ast, AsName, AstNode, AstPtr, SyntaxError, SyntaxNode, SyntaxNodePtr};
@@ -29,7 +29,7 @@ pub(crate) fn validate(root: &SyntaxNode, errors: &mut Vec<SyntaxError>) {
     }
 }
 
-fn validate_name(name: Name, errors: &mut Vec<SyntaxError>) {
+fn validate_name(name: ast::Name, errors: &mut Vec<SyntaxError>) {
     let Some(ident) = name.ident_token() else { return };
     let parent = name.syntax().parent();
     let p = parent.as_ref();
@@ -264,7 +264,7 @@ fn validate_module(module: ast::ModuleDecl, errors: &mut Vec<SyntaxError>) {
 }
 
 fn validate_module_ports(
-    ports: &ModulePorts,
+    ports: &ast::ModulePorts,
     errors: &mut Vec<SyntaxError>,
 ) -> Option<(bool, Vec<Vec<ast::Name>>)> {
     let mut names: Vec<Vec<ast::Name>> = Vec::new();

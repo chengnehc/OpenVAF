@@ -228,7 +228,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         builder.params = params;
 
         /* Declare callbacks */
-        builder.callbacks = general_callbacks(intern, &mut builder, ret_flags, handle, simparam);
+        builder.callbacks = general_callbacks(intern, &builder, ret_flags, handle, simparam);
         for (func, kind) in intern.callbacks.iter_enumerated() {
             let cb = match *kind {
                 CallBackKind::BuiltinLimit { name, num_args } => {

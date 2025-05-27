@@ -1,27 +1,111 @@
 [build]
 rustflags = [
+    # Opt-in some clippy::pedantic lints
+
+    # pattern matching
     "-Wclippy::unnested_or_patterns",
-    "-Wclippy::trivially_copy_pass_by_ref",
-    "-Wclippy::same_functions_in_if_condition",
-    "-Wclippy::ref_binding_to_reference",
-    "-Wclippy::trivially_copy_pass_by_ref",
     "-Wclippy::match_same_arms",
+    "-Wclippy::ref_binding_to_reference",
+    "-Wclippy::comparison_chain",
 
-    # TODO fix stylistics lints
-    "-Aclippy::enum_variant_names",
-    "-Aclippy::upper_case_acronyms",
-    "-Aclippy::wrong_self_convention",
+    # control flow
+    "-Wclippy::same_functions_in_if_condition",
+    "-Wclippy::needless_continue",
 
-    # "-Aclippy::must_use_candidate",
-    # "-Aclippy::explicit_deref_methods",
-    # "-Aclippy::explicit_deref_methods",
-    # "-Aclippy::enum-glob-use",
-    # "-Aclippy::semicolon_if_nothing_returned",
-    # "-Aclippy::too-many-lines",
-    # "-Aclippy::doc_markdown",
-    # "-Aclippy::if_not_else",
-    # "-Aclippy::wildcard_imports",
-    # "-Aclippy::implicit_clone",
+    # performance lints
+    "-Wclippy::assigning_clones",
+    "-Wclippy::trivially_copy_pass_by_ref",
+    "-Wclippy::large_types_passed_by_value",
+    # "-Wclippy::needless_pass_by_value",
+    "-Wclippy::unnecessary_join",
+    "-Wclippy::unnecessary_box_returns",
+    "-Wclippy::ref_option",
+    "-Wclippy::ref_option_ref",
+    "-Wclippy::inefficient_to_string",
+    "-Wclippy::format_push_string",
+    "-Wclippy::format_collect",
+    "-Wclippy::zero_sized_map_values",
+
+    # readability
+    "-Wclippy::manual_string_new",
+    "-Wclippy::manual_let_else",
+    "-Wclippy::macro_use_imports",
+    "-Wclippy::option_option",
+    "-Wclippy::option_as_ref_cloned",
+    "-Wclippy::fn_params_excessive_bools",
+    "-Wclippy::unnecessary_literal_bound",
+    "-Wclippy::manual_is_variant_and",
+    "-Wclippy::unreadable_literal",
+    # "-Wclippy::cloned_instead_of_copied",
+    # "-Wclippy::map_unwrap_or",
+    # "-Wclippy::manual_assert",
+    # "-Wclippy::unnecessary_wraps",
+    # "-Wclippy::too-many-lines",
+
+    # iterators
+    "-Wclippy::iter_filter_is_some",
+    "-Wclippy::iter_filter_is_ok",
+    "-Wclippy::filter_map_next",
+    "-Wclippy::flat_map_option",
+    # "-Wclippy::iter_without_into_iter",
+
+    # type casts
+    "-Wclippy::checked_conversions",
+    "-Wclippy::cast_ptr_alignment",
+    # "-Wclippy::as_conversions",
+    # "-Wclippy::float_cmp",
+
+    # stylistic lints
+    "-Wclippy::enum_variant_names",
+    # "-Wclippy::struct_field_names",
+    "-Wclippy::upper_case_acronyms",
+    "-Wclippy::wrong_self_convention",
+    # "-Wclippy::items_after_statements",
+    "-Wclippy::unnecessary_debug_formatting",
+    "-Wclippy::elidable_lifetime_names",
+    "-Wclippy::non_std_lazy_statics",
+    "-Wclippy::format_push_string",
+
+    # "-Wclippy::redundant_closure_for_method_calls",
+    # "-Wclippy::default_trait_access",
+    # "-Wclippy::if_not_else",
+    # "-Wclippy::must_use_candidate",
+    # "-Wclippy::semicolon_if_nothing_returned",
+    # "-Wclippy::implicit_clone",
+    # "-Wclippy::explicit_deref_methods",
+    # "-Wclippy::empty_enum"
+
+    # documentation
+    # "-Wclippy::doc_markdown",
+
+
+    # Opt-in some clippy::nursery lints
+
+    # "-Wclippy::cognitive_complexity",
+    # "-Wclippy::missing_const_for_fn",
+    # "-Wclippy::option_if_let_else",
+    "-Wclippy::debug_assert_with_mut_call",
+    "-Wclippy::useless_let_if_seq",
+    "-Wclippy::suspicious_operation_groupings",
+    "-Wclippy::equatable_if_let",
+    "-Wclippy::clear_with_drain",
+    "-Wclippy::collection_is_never_read",
+    "-Wclippy::iter_on_empty_collections",
+    # "-Wclippy::iter_with_drain",
+    "-Wclippy::needless_collect",
+    "-Wclippy::set_contains_or_insert",
+    "-Wclippy::fallible_impl_from",
+    "-Wclippy::imprecise_flops",
+    "-Wclippy::needless_pass_by_ref_mut",
+    "-Wclippy::or_fun_call",
+    "-Wclippy::redundant_clone",
+    "-Wclippy::path_buf_push_overwrite",
+    # "-Wclippy::redundant_pub_crate",
+    "-Wclippy::single_option_map",
+    "-Wclippy::type_repetition_in_bounds",
+
+    # This is useful for removing dbg!
+    "-Wclippy::dbg_macro",
 
     # "-Ctarget-cpu=native",
     "-Clink-arg=-fuse-ld=lld",

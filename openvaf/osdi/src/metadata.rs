@@ -246,12 +246,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                     name,
                     description: match builtin {
                         ParamSysFun::mfactor => "Multiplier (Verilog-A $mfactor)".to_owned(),
-                        _ => "".to_owned(),
+                        _ => String::new(),
                     },
                     units: match builtin {
                         ParamSysFun::xposition | ParamSysFun::yposition => "m".to_owned(),
                         ParamSysFun::angle => "deg".to_owned(),
-                        _ => "".to_owned(),
+                        _ => String::new(),
                     },
                     flags: PARA_TY_REAL | PARA_KIND_INST,
                     len: 0,

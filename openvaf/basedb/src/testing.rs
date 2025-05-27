@@ -17,7 +17,7 @@ impl dyn BaseDB {
         vfs.set_file_contents(root_file, root_file_contents);
         vfs.insert_std_lib();
 
-        let include_dirs = vec![VfsPath::new_virtual_path("/std".to_owned())];
+        let include_dirs = vec![VfsPath::new_virtual_path("/std")];
         self.set_include_dirs(root_file, Arc::from(include_dirs));
 
         let macro_flags: Vec<_> = PREDEFINED_MACROS.into_iter().map(Arc::from).collect();

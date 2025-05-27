@@ -73,7 +73,7 @@ impl CompilationDB {
 
     pub fn new_from_vfs(contents: &str) -> Result<Self> {
         CompilationDB::new(
-            VfsPath::new_virtual_path("/root.va".to_owned()),
+            VfsPath::new_virtual_path("/root.va"),
             Ok(contents.as_bytes().to_owned()),
             iter::empty(),
             iter::empty(),
@@ -98,9 +98,7 @@ impl CompilationDB {
             Self { storage: salsa::Storage::default(), vfs: Arc::new(RwLock::new(vfs)), root_file };
 
         let include_dirs: Result<Arc<[_]>> =
-            iter::once(Ok(VfsPath::new_virtual_path("/std".to_owned())))
-                .chain(include_dirs)
-                .collect();
+            iter::once(Ok(VfsPath::new_virtual_path("/std"))).chain(include_dirs).collect();
         db.set_include_dirs(root_file, include_dirs?);
 
         let macro_flags: Arc<[_]> =

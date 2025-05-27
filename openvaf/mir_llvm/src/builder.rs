@@ -144,6 +144,7 @@ impl Drop for Builder<'_, '_, '_> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum FastMathMode {
     Full,
     Partial,

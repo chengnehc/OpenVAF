@@ -51,14 +51,12 @@ pub fn init(cg_opts: &[String], tg_opts: &[String]) {
 }
 
 pub fn require_inited() {
-    if !INIT.is_completed() {
-        panic!("LLVM is not initialized");
-    }
+    assert!(INIT.is_completed(), "LLVM is not initialized");
 }
 
 unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
     let n_args = cg_opts.len() + tg_opts.len();
-    let mut llvm_c_strs = Vec::with_capacity(n_args + 1);
+    // let mut llvm_c_strs = Vec::with_capacity(n_args + 1);
     let mut llvm_args = Vec::with_capacity(n_args + 1);
 
     // TODO(JW): rustc uses suffix 'llvm-args=' to indicate that the argument is passed directly to LLVM
@@ -80,7 +78,7 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
             if force || !user_specified_args.contains(llvm_arg_to_arg_name(arg)) {
                 let s = CString::new(arg).unwrap();
                 llvm_args.push(s.as_ptr());
-                llvm_c_strs.push(s);
+                // llvm_c_strs.push(s);
             }
         };
 

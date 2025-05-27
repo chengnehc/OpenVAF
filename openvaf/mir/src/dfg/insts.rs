@@ -287,7 +287,7 @@ impl DataFlowGraph {
     fn append_result(&mut self, inst: Inst, tag: Option<Tag>) -> Value {
         let val = self.values.defs.next_key();
         let idx = self.insts.results[inst].push(val, &mut self.insts.value_lists);
-        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
+        debug_assert!(u16::try_from(idx).is_ok(), "Too many result values");
         self.values.make(ValueDataType::Inst { inst, idx: idx as u16 }, tag)
     }
 
@@ -301,7 +301,7 @@ impl DataFlowGraph {
     fn attach_result(&mut self, inst: Inst, val: Value) {
         debug_assert!(!self.value_attached(val));
         let idx = self.insts.results[inst].push(val, &mut self.insts.value_lists);
-        debug_assert!(idx <= u16::MAX as usize, "Too many result values");
+        debug_assert!(u16::try_from(idx).is_ok(), "Too many result values");
         self.values.defs[val].ty = ValueDataType::Inst { idx: idx as u16, inst };
     }
 }

@@ -16,9 +16,10 @@ struct Scope {
 }
 
 impl Scope {
-    fn new(def_map: Arc<DefMap>, scope: LocalScopeId, def: Option<(Name, ScopeDef)>) -> Scope {
+    fn new(def_map: &Arc<DefMap>, scope: LocalScopeId, def: Option<(Name, ScopeDef)>) -> Scope {
         let iter = def_map[scope].decls().iter();
         // # safety: def_map is a immutable/an arc that will live at least as long as the scope
+        #[allow(clippy::missing_transmute_annotations)]
         let iter = unsafe { mem::transmute(iter) };
 
         Scope { iter, def }
@@ -37,7 +38,7 @@ pub struct RecDeclarations<'a> {
 impl<'a> RecDeclarations<'a> {
     pub(super) fn new(scope: super::Scope, db: &'a CompilationDB) -> RecDeclarations<'a> {
         let (scope_id, def_map) = scope.def_map_and_scope(db);
-        let scope = Scope::new(def_map, scope_id, None);
+        let scope = Scope::new(&def_map, scope_id, None);
 
         RecDeclarations { db, path: Vec::new(), stack: vec![scope] }
     }
@@ -69,7 +70,7 @@ impl Iterator for RecDeclarations<'_> {
                         if let Some(def_map) = self.db.block_def_map(id) {
                             let entry = def_map.entry_scope();
                             let block = (name.clone(), ScopeDef::Block(Block { id }));
-                            self.stack.push(Scope::new(def_map, entry, Some(block)))
+                            self.stack.push(Scope::new(&def_map, entry, Some(block)))
                         }
                         continue;
                     }
@@ -82,7 +83,6 @@ impl Iterator for RecDeclarations<'_> {
                 if let Some(def) = scope.def {
                     return Some(def);
                 }
-                continue;
             }
         }
     }

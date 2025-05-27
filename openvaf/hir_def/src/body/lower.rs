@@ -228,7 +228,7 @@ impl Context<'_> {
         let registry = &self.db.lint_registry();
         let attrs =
             LintAttrs::resolve(registry, attrs, &mut self.src_map.diagnostics, self.curr_scope.1);
-        self.make_stmt(stmt, Some(src.clone()), attrs)
+        self.make_stmt(stmt, Some(src), attrs)
         // let id = self.make_stmt(stmt, Some(src.clone()), attrs);
         // self.src_map.stmt_map.insert(src, id);
         // id

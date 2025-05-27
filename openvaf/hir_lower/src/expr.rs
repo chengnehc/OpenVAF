@@ -258,8 +258,7 @@ impl BodyLowerContext<'_, '_, '_> {
 
         // Lower statements in function body
         let body = fun.body(self.ctxt.db);
-        BodyLowerContext { body: body.borrow(), path: self.path, ctxt: self.ctxt }
-            .lower_entry_stmts();
+        BodyLowerContext { body: body.borrow(), path: &path, ctxt: self.ctxt }.lower_entry_stmts();
 
         // Write outputs back to original (including possibly required cast)
         for (arg, &expr) in args {
@@ -625,8 +624,8 @@ impl BodyLowerContext<'_, '_, '_> {
             BuiltIn::vt => {
                 // NIST2010 constants
                 // TODO: make KB and Q a database input
-                const KB: f64 = 1.3806488e-23;
-                const Q: f64 = 1.602176565e-19;
+                const KB: f64 = 1.380_648_8e-23;
+                const Q: f64 = 1.602_176_565e-19;
                 let fac = self.ctxt.fconst((KB / Q).into());
                 let temp = match args.first() {
                     Some(temp) => self.lower_expr(*temp),
@@ -794,7 +793,7 @@ impl BodyLowerContext<'_, '_, '_> {
         val
     }
 
-    fn lower_array(&mut self, _expr: ExprId, _args: &[ExprId]) -> Value {
+    fn lower_array(&self, _expr: ExprId, _args: &[ExprId]) -> Value {
         todo!("arrays")
     }
 }

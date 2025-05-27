@@ -286,10 +286,11 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let alpha = if kind.read_reactive() { LLVMGetParam(llfunc, 2) } else { inst };
 
             for entry in module.dae.jacobian.keys() {
-                let mut res = None;
-                if kind.read_resistive() {
-                    res = self.load_jacobian_entry::<false>(entry, inst, model, llbuilder);
-                }
+                let mut res = if kind.read_resistive() {
+                    self.load_jacobian_entry::<false>(entry, inst, model, llbuilder)
+                } else {
+                    None
+                };
                 if kind.read_reactive() {
                     if let Some(mut val) =
                         self.load_jacobian_entry::<true>(entry, inst, model, llbuilder)

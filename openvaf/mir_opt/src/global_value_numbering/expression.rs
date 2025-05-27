@@ -29,7 +29,7 @@ impl ExprResult {
     /// - optbarrier
     /// - branch or jump
     /// - callback with side-effects
-    pub(super) fn from_inst(inst: Inst, gvn: &mut GVN, func: &mut Function) -> Option<ExprResult> {
+    pub(super) fn from_inst(inst: Inst, gvn: &GVN, func: &mut Function) -> Option<ExprResult> {
         let (opcode, payload) = match func.dfg.insts[inst].clone() {
             InstructionData::Unary { opcode, mut arg } if opcode != Opcode::OptBarrier => {
                 arg = gvn.get_lead_val(arg, func);
@@ -100,7 +100,7 @@ impl ExprResult {
 
 impl GVN {
     fn simplify_ctx<'a>(
-        &'a mut self,
+        &'a self,
         func: &'a mut Function,
     ) -> SimplifyCtx<'a, f64, impl Fn(Value, &Function) -> Value + 'a> {
         SimplifyCtx::new(func, |val, func| self.class_map.get_lead_val(val, func))

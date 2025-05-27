@@ -18,12 +18,12 @@ use super::{
     NatureAttr, NatureRef, NatureRefKind, Net, Node, Param, Port, RootItem, Var,
 };
 
-fn is_input(direction: &Option<ast::Direction>) -> bool {
-    direction.as_ref().is_some_and(|it| it.input_token().is_some() || it.inout_token().is_some())
+fn is_input(direction: Option<&ast::Direction>) -> bool {
+    direction.is_some_and(|it| it.input_token().is_some() || it.inout_token().is_some())
 }
 
-fn is_output(direction: &Option<ast::Direction>) -> bool {
-    direction.as_ref().is_some_and(|it| it.output_token().is_some() || it.inout_token().is_some())
+fn is_output(direction: Option<&ast::Direction>) -> bool {
+    direction.is_some_and(|it| it.output_token().is_some() || it.inout_token().is_some())
 }
 
 pub(super) struct Context {
@@ -294,8 +294,8 @@ impl Context {
         let ast_id = self.ast_id_map.id_of(&decl);
         let discipline = decl.discipline().map(|it| it.as_name());
         let direction = decl.direction();
-        let is_input = is_input(&direction);
-        let is_output = is_output(&direction);
+        let is_input = is_input(direction.as_ref());
+        let is_output = is_output(direction.as_ref());
         let is_gnd = decl.net_type_token().is_some_and(|it| it.text() == kw::raw::ground);
 
         for (name_idx, name) in decl.names().enumerate() {
@@ -460,7 +460,7 @@ impl Context {
     }
 
     fn lower_func_arg(
-        &mut self,
+        &self,
         arg: ast::FunctionArg,
         args: &mut Arena<FunctionArg>,
         dst: &mut Vec<FunctionItem>,
@@ -473,8 +473,8 @@ impl Context {
                 name_idx,
                 name,
                 ast_id,
-                is_input: is_input(&arg.direction()),
-                is_output: is_output(&arg.direction()),
+                is_input: is_input(arg.direction().as_ref()),
+                is_output: is_output(arg.direction().as_ref()),
                 var_binds: Vec::new(),
             });
             dst.push(arg.into());

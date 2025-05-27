@@ -79,12 +79,11 @@ impl ModuleInfo {
                     if path.len() != name_len {
                         continue;
                     }
-                    let units = units.and_then(|attr| diagnose(attr.clone())).unwrap_or_default();
-                    let desc = desc.and_then(|attr| diagnose(attr.clone())).unwrap_or_default();
+                    let units = units.and_then(&mut diagnose).unwrap_or_default();
+                    let desc = desc.and_then(&mut diagnose).unwrap_or_default();
 
-                    let multiplicity = var
-                        .get_attr(db, &ast, "multiplicity")
-                        .and_then(|attr| diagnose(attr.clone()));
+                    let multiplicity =
+                        var.get_attr(db, &ast, "multiplicity").and_then(&mut diagnose);
                     let multiplicity = match multiplicity.as_deref() {
                         Some("multiply") => Multiplicity::Multiply,
                         Some("divide") => Multiplicity::Divide,
@@ -109,25 +108,24 @@ impl ModuleInfo {
                 ScopeDef::Parameter(param) => {
                     let units = param
                         .get_attr(db, &ast, "units")
-                        .and_then(|attr| diagnose(attr.clone()))
+                        .and_then(&mut diagnose)
                         .unwrap_or_default();
 
                     let desc = param
                         .get_attr(db, &ast, "desc")
-                        .and_then(|attr| diagnose(attr.clone()))
+                        .and_then(&mut diagnose)
                         .unwrap_or_default();
 
                     // "group" is not a standard attribute, but is used by VerilogAE
                     // for parameter extraction
                     let group = param
                         .get_attr(db, &ast, "group")
-                        .and_then(|attr| diagnose(attr.clone()))
+                        .and_then(&mut diagnose)
                         .unwrap_or_default();
 
                     // "type" is not a standard attribute, but is used by compact models
                     // comprehensively to distinguish between instance and model params.
-                    let type_ =
-                        param.get_attr(db, &ast, "type").and_then(|attr| diagnose(attr.clone()));
+                    let type_ = param.get_attr(db, &ast, "type").and_then(&mut diagnose);
                     let is_instance = match type_.as_deref() {
                         Some("instance") => true,
                         Some("model") | None => false,
@@ -145,9 +143,8 @@ impl ModuleInfo {
                         }
                     };
 
-                    let multiplicity = param
-                        .get_attr(db, &ast, "multiplicity")
-                        .and_then(|attr| diagnose(attr.clone()));
+                    let multiplicity =
+                        param.get_attr(db, &ast, "multiplicity").and_then(&mut diagnose);
                     let multiplicity = match multiplicity.as_deref() {
                         Some("multiply") => Multiplicity::Multiply,
                         Some("divide") => Multiplicity::Divide,

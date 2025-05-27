@@ -34,7 +34,7 @@ impl<T: Container> ScopedArena<T> {
         Self(UnsafeCell::new(Vec::with_capacity(8)))
     }
 
-    pub fn ensure(&self, contents: T) -> &T::Target {
+    pub fn ensure(&self, contents: &T) -> &T::Target {
         unsafe {
             // This is safe because the ARC/RC will remain alive as long as self is alive.
             // Therefore, for the lifetime of self, the backing storage can not be deallocated.
@@ -43,7 +43,7 @@ impl<T: Container> ScopedArena<T> {
             let sources = &mut *self.0.get();
             // check if the same data is already guarded by the arena
             if !sources.iter().any(|x| std::ptr::eq(x.as_ptr(), contents.as_ptr())) {
-                sources.push(T::clone(&contents))
+                sources.push(T::clone(contents))
             }
             &*contents.as_ptr()
         }

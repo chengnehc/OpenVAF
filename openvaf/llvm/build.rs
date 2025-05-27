@@ -49,16 +49,16 @@ fn fail(s: &str) -> ! {
 
 #[track_caller]
 pub fn output(cmd: &mut Command) -> String {
-    let output = cmd.stderr(Stdio::inherit()).output().unwrap_or_else(|err| {
-        fail(&format!("failed to execute command: {:?}\nerror: {}", cmd, err))
-    });
-    if !output.status.success() {
-        panic!(
-            "command did not execute successfully: {:?}\n\
-             expected success, got: {}",
-            cmd, output.status
-        );
-    }
+    let output = cmd
+        .stderr(Stdio::inherit())
+        .output()
+        .unwrap_or_else(|err| fail(&format!("failed to execute command: {cmd:?}\nerror: {err}")));
+    assert!(
+        output.status.success(),
+        "command did not execute successfully: {cmd:?}\n\
+         expected success, got: {}",
+        output.status
+    );
     String::from_utf8(output.stdout).unwrap()
 }
 
@@ -157,9 +157,11 @@ fn main() {
     components.retain(|c| OPTIONAL_COMPONENTS.contains(c) || REQUIRED_COMPONENTS.contains(c));
 
     for component in REQUIRED_COMPONENTS {
-        if !components.contains(component) {
-            panic!("require llvm component {} but wasn't found", component);
-        }
+        assert!(
+            components.contains(component),
+            "require llvm component {} but wasn't found",
+            component
+        );
     }
 
     for component in &components {
@@ -348,7 +350,7 @@ fn main() {
     let mut libdir = output(cmd.arg(llvm_link_arg).arg("--libdir"));
 
     if is_wine {
-        libdir = winepath(&libdir).to_str().expect("all paths are valid utf-8").to_owned();
+        winepath(&libdir).to_str().expect("all paths are valid utf-8").clone_into(&mut libdir)
     }
 
     println!("cargo:rustc-link-search=native={}", libdir);

@@ -210,7 +210,7 @@ where
         }
 
         while let Some(src_entry) = next_src(forest) {
-            match dst_path.advance_to_insert_pos(src_entry.0, &mut forest.nodes, comp) {
+            match dst_path.advance_to_insert_pos(src_entry.0, &forest.nodes, comp) {
                 Some(val) => *dst_path.value_mut(&mut forest.nodes) = f(Some(val), src_entry.1),
                 None => {
                     let val = f(None, src_entry.1);

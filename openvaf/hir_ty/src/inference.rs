@@ -547,7 +547,7 @@ impl Context<'_> {
         }
 
         // ddx needs some special treatment
-        if let BuiltIn::ddx = builtin {
+        if builtin == BuiltIn::ddx {
             self.infere_ddx(stmt, expr, args[0], args[1]);
             return (Some(Ty::Val(Type::Real)), true);
         }
@@ -916,10 +916,7 @@ impl Context<'_> {
         };
 
         let ty = iter.fold(ty, |ty, arg| {
-            let arg_ty = match infere_value_ty(self, *arg) {
-                Some(arg_ty) => arg_ty,
-                None => return ty,
-            };
+            let Some(arg_ty) = infere_value_ty(self, *arg) else { return ty };
             match ty.union(&arg_ty) {
                 Some(ty) => ty,
                 None => {
@@ -996,14 +993,11 @@ impl Context<'_> {
     }
 
     fn check_display_dynamic_arg(&mut self, fmt_expr: ExprId, arg: Option<ExprId>, off: TextSize) {
-        let arg = if let Some(arg) = arg {
-            arg
-        } else {
+        let Some(arg) = arg else {
             self.result.diagnostics.push(InferDiagnostic::MissingFmtArg {
                 fmt_lit: fmt_expr,
                 lit_range: TextRange::at(off, 1u32.into()),
             });
-
             return;
         };
         match self.result.expr_types[arg].to_value() {

@@ -244,7 +244,7 @@ impl Vfs {
     ///
     /// used by `va_std` and tests.
     pub fn add_virt_file(&mut self, name: &str, src: VfsEntry) -> FileId {
-        let path = VfsPath::new_virtual_path(name.to_owned());
+        let path = VfsPath::new_virtual_path(name);
         let file_id = self.ensure_file_id(path);
         self.set_file_contents(file_id, src);
         file_id
@@ -349,11 +349,8 @@ impl Vfs {
             .filter_map(|(file, path)| {
                 if let Some(path) = path.as_path() {
                     if let Some(rel_path) = path.strip_prefix(anchor) {
-                        let path = match rel_path.as_ref().to_str() {
-                            Some(path) => path,
-                            None => {
-                                return Some(Err("all paths must be valid utf8 for VFS export"))
-                            }
+                        let Some(path) = rel_path.as_ref().to_str() else {
+                            return Some(Err("all paths must be valid utf8 for VFS export"));
                         };
                         let mut path = if std::path::MAIN_SEPARATOR != '/' {
                             if path.contains('/') {

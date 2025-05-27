@@ -147,7 +147,7 @@ impl<'a> OsdiModule<'a> {
 /// Common callbacks shared among functions
 pub fn general_callbacks<'ll>(
     intern: &HirInterner,
-    builder: &mut mir_llvm::Builder<'_, '_, 'll>,
+    builder: &mir_llvm::Builder<'_, '_, 'll>,
     ret_flags: &'ll llvm::Value,
     handle: &'ll llvm::Value,
     simparam: &'ll llvm::Value,

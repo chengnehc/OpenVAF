@@ -28,13 +28,13 @@ impl<'a> Processor<'a> {
         sources: &'a dyn SourceProvider,
     ) -> Result<Self, FileReadError> {
         let text = sources.file_text(root_file)?;
-        let src = texts.ensure(text);
+        let src = texts.ensure(&text);
         let macros = sources
             .macro_flags(root_file)
             .iter()
             .map(|name| {
                 (
-                    texts.ensure(name.clone()),
+                    texts.ensure(name),
                     Macro { head: 0.into(), span: CtxSpan::dummy(), body: vec![], arg_cnt: 0 },
                 )
             })
@@ -170,7 +170,7 @@ impl<'a> Processor<'a> {
             }
         };
         let (src, file) = found.ok_or((FileReadError::Io(io::ErrorKind::NotFound), None))?;
-        let src = self.texts.ensure(src);
+        let src = self.texts.ensure(&src);
         let workdir = self.sources.file_path(file).parent().unwrap();
 
         let ctx = self
@@ -264,7 +264,7 @@ impl<'a> Processor<'a> {
         }
     }
 
-    pub(crate) fn is_macro_defined(&mut self, name: &'a str) -> bool {
+    pub(crate) fn is_macro_defined(&self, name: &'a str) -> bool {
         self.macros.contains_key(name)
     }
 }

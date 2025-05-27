@@ -137,7 +137,7 @@ fn body(file: &Path) -> Result {
         for (_, &def) in def_map[*scope].decls() {
             if let ScopeItem::FunctionId(fun) = def {
                 actual.push_str(&db.body(fun.into()).dump(&db)?);
-                actual.push_str("\n");
+                actual.push('\n');
             }
         }
     }

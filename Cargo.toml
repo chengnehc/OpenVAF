@@ -10,6 +10,9 @@ members = [
 ]
 exclude = ["melange/examples", "verilogae/tests", "openvaf/test_data"]
 
+# [workspace.package]
+# rust-version = "1.85.1"
+
 [profile.release]
 lto = "off"
 incremental = true

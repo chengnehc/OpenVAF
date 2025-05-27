@@ -63,7 +63,7 @@ impl<'a> Context<'a> {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum OptimizationStage {
     Initial,
     PostDerivative,

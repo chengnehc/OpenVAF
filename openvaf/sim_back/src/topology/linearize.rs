@@ -190,7 +190,7 @@ impl super::Builder<'_> {
                         analog_operators.push((inst, eval_ty));
                     }
                 }
-                _ => continue,
+                _ => (),
             }
         }
         analog_operators

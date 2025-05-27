@@ -97,7 +97,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         let ret_flags = unsafe { builder.alloca(cx.ty_int()) };
         unsafe { builder.store(ret_flags, cx.const_int(0)) };
 
-        builder.callbacks = general_callbacks(intern, &mut builder, ret_flags, handle, simparam);
+        builder.callbacks = general_callbacks(intern, &builder, ret_flags, handle, simparam);
         for (call_id, call) in intern.callbacks.iter_enumerated() {
             if let CallBackKind::ParamInfo(ParamInfoKind::Invalid, param) = call {
                 if !self.module.info.params[param].is_instance {
@@ -279,7 +279,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         }
 
         let invalid_param_err = Self::invalid_param_err(cx);
-        builder.callbacks = general_callbacks(intern, &mut builder, ret_flag, handle, simparam);
+        builder.callbacks = general_callbacks(intern, &builder, ret_flag, handle, simparam);
         for (call_id, call) in intern.callbacks.iter_enumerated() {
             let cb = match call {
                 CallBackKind::ParamInfo(ParamInfoKind::Invalid, param) => {

@@ -130,29 +130,20 @@ impl<F: Forest> Path<F> {
     pub fn advance_to_insert_pos(
         &mut self,
         key: F::Key,
-        pool: &mut NodePool<F>,
+        pool: &NodePool<F>,
         comp: &dyn Comparator<F::Key>,
     ) -> Option<F::Value> {
         loop {
             match self.leaf_pos() {
-                None => {
-                    return None;
-                }
-
+                None => return None,
                 Some((node, entry)) => {
                     let (keys, vals) = pool[node].unwrap_leaf();
                     if entry + 1 < keys.len() {
                         self.entry[self.size - 1] += 1;
                         match comp.cmp(keys[entry + 1], key) {
-                            Ordering::Less => {
-                                continue;
-                            }
-                            Ordering::Equal => {
-                                return Some(vals[entry + 1]);
-                            }
-                            Ordering::Greater => {
-                                return None;
-                            }
+                            Ordering::Less => continue,
+                            Ordering::Equal => return Some(vals[entry + 1]),
+                            Ordering::Greater => return None,
                         }
                     }
                 }
@@ -499,7 +490,7 @@ impl<F: Forest> Path<F> {
     }
 
     /// Update the critical key after removing the front entry of the leaf node.
-    fn update_crit_key(&mut self, pool: &mut NodePool<F>) {
+    fn update_crit_key(&self, pool: &mut NodePool<F>) {
         // Find the inner level containing the critical key for the current leaf node.
         let crit_level = match self.left_sibling_branch_level(self.size - 1) {
             None => return,
@@ -730,7 +721,7 @@ impl<F: Forest> Path<F> {
 
     /// Normalize the path position such that it is either pointing at a real entry or `size=0`
     /// indicating "off-the-end".
-    pub fn normalize(&mut self, pool: &mut NodePool<F>) {
+    pub fn normalize(&mut self, pool: &NodePool<F>) {
         if let Some((leaf, entry)) = self.leaf_pos() {
             if entry >= pool[leaf].entries() {
                 let leaf_level = self.size - 1;

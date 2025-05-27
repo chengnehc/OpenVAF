@@ -68,7 +68,7 @@ impl<'t> LLVMBackend<'t> {
         let mut features = vec![];
 
         if target_cpu == "generic" {
-            target_cpu = target.options.cpu.clone();
+            target_cpu.clone_from(&target.options.cpu);
         }
         if target_cpu == "native" {
             let ptr = unsafe { LLVMGetHostCPUName() };

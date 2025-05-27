@@ -16,7 +16,6 @@ fn check_with_phi_merge(raw: &str, expect: Expect) {
     expect.assert_eq(&func.to_debug_string())
 }
 
-#[allow(unused)]
 fn check_no_phi_merge(raw: &str, expect: Expect) {
     let (mut func, _) = parse_function(raw).unwrap();
     let mut cfg = ControlFlowGraph::with_function(&func);
