@@ -1,44 +1,25 @@
 use std::f64::consts;
 use std::path::Path;
+use stdx::{ignore_dev_tests, openvaf_test_data, project_root};
 
 use camino::Utf8Path;
 use expect_test::expect_file;
-use float_cmp::assert_approx_eq;
 use mini_harness::{harness, Result};
-use stdx::{ignore_dev_tests, openvaf_test_data, project_root};
 use target::spec::Target;
 
 use openvaf::{CompilationDestination, CompilationTermination, OptLevel};
 
 mod load;
 mod mock_sim;
-use self::load::{load_osdi_lib, EvalFlags, OsdiDescriptor};
-use self::mock_sim::{MockSimulation, ALPHA};
+use load::{load_osdi_lib, EvalFlags, OsdiDescriptor};
+use mock_sim::{MockSimulation, ALPHA};
 
-fn compile_and_load(root_file: &Utf8Path) -> &'static OsdiDescriptor {
-    let openvaf_opts = openvaf::Opts {
-        defines: Vec::new(),
-        codegen_opts: Vec::new(),
-        lints: Vec::new(),
-        input: root_file.to_path_buf(),
-        output: CompilationDestination::Path { lib_file: root_file.with_extension("osdi") },
-        include: Vec::new(),
-        opt_lvl: OptLevel::Aggressive,
-        target: Target::host_target().unwrap(),
-        target_cpu: "native".to_owned(),
-        dry_run: false,
-    };
+fn integration_test(dir: &Path) -> Result {
+    let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
+    let main_file = dir.join(format!("{name}.va"));
+    test_descriptor(&main_file)?;
 
-    let res = openvaf::compile(&openvaf_opts).unwrap();
-    let lib_file = match res {
-        CompilationTermination::Compiled { lib_file } => lib_file,
-        CompilationTermination::FatalDiagnostic => {
-            panic!("openvaf: compilation of {root_file} failed");
-        }
-    };
-    let libs = unsafe { load_osdi_lib(&lib_file).unwrap() };
-    assert_eq!(libs.len(), 1);
-    &libs[0]
+    Ok(())
 }
 
 // fn integration_test(dir: &str) -> Result {
@@ -50,27 +31,48 @@ fn compile_and_load(root_file: &Utf8Path) -> &'static OsdiDescriptor {
 //     Ok(())
 // }
 
-fn integration_test(dir: &Path) -> Result {
-    let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
-    let main_file = dir.join(format!("{name}.va"));
-    test_descriptor(&main_file)?;
-
-    Ok(())
-}
-
 fn test_descriptor(main_file: &Path) -> Result<&'static OsdiDescriptor> {
     let main_file: &Utf8Path = main_file.try_into().unwrap();
     let name = main_file.file_stem().unwrap();
-    let desc = compile_and_load(main_file);
-    let expect = format!("{desc:?}");
     let test_dir = openvaf_test_data("osdi");
-    expect_file![test_dir.join(format!("{name}.snap"))].assert_eq(&expect);
+
+    let desc = compile_and_load(main_file);
+    let actual = format!("{desc:?}");
+    expect_file![test_dir.join(format!("{name}.snap"))].assert_eq(&actual);
+
     let default_model = desc.new_model();
     default_model.process_params()?;
     let mut instance = default_model.new_instance();
     instance.process_params(&default_model, desc.num_terminals, 300.0)?;
 
     Ok(desc)
+}
+
+fn compile_and_load(root_file: &Utf8Path) -> &'static OsdiDescriptor {
+    let opts = openvaf::Opts {
+        input: root_file.to_path_buf(),
+        output: CompilationDestination::Path { lib_file: root_file.with_extension("osdi") },
+        defines: Vec::new(),
+        include: Vec::new(),
+        lints: Vec::new(),
+        dry_run: false,
+        codegen_opts: Vec::new(),
+        target: Target::host_target().unwrap(),
+        target_cpu: "native".to_owned(),
+        opt_lvl: OptLevel::Aggressive,
+    };
+
+    let res = openvaf::compile(&opts).unwrap();
+    let lib_file = match res {
+        CompilationTermination::Compiled { lib_file } => lib_file,
+        CompilationTermination::FatalDiagnostic => {
+            panic!("openvaf: compilation of {root_file} failed");
+        }
+    };
+    let libs = unsafe { load_osdi_lib(&lib_file).unwrap() };
+    assert_eq!(libs.len(), 1);
+
+    &libs[0]
 }
 
 macro_rules! assert_approx_eq {

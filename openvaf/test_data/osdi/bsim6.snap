@@ -1787,29 +1787,29 @@ units = "", desc = "Body-bias coefficient for SCE effect for Edge FET", flags = 
 
 5 terminals
 node "d" units = "V", runits = ""
-residual 3376 4294967295 4294967295 4294967295
+residual 3440 4294967295 4294967295 4294967295
 node "g" units = "V", runits = ""
-residual 3384 4294967295 4294967295 4294967295
+residual 3448 4294967295 4294967295 4294967295
 node "s" units = "V", runits = ""
-residual 3392 4294967295 4294967295 4294967295
+residual 3456 4294967295 4294967295 4294967295
 node "b" units = "V", runits = ""
-residual 3400 4294967295 4294967295 4294967295
+residual 3464 4294967295 4294967295 4294967295
 node "t" units = "K", runits = ""
-residual 3408 3416 4294967295 4294967295
-node "di" units = "V", runits = ""
-residual 3424 3432 4294967295 4294967295
-node "si" units = "V", runits = ""
-residual 3440 3448 4294967295 4294967295
-node "gi" units = "V", runits = ""
-residual 3456 3464 4294967295 4294967295
-node "gm" units = "V", runits = ""
 residual 3472 3480 4294967295 4294967295
-node "bi" units = "V", runits = ""
+node "di" units = "V", runits = ""
 residual 3488 3496 4294967295 4294967295
-node "sbulk" units = "V", runits = ""
+node "si" units = "V", runits = ""
 residual 3504 3512 4294967295 4294967295
-node "dbulk" units = "V", runits = ""
+node "gi" units = "V", runits = ""
 residual 3520 3528 4294967295 4294967295
+node "gm" units = "V", runits = ""
+residual 3536 3544 4294967295 4294967295
+node "bi" units = "V", runits = ""
+residual 3552 3560 4294967295 4294967295
+node "sbulk" units = "V", runits = ""
+residual 3568 3576 4294967295 4294967295
+node "dbulk" units = "V", runits = ""
+residual 3584 3592 4294967295 4294967295
 node "N1" units = "V", runits = ""
 residual 4294967295 4294967295 4294967295 4294967295
 node "N2" units = "V", runits = ""
@@ -1921,5 +1921,5 @@ noise "rbdb" (b, dbulk)
 noise "rbpd" (bi, dbulk)
 0 states
 has bound_step false
-instance size 4480
+instance size 4544
 model size 7176

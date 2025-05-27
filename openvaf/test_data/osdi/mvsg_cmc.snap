@@ -511,55 +511,55 @@ units = "F", desc = "Minimum capacitance", flags = ParameterFlags(0x0)
 
 4 terminals
 node "d" units = "V", runits = ""
-residual 3560 3568 4294967295 4294967295
+residual 3592 3600 4294967295 4294967295
 node "g" units = "V", runits = ""
-residual 3576 4294967295 4294967295 4294967295
+residual 3608 4294967295 4294967295 4294967295
 node "s" units = "V", runits = ""
-residual 3584 3592 4294967295 4294967295
+residual 3616 3624 4294967295 4294967295
 node "b" units = "V", runits = ""
-residual 4294967295 3600 4294967295 4294967295
+residual 3632 3640 4294967295 4294967295
 node "di" units = "V", runits = ""
-residual 3608 3616 4294967295 4294967295
+residual 3648 3656 4294967295 4294967295
 node "gi1" units = "V", runits = ""
-residual 3624 3632 4294967295 4294967295
+residual 3664 3672 4294967295 4294967295
 node "gi2" units = "V", runits = ""
-residual 3640 3648 4294967295 4294967295
+residual 3680 3688 4294967295 4294967295
 node "si" units = "V", runits = ""
-residual 3656 3664 4294967295 4294967295
+residual 3696 3704 4294967295 4294967295
 node "fps1" units = "V", runits = ""
-residual 3672 3680 4294967295 4294967295
+residual 3712 3720 4294967295 4294967295
 node "fps2" units = "V", runits = ""
-residual 3688 3696 4294967295 4294967295
+residual 3728 3736 4294967295 4294967295
 node "fps3" units = "V", runits = ""
-residual 3704 3712 4294967295 4294967295
+residual 3744 3752 4294967295 4294967295
 node "fps4" units = "V", runits = ""
-residual 3720 3728 4294967295 4294967295
+residual 3760 3768 4294967295 4294967295
 node "fp1" units = "V", runits = ""
-residual 3736 3744 4294967295 4294967295
+residual 3776 3784 4294967295 4294967295
 node "fp2" units = "V", runits = ""
-residual 3752 3760 4294967295 4294967295
+residual 3792 3800 4294967295 4294967295
 node "fp3" units = "V", runits = ""
-residual 3768 3776 4294967295 4294967295
+residual 3808 3816 4294967295 4294967295
 node "fp4" units = "V", runits = ""
-residual 3784 3792 4294967295 4294967295
+residual 3824 3832 4294967295 4294967295
 node "drc" units = "V", runits = ""
-residual 3800 4294967295 4294967295 4294967295
+residual 3840 4294967295 4294967295 4294967295
 node "src" units = "V", runits = ""
-residual 3808 4294967295 4294967295 4294967295
+residual 3848 4294967295 4294967295 4294967295
 node "tr" units = "V", runits = ""
-residual 3816 3824 4294967295 4294967295
+residual 3856 3864 4294967295 4294967295
 node "tr1" units = "V", runits = ""
-residual 3832 3840 4294967295 4294967295
+residual 3872 3880 4294967295 4294967295
 node "xt1" units = "V", runits = ""
-residual 3848 3856 4294967295 4294967295
+residual 3888 3896 4294967295 4294967295
 node "xt2" units = "V", runits = ""
-residual 3864 3872 4294967295 4294967295
+residual 3904 3912 4294967295 4294967295
 node "dt" units = "K", runits = ""
-residual 3880 3888 4294967295 4294967295
+residual 3920 3928 4294967295 4294967295
 node(flow) "flow(d,drc)" units = "A", runits = ""
-residual 3896 4294967295 4294967295 4294967295
+residual 3936 4294967295 4294967295 4294967295
 node(flow) "flow(src,s)" units = "A", runits = ""
-residual 3904 4294967295 4294967295 4294967295
+residual 3944 4294967295 4294967295 4294967295
 jacobian (d, d) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1528
 jacobian (d, s) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1536
 jacobian (d, b) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_CONST) react_ptr = 1544
@@ -787,5 +787,5 @@ noise "rcd" (flow(d,drc), gnd)
 noise "rcs" (flow(src,s), gnd)
 0 states
 has bound_step false
-instance size 5840
+instance size 5880
 model size 2072

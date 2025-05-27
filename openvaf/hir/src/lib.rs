@@ -97,19 +97,21 @@ impl CompilationUnit {
     pub fn collect_diagnostics(self, db: &CompilationDB, sink: &mut impl DiagnosticSink) {
         diagnostics::collect(db, self.root_file, sink)
     }
-    pub fn test_diagnostics(&self, db: &CompilationDB) -> String {
+    pub fn test_diagnostics(&self, db: &CompilationDB) -> (bool, String) {
         use basedb::diagnostics::sink::Buffer;
         use basedb::diagnostics::ConsoleSink;
 
+        let fatal;
         let mut buf = Buffer::no_color();
         {
             let mut sink = ConsoleSink::buffer(db, &mut buf);
             sink.anonymize_paths();
             self.collect_diagnostics(db, &mut sink);
+            fatal = sink.is_fatal();
         }
         let data = buf.into_inner();
 
-        String::from_utf8(data).unwrap()
+        (fatal, String::from_utf8(data).unwrap())
     }
 }
 

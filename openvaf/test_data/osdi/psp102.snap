@@ -637,27 +637,27 @@ units = "", desc = "", flags = ParameterFlags(0x0)
 
 4 terminals
 node "D" units = "V", runits = ""
-residual 5088 5096 4294967295 4294967295
+residual 5096 5104 4294967295 4294967295
 node "G" units = "V", runits = ""
-residual 5104 4294967295 4294967295 4294967295
+residual 5112 4294967295 4294967295 4294967295
 node "S" units = "V", runits = ""
-residual 5112 5120 4294967295 4294967295
+residual 5120 5128 4294967295 4294967295
 node "B" units = "V", runits = ""
-residual 5128 4294967295 4294967295 4294967295
+residual 5136 4294967295 4294967295 4294967295
 node "NOI" units = "V", runits = ""
-residual 5136 5144 4294967295 4294967295
+residual 5144 5152 4294967295 4294967295
 node "NOI2" units = "V", runits = ""
-residual 5152 4294967295 4294967295 4294967295
+residual 5160 4294967295 4294967295 4294967295
 node "GP" units = "V", runits = ""
-residual 5160 5168 4294967295 4294967295
+residual 5168 5176 4294967295 4294967295
 node "BP" units = "V", runits = ""
-residual 5176 5184 4294967295 4294967295
+residual 5184 5192 4294967295 4294967295
 node "BI" units = "V", runits = ""
-residual 5192 4294967295 4294967295 4294967295
+residual 5200 4294967295 4294967295 4294967295
 node "BS" units = "V", runits = ""
-residual 5200 5208 4294967295 4294967295
+residual 5208 5216 4294967295 4294967295
 node "BD" units = "V", runits = ""
-residual 5216 5224 4294967295 4294967295
+residual 5224 5232 4294967295 4294967295
 jacobian (D, D) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 408
 jacobian (D, S) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 416
 jacobian (D, NOI) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_CONST) react_ptr = 424
@@ -727,5 +727,5 @@ noise "unnamed4" (B, BI)
 noise "igig" (NOI2, gnd)
 0 states
 has bound_step false
-instance size 5760
+instance size 5768
 model size 2584

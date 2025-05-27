@@ -275,31 +275,31 @@ units = "", desc = "", flags = ParameterFlags(PARA_TY_INT)
 
 5 terminals
 node "c" units = "V", runits = ""
-residual 2376 2384 4294967295 4294967295
-node "b" units = "V", runits = ""
-residual 2392 2400 4294967295 4294967295
-node "e" units = "V", runits = ""
 residual 2408 2416 4294967295 4294967295
-node "s" units = "V", runits = ""
+node "b" units = "V", runits = ""
 residual 2424 2432 4294967295 4294967295
-node "tnode" units = "V", runits = ""
+node "e" units = "V", runits = ""
 residual 2440 2448 4294967295 4294967295
-node "ci" units = "V", runits = ""
+node "s" units = "V", runits = ""
 residual 2456 2464 4294967295 4294967295
-node "ei" units = "V", runits = ""
+node "tnode" units = "V", runits = ""
 residual 2472 2480 4294967295 4294967295
-node "bp" units = "V", runits = ""
+node "ci" units = "V", runits = ""
 residual 2488 2496 4294967295 4294967295
-node "bi" units = "V", runits = ""
+node "ei" units = "V", runits = ""
 residual 2504 2512 4294967295 4294967295
-node "si" units = "V", runits = ""
+node "bp" units = "V", runits = ""
 residual 2520 2528 4294967295 4294967295
-node "xf1" units = "V", runits = ""
+node "bi" units = "V", runits = ""
 residual 2536 2544 4294967295 4294967295
-node "xf2" units = "V", runits = ""
+node "si" units = "V", runits = ""
 residual 2552 2560 4294967295 4294967295
-node "xf" units = "V", runits = ""
+node "xf1" units = "V", runits = ""
 residual 2568 2576 4294967295 4294967295
+node "xf2" units = "V", runits = ""
+residual 2584 2592 4294967295 4294967295
+node "xf" units = "V", runits = ""
+residual 2600 2608 4294967295 4294967295
 node "n1" units = "V", runits = ""
 residual 4294967295 4294967295 4294967295 4294967295
 node "n2" units = "V", runits = ""
@@ -429,5 +429,5 @@ noise "ibei" (n1, gnd)
 noise "it" (n2, gnd)
 0 states
 has bound_step false
-instance size 3560
+instance size 3592
 model size 1112

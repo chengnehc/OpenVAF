@@ -401,37 +401,37 @@ units = "S", desc = " Convergence Parameter", flags = ParameterFlags(0x0)
 
 5 terminals
 node "d" units = "V", runits = ""
-residual 2792 2800 4294967295 4294967295
-node "g" units = "V", runits = ""
-residual 2808 2816 4294967295 4294967295
-node "s" units = "V", runits = ""
 residual 2824 2832 4294967295 4294967295
+node "g" units = "V", runits = ""
+residual 2840 2848 4294967295 4294967295
+node "s" units = "V", runits = ""
+residual 2856 2864 4294967295 4294967295
 node "b" units = "V", runits = ""
-residual 4294967295 2840 4294967295 4294967295
+residual 4294967295 2872 4294967295 4294967295
 node "dt" units = "K", runits = ""
-residual 2848 2856 4294967295 4294967295
-node "trap1" units = "V", runits = ""
-residual 2864 2872 4294967295 4294967295
-node "trap2" units = "V", runits = ""
 residual 2880 2888 4294967295 4294967295
-node "di" units = "V", runits = ""
+node "trap1" units = "V", runits = ""
 residual 2896 2904 4294967295 4294967295
-node "si" units = "V", runits = ""
+node "trap2" units = "V", runits = ""
 residual 2912 2920 4294967295 4294967295
-node "gi" units = "V", runits = ""
+node "di" units = "V", runits = ""
 residual 2928 2936 4294967295 4294967295
-node "fp1" units = "V", runits = ""
+node "si" units = "V", runits = ""
 residual 2944 2952 4294967295 4294967295
-node "fp2" units = "V", runits = ""
+node "gi" units = "V", runits = ""
 residual 2960 2968 4294967295 4294967295
-node "fp3" units = "V", runits = ""
+node "fp1" units = "V", runits = ""
 residual 2976 2984 4294967295 4294967295
-node "fp4" units = "V", runits = ""
+node "fp2" units = "V", runits = ""
 residual 2992 3000 4294967295 4294967295
-node(flow) "flow(di,si)" units = "A", runits = ""
+node "fp3" units = "V", runits = ""
 residual 3008 3016 4294967295 4294967295
-node "implicit_equation_0" units = "", runits = ""
+node "fp4" units = "V", runits = ""
 residual 3024 3032 4294967295 4294967295
+node(flow) "flow(di,si)" units = "A", runits = ""
+residual 3040 3048 4294967295 4294967295
+node "implicit_equation_0" units = "", runits = ""
+residual 3056 3064 4294967295 4294967295
 jacobian (d, d) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1144
 jacobian (d, g) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_CONST) react_ptr = 1152
 jacobian (d, s) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_CONST) react_ptr = 1160
@@ -565,14 +565,14 @@ jacobian (fp4, fp1) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_C
 jacobian (fp4, fp2) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_CONST) react_ptr = 1928
 jacobian (fp4, fp3) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1936
 jacobian (fp4, fp4) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1944
-jacobian (flow(di,si), dt) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
-jacobian (flow(di,si), trap1) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
-jacobian (flow(di,si), trap2) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
-jacobian (flow(di,si), di) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1952
-jacobian (flow(di,si), si) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1960
-jacobian (flow(di,si), gi) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1968
+jacobian (flow(di,si), dt) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1952
+jacobian (flow(di,si), trap1) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1960
+jacobian (flow(di,si), trap2) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1968
+jacobian (flow(di,si), di) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1976
+jacobian (flow(di,si), si) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1984
+jacobian (flow(di,si), gi) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 1992
 jacobian (flow(di,si), flow(di,si)) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_RESIST_CONST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
-jacobian (implicit_equation_0, trap1) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_CONST) react_ptr = 1976
+jacobian (implicit_equation_0, trap1) JacobianFlags(JACOBIAN_ENTRY_REACT | JACOBIAN_ENTRY_RESIST_CONST) react_ptr = 2000
 jacobian (implicit_equation_0, implicit_equation_0) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_RESIST_CONST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
 collapsible (implicit_equation_0, gnd)
 collapsible (dt, gnd)
@@ -593,5 +593,5 @@ noise "thermal" (d, fp4)
 noise "thermal" (si, s)
 0 states
 has bound_step false
-instance size 4512
+instance size 4568
 model size 1608

@@ -49,6 +49,10 @@ impl<'a> ConsoleSink<'a> {
         ConsoleSink::new_with(db, Box::new(buffer))
     }
 
+    pub fn is_fatal(&self) -> bool {
+        self.error_cnt != 0
+    }
+
     pub fn summary(&mut self, target: &impl Display) -> bool {
         let Self { warning_cnt, error_cnt, .. } = *self;
 

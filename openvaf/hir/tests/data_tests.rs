@@ -12,9 +12,8 @@ fn integration(dir: &Path) -> Result {
     let root_file = dir.join(name).with_extension("va").canonicalize()?;
     let db = CompilationDB::new_from_fs(AbsPathBuf::assert(root_file), &[], &[], &[])?;
 
-    let actual = db.compilation_unit().test_diagnostics(&db);
+    let (_, actual) = db.compilation_unit().test_diagnostics(&db);
 
-    //std::fs::write(dir.join("frontend.log"), actual)?;
     expect_file![dir.join("frontend.log")].assert_eq(&actual);
 
     Ok(())
@@ -24,7 +23,7 @@ fn ui(file: &Path) -> Result {
     let path = AbsPathBuf::assert(file.canonicalize()?);
     let db = CompilationDB::new_from_fs(path, &[], &[], &[])?;
 
-    let actual = db.compilation_unit().test_diagnostics(&db);
+    let (_, actual) = db.compilation_unit().test_diagnostics(&db);
 
     expect_file![file.with_extension("log")].assert_eq(&actual);
 

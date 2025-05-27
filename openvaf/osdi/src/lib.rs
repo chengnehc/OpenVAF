@@ -220,7 +220,7 @@ pub fn compile<const EMIT: bool>(
             llvm::LLVMSetDLLStorageClass(osdi_log, llvm::DLLStorageClass::Export);
         }
 
-        std::fs::write(dst.with_extension("ll"), llmod.print().to_string()).ok();
+        // std::fs::write(dst.with_extension("ll"), llmod.print().to_string()).ok();
         debug_assert!(llmod.verify_and_print());
 
         if EMIT {

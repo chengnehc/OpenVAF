@@ -29,13 +29,13 @@ units = "Ohm", desc = "minr is the value below which the simulator expects elimi
 
 3 terminals
 node "A" units = "V", runits = ""
-residual 248 256 4294967295 4294967295
+residual 256 264 4294967295 4294967295
 node "C" units = "V", runits = ""
-residual 264 4294967295 4294967295 4294967295
-node "dT" units = "K", runits = ""
 residual 272 4294967295 4294967295 4294967295
+node "dT" units = "K", runits = ""
+residual 280 4294967295 4294967295 4294967295
 node "CI" units = "V", runits = ""
-residual 280 288 4294967295 4294967295
+residual 288 296 4294967295 4294967295
 jacobian (A, A) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 120
 jacobian (A, dT) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 128
 jacobian (A, CI) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT) react_ptr = 136
@@ -56,5 +56,5 @@ noise "unnamed0" (A, CI)
 noise "unnamed1" (CI, C)
 0 states
 has bound_step false
-instance size 456
+instance size 448
 model size 120

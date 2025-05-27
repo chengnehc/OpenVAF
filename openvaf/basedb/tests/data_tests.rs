@@ -75,7 +75,7 @@ fn integration(dir: &Path) -> Result {
     let db = TestDataBase::new_from_fs(&main_file);
     let (_, diagnostics) = db.parse_and_check();
 
-    expect_file![dir.join("parser_diagnostics.log")].assert_eq(&diagnostics);
+    expect_file![dir.join("syntax_diagnostics.log")].assert_eq(&diagnostics);
 
     Ok(())
 }

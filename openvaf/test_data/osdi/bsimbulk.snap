@@ -2095,31 +2095,31 @@ units = "V", desc = "Smoothing parameter", flags = ParameterFlags(0x0)
 
 5 terminals
 node "d" units = "V", runits = ""
-residual 4080 4294967295 4294967295 4294967295
+residual 4128 4294967295 4294967295 4294967295
 node "g" units = "V", runits = ""
-residual 4088 4294967295 4294967295 4294967295
+residual 4136 4294967295 4294967295 4294967295
 node "s" units = "V", runits = ""
-residual 4096 4294967295 4294967295 4294967295
+residual 4144 4294967295 4294967295 4294967295
 node "b" units = "V", runits = ""
-residual 4104 4294967295 4294967295 4294967295
+residual 4152 4294967295 4294967295 4294967295
 node "t" units = "K", runits = ""
-residual 4112 4120 4294967295 4294967295
-node "di" units = "V", runits = ""
-residual 4128 4136 4294967295 4294967295
-node "si" units = "V", runits = ""
-residual 4144 4152 4294967295 4294967295
-node "gi" units = "V", runits = ""
 residual 4160 4168 4294967295 4294967295
-node "gm" units = "V", runits = ""
+node "di" units = "V", runits = ""
 residual 4176 4184 4294967295 4294967295
-node "bi" units = "V", runits = ""
+node "si" units = "V", runits = ""
 residual 4192 4200 4294967295 4294967295
-node "sbulk" units = "V", runits = ""
+node "gi" units = "V", runits = ""
 residual 4208 4216 4294967295 4294967295
-node "dbulk" units = "V", runits = ""
+node "gm" units = "V", runits = ""
 residual 4224 4232 4294967295 4294967295
-node "N1" units = "V", runits = ""
+node "bi" units = "V", runits = ""
 residual 4240 4248 4294967295 4294967295
+node "sbulk" units = "V", runits = ""
+residual 4256 4264 4294967295 4294967295
+node "dbulk" units = "V", runits = ""
+residual 4272 4280 4294967295 4294967295
+node "N1" units = "V", runits = ""
+residual 4288 4296 4294967295 4294967295
 node "N2" units = "V", runits = ""
 residual 4294967295 4294967295 4294967295 4294967295
 jacobian (d, d) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
@@ -2244,5 +2244,5 @@ noise "rbdb" (b, dbulk)
 noise "rbpd" (bi, dbulk)
 0 states
 has bound_step false
-instance size 5336
+instance size 5384
 model size 8424
