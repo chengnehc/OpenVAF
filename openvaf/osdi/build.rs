@@ -3,7 +3,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::path::Path;
 
-use target::spec::get_targets;
+use target::spec::supported_targets;
 use xshell::{cmd, Shell};
 
 /// Reads an environment variable and adds it to dependencies.
@@ -38,7 +38,7 @@ fn main() {
         let version_str = name.strip_prefix("osdi_").unwrap();
 
         let out_dir = env::var_os("OUT_DIR").unwrap();
-        for target in get_targets() {
+        for target in supported_targets() {
             let target_name = &target.llvm_target;
             let out_file =
                 Path::new(&out_dir).join(format!("stdlib_{version_str}_{target_name}.bc"));

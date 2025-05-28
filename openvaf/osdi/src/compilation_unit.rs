@@ -1,13 +1,13 @@
-use hir::{CompilationDB, ModuleInfo};
+use hir::{CompilationDB, ModuleInfo, ParamSysFun};
 use hir_lower::fmt::{DisplayKind, FmtArg, FmtArgKind};
-use hir_lower::{CallBackKind, HirInterner};
+use hir_lower::{CallBackKind, HirInterner, ParamKind};
 use lasso::Rodeo;
 use llvm::{
     IntPredicate, LLVMAddIncoming, LLVMAppendBasicBlockInContext, LLVMBuildAdd,
     LLVMBuildArrayMalloc, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildFMul,
     LLVMBuildFree, LLVMBuildICmp, LLVMBuildInBoundsGEP2, LLVMBuildLoad2, LLVMBuildPhi,
-    LLVMGetParam, LLVMIsDeclaration, LLVMPositionBuilderAtEnd, LLVMSetLinkage,
-    LLVMSetUnnamedAddress, Linkage, UnnamedAddr, UNNAMED,
+    LLVMGetParam, LLVMIsDeclaration, LLVMPositionBuilderAtEnd, LLVMSetDLLStorageClass,
+    LLVMSetLinkage, LLVMSetUnnamedAddress, Linkage, UnnamedAddr, UNNAMED,
 };
 use mir::{FuncRef, Function};
 use mir_llvm::{CallbackFun, CodegenCx, LLVMBackend, ModuleLlvm};
@@ -23,7 +23,7 @@ use crate::metadata::osdi_0_3::{
     stdlib_bitcode, OsdiTys, LOG_FMT_ERR, LOG_LVL_DEBUG, LOG_LVL_DISPLAY, LOG_LVL_ERR,
     LOG_LVL_FATAL, LOG_LVL_INFO, LOG_LVL_WARN,
 };
-use crate::metadata::OsdiLimFunction;
+use crate::metadata::{sim_unknown_info, OsdiLimFunction};
 use crate::model_data::OsdiModelData;
 use crate::{lltype, OsdiLimId};
 
@@ -71,31 +71,26 @@ impl<'a, 'b, 'll> OsdiCompilationUnit<'a, 'b, 'll> {
         module: &'a OsdiModule<'b>,
         cx: &'a CodegenCx<'b, 'll>,
         tys: &'a OsdiTys<'ll>,
-        eval: bool,
+        is_eval: bool,
     ) -> OsdiCompilationUnit<'a, 'b, 'll> {
         let inst_data = OsdiInstanceData::new(db, module, cx);
         let model_data = OsdiModelData::new(db, module, cx, &inst_data);
         let lim_dispatch_table =
-            if eval && !module.lim_table.is_empty() && !module.intern.lim_state.is_empty() {
+            if is_eval && !module.lim_table.is_empty() && !module.intern.lim_state.is_empty() {
                 let ty = cx.ty_array(tys.osdi_lim_function, module.lim_table.len() as u32);
                 let ptr = cx
                     .define_global("OSDI_LIM_TABLE", ty)
                     .unwrap_or_else(|| unreachable!("symbol OSDI_LIM_TABLE already defined"));
                 unsafe {
-                    llvm::LLVMSetLinkage(ptr, llvm::Linkage::ExternalLinkage);
-                    llvm::LLVMSetUnnamedAddress(ptr, llvm::UnnamedAddr::No);
-                    llvm::LLVMSetDLLStorageClass(ptr, llvm::DLLStorageClass::Export);
+                    LLVMSetLinkage(ptr, llvm::Linkage::ExternalLinkage);
+                    LLVMSetUnnamedAddress(ptr, llvm::UnnamedAddr::No);
+                    LLVMSetDLLStorageClass(ptr, llvm::DLLStorageClass::Export);
                 }
                 Some(ptr)
             } else {
                 None
             };
         OsdiCompilationUnit { db, tys, cx, module, inst_data, model_data, lim_dispatch_table }
-    }
-
-    #[inline]
-    pub fn lim_dispatch_table(&self) -> &'ll llvm::Value {
-        self.lim_dispatch_table.unwrap()
     }
 }
 
@@ -140,6 +135,57 @@ impl<'a> OsdiModule<'a> {
             model_param_setup,
             model_param_intern,
             node_collapse,
+        }
+    }
+
+    pub fn intern_names(&self, literals: &mut Rodeo, db: &CompilationDB) {
+        literals.get_or_intern(self.info.module.name(db));
+        self.intern_unknown_names(literals, db);
+        literals.get_or_intern_static("Multiplier (Verilog-A $mfactor)");
+        literals.get_or_intern_static("deg");
+        literals.get_or_intern_static("m");
+        literals.get_or_intern_static("");
+
+        for param in self.info.params.values() {
+            for alias in &param.aliases {
+                literals.get_or_intern(&**alias);
+            }
+            literals.get_or_intern(&param.name);
+            literals.get_or_intern(&param.units);
+            literals.get_or_intern(&param.desc);
+            literals.get_or_intern(&param.group);
+        }
+
+        for aliases in self.info.param_sysfuns.values() {
+            for alias in aliases {
+                literals.get_or_intern(&**alias);
+            }
+        }
+
+        for param in ParamSysFun::iter() {
+            let is_live = |intern: &HirInterner, func| {
+                intern.is_param_live(func, &ParamKind::ParamSysFun(param))
+            };
+            if is_live(self.intern, self.eval)
+                || is_live(&self.init.intern, &self.init.func)
+                || is_live(self.model_param_intern, self.model_param_setup)
+            {
+                literals.get_or_intern(format!("${param:?}"));
+            }
+        }
+
+        for (var, opvar_info) in self.info.op_vars.iter() {
+            literals.get_or_intern(var.name(db));
+            literals.get_or_intern(&opvar_info.units);
+            literals.get_or_intern(&opvar_info.desc);
+        }
+    }
+
+    pub fn intern_unknown_names(&self, interner: &mut Rodeo, db: &CompilationDB) {
+        for &unknown in self.dae.unknowns.iter() {
+            let (name, units, _) = sim_unknown_info(unknown, db);
+            interner.get_or_intern(&name);
+            interner.get_or_intern(&units);
         }
     }
 }

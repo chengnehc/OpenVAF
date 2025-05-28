@@ -23,7 +23,7 @@ fn test_compile(root_file: &Path) {
 
 fn integration(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
-    let main_file = dir.join(format!("{name}.va"));
+    let main_file = dir.join(name).with_extension("va");
     test_compile(&main_file);
 
     Ok(())

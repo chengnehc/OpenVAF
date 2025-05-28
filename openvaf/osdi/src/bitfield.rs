@@ -12,7 +12,8 @@ type Word = u32;
 const WORD_BYTES: u32 = size_of::<Word>() as u32;
 const WORD_BITS: u32 = WORD_BYTES * 8;
 
-/// Create a bitfield of given capacity, the underlying LLVM type is an u32 array.
+/// Create a bitfield of given capacity, return its LLVM type,
+/// which is an `u32` array under the hood.
 pub fn ty<'ll>(cx: &CodegenCx<'_, 'll>, capacity: u32) -> &'ll llvm::Type {
     let word_cnt = capacity.div_ceil(WORD_BITS);
     cx.ty_array(cx.ty_int(), word_cnt)

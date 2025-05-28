@@ -3,14 +3,13 @@
 use std::ffi::CString;
 use stdx::{impl_debug_display, impl_idx_from};
 
-use base_n::CASE_INSENSITIVE;
 use camino::{Utf8Path, Utf8PathBuf};
 use lasso::Rodeo;
 use typed_indexmap::TiSet;
 
-use hir::{CompilationDB, ModuleInfo, ParallelDatabase, ParamSysFun, Type};
-use hir_lower::{CallBackKind, HirInterner, ParamKind};
-use llvm::{LLVMDisposeTargetData, OptLevel};
+use hir::{CompilationDB, ModuleInfo, ParallelDatabase, Type};
+use hir_lower::CallBackKind;
+use llvm::OptLevel;
 use mir_llvm::{CodegenCx, LLVMBackend};
 use sim_back::CompiledModule;
 // use target::spec::Target;
@@ -32,7 +31,10 @@ use metadata::osdi_0_3::OsdiTys;
 use metadata::OsdiLimFunction;
 
 const OSDI_VERSION: (u32, u32) = (0, 3);
+const OBJ_NUM: usize = 4;
 
+/// Compile the modules and return intermediate object file paths, which
+/// will be passed to linker later on.
 pub fn compile<const EMIT: bool>(
     db: &CompilationDB,
     modules: &[ModuleInfo],
@@ -40,6 +42,21 @@ pub fn compile<const EMIT: bool>(
     back: &LLVMBackend,
     opt_lvl: OptLevel,
 ) -> Vec<Utf8PathBuf> {
+    /* Prepare for compilation */
+    let name = dst.file_stem().expect("destination should be a file");
+    let main_file = dst.with_extension("o");
+    let target_data = unsafe {
+        let src = CString::new(back.target().data_layout.clone()).unwrap();
+        llvm::LLVMCreateTargetData(src.as_ptr())
+    };
+    let mut paths: Vec<Utf8PathBuf> = (0..modules.len() * OBJ_NUM)
+        .map(|i| {
+            let num = base_n::encode((i + 1) as u128, base_n::CASE_INSENSITIVE);
+            dst.with_extension(format!("o{num}"))
+        })
+        .collect();
+
+    /* From HIR module infos to MIR compiled modules */
     let mut literals = Rodeo::new();
     let mut lim_table = TiSet::default();
     let modules: Vec<_> = modules
@@ -54,33 +71,18 @@ pub fn compile<const EMIT: bool>(
             mir
         })
         .collect();
-    let name = dst.file_stem().expect("destination should be a file").to_owned();
 
-    let mut paths: Vec<Utf8PathBuf> = (0..modules.len() * 4)
-        .map(|i| {
-            let num = base_n::encode((i + 1) as u128, CASE_INSENSITIVE);
-            dst.with_extension(format!("o{num}"))
-        })
-        .collect();
-
-    let target_data = unsafe {
-        let src = CString::new(back.target().data_layout.clone()).unwrap();
-        llvm::LLVMCreateTargetData(src.as_ptr())
-    };
-
+    /* From MIR to OSDI modules */
     let modules: Vec<_> = modules
         .iter()
         .map(|module| {
-            let unit = OsdiModule::new(db, module, &lim_table);
-            unit.intern_names(&mut literals, db);
-            unit
+            let module = OsdiModule::new(db, module, &lim_table);
+            module.intern_names(&mut literals, db);
+            module
         })
         .collect();
 
     let db = db.snapshot();
-
-    let main_file = dst.with_extension("o");
-
     rayon_core::scope(|scope| {
         let db = db;
         let literals_ = &literals;
@@ -88,13 +90,13 @@ pub fn compile<const EMIT: bool>(
         let paths = &paths;
 
         for (i, module) in modules.iter().enumerate() {
-            let _db = db.snapshot();
+            let db_ = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("access_{}", &module.sym);
                 let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
+                let cu = OsdiCompilationUnit::new(&db_, module, &cx, &tys, false);
 
                 cu.access_fn();
                 debug_assert!(llmod.verify_and_print());
@@ -106,13 +108,13 @@ pub fn compile<const EMIT: bool>(
                 }
             });
 
-            let _db = db.snapshot();
+            let db_ = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("setup_model_{}", &module.sym);
                 let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
+                let cu = OsdiCompilationUnit::new(&db_, module, &cx, &tys, false);
 
                 cu.setup_model_fn();
                 // std::fs::write(dst.with_extension("setup_model.ll"), llmod.print().to_string()).ok();
@@ -125,13 +127,13 @@ pub fn compile<const EMIT: bool>(
                 }
             });
 
-            let _db = db.snapshot();
+            let db_ = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("setup_instance_{}", &module.sym);
                 let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let mut cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, false);
+                let mut cu = OsdiCompilationUnit::new(&db_, module, &cx, &tys, false);
 
                 cu.setup_instance_fn();
                 // std::fs::write(dst.with_extension("setup_inst.ll"), llmod.print().to_string()).ok();
@@ -144,13 +146,13 @@ pub fn compile<const EMIT: bool>(
                 }
             });
 
-            let _db = db.snapshot();
+            let db_ = db.snapshot();
             scope.spawn(move |_| {
                 let name = format!("eval_{}", &module.sym);
                 let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
                 let cx = new_codegen(back, &llmod, literals_);
                 let tys = OsdiTys::new(&cx, target_data_);
-                let cu = OsdiCompilationUnit::new(&_db, module, &cx, &tys, true);
+                let cu = OsdiCompilationUnit::new(&db_, module, &cx, &tys, true);
 
                 // std::fs::write(dst.with_extension("eval.mir"), module.eval.to_debug_string()).ok();
                 // println!("{:?}", module.eval);
@@ -167,7 +169,8 @@ pub fn compile<const EMIT: bool>(
             });
         }
 
-        let llmod = unsafe { back.new_llvm_module(&name, opt_lvl).unwrap() };
+        /* Collect and export model metadata */
+        let llmod = unsafe { back.new_llvm_module(name, opt_lvl).unwrap() };
         let cx = new_codegen(back, &llmod, &literals);
         let tys = OsdiTys::new(&cx, target_data);
         let descriptors: Vec<_> = modules
@@ -212,9 +215,8 @@ pub fn compile<const EMIT: bool>(
 
         let osdi_log =
             cx.get_declared_value("osdi_log").expect("symbol osdi_log missing from std lib");
-        let val = cx.const_null_ptr();
         unsafe {
-            llvm::LLVMSetInitializer(osdi_log, val);
+            llvm::LLVMSetInitializer(osdi_log, cx.const_null_ptr());
             llvm::LLVMSetLinkage(osdi_log, llvm::Linkage::ExternalLinkage);
             llvm::LLVMSetUnnamedAddress(osdi_log, llvm::UnnamedAddr::No);
             llvm::LLVMSetDLLStorageClass(osdi_log, llvm::DLLStorageClass::Export);
@@ -231,69 +233,20 @@ pub fn compile<const EMIT: bool>(
         }
     });
 
+    unsafe { llvm::LLVMDisposeTargetData(target_data) };
     paths.push(main_file);
-    unsafe { LLVMDisposeTargetData(target_data) };
     paths
-}
-
-impl OsdiModule<'_> {
-    fn intern_names(&self, literals: &mut Rodeo, db: &CompilationDB) {
-        literals.get_or_intern(self.info.module.name(db));
-        self.intern_unknown_names(literals, db);
-        literals.get_or_intern_static("Multiplier (Verilog-A $mfactor)");
-        literals.get_or_intern_static("deg");
-        literals.get_or_intern_static("m");
-        literals.get_or_intern_static("");
-
-        for param in self.info.params.values() {
-            for alias in &param.aliases {
-                literals.get_or_intern(&**alias);
-            }
-            literals.get_or_intern(&param.name);
-            literals.get_or_intern(&param.units);
-            literals.get_or_intern(&param.desc);
-            literals.get_or_intern(&param.group);
-        }
-
-        for (var, opvar_info) in self.info.op_vars.iter() {
-            literals.get_or_intern(var.name(db));
-            literals.get_or_intern(&opvar_info.units);
-            literals.get_or_intern(&opvar_info.desc);
-        }
-
-        for alias_list in self.info.param_sysfuns.values() {
-            for alias in alias_list {
-                literals.get_or_intern(&**alias);
-            }
-        }
-
-        for param in ParamSysFun::iter() {
-            let is_live = |intern: &HirInterner, func| {
-                intern.is_param_live(func, &ParamKind::ParamSysFun(param))
-            };
-            if is_live(self.intern, self.eval)
-                || is_live(&self.init.intern, &self.init.func)
-                || is_live(self.model_param_intern, self.model_param_setup)
-            {
-                literals.get_or_intern(format!("${param:?}"));
-            }
-        }
-    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct OsdiLimId(u32);
 impl_idx_from!(OsdiLimId(u32));
-impl_debug_display! {match OsdiLimId{OsdiLimId(id) => "lim{id}";}}
+impl_debug_display!(match OsdiLimId{OsdiLimId(id) => "lim{id}";});
 
-/// Get the length of an HIR array type
-fn ty_len(ty: &Type) -> Option<u32> {
-    match ty {
-        Type::Array { ty, len } => Some(len * ty_len(ty).unwrap_or(1)),
-        Type::EmptyArray => Some(0),
-        _ => None,
-    }
-}
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct Offset(u32);
+impl_idx_from!(Offset(u32));
+impl_debug_display!(match Offset{Offset(id) => "offset{id}";});
 
 /// Get the corresponding LLVM type of an HIR type
 fn lltype<'ll>(ty: &Type, cx: &CodegenCx<'_, 'll>) -> &'ll llvm::Type {
@@ -314,7 +267,11 @@ fn lltype<'ll>(ty: &Type, cx: &CodegenCx<'_, 'll>) -> &'ll llvm::Type {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct Offset(u32);
-impl_idx_from!(Offset(u32));
-impl_debug_display! {match Offset{Offset(id) => "lim{id}";}}
+/// Get the length of an HIR array type
+fn ty_len(ty: &Type) -> Option<u32> {
+    match ty {
+        Type::Array { ty, len } => Some(len * ty_len(ty).unwrap_or(1)),
+        Type::EmptyArray => Some(0),
+        _ => None,
+    }
+}

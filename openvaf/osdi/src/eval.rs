@@ -364,7 +364,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         ret_flags_ptr: &'ll llvm::Value,
     ) -> CallbackFun<'ll> {
         let OsdiCompilationUnit { cx, tys, .. } = self;
-        let table = self.lim_dispatch_table();
+        let table = self.lim_dispatch_table.expect("dispatch table N/A when building lim func");
 
         let f64_t = cx.ty_double();
         let c_bool_t = cx.ty_c_bool();

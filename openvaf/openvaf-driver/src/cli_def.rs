@@ -5,7 +5,7 @@ use anyhow::bail;
 use camino::Utf8Path;
 use clap::builder::{PossibleValue, PossibleValuesParser, ValueParser};
 use clap::{Arg, ArgAction, Command, ValueHint};
-use openvaf::{builtin_lints, get_target_names, host_triple, LintLevel};
+use openvaf::{builtin_lints, host_triple, supported_target_names, LintLevel};
 use path_absolutize::Absolutize;
 
 const ABOUT: &str = r"For further information visit https://openvaf.semimod.de.";
@@ -239,14 +239,14 @@ fn supported_targets() -> Arg {
 }
 
 fn target() -> Arg {
-    let vals = get_target_names().fold(String::new(), |mut dst, it| {
+    let vals = supported_target_names().fold(String::new(), |mut dst, it| {
         dst.push('\n');
         dst.push_str(it);
         dst
     });
     Arg::new(TARGET)
         .long(TARGET)
-        .value_parser(PossibleValuesParser::new(get_target_names()))
+        .value_parser(PossibleValuesParser::new(supported_target_names()))
         .value_name("TARGET")
         .value_hint(ValueHint::Other)
         .default_value(host_triple())

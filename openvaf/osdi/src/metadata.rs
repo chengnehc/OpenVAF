@@ -2,7 +2,7 @@ use std::iter;
 
 use hir::{CompilationDB, ParamSysFun, Type};
 use hir_lower::FlowKind;
-use lasso::{Rodeo, Spur};
+use lasso::Spur;
 use llvm::{LLVMABISizeOfType, LLVMOffsetOfElement, TargetData};
 use mir::{ValueDef, F_ZERO};
 use mir_llvm::CodegenCx;
@@ -138,12 +138,12 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
                 OsdiNode {
                     name,
                     units,
-                    residual_units: String::new(),
+                    residual_units: String::new(), // JW: what's the purpose of this?
                     resist_residual_off,
                     react_residual_off,
-                    is_flow,
                     resist_limit_rhs_off,
                     react_limit_rhs_off,
+                    is_flow,
                 }
             })
             .collect()
@@ -314,17 +314,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     }
 }
 
-impl OsdiModule<'_> {
-    pub fn intern_unknown_names(&self, interner: &mut Rodeo, db: &CompilationDB) {
-        for &unknown in self.dae.unknowns.iter() {
-            let (name, units, _) = sim_unknown_info(unknown, db);
-            interner.get_or_intern(&name);
-            interner.get_or_intern(&units);
-        }
-    }
-}
-
-fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, String, bool) {
+pub fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, String, bool) {
     let name;
     let discipline;
     let is_flow;
@@ -337,20 +327,20 @@ fn sim_unknown_info(unknown: SimUnknownKind, db: &CompilationDB) -> (String, Str
         }
         SimUnknownKind::BranchFlow(FlowKind::Unnamed { hi, lo }) => {
             name = if let Some(lo) = lo {
-                format!("flow({},{})", &hi.name(db), &lo.name(db))
+                format!("flow({},{})", hi.name(db), lo.name(db))
             } else {
-                format!("flow({})", &hi.name(db))
+                format!("flow({})", hi.name(db))
             };
             discipline = Some(hi.discipline(db));
             is_flow = true;
         }
         SimUnknownKind::BranchFlow(FlowKind::Branch(br)) => {
-            name = format!("flow({})", &br.name(db));
+            name = format!("flow({})", br.name(db));
             discipline = Some(br.discipline(db));
             is_flow = true;
         }
         SimUnknownKind::BranchFlow(FlowKind::Port(node)) => {
-            name = format!("flow(<{}>)", &node.name(db));
+            name = format!("flow(<{}>)", node.name(db));
             discipline = Some(node.discipline(db));
             is_flow = true;
         }

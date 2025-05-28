@@ -11,21 +11,25 @@ use cc::windows_registry;
 
 use target::spec::{LinkerFlavor, Target};
 
+/// Invoke the linker at `linker_path`, if `None` is given, use the default linkers
+/// of different platforms: "ld" for GNU/Linux and OSX, "link.exe" for Windows MSVC.
 pub fn link(
-    path: Option<Utf8PathBuf>,
+    linker_path: Option<Utf8PathBuf>,
     target: &Target,
-    out_filename: &Utf8Path,
+    out_file: &Utf8Path,
     add_objects: impl FnOnce(&mut dyn Linker),
 ) -> Result<()> {
-    let mut linker = linker_with_args(path, target, out_filename, add_objects);
+    let mut linker = linker_with_args(linker_path, target, out_file, add_objects);
 
-    let import_lib_path = out_filename.with_file_name("__openvaf__import.lib");
+    let import_lib_path = out_file.with_file_name("__openvaf__import.lib");
     if !target.options.import_lib.is_empty() {
         let mut file = File::create(&import_lib_path).context("failed to create importlib")?;
         file.write_all(target.options.import_lib).context("failed to write importlib")?;
         linker.add_object(&import_lib_path);
     }
-    let res = exec_linker(linker.take_cmd(), out_filename);
+
+    let res = exec_linker(&mut *linker, out_file);
+
     if !target.options.import_lib.is_empty() {
         remove_file(import_lib_path).context("failed to delete importlib")?;
     }
@@ -38,7 +42,7 @@ pub fn link(
             bail!("linking failed (see linker output for details)")
         }
         Ok(_) => Ok(()),
-        Err(err) => bail!("linker not found: {}", err),
+        Err(err) => bail!("linker not found: {err}"),
     }
 }
 
@@ -50,19 +54,6 @@ fn escape_stdout_stderr_string(s: &[u8]) -> String {
     })
 }
 
-/// Disables non-English messages from localized linkers.
-/// Such messages may cause issues with text encoding on Windows (#35785)
-/// and prevent inspection of linker output in case of errors, which we occasionally do.
-/// This should be acceptable because other messages from rustc are in English anyway,
-/// and may also be desirable to improve searchability of the linker diagnostics.
-fn disable_localization(linker: &mut Command) {
-    // No harm in setting both env vars simultaneously.
-    // Unix-style linkers.
-    linker.env("LC_ALL", "C");
-    // MSVC's `link.exe`.
-    linker.env("VSLANG", "1033");
-}
-
 /// Produce the linker command line containing linker path and arguments.
 ///
 /// When comments in the function say "order-(in)dependent" they mean order-dependence between
@@ -72,13 +63,13 @@ fn disable_localization(linker: &mut Command) {
 /// Order-independent options may still override each other in order-dependent fashion,
 /// e.g `--foo=yes --foo=no` may be equivalent to `--foo=no`.
 fn linker_with_args<'a>(
-    path: Option<Utf8PathBuf>,
+    linker_path: Option<Utf8PathBuf>,
     target: &'a Target,
     out_filename: &Utf8Path,
     add_objects: impl FnOnce(&mut dyn Linker),
 ) -> Box<dyn Linker + 'a> {
     let flavor = target.options.linker_flavor;
-    let mut linker = get_linker(path.map(|path| path.into_std_path_buf()), flavor, target);
+    let mut linker = get_linker(linker_path.map(Utf8PathBuf::into_std_path_buf), flavor, target);
     disable_localization(linker.cmd());
     // This environment variable is pretty magical but is intended for
     // producing deterministic builds. This was first discovered to be used
@@ -96,30 +87,30 @@ fn linker_with_args<'a>(
     linker
 }
 
-/// The third parameter is for env vars, used on windows to set up the
-/// path for MSVC to find its DLLs, and gcc to find its bundled
-/// toolchain
+/// The third parameter `target` is for env vars, used on windows to set up the
+/// path for MSVC to find its DLLs, and gcc to find its bundled toolchain
 fn get_linker<'a>(
-    path: Option<PathBuf>,
+    linker_path: Option<PathBuf>,
     flavor: LinkerFlavor,
     target: &'a Target,
 ) -> Box<dyn Linker + 'a> {
     match flavor {
+        LinkerFlavor::Ld | LinkerFlavor::Ld64 => Box::new(LdLinker {
+            cmd: Command::new(linker_path.unwrap_or_else(|| "ld".into())),
+            target,
+        }) as Box<dyn Linker>,
         LinkerFlavor::Msvc => {
             let msvc_tool = windows_registry::find_tool(&target.llvm_target, "link.exe");
-            let path = match path {
-                Some(path) => path,
-                None => match msvc_tool {
-                    Some(ref tool) => tool.path().to_owned(),
-                    None => Path::new("link.exe").to_owned(),
-                },
-            };
+            let path = linker_path.unwrap_or_else(|| match &msvc_tool {
+                Some(tool) => tool.path().to_owned(),
+                None => Path::new("link.exe").to_owned(),
+            });
             let mut cmd = Command::new(path);
             let mut new_path = Vec::new();
             // The compiler's sysroot often has some bundled tools, so add it to the
             // PATH for the child.
             let mut msvc_changed_path = false;
-            if let Some(ref tool) = msvc_tool {
+            if let Some(tool) = &msvc_tool {
                 cmd.args(tool.args());
                 for (k, v) in tool.env() {
                     if k == "PATH" {
@@ -130,7 +121,6 @@ fn get_linker<'a>(
                     }
                 }
             }
-
             if !msvc_changed_path {
                 if let Some(path) = env::var_os("PATH") {
                     new_path.extend(env::split_paths(&path));
@@ -139,18 +129,24 @@ fn get_linker<'a>(
             cmd.env("PATH", env::join_paths(new_path).unwrap());
             Box::new(MsvcLinker { cmd }) as Box<dyn Linker>
         }
-        LinkerFlavor::Ld => {
-            Box::new(LdLinker { cmd: Command::new(path.unwrap_or_else(|| "ld".into())), target })
-                as Box<dyn Linker>
-        }
-        LinkerFlavor::Ld64 => {
-            Box::new(LdLinker { cmd: Command::new(path.unwrap_or_else(|| "ld".into())), target })
-                as Box<dyn Linker>
-        }
     }
 }
 
-fn exec_linker(mut cmd: std::process::Command, _out_filename: &Utf8Path) -> io::Result<Output> {
+/// Disables non-English messages from localized linkers.
+/// Such messages may cause issues with text encoding on Windows (#35785)
+/// and prevent inspection of linker output in case of errors, which we occasionally do.
+/// This should be acceptable because other messages from rustc are in English anyway,
+/// and may also be desirable to improve searchability of the linker diagnostics.
+fn disable_localization(linker: &mut Command) {
+    // No harm in setting both env vars simultaneously.
+    // Unix-style linkers.
+    linker.env("LC_ALL", "C");
+    // MSVC's `link.exe`.
+    linker.env("VSLANG", "1033");
+}
+
+fn exec_linker(linker: &mut dyn Linker, _out_filename: &Utf8Path) -> io::Result<Output> {
+    let mut cmd = linker.take_cmd();
     match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
         #[allow(clippy::let_and_return)]
         Ok(child) => {
@@ -162,12 +158,10 @@ fn exec_linker(mut cmd: std::process::Command, _out_filename: &Utf8Path) -> io::
             //
             // А full writeup of the original Chrome bug can be found at
             // randomascii.wordpress.com/2018/02/25/compiler-bug-linker-bug-windows-kernel-bug/amp
-
             #[cfg(windows)]
             if let Ok(of) = std::fs::OpenOptions::new().write(true).open(_out_filename) {
                 of.sync_all()?;
             }
-
             output
         }
         // Err(ref e) if command_line_too_big(e) => {},
@@ -184,39 +178,38 @@ fn exec_linker(mut cmd: std::process::Command, _out_filename: &Utf8Path) -> io::
 pub trait Linker {
     fn cmd(&mut self) -> &mut Command;
     fn output_filename(&mut self, path: &Utf8Path);
-    fn add_object(&mut self, path: &Utf8Path);
     fn set_output_kind(&mut self);
+
+    fn add_object(&mut self, path: &Utf8Path) {
+        self.cmd().arg(path.as_str());
+    }
 }
 
 impl dyn Linker + '_ {
-    // pub fn arg(&mut self, arg: impl AsRef<OsStr>) {
-    //     self.cmd().arg(arg);
-    // }
-
-    pub fn args<I: AsRef<OsStr>>(&mut self, args: impl IntoIterator<Item = I>) {
+    fn args<I: AsRef<OsStr>>(&mut self, args: impl IntoIterator<Item = I>) {
         self.cmd().args(args);
     }
 
     /// Add arbitrary "pre-link" args defined by the target spec or from command line.
-    pub fn add_pre_link_args(&mut self, target: &Target, flavor: LinkerFlavor) {
+    fn add_pre_link_args(&mut self, target: &Target, flavor: LinkerFlavor) {
         if let Some(args) = target.options.pre_link_args.get(&flavor) {
             self.args(args);
         }
     }
 
-    pub fn add_post_link_args(&mut self, target: &Target, flavor: LinkerFlavor) {
+    fn add_post_link_args(&mut self, target: &Target, flavor: LinkerFlavor) {
         if let Some(args) = target.options.post_link_args.get(&flavor) {
             self.args(args);
         }
         if let Ok(flags) = std::env::var("OPENVAF_LDFLAGS") {
             let flags = flags
                 .split(' ')
-                .filter(|flag| flag.is_empty() && !flag.chars().all(|c| c.is_whitespace()));
+                .filter(|flag| flag.is_empty() && !flag.chars().all(char::is_whitespace));
             self.args(flags)
         }
     }
 
-    pub fn take_cmd(&mut self) -> std::process::Command {
+    fn take_cmd(&mut self) -> std::process::Command {
         let cmd = self.cmd();
         let mut res = std::process::Command::new(cmd.command.as_os_str());
         res.args(cmd.args.iter()).envs(mem::take(&mut cmd.env));
@@ -258,10 +251,6 @@ impl Linker for LdLinker<'_> {
         self.cmd.arg("-o").arg(path.as_str());
     }
 
-    fn add_object(&mut self, path: &Utf8Path) {
-        self.cmd.arg(path.as_str());
-    }
-
     fn set_output_kind(&mut self) {
         self.build_dylib();
     }
@@ -284,10 +273,6 @@ impl Linker for MsvcLinker {
         self.cmd.arg(&arg);
     }
 
-    fn add_object(&mut self, path: &Utf8Path) {
-        self.cmd.arg(path.as_str());
-    }
-
     fn set_output_kind(&mut self) {
         self.cmd.arg("/DLL");
     }
@@ -303,6 +288,7 @@ impl Command {
     fn new(command: PathBuf) -> Command {
         Command { command, args: Vec::new(), env: Vec::new() }
     }
+
     fn args<I: AsRef<OsStr>>(&mut self, args: impl IntoIterator<Item = I>) {
         self.args.extend(args.into_iter().map(|arg| arg.as_ref().to_owned()))
     }

@@ -4,7 +4,9 @@ use std::process::exit;
 use anyhow::{bail, Context, Result};
 use camino::Utf8PathBuf;
 use clap::ArgMatches;
-use openvaf::{builtin_lints, get_target_names, host_triple, AbsPathBuf, LintLevel, OptLevel};
+use openvaf::{
+    builtin_lints, host_triple, supported_target_names, AbsPathBuf, LintLevel, OptLevel,
+};
 use termcolor::{Color, ColorChoice, ColorSpec, WriteColor};
 
 use crate::cli_def::{
@@ -88,7 +90,7 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
     };
 
     let host = host_triple();
-    let target = matches.get_one::<String>(TARGET).cloned().unwrap_or_else(|| host.to_owned());
+    let target = matches.get_one::<String>(TARGET).map_or(host, |s| s.as_str());
     let default_cpu = if host != target { "generic" } else { "native" };
 
     let Some(target) = openvaf::Target::search(&target) else {
@@ -151,7 +153,7 @@ fn print_targets() {
     writeln!(&mut stdout, "TARGETS:").unwrap();
     stdout.set_color(&ColorSpec::new()).unwrap();
 
-    for target in get_target_names() {
+    for target in supported_target_names() {
         writeln!(&mut stdout, "    {}", target).unwrap();
     }
 }

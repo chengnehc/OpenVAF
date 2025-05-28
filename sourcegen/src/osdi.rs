@@ -5,7 +5,7 @@ use ahash::RandomState;
 use indexmap::IndexMap;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
-use target::spec::get_targets;
+use target::spec::supported_targets;
 
 use crate::{add_preamble, ensure_file_contents, project_root, reformat, to_lower_snake_case};
 
@@ -28,7 +28,7 @@ fn gen_osdi_structs() {
         let Header { version_major, version_minor, .. } = header;
         let semver = format!("{version_major}_{version_minor}");
 
-        let targets = get_targets().map(|target| target.llvm_target);
+        let targets = supported_targets().map(|target| target.llvm_target);
         let stdlibs = targets.clone().map(|target| format!("/stdlib_{semver}_{target}.bc"));
         let stdlib_idents: Vec<_> = targets
             .clone()

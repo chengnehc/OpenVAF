@@ -1,11 +1,9 @@
-use crate::spec::TargetOptions;
-
-use super::LinkerFlavor;
+use crate::spec::{LinkerFlavor, TargetOptions};
 
 pub fn opts() -> TargetOptions {
     TargetOptions {
-        linker_flavor: LinkerFlavor::Ld64,
         is_like_osx: true,
+        linker_flavor: LinkerFlavor::Ld64,
         ..TargetOptions::default()
     }
 }

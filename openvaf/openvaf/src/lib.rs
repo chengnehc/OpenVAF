@@ -15,7 +15,7 @@ pub use basedb::lints::LintLevel;
 pub use basedb::AbsPathBuf;
 pub use mir_llvm::{LLVMBackend, OptLevel};
 pub use target::host_triple;
-pub use target::spec::{get_target_names, Target};
+pub use target::spec::{supported_target_names, Target};
 
 mod cache;
 

@@ -4,47 +4,10 @@ mod apple_base;
 mod linux_base;
 mod windows_msvc_base;
 
+mod linker_flavor;
+pub use linker_flavor::LinkerFlavor;
+
 use crate::host_triple;
-
-// TODO(JW) Add lld?
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum LinkerFlavor {
-    Ld,
-    Ld64,
-    Msvc,
-}
-
-macro_rules! flavor_mappings {
-    ($((($($flavor:tt)*), $string:expr),)*) => (
-        impl LinkerFlavor {
-            pub const fn one_of() -> &'static str {
-                concat!("one of: ", $($string, " ",)*)
-            }
-
-            #[allow(clippy::should_implement_trait)]
-            pub fn from_str(s: &str) -> Option<Self> {
-                Some(match s {
-                    $($string => $($flavor)*,)*
-                    _ => return None,
-                })
-            }
-
-            pub fn desc(&self) -> &str {
-                match *self {
-                    $($($flavor)* => $string,)*
-                }
-            }
-        }
-    )
-}
-
-flavor_mappings! {
-    ((LinkerFlavor::Ld), "ld"),
-    ((LinkerFlavor::Ld64), "ld64"),
-    ((LinkerFlavor::Msvc), "msvc"),
-}
-
-pub type LinkArgs = BTreeMap<LinkerFlavor, Vec<String>>;
 
 /// Everything `openvaf` knows about how to compile for a specific target.
 ///
@@ -63,6 +26,8 @@ pub struct Target {
     /// Optional settings with defaults.
     pub options: TargetOptions,
 }
+
+pub type LinkArgs = BTreeMap<LinkerFlavor, Vec<String>>;
 
 /// Optional aspects of target specification.
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -115,39 +80,31 @@ impl Default for TargetOptions {
     }
 }
 
-pub type TargetResult = Result<Target, String>;
-
 macro_rules! supported_targets {
-    ( $(( $triple:literal,  $module:ident ),)+ ) => {
-        $ ( mod $ module; ) +
+    ($(( $triple:literal, $module:ident ),)+) => {
+        $( mod $module; )+
 
-        /// List of supported targets
         const TARGETS: &[&str] = &[$($triple),+];
 
-        fn load_specific(target: &str) -> Option<Target> {
-            match target {
-                $(
-                    $triple => {
-                        let mut t = $module::target();
-                        t.options.is_builtin = true;
-
-                        Some(t)
-                    },
-                )+
-                    _ => None
-            }
-        }
-
-        pub fn get_target_names() -> impl Iterator<Item = &'static str> {
+        pub fn supported_target_names() -> impl Iterator<Item = &'static str> {
             TARGETS.iter().copied()
         }
 
-        pub fn get_targets() -> impl Iterator<Item = Target> + Clone {
-            [$({
+        pub fn supported_targets() -> impl Iterator<Item = Target> + Clone {
+            [$( {
                 let mut t = $module::target();
                 t.options.is_builtin = true;
                 t
-            }),*].into_iter()
+            } ),*].into_iter()
+        }
+
+        fn load_specific(target: &str) -> Option<Target> {
+            let mut t = match target {
+                $( $triple => $module::target(), )+
+                _ => return None,
+            };
+            t.options.is_builtin = true;
+            Some(t)
         }
     }
 }
