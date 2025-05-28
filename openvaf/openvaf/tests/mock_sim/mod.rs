@@ -25,6 +25,7 @@ pub struct MockSimulation {
     pub state_2: Vec<f64>,
     pub noise_dense: Vec<f64>,
 }
+
 impl MockSimulation {
     fn new() -> MockSimulation {
         MockSimulation {
@@ -64,21 +65,19 @@ impl MockSimulation {
         }
     }
 
+    fn build_jacobian_info(&mut self) {
+        self.jacobian_resist =
+            (0..self.jacobian_info.len()).map(|_| UnsafeCell::new(0.0)).collect::<Vec<_>>().leak();
+        self.jacobian_react =
+            (0..self.jacobian_info.len()).map(|_| UnsafeCell::new(0.0)).collect::<Vec<_>>().leak();
+    }
+
     fn get_jacobian_entry(&mut self, hi: u32, lo: u32) -> usize {
         if hi == 0 || lo == 0 {
             0
         } else {
             self.jacobian_info.get_index_of(&(hi, lo)).unwrap()
         }
-    }
-
-    pub fn read_noise(&mut self, src: usize) -> f64 {
-        self.noise_dense[src]
-    }
-
-    pub fn set_voltage(&mut self, node: &str, voltage: f64) {
-        let i = self.nodes.get_index_of(node).unwrap();
-        self.solve[i] = voltage
     }
 
     pub fn read_residual(&self, node: &str) -> (f64, f64) {
@@ -93,14 +92,23 @@ impl MockSimulation {
         unsafe { (self.jacobian_resist[i].get().read(), self.jacobian_react[i].get().read()) }
     }
 
-    fn build_jacobian(&mut self) {
-        self.jacobian_resist =
-            (0..self.jacobian_info.len()).map(|_| UnsafeCell::new(0.0)).collect::<Vec<_>>().leak();
-        self.jacobian_react =
-            (0..self.jacobian_info.len()).map(|_| UnsafeCell::new(0.0)).collect::<Vec<_>>().leak();
+    pub fn read_noise(&mut self, src: usize) -> f64 {
+        self.noise_dense[src]
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub fn set_voltage(&mut self, node: &str, voltage: f64) {
+        let i = self.nodes.get_index_of(node).unwrap();
+        self.solve[i] = voltage
+    }
+
+    /// Go to the next NR iteration of simulation process.
+    pub fn next_iteration(&mut self) {
+        self.solve.fill(0.0);
+        mem::swap(&mut self.state_1, &mut self.state_2);
+        self.clear();
+    }
+
+    pub fn clear(&mut self) {
         self.residual_resist.fill(0.0);
         self.residual_react.fill(0.0);
         for entry in self.jacobian_resist {
@@ -109,12 +117,6 @@ impl MockSimulation {
         for entry in self.jacobian_react {
             unsafe { entry.get().write(0.0) };
         }
-    }
-
-    pub(crate) fn next_iter(&mut self) {
-        self.solve.fill(0.0);
-        mem::swap(&mut self.state_1, &mut self.state_2);
-        self.clear();
     }
 }
 
@@ -127,7 +129,8 @@ impl OsdiInstance {
     ) -> Result<MockSimulation> {
         let mut internal_nodes = self.process_params(model, connected_terminals, temp)?;
         let mut sim = MockSimulation::new();
-        // create internal nodes
+
+        // create nodes and their residuals
         let terminals: Vec<_> = self.descriptor.nodes()[..connected_terminals as usize]
             .iter()
             .map(|node| unsafe { sim.register_node(osdi_str(node.name)) })
@@ -151,20 +154,25 @@ impl OsdiInstance {
         }
 
         // create jacobian
-        for entry in self.descriptor.matrix_entries() {
-            let column = node_mapping[entry.nodes.node_1 as usize].get();
-            let row = node_mapping[entry.nodes.node_2 as usize].get();
+        let matrix_entries = self.descriptor.matrix_entries();
+        for entry in matrix_entries {
+            let row = node_mapping[entry.nodes.node_1 as usize].get();
+            let column = node_mapping[entry.nodes.node_2 as usize].get();
             sim.register_jacobian_entry(row, column);
         }
-        sim.build_jacobian();
+        sim.build_jacobian_info();
 
         // populate matrix ptrs
-        for (entry, ptr_resist) in zip(self.descriptor.matrix_entries(), self.matrix_ptrs_resist())
-        {
-            let column = node_mapping[entry.nodes.node_1 as usize].get();
-            let row = node_mapping[entry.nodes.node_2 as usize].get();
+        for (entry, ptr_resist) in zip(matrix_entries, self.matrix_ptrs_resist()) {
+            let row = node_mapping[entry.nodes.node_1 as usize].get();
+            let column = node_mapping[entry.nodes.node_2 as usize].get();
             let i = sim.get_jacobian_entry(row, column);
-            ptr_resist.set(sim.jacobian_resist[i].get());
+
+            // resistive part
+            let ptr = sim.jacobian_resist[i].get();
+            ptr_resist.set(ptr);
+
+            // reactive part
             if entry.react_ptr_off != u32::MAX {
                 let data = self.data as *mut u8;
                 unsafe {
@@ -174,48 +182,15 @@ impl OsdiInstance {
                 }
             }
         }
+
+        // state vector
         sim.state_1.resize(self.descriptor.num_states as usize, 0.0);
         sim.state_2.resize(self.descriptor.num_states as usize, 0.0);
+
+        // noise sources
         sim.noise_dense.resize(self.descriptor.num_noise_src as usize, 0.0);
+
         Ok(sim)
-    }
-
-    pub fn load_spice(&self, model: &OsdiModel, sim: &mut MockSimulation) {
-        self.descriptor.load_spice_rhs_tran(
-            self.data,
-            model.data,
-            sim.residual_resist.as_mut_ptr(),
-            sim.solve.as_mut_ptr(),
-            ALPHA,
-        );
-        self.descriptor.load_jacobian_tran(self.data, self.data, ALPHA);
-    }
-
-    pub fn load_noise(&self, model: &OsdiModel, sim: &mut MockSimulation, freq: f64) {
-        self.descriptor.load_noise(self.data, model.data, freq, sim.noise_dense.as_mut_ptr())
-    }
-
-    pub fn load_dae(&self, model: &OsdiModel, sim: &mut MockSimulation) {
-        self.descriptor.load_residual_resist(
-            self.data,
-            model.data,
-            sim.residual_resist.as_mut_ptr(),
-        );
-        self.descriptor.load_limit_rhs_resist(
-            self.data,
-            model.data,
-            sim.residual_resist.as_mut_ptr(),
-        );
-
-        self.descriptor.load_residual_react(self.data, model.data, sim.residual_react.as_mut_ptr());
-        self.descriptor.load_limit_rhs_react(
-            self.data,
-            model.data,
-            sim.residual_react.as_mut_ptr(),
-        );
-
-        self.descriptor.load_jacobian_resist(self.data, model.data);
-        self.descriptor.load_jacobian_react(self.data, model.data, 1.0);
     }
 
     pub fn eval(
@@ -253,5 +228,43 @@ impl OsdiInstance {
             &mut sim_info,
         );
         EvalRetFlags::from_bits(flags).unwrap()
+    }
+
+    pub fn load_dae(&self, model: &OsdiModel, sim: &mut MockSimulation) {
+        self.descriptor.load_residual_resist(
+            self.data,
+            model.data,
+            sim.residual_resist.as_mut_ptr(),
+        );
+        self.descriptor.load_limit_rhs_resist(
+            self.data,
+            model.data,
+            sim.residual_resist.as_mut_ptr(),
+        );
+
+        self.descriptor.load_residual_react(self.data, model.data, sim.residual_react.as_mut_ptr());
+        self.descriptor.load_limit_rhs_react(
+            self.data,
+            model.data,
+            sim.residual_react.as_mut_ptr(),
+        );
+
+        self.descriptor.load_jacobian_resist(self.data, model.data);
+        self.descriptor.load_jacobian_react(self.data, model.data, 1.0);
+    }
+
+    pub fn load_spice(&self, model: &OsdiModel, sim: &mut MockSimulation) {
+        self.descriptor.load_spice_rhs_tran(
+            self.data,
+            model.data,
+            sim.residual_resist.as_mut_ptr(),
+            sim.solve.as_mut_ptr(),
+            ALPHA,
+        );
+        self.descriptor.load_jacobian_tran(self.data, self.data, ALPHA);
+    }
+
+    pub fn load_noise(&self, model: &OsdiModel, sim: &mut MockSimulation, freq: f64) {
+        self.descriptor.load_noise(self.data, model.data, freq, sim.noise_dense.as_mut_ptr())
     }
 }

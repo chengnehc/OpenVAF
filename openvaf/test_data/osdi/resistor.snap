@@ -1,22 +1,26 @@
-param "$mfactor"
-units = "", desc = "Multiplier (Verilog-A $mfactor)", flags = ParameterFlags(PARA_KIND_INST)
-param "R"
-units = "Ohm", desc = "Ohmic resistance", flags = ParameterFlags(0x0)
-param "zeta"
-units = "", desc = "Temperature coeff", flags = ParameterFlags(0x0)
-param "tnom"
-units = "Kelvin", desc = "Reference Temp.", flags = ParameterFlags(0x0)
+param "$mfactor"  units = "", desc = "Multiplier (Verilog-A $mfactor)", flags = ParameterFlags(PARA_KIND_INST)
+param "R"  units = "Ohm", desc = "Ohmic resistance", flags = ParameterFlags(0x0)
+param "zeta"  units = "", desc = "Temperature coeff", flags = ParameterFlags(0x0)
+param "tnom"  units = "Kelvin", desc = "Reference Temp.", flags = ParameterFlags(0x0)
 
 2 terminals
 node "A" units = "V", runits = ""
-residual 96 4294967295 4294967295 4294967295
+residual 96 N/A N/A N/A
 node "B" units = "V", runits = ""
-residual 104 4294967295 4294967295 4294967295
-jacobian (A, A) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
-jacobian (A, B) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
-jacobian (B, A) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
-jacobian (B, B) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = 4294967295
+residual 104 N/A N/A N/A
+
+0 collapsible node pairs
+
+4 jacobian entries
+jacobian (A, A) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = N/A
+jacobian (A, B) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = N/A
+jacobian (B, A) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = N/A
+jacobian (B, B) JacobianFlags(JACOBIAN_ENTRY_RESIST | JACOBIAN_ENTRY_REACT_CONST) react_ptr = N/A
+
+0 noise sources
+
 0 states
 has bound_step false
+
 instance size 112
 model size 40
