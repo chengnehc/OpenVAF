@@ -128,7 +128,7 @@ impl BodyLowerContext<'_, '_, '_> {
                 }
             } else {
                 let ty = self.resolved_ty(expr);
-                let has_whitespace = fmt_lit.chars().last().is_some_and(|c| c.is_whitespace());
+                let has_whitespace = fmt_lit.chars().last().is_some_and(char::is_whitespace);
                 if !has_whitespace {
                     fmt_lit.push(' ')
                 }
@@ -153,7 +153,7 @@ impl BodyLowerContext<'_, '_, '_> {
 
         call_args[0] = self.ctxt.sconst(&fmt_lit);
         self.ctxt
-            .call(CallBackKind::Print { kind, arg_tys: arg_tys.into_boxed_slice() }, &call_args);
+            .call(CallBackKind::Print { kind, fmt_args: arg_tys.into_boxed_slice() }, &call_args);
     }
 
     pub fn resolved_ty(&self, expr: ExprId) -> Type {

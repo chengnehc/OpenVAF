@@ -18,7 +18,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         cx.declare_external_fn(&name, fun_ty)
     }
 
-    pub fn access_fn(&self) -> &'ll llvm::Value {
+    pub fn build_access_fn(&self) {
         let llfunc = self.access_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, cx, .. } = &self;
 
@@ -152,6 +152,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             LLVMDisposeBuilder(llbuilder);
         }
 
-        llfunc
+        // llfunc
     }
 }

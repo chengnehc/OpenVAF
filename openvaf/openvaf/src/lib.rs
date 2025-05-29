@@ -196,7 +196,7 @@ pub fn compile(opts: &Opts) -> Result<CompilationTermination> {
     }
 
     /* Backend */
-    let back = LLVMBackend::new(codegen_opts, target, target_cpu.clone(), &[]);
+    let back = LLVMBackend::new(codegen_opts, target, target_cpu, &[]);
     let objects = osdi::compile::<true>(&db, &modules, &lib_file, &back, *opt_lvl);
 
     // TODO support linker configuration

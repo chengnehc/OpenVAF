@@ -12,7 +12,8 @@ use sim_back::SimUnknownKind;
 use typed_index_collections::TiVec;
 
 use crate::bitfield::{is_flag_set, is_flag_set_mem, is_flag_unset};
-use crate::compilation_unit::{general_callbacks, OsdiCompilationUnit};
+use crate::callbacks::general_callbacks;
+use crate::compilation_unit::{OsdiCompilationUnit, OsdiLimId};
 use crate::inst_data::OsdiInstanceParam;
 use crate::metadata::osdi_0_3::{
     ANALYSIS_IC, CALC_NOISE, CALC_OP, CALC_REACT_JACOBIAN, CALC_REACT_LIM_RHS, CALC_REACT_RESIDUAL,
@@ -20,7 +21,6 @@ use crate::metadata::osdi_0_3::{
     INIT_LIM,
 };
 use crate::metadata::OsdiLimFunction;
-use crate::OsdiLimId;
 
 const SIMPARAM: u32 = 0;
 const ABSTIME_OFFSET: u32 = 1;
@@ -38,7 +38,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         cx.declare_external_fn(name, fun_ty)
     }
 
-    pub fn eval_fn(&self) -> &'ll llvm::Value {
+    pub fn build_eval_fn(&self) {
         let llfunc = self.eval_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, cx, module, .. } = self;
 
@@ -331,8 +331,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
             let ret_flags = builder.load(cx.ty_int(), ret_flags);
             builder.ret(ret_flags);
         }
-
-        llfunc
     }
 
     unsafe fn build_store_results(

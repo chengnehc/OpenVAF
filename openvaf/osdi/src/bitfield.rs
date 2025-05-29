@@ -1,7 +1,7 @@
 use std::mem::size_of;
 
-use llvm::IntPredicate::{IntEQ, IntNE};
 use llvm::{
+    IntPredicate::{IntEQ, IntNE},
     LLVMBuildAnd, LLVMBuildGEP2, LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildOr, LLVMBuildStore,
     UNNAMED,
 };
@@ -17,27 +17,6 @@ const WORD_BITS: u32 = WORD_BYTES * 8;
 pub fn ty<'ll>(cx: &CodegenCx<'_, 'll>, capacity: u32) -> &'ll llvm::Type {
     let word_cnt = capacity.div_ceil(WORD_BITS);
     cx.ty_array(cx.ty_int(), word_cnt)
-}
-
-fn word_idx_and_mask(pos: u32) -> (u32, u32) {
-    let word_idx = pos / WORD_BITS;
-    let mask = 1 << (pos % WORD_BITS);
-    (word_idx, mask)
-}
-
-unsafe fn word_ptr_and_mask<'ll>(
-    cx: &CodegenCx<'_, 'll>,
-    pos: u32,
-    arr_ptr: &'ll llvm::Value,
-    arr_ty: &'ll llvm::Type,
-    llbuilder: &llvm::Builder<'ll>,
-) -> (&'ll llvm::Value, &'ll llvm::Value) {
-    let (idx, mask) = word_idx_and_mask(pos);
-    let zero = cx.const_int(0);
-    let pos = cx.const_unsigned_int(idx);
-    let word_ptr = LLVMBuildGEP2(llbuilder, arr_ty, arr_ptr, [zero, pos].as_ptr(), 2, UNNAMED);
-    let mask = cx.const_unsigned_int(mask);
-    (word_ptr, mask)
 }
 
 pub unsafe fn is_set<'ll>(
@@ -66,6 +45,30 @@ pub unsafe fn set_bit<'ll>(
     word = LLVMBuildOr(llbuilder, word, mask, UNNAMED);
     LLVMBuildStore(llbuilder, word, ptr);
 }
+
+fn word_idx_and_mask(pos: u32) -> (u32, u32) {
+    let word_idx = pos / WORD_BITS;
+    let mask = 1 << (pos % WORD_BITS);
+    (word_idx, mask)
+}
+
+fn word_ptr_and_mask<'ll>(
+    cx: &CodegenCx<'_, 'll>,
+    pos: u32,
+    arr_ptr: &'ll llvm::Value,
+    arr_ty: &'ll llvm::Type,
+    llbuilder: &llvm::Builder<'ll>,
+) -> (&'ll llvm::Value, &'ll llvm::Value) {
+    let (idx, mask) = word_idx_and_mask(pos);
+    let zero = cx.const_int(0);
+    let pos = cx.const_unsigned_int(idx);
+    let word_ptr =
+        unsafe { LLVMBuildGEP2(llbuilder, arr_ty, arr_ptr, [zero, pos].as_ptr(), 2, UNNAMED) };
+    let mask = cx.const_unsigned_int(mask);
+    (word_ptr, mask)
+}
+
+/* Dealing with bitflags */
 
 pub unsafe fn is_flag_set_mem<'ll>(
     cx: &CodegenCx<'_, 'll>,

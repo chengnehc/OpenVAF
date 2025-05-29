@@ -9,7 +9,8 @@ use mir::ControlFlowGraph;
 use mir_llvm::{Builder, BuilderVal, CallbackFun, CodegenCx};
 use sim_back::SimUnknownKind;
 
-use crate::compilation_unit::{general_callbacks, OsdiCompilationUnit};
+use crate::callbacks::general_callbacks;
+use crate::compilation_unit::OsdiCompilationUnit;
 use crate::inst_data::OsdiInstanceParam;
 
 impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
@@ -21,7 +22,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         cx.declare_external_fn(name, fun_ty)
     }
 
-    pub fn setup_model_fn(&self) -> &'ll llvm::Value {
+    pub fn build_setup_model_fn(&self) {
         let llfunc = self.setup_model_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, tys, cx, .. } = self;
 
@@ -143,8 +144,6 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
         builder.select_bb(exit_bb);
         unsafe { builder.ret_void() }
-
-        llfunc
     }
 
     pub fn setup_instance_fn_prototype(&self) -> &'ll llvm::Value {
@@ -159,7 +158,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         cx.declare_external_fn(name, fun_ty)
     }
 
-    pub fn setup_instance_fn(&mut self) -> &'ll llvm::Value {
+    pub fn build_setup_instance_fn(&mut self) -> &'ll llvm::Value {
         let mark_collapsed = self.mark_collapsed_fn();
         let llfunc = self.setup_instance_fn_prototype();
         let OsdiCompilationUnit { inst_data, model_data, tys, cx, module, .. } = self;

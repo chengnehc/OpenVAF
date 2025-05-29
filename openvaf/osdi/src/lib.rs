@@ -1,7 +1,6 @@
 //! OSDI (Open Source Device Interface)
 
 use std::ffi::CString;
-use stdx::{impl_debug_display, impl_idx_from};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use lasso::Rodeo;
@@ -9,10 +8,9 @@ use typed_indexmap::TiSet;
 
 use hir::{CompilationDB, ModuleInfo, ParallelDatabase, Type};
 use hir_lower::CallBackKind;
-use llvm::OptLevel;
-use mir_llvm::{CodegenCx, LLVMBackend};
+use llvm::{Linkage, OptLevel, UnnamedAddr};
+use mir_llvm::{CodegenCx, LLVMBackend, ModuleLlvm};
 use sim_back::CompiledModule;
-// use target::spec::Target;
 
 mod bitfield;
 mod compilation_unit;
@@ -21,14 +19,16 @@ mod metadata;
 mod model_data;
 
 mod access;
+mod callbacks;
 mod eval;
 mod load;
-mod noise;
 mod setup;
 
-use compilation_unit::{new_codegen, OsdiCompilationUnit, OsdiModule};
-use metadata::osdi_0_3::OsdiTys;
-use metadata::OsdiLimFunction;
+use compilation_unit::{OsdiCompilationUnit, OsdiModule};
+use metadata::{
+    osdi_0_3::{stdlib_bitcode, OsdiTys},
+    OsdiLimFunction,
+};
 
 const OSDI_VERSION: (u32, u32) = (0, 3);
 const OBJ_NUM: usize = 4;
@@ -45,16 +45,17 @@ pub fn compile<const EMIT: bool>(
     /* Prepare for compilation */
     let name = dst.file_stem().expect("destination should be a file");
     let main_file = dst.with_extension("o");
-    let target_data = unsafe {
-        let src = CString::new(back.target().data_layout.clone()).unwrap();
-        llvm::LLVMCreateTargetData(src.as_ptr())
-    };
     let mut paths: Vec<Utf8PathBuf> = (0..modules.len() * OBJ_NUM)
         .map(|i| {
             let num = base_n::encode((i + 1) as u128, base_n::CASE_INSENSITIVE);
             dst.with_extension(format!("o{num}"))
         })
         .collect();
+
+    let target_data = unsafe {
+        let src = CString::new(back.target().data_layout.as_str()).unwrap();
+        llvm::LLVMCreateTargetData(src.as_ptr())
+    };
 
     /* From HIR module infos to MIR compiled modules */
     let mut literals = Rodeo::new();
@@ -98,7 +99,7 @@ pub fn compile<const EMIT: bool>(
                 let tys = OsdiTys::new(&cx, target_data_);
                 let cu = OsdiCompilationUnit::new(&db_, module, &cx, &tys, false);
 
-                cu.access_fn();
+                cu.build_access_fn();
                 debug_assert!(llmod.verify_and_print());
 
                 if EMIT {
@@ -116,7 +117,7 @@ pub fn compile<const EMIT: bool>(
                 let tys = OsdiTys::new(&cx, target_data_);
                 let cu = OsdiCompilationUnit::new(&db_, module, &cx, &tys, false);
 
-                cu.setup_model_fn();
+                cu.build_setup_model_fn();
                 // std::fs::write(dst.with_extension("setup_model.ll"), llmod.print().to_string()).ok();
                 debug_assert!(llmod.verify_and_print());
 
@@ -135,7 +136,7 @@ pub fn compile<const EMIT: bool>(
                 let tys = OsdiTys::new(&cx, target_data_);
                 let mut cu = OsdiCompilationUnit::new(&db_, module, &cx, &tys, false);
 
-                cu.setup_instance_fn();
+                cu.build_setup_instance_fn();
                 // std::fs::write(dst.with_extension("setup_inst.ll"), llmod.print().to_string()).ok();
                 debug_assert!(llmod.verify_and_print());
 
@@ -156,7 +157,7 @@ pub fn compile<const EMIT: bool>(
 
                 // std::fs::write(dst.with_extension("eval.mir"), module.eval.to_debug_string()).ok();
                 // println!("{:?}", module.eval);
-                cu.eval_fn();
+                cu.build_eval_fn();
                 // std::fs::write(dst.with_extension("eval.ll"), llmod.print().to_string()).ok();
                 // println!("{}", llmod.to_str());
                 debug_assert!(llmod.verify_and_print());
@@ -214,7 +215,7 @@ pub fn compile<const EMIT: bool>(
         }
 
         let osdi_log =
-            cx.get_declared_value("osdi_log").expect("symbol osdi_log missing from std lib");
+            cx.get_global_value("osdi_log").expect("symbol osdi_log missing from std lib");
         unsafe {
             llvm::LLVMSetInitializer(osdi_log, cx.const_null_ptr());
             llvm::LLVMSetLinkage(osdi_log, llvm::Linkage::ExternalLinkage);
@@ -238,15 +239,37 @@ pub fn compile<const EMIT: bool>(
     paths
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct OsdiLimId(u32);
-impl_idx_from!(OsdiLimId(u32));
-impl_debug_display!(match OsdiLimId{OsdiLimId(id) => "lim{id}";});
+fn new_codegen<'a, 'll>(
+    backend: &'a LLVMBackend,
+    llmod: &'ll ModuleLlvm,
+    literals: &'a Rodeo,
+) -> CodegenCx<'a, 'll> {
+    let cx = unsafe { backend.new_codegen_context(literals, llmod) };
+    cx.include_bitcode(stdlib_bitcode(backend.target()));
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub struct Offset(u32);
-impl_idx_from!(Offset(u32));
-impl_debug_display!(match Offset{Offset(id) => "offset{id}";});
+    // Allow functions in stdlib to be merged
+    for fun in llvm::function_iter(llmod.llmod()) {
+        unsafe {
+            // LLVMPurgeAttrs(fun);
+            if llvm::LLVMIsDeclaration(fun) != llvm::False {
+                continue; // skip function declarations
+            }
+            llvm::LLVMSetLinkage(fun, Linkage::Internal);
+            llvm::LLVMSetUnnamedAddress(fun, UnnamedAddr::Global);
+        }
+    }
+    let scale_factor_table =
+        cx.get_global_value("SCALE_FACTORS").expect("constant SCALE_FACTORS missing from stdlib");
+    let scale_symbol_table =
+        cx.get_global_value("SCALE_SYMBOLS").expect("constant SCALE_SYMBOLS missing from stdlib");
+
+    // Allow these variables to be merged
+    unsafe {
+        llvm::LLVMSetLinkage(scale_factor_table, Linkage::Internal);
+        llvm::LLVMSetLinkage(scale_symbol_table, Linkage::Internal);
+    }
+    cx
+}
 
 /// Get the corresponding LLVM type of an HIR type
 fn lltype<'ll>(ty: &Type, cx: &CodegenCx<'_, 'll>) -> &'ll llvm::Type {

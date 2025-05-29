@@ -7,7 +7,7 @@ use crate::LimitState;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum CallBackKind {
-    Print { kind: DisplayKind, arg_tys: Box<[FmtArg]> },
+    Print { kind: DisplayKind, fmt_args: Box<[FmtArg]> },
     SimParam,             // $simparam without fallback
     SimParamOpt,          // $simparam with optional fallback
     SimParamStr,          // $simparam$str()
@@ -76,9 +76,9 @@ impl CallBackKind {
                 returns: 0,
                 has_side_effects: true,
             },
-            CallBackKind::Print { kind, arg_tys } => FunctionSignature {
+            CallBackKind::Print { kind, fmt_args } => FunctionSignature {
                 name: format!("{kind:?}"),
-                params: arg_tys.len() as u16 + 1,
+                params: fmt_args.len() as u16 + 1,
                 returns: 0,
                 has_side_effects: true,
             },

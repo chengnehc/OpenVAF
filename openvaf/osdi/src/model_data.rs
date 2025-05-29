@@ -1,4 +1,3 @@
-use ahash::RandomState;
 use hir::{CompilationDB, Parameter};
 use indexmap::IndexMap;
 use llvm::{LLVMBuildLoad2, LLVMBuildStore, LLVMBuildStructGEP2, UNNAMED};
@@ -16,18 +15,18 @@ pub struct OsdiModelData<'ll> {
     // llvm types for static (always present) model data struct fields
     pub param_given: &'ll llvm::Type,
     // llvm types for dynamic model data struct fields
-    pub params: IndexMap<Parameter, &'ll llvm::Type, RandomState>,
+    pub params: IndexMap<Parameter, &'ll llvm::Type, ahash::RandomState>,
 }
 
 impl<'ll> OsdiModelData<'ll> {
     pub fn new(
         db: &CompilationDB,
-        cgunit: &OsdiModule<'_>,
+        module: &OsdiModule<'_>,
         cx: &CodegenCx<'_, 'll>,
         inst_data: &OsdiInstanceData<'ll>,
     ) -> Self {
         let inst_params = &inst_data.params;
-        let params: IndexMap<_, _, _> = cgunit
+        let params: IndexMap<_, _, _> = module
             .info
             .params
             .keys()
@@ -43,7 +42,7 @@ impl<'ll> OsdiModelData<'ll> {
         fields.extend(params.values().copied());
         fields.extend(inst_params.values());
 
-        let name = format!("osdi_model_data_{}", &cgunit.sym);
+        let name = format!("osdi_model_data_{}", &module.sym);
         let ty = cx.ty_struct(&name, &fields);
 
         OsdiModelData { ty, param_given, params }

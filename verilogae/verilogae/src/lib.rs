@@ -94,7 +94,7 @@ fn build_model(
     };
     let cg_opts: Vec<_> = opts.cg_flags().map(str::to_owned).collect();
     let target = opts.target()?;
-    let backend = LLVMBackend::new(&cg_opts, &target, target_cpu.to_owned(), &[]);
+    let backend = LLVMBackend::new(&cg_opts, &target, target_cpu, &[]);
     let cache_dir = opts.cache_dir()?;
 
     std::fs::create_dir_all(&cache_dir).unwrap();
