@@ -12,12 +12,14 @@ pub(super) enum StdAttrDiagnostic {
     UnknownMultiplicity { attr: ast::Attr, found: String },
 }
 
-use StdAttrDiagnostic::*;
 impl_display! {
     match StdAttrDiagnostic {
-        IllegalAttr { attr } => "illegal expression supplied to '{}' attribute; expected a string literal", attr.name().unwrap();
-        UnknownParamType { found, .. } => r#"unknown parameter type "{}"; expected "model" or "instance""#, found;
-        UnknownMultiplicity { found, .. } => r#"unknown multiplicity attribute value "{}"; expected "multiply", "divide" or "none""#, found;
+        Self::IllegalAttr { attr } =>
+            "illegal expression supplied to '{}' attribute; expected a string literal", attr.name().unwrap();
+        Self::UnknownParamType { found, .. } =>
+            r#"unknown parameter type "{}"; expected "model" or "instance""#, found;
+        Self::UnknownMultiplicity { found, .. } =>
+            r#"unknown multiplicity attribute value "{}"; expected "multiply", "divide" or "none""#, found;
 
     }
 }
@@ -28,7 +30,7 @@ impl Diagnostic for StdAttrDiagnostic {
         let parse = db.parse(root_file);
 
         let report = match self {
-            IllegalAttr { attr } => {
+            Self::IllegalAttr { attr } => {
                 let FileSpan { range, file } =
                     parse.to_file_span(attr.syntax().text_range(), &src_map);
 
@@ -36,7 +38,7 @@ impl Diagnostic for StdAttrDiagnostic {
                     Label::primary(file, range).with_message("expected a string literal"),
                 )
             }
-            UnknownParamType { attr, .. } => {
+            Self::UnknownParamType { attr, .. } => {
                 let FileSpan { range, file } =
                     parse.to_file_span(attr.syntax().text_range(), &src_map);
 
@@ -44,7 +46,7 @@ impl Diagnostic for StdAttrDiagnostic {
                     .with_label(Label::primary(file, range).with_message("unknown parameter type"))
                     .with_note("note: parameter type is set to 'model' by default")
             }
-            UnknownMultiplicity { attr, .. } => {
+            Self::UnknownMultiplicity { attr, .. } => {
                 let FileSpan { range, file } =
                     parse.to_file_span(attr.syntax().text_range(), &src_map);
 

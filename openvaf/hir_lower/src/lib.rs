@@ -387,15 +387,13 @@ impl From<hir::AssignmentLhs> for PlaceKind {
 
 impl PlaceKind {
     pub fn ty(&self, db: &CompilationDB) -> Type {
-        use PlaceKind::*;
-
         match *self {
-            ParamMin(param) | ParamMax(param) | Param(param) => param.ty(db),
-            Var(var) => var.ty(db),
-            FunctionReturn(fun) => fun.return_ty(db),
-            FunctionArg(arg) => arg.ty(db),
-            IsPotential(_) | CollapseImplicitEquation(_) => Type::Bool,
-            Contribute { .. } | ImplicitResidual { .. } | BoundStep => Type::Real,
+            Self::ParamMin(param) | Self::ParamMax(param) | Self::Param(param) => param.ty(db),
+            Self::Var(var) => var.ty(db),
+            Self::FunctionReturn(fun) => fun.return_ty(db),
+            Self::FunctionArg(arg) => arg.ty(db),
+            Self::IsPotential(_) | Self::CollapseImplicitEquation(_) => Type::Bool,
+            Self::Contribute { .. } | Self::ImplicitResidual { .. } | Self::BoundStep => Type::Real,
         }
     }
 

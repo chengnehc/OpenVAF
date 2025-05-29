@@ -75,24 +75,24 @@ impl Builder<'_> {
                 };
             }
 
-            use {InstructionData::*, Opcode::*};
+            use InstructionData as I;
             let val = match self.func.dfg.insts[inst] {
-                Unary { opcode: OptBarrier, arg } => {
+                I::Unary { opcode: Opcode::OptBarrier, arg } => {
                     let Some(&val) = self.val_map.get(&arg) else { continue };
                     val
                 }
-                Unary { opcode: Fneg, arg } => {
+                I::Unary { opcode: Opcode::Fneg, arg } => {
                     let Some(&val) = self.val_map.get(&arg) else { continue };
                     ins!().fneg(val)
                 }
-                Binary { opcode: Fadd, args } => {
+                I::Binary { opcode: Opcode::Fadd, args } => {
                     match (self.val_map.get(&args[0]), self.val_map.get(&args[1])) {
                         (None, None) => continue,
                         (None, Some(&val)) | (Some(&val), None) => val,
                         (Some(&lhs), Some(&rhs)) => ins!().fadd(lhs, rhs),
                     }
                 }
-                Binary { opcode: Fsub, args } => {
+                I::Binary { opcode: Opcode::Fsub, args } => {
                     match (self.val_map.get(&args[0]), self.val_map.get(&args[1])) {
                         (None, None) => continue,
                         (None, Some(&rhs)) => ins!().fneg(rhs),
@@ -100,18 +100,18 @@ impl Builder<'_> {
                         (Some(&lhs), Some(&rhs)) => ins!().fsub(lhs, rhs),
                     }
                 }
-                Binary { opcode: Fmul, args: [lhs, rhs] } => {
+                I::Binary { opcode: Opcode::Fmul, args: [lhs, rhs] } => {
                     match (self.val_map.get(&lhs), self.val_map.get(&rhs)) {
                         (None, None) | (Some(_), Some(_)) => continue,
                         (None, Some(&rhs)) => ins!().fmul(lhs, rhs),
                         (Some(&lhs), None) => ins!().fmul(lhs, rhs),
                     }
                 }
-                Binary { opcode: Fdiv, args: [num, denom] } => {
+                I::Binary { opcode: Opcode::Fdiv, args: [num, denom] } => {
                     let Some(&num) = self.val_map.get(&num) else { continue };
                     ins!().fdiv(num, denom)
                 }
-                PhiNode(_) => {
+                I::PhiNode(_) => {
                     phis.push(inst);
                     // delay phi construction as there could be loops in the DFG
                     self.func.dfg.make_invalid_value()

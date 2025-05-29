@@ -76,24 +76,24 @@ impl<'a, 'c> MainLowerContext<'a, 'c> {
     /// If the requested kind of place already exists, simply return it, otherwise a
     /// new memory slot is created.
     pub fn dec_place(&mut self, kind: PlaceKind) -> Place {
-        use PlaceKind::*;
+        use PlaceKind as P;
         let (place, new) = self.places.ensure(kind);
         if new {
             // initialize the place
             let init_val = match kind {
                 // such kinds of places are always initialized
-                Param(_)
-                | ParamMin(_)
-                | ParamMax(_)
-                | FunctionReturn { .. }
-                | FunctionArg { .. } => return place,
+                P::Param(_)
+                | P::ParamMin(_)
+                | P::ParamMax(_)
+                | P::FunctionReturn { .. }
+                | P::FunctionArg { .. } => return place,
 
                 // such kinds of places require initialization
-                Var(var) => self.use_param(ParamKind::HiddenState(var)),
-                Contribute { .. } | ImplicitResidual { .. } => F_ZERO,
-                CollapseImplicitEquation(_) => TRUE,
-                IsPotential(_) => FALSE,
-                BoundStep => INFINITY,
+                P::Var(var) => self.use_param(ParamKind::HiddenState(var)),
+                P::Contribute { .. } | P::ImplicitResidual { .. } => F_ZERO,
+                P::CollapseImplicitEquation(_) => TRUE,
+                P::IsPotential(_) => FALSE,
+                P::BoundStep => INFINITY,
             };
             let entry = self.layout_mut().entry_block().unwrap();
             self.func.def_var_at(place, init_val, entry);

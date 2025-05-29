@@ -436,7 +436,7 @@ impl Context {
                 ast::FunctionItem::FunctionArg(arg) => {
                     self.lower_func_arg(arg, &mut args, &mut items)
                 }
-                _ => (),
+                ast::FunctionItem::Stmt(_) => (),
             }
         }
         // combine correlated function argument and variable declarations

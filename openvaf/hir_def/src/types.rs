@@ -18,17 +18,16 @@ pub enum Type {
     Array { ty: Box<Type>, len: u32 },
 }
 
-use Type::*;
 impl_display! {
     match Type {
-        Err => "[missing]";
-        Void => "void";
-        Bool => "integer";
-        Integer => "integer";
-        Real => "real";
-        String => "string";
-        EmptyArray => "_[0:0]";
-        Array {ty, len} => "{ty}[0:{len}]";
+        Type::Err => "[missing]";
+        Type::Void => "void";
+        Type::Bool => "integer";
+        Type::Integer => "integer";
+        Type::Real => "real";
+        Type::String => "string";
+        Type::EmptyArray => "_[0:0]";
+        Type::Array {ty, len} => "{ty}[0:{len}]";
     }
 }
 

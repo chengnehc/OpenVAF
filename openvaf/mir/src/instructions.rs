@@ -43,35 +43,33 @@ fn instruction_data_size() {
     assert_eq!(std::mem::size_of::<InstructionData>(), 16)
 }
 
-use InstructionData::*;
-
 impl InstructionData {
     pub const fn is_terminator(&self) -> bool {
-        matches!(self, Branch { .. } | Jump { .. })
+        matches!(self, Self::Branch { .. } | Self::Jump { .. })
     }
 
     pub const fn is_phi(&self) -> bool {
-        matches!(self, PhiNode(_))
+        matches!(self, Self::PhiNode(_))
     }
 
     /// Get the opcode of this instruction.
     pub fn opcode(&self) -> Opcode {
         match self {
-            Unary { opcode: op, .. } | Binary { opcode: op, .. } => *op,
-            Branch { .. } => Opcode::Br,
-            Jump { .. } => Opcode::Jmp,
-            Call { .. } => Opcode::Call,
-            PhiNode(PhiNode { .. }) => Opcode::Phi,
+            Self::Unary { opcode: op, .. } | Self::Binary { opcode: op, .. } => *op,
+            Self::Branch { .. } => Opcode::Br,
+            Self::Jump { .. } => Opcode::Jmp,
+            Self::Call { .. } => Opcode::Call,
+            Self::PhiNode(PhiNode { .. }) => Opcode::Phi,
         }
     }
 
     /// Get references to the value arguments to this instruction.
     pub fn arguments<'a>(&'a self, pool: &'a ValueListPool) -> &'a [Value] {
         match self {
-            Unary { arg, .. } | Branch { cond: arg, .. } => slice::from_ref(arg),
-            Binary { args, .. } => args,
-            Call { args, .. } | PhiNode(PhiNode { args, .. }) => args.as_slice(pool),
-            Jump { .. } => &[],
+            Self::Unary { arg, .. } | Self::Branch { cond: arg, .. } => slice::from_ref(arg),
+            Self::Binary { args, .. } => args,
+            Self::Call { args, .. } | Self::PhiNode(PhiNode { args, .. }) => args.as_slice(pool),
+            Self::Jump { .. } => &[],
         }
     }
 
@@ -81,29 +79,33 @@ impl InstructionData {
     /// It is up to the caller to ensure that uses are updated appropriately.
     pub fn arguments_mut<'a>(&'a mut self, pool: &'a mut ValueListPool) -> &'a mut [Value] {
         match self {
-            Unary { arg, .. } | Branch { cond: arg, .. } => slice::from_mut(arg),
-            Binary { args, .. } => args,
-            Call { args, .. } | PhiNode(PhiNode { args, .. }) => args.as_mut_slice(pool),
-            Jump { .. } => &mut [],
+            Self::Unary { arg, .. } | Self::Branch { cond: arg, .. } => slice::from_mut(arg),
+            Self::Binary { args, .. } => args,
+            Self::Call { args, .. } | Self::PhiNode(PhiNode { args, .. }) => {
+                args.as_mut_slice(pool)
+            }
+            Self::Jump { .. } => &mut [],
         }
     }
 
     pub fn eq(&self, other: &Self, val_pool: &ValueListPool, phi_forest: &PhiForest) -> bool {
         match (self, other) {
-            (Unary { opcode: l_op, arg: l_arg }, Unary { opcode: r_op, arg: r_arg }) => {
-                l_op == r_op && l_arg == r_arg
-            }
-            (Binary { opcode: l_op, args: l_args }, Binary { opcode: r_op, args: r_args }) => {
-                l_op == r_op && l_args == r_args
-            }
             (
-                Branch {
+                Self::Unary { opcode: l_op, arg: l_arg },
+                Self::Unary { opcode: r_op, arg: r_arg },
+            ) => l_op == r_op && l_arg == r_arg,
+            (
+                Self::Binary { opcode: l_op, args: l_args },
+                Self::Binary { opcode: r_op, args: r_args },
+            ) => l_op == r_op && l_args == r_args,
+            (
+                Self::Branch {
                     cond: l_cond,
                     then_dst: l_then_dst,
                     else_dst: l_else_dst,
                     loop_entry: l_loop_entry,
                 },
-                Branch {
+                Self::Branch {
                     cond: r_cond,
                     then_dst: r_then_dst,
                     else_dst: r_else_dst,
@@ -115,10 +117,10 @@ impl InstructionData {
                     && l_else_dst == r_else_dst
                     && l_loop_entry == r_loop_entry
             }
-            (Jump { destination: l }, Jump { destination: r }) => l == r,
+            (Self::Jump { destination: l }, Self::Jump { destination: r }) => l == r,
             (
-                Call { func_ref: l_func_ref, args: l_args },
-                Call { func_ref: r_func_ref, args: r_args },
+                Self::Call { func_ref: l_func_ref, args: l_args },
+                Self::Call { func_ref: r_func_ref, args: r_args },
             ) => l_func_ref == r_func_ref && l_args.as_slice(val_pool) == r_args.as_slice(val_pool),
 
             (Self::PhiNode(lnode), Self::PhiNode(rnode)) => lnode.eq(rnode, val_pool, phi_forest),
@@ -130,50 +132,54 @@ impl InstructionData {
     pub fn hash<H: Hasher>(&self, state: &mut H, val_pool: &ValueListPool, phi_forest: &PhiForest) {
         mem::discriminant(self).hash(state);
         match self {
-            Unary { opcode: op, arg } => {
+            Self::Unary { opcode: op, arg } => {
                 op.hash(state);
                 arg.hash(state);
             }
-            Binary { opcode: op, args } => {
+            Self::Binary { opcode: op, args } => {
                 op.hash(state);
                 args.hash(state);
             }
-            Branch { cond, then_dst, else_dst, loop_entry } => {
+            Self::Branch { cond, then_dst, else_dst, loop_entry } => {
                 cond.hash(state);
                 then_dst.hash(state);
                 else_dst.hash(state);
                 loop_entry.hash(state);
             }
-            Jump { destination } => destination.hash(state),
-            Call { func_ref, args } => {
+            Self::Jump { destination } => destination.hash(state),
+            Self::Call { func_ref, args } => {
                 func_ref.hash(state);
                 args.as_slice(val_pool).hash(state);
             }
-            PhiNode(node) => node.hash(state, val_pool, phi_forest),
+            Self::PhiNode(node) => node.hash(state, val_pool, phi_forest),
         }
     }
 
     pub fn as_phi(&self) -> Option<&PhiNode> {
         match self {
-            PhiNode(node) => Some(node),
+            Self::PhiNode(node) => Some(node),
             _ => None,
         }
     }
 
     pub fn as_phi_mut(&mut self) -> Option<&mut PhiNode> {
         match self {
-            PhiNode(node) => Some(node),
+            Self::PhiNode(node) => Some(node),
             _ => None,
         }
     }
 
     pub fn unwrap_phi(&self) -> &PhiNode {
-        let PhiNode(node) = self else { unreachable!("The instruction should be a phi node") };
+        let Self::PhiNode(node) = self else {
+            unreachable!("The instruction should be a phi node")
+        };
         node
     }
 
     pub fn unwrap_phi_mut(&mut self) -> &mut PhiNode {
-        let PhiNode(node) = self else { unreachable!("The instruction should be a phi node") };
+        let Self::PhiNode(node) = self else {
+            unreachable!("The instruction should be a phi node")
+        };
         node
     }
 
@@ -189,8 +195,10 @@ impl InstructionData {
     ) -> Self {
         let mut res = self.clone();
         match &mut res {
-            PhiNode(phi) => *phi = phi.to_pool(val_pool, phi_forest, dst_val_pool, dst_phi_forest),
-            Call { args, .. } => *args = args.to_pool(val_pool, dst_val_pool),
+            Self::PhiNode(phi) => {
+                *phi = phi.to_pool(val_pool, phi_forest, dst_val_pool, dst_phi_forest)
+            }
+            Self::Call { args, .. } => *args = args.to_pool(val_pool, dst_val_pool),
             _ => (),
         }
         res

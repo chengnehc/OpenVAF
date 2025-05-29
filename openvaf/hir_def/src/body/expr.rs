@@ -90,15 +90,15 @@ impl_debug! {
     }
 }
 
-use ast::LiteralKind::*;
+use ast::LiteralKind as L;
 impl Literal {
     pub fn new(ast: ast::LiteralKind) -> Literal {
         match ast {
-            StrLit(lit) => Literal::String(lit.unescaped_value().into_boxed_str()),
-            IntNumber(lit) => Literal::Int(lit.value()),
-            SiRealNumber(lit) => Literal::Float(lit.value().into()),
-            StdRealNumber(lit) => Literal::Float(lit.value().into()),
-            Inf => Literal::Inf,
+            L::StrLit(lit) => Literal::String(lit.unescaped_value().into_boxed_str()),
+            L::IntNumber(lit) => Literal::Int(lit.value()),
+            L::SiRealNumber(lit) => Literal::Float(lit.value().into()),
+            L::StdRealNumber(lit) => Literal::Float(lit.value().into()),
+            L::Inf => Literal::Inf,
         }
     }
 

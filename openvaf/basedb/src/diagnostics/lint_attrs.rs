@@ -1,15 +1,17 @@
 use syntax::sourcemap::FileSpan;
 
 use crate::lints::builtin as builtins;
-use crate::lints::LintAttrDiagnostic::{self, *};
+use crate::lints::LintAttrDiagnostic;
 
 use super::*;
 
 impl Diagnostic for LintAttrDiagnostic {
     fn lint(&self, _root_file: FileId, _db: &dyn BaseDB) -> Option<(Lint, LintSrc)> {
         match *self {
-            UnknownLint { src, .. } => Some((builtins::lint_not_found, LintSrc::item(src))),
-            LintOverwrite { src, .. } => Some((builtins::lint_level_overwrite, LintSrc::item(src))),
+            Self::UnknownLint { src, .. } => Some((builtins::lint_not_found, LintSrc::item(src))),
+            Self::LintOverwrite { src, .. } => {
+                Some((builtins::lint_level_overwrite, LintSrc::item(src)))
+            }
             _ => None,
         }
     }
@@ -19,7 +21,7 @@ impl Diagnostic for LintAttrDiagnostic {
         let parse = db.parse(root_file);
 
         let report = match *self {
-            ExpectedArrayOrLiteral { range, attr } => {
+            Self::ExpectedArrayOrLiteral { range, attr } => {
                 let FileSpan { file, range } = parse.to_file_span(range, &sm);
 
                 Report::error()
@@ -31,14 +33,14 @@ impl Diagnostic for LintAttrDiagnostic {
                         attr
                     ))
             }
-            ExpectedLiteral { range, .. } => {
+            Self::ExpectedLiteral { range, .. } => {
                 let FileSpan { file, range } = parse.to_file_span(range, &sm);
 
                 Report::error().with_label(
                     Label::primary(file, range).with_message("expected a string literal"),
                 )
             }
-            LintOverwrite { old, new, .. } => {
+            Self::LintOverwrite { old, new, .. } => {
                 let (file, [new, old]) = text_ranges_to_unified_spans(&sm, &parse, [new, old]);
 
                 Report::warning()
@@ -50,7 +52,7 @@ impl Diagnostic for LintAttrDiagnostic {
                         "help: the second lint lvl is used; the first attribute has no effect",
                     )
             }
-            UnknownLint { range, .. } => {
+            Self::UnknownLint { range, .. } => {
                 let FileSpan { file, range } = parse.to_file_span(range, &sm);
 
                 Report::error()

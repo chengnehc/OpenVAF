@@ -22,80 +22,81 @@ pub enum LexerError {
     UnexpectedToken,
 }
 
-use TokenKind::*;
 impl TokenKind {
     /// Convert this `TokenKind` with identifier `src` to corresponding `SyntaxKind`
     /// if possible, and emit lexer errors.
     pub fn to_syntax(self, src: &str) -> (Option<SyntaxKind>, Option<LexerError>) {
         let token = match self {
             // Combined operators
-            LineComment | BlockComment { terminated: true } => SyntaxKind::COMMENT,
-            BlockComment { terminated: false } => {
+            Self::LineComment | Self::BlockComment { terminated: true } => SyntaxKind::COMMENT,
+            Self::BlockComment { terminated: false } => {
                 return (Some(SyntaxKind::COMMENT), Some(LexerError::UnterminatedBlockComment))
             }
-            Whitespace => SyntaxKind::WHITESPACE,
-            SimpleIdent => SyntaxKind::from_keyword(src).unwrap_or(SyntaxKind::IDENT),
-            EscapedIdent => SyntaxKind::IDENT,
-            SystemCallIdent if src == "$root" => SyntaxKind::ROOT_KW,
-            SystemCallIdent => SyntaxKind::SYSFUN,
-            Literal { kind: LiteralKind::Int } => SyntaxKind::INT_NUMBER,
-            Literal { kind: LiteralKind::Float { has_scale_char: true } } => {
+            Self::Whitespace => SyntaxKind::WHITESPACE,
+            Self::SimpleIdent => SyntaxKind::from_keyword(src).unwrap_or(SyntaxKind::IDENT),
+            Self::EscapedIdent => SyntaxKind::IDENT,
+            Self::SystemCallIdent if src == "$root" => SyntaxKind::ROOT_KW,
+            Self::SystemCallIdent => SyntaxKind::SYSFUN,
+            Self::Literal { kind: LiteralKind::Int } => SyntaxKind::INT_NUMBER,
+            Self::Literal { kind: LiteralKind::Float { has_scale_char: true } } => {
                 SyntaxKind::SI_REAL_NUMBER
             }
-            Literal { kind: LiteralKind::Float { has_scale_char: false } } => {
+            Self::Literal { kind: LiteralKind::Float { has_scale_char: false } } => {
                 SyntaxKind::STD_REAL_NUMBER
             }
-            Literal { kind: LiteralKind::Str { terminated: true } } => SyntaxKind::STR_LIT,
-            Literal { kind: LiteralKind::Str { terminated: false } } => {
+            Self::Literal { kind: LiteralKind::Str { terminated: true } } => SyntaxKind::STR_LIT,
+            Self::Literal { kind: LiteralKind::Str { terminated: false } } => {
                 return (Some(SyntaxKind::STR_LIT), Some(LexerError::UnterminatedStr))
             }
-            CompilerDirective | Define { .. } | IllegalDefine => return (None, None),
-            Semi => T![;],
-            Comma => T![,],
-            Dot => T![.],
-            OpenParen => T!['('],
-            CloseParen => T![')'],
-            OpenBrace => T!['{'],
-            CloseBrace => T!['}'],
-            OpenBracket => T!['['],
-            CloseBracket => T![']'],
-            At => T![@],
-            Pound => T![#],
-            Tilde => T![~],
-            Question => T![?],
-            Colon => T![:],
-            Dollar => T![$],
-            Eq => T![=],
-            Not => T![!],
-            Lt => T![<],
-            Gt => T![>],
-            Minus => T![-],
-            And => T![&],
-            Or => T![|],
-            Plus => T![+],
-            Star => T![*],
-            Slash => T![/],
-            Caret => T![^],
-            Percent => T![%],
-            AttrOpenParen => T!["(*"],
-            AttrCloseParen => T!["*)"],
-            ArrStart => T!["'{"],
-            Eq2 => T![==],
-            Neq => T![!=],
-            Leq => T![<=],
-            Geq => T![>=],
-            Pipe2 => T![||],
-            Amp2 => T![&&],
-            Shl => T![<<],
-            Shr => T![>>],
-            ShlA => T![<<<],
-            ShrA => T![>>>],
-            Contribute => T![<+],
-            Pow => T![**],
-            NXorL => T![~^],
-            NXorR => T![^~],
+            Self::CompilerDirective | Self::Define { .. } | Self::IllegalDefine => {
+                return (None, None)
+            }
+            Self::Semi => T![;],
+            Self::Comma => T![,],
+            Self::Dot => T![.],
+            Self::OpenParen => T!['('],
+            Self::CloseParen => T![')'],
+            Self::OpenBrace => T!['{'],
+            Self::CloseBrace => T!['}'],
+            Self::OpenBracket => T!['['],
+            Self::CloseBracket => T![']'],
+            Self::At => T![@],
+            Self::Pound => T![#],
+            Self::Tilde => T![~],
+            Self::Question => T![?],
+            Self::Colon => T![:],
+            Self::Dollar => T![$],
+            Self::Eq => T![=],
+            Self::Not => T![!],
+            Self::Lt => T![<],
+            Self::Gt => T![>],
+            Self::Minus => T![-],
+            Self::And => T![&],
+            Self::Or => T![|],
+            Self::Plus => T![+],
+            Self::Star => T![*],
+            Self::Slash => T![/],
+            Self::Caret => T![^],
+            Self::Percent => T![%],
+            Self::AttrOpenParen => T!["(*"],
+            Self::AttrCloseParen => T!["*)"],
+            Self::ArrStart => T!["'{"],
+            Self::Eq2 => T![==],
+            Self::Neq => T![!=],
+            Self::Leq => T![<=],
+            Self::Geq => T![>=],
+            Self::Pipe2 => T![||],
+            Self::Amp2 => T![&&],
+            Self::Shl => T![<<],
+            Self::Shr => T![>>],
+            Self::ShlA => T![<<<],
+            Self::ShrA => T![>>>],
+            Self::Contribute => T![<+],
+            Self::Pow => T![**],
+            Self::NXorL => T![~^],
+            Self::NXorR => T![^~],
 
-            Unknown => return (None, Some(LexerError::UnexpectedToken)),
+            Self::Unknown => return (None, Some(LexerError::UnexpectedToken)),
         };
 
         (Some(token), None)

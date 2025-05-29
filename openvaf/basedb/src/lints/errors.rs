@@ -12,12 +12,11 @@ pub enum LintAttrDiagnostic {
     LintOverwrite { old: TextRange, new: TextRange, name: String, src: ErasedAstId },
 }
 
-use LintAttrDiagnostic::*;
 impl_display! {
     match LintAttrDiagnostic {
-        ExpectedArrayOrLiteral {attr,..} => "'{attr}' attribute expects a string literal or and array of literals";
-        ExpectedLiteral {attr,..} => "'{attr}' attribute expects a string literal here";
-        UnknownLint {lint,..} => "unknown lint '{lint}'";
-        LintOverwrite {name,..} => "lint level for '{name}' was set multiple times";
+        Self::ExpectedArrayOrLiteral {attr,..} => "'{attr}' attribute expects a string literal or and array of literals";
+        Self::ExpectedLiteral {attr,..} => "'{attr}' attribute expects a string literal here";
+        Self::UnknownLint {lint,..} => "unknown lint '{lint}'";
+        Self::LintOverwrite {name,..} => "lint level for '{name}' was set multiple times";
     }
 }

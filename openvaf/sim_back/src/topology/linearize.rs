@@ -239,17 +239,17 @@ impl super::Builder<'_> {
         };
         let mut contributes = Vec::new();
 
-        use {InstructionData::*, Opcode::*};
+        use {InstructionData as I, Opcode::*};
         for &inst in &postorder {
             match func.dfg.insts[inst] {
-                Unary { opcode: Fneg, .. } | Binary { opcode: Fadd | Fsub, .. } => {}
+                I::Unary { opcode: Fneg, .. } | I::Binary { opcode: Fadd | Fsub, .. } => {}
 
-                Binary { opcode: Fmul, args } => {
+                I::Binary { opcode: Fmul, args } => {
                     if is_op_dependent(args[0]) && is_op_dependent(args[1]) {
                         return Evaluation::Equation;
                     }
                 }
-                Binary { opcode: Fdiv, args } => {
+                I::Binary { opcode: Fdiv, args } => {
                     if is_op_dependent(args[1]) {
                         // TODO(JW): why arg0 is not considered here?
                         return Evaluation::Equation;
@@ -262,15 +262,17 @@ impl super::Builder<'_> {
                 // plays nice with transient noise and other more advanced simulation
                 // types but I can't see why it wouldn't (also the language standard
                 // specifically calls these small signal sources).
-                PhiNode(_) | Branch { .. } | Binary { opcode: Flt | Fle | Fgt | Fge, .. }
+                I::PhiNode(_)
+                | I::Branch { .. }
+                | I::Binary { opcode: Flt | Fle | Fgt | Fge, .. }
                     if noise => {}
 
                 // Noise is always zero when these are evaluated.
                 // TODO: complex noise power (would allow us to avoid creating an extra node here)
-                InstructionData::Call { func_ref, .. }
+                I::Call { func_ref, .. }
                     if noise && callbacks[func_ref] != CallBackKind::TimeDerivative => {}
 
-                PhiNode(ref phi) => {
+                I::PhiNode(ref phi) => {
                     // Check if a phi is operating point dependent. To determine that
                     // we check whether any of the control dependencies of phi edge
                     // is operating point dependent.
@@ -321,7 +323,7 @@ impl super::Builder<'_> {
                     }
                 }
 
-                Unary { opcode: OptBarrier, .. } if noise => {
+                I::Unary { opcode: OptBarrier, .. } if noise => {
                     let val = func.dfg.first_result(inst);
                     if let Some(contrib_kind) = self.contrib_map.get(&val) {
                         if !contrib_kind.is_reactive() && contributes.is_empty() {
@@ -333,7 +335,7 @@ impl super::Builder<'_> {
                         }
                     }
                 }
-                Unary { opcode: OptBarrier, .. } => {
+                I::Unary { opcode: OptBarrier, .. } => {
                     let val = func.dfg.first_result(inst);
                     if output_values.contains(val) {
                         if self.contrib_map.get(&val).is_some_and(|it| !it.is_reactive()) {

@@ -25,19 +25,18 @@ pub enum PreprocessError {
     MacroRecursion { name: String, span: CtxSpan },
 }
 
-use PreprocessError::*;
 impl_display! {
     match PreprocessError {
-        UnexpectedToken(_) => "encountered unexpected token";
-        UnexpectedEof { expected, .. } => "unexpected EOF, expected {}", expected;
-        FileNotFound { file, error, .. } => "failed to read '{file}': {}", std::io::Error::from(*error);
-        InvalidTextFormat { file, .. } => "failed to read {file}: file contents are not valid text";
-        UnsupportedCompDir { name,.. } => "unsupported compiler directive {name}";
-        MissingOrUnexpectedToken { expected, .. } => "unexpected token, expected '{}'", expected;
-        MacroNotFound{ name, .. } =>  "macro '`{name}' has not been declared";
-        MacroNotDefined{ name, .. } =>  "cannot undefine macro '`{name}'";
-        MacroOverwritten { name, .. } => "macro '`{name}' was overwritten";
-        MacroArgCountMismatch { expected, found, .. } => "argument mismatch, expected {} but found {}", expected, found;
-        MacroRecursion { name, .. } => "macro '`{name}' was called recursively";
+        Self::UnexpectedToken(_) => "encountered unexpected token";
+        Self::UnexpectedEof { expected, .. } => "unexpected EOF, expected {}", expected;
+        Self::FileNotFound { file, error, .. } => "failed to read '{file}': {}", std::io::Error::from(*error);
+        Self::InvalidTextFormat { file, .. } => "failed to read {file}: file contents are not valid text";
+        Self::UnsupportedCompDir { name,.. } => "unsupported compiler directive {name}";
+        Self::MissingOrUnexpectedToken { expected, .. } => "unexpected token, expected '{}'", expected;
+        Self::MacroNotFound{ name, .. } =>  "macro '`{name}' has not been declared";
+        Self::MacroNotDefined{ name, .. } =>  "cannot undefine macro '`{name}'";
+        Self::MacroOverwritten { name, .. } => "macro '`{name}' was overwritten";
+        Self::MacroArgCountMismatch { expected, found, .. } => "argument mismatch, expected {} but found {}", expected, found;
+        Self::MacroRecursion { name, .. } => "macro '`{name}' was called recursively";
     }
 }

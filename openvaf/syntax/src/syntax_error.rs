@@ -125,33 +125,31 @@ pub enum SyntaxError {
     },
 }
 
-use SyntaxError::*;
-
 impl_display! {
     match SyntaxError{
-        UnexpectedToken{expected, found, ..} => "unexpected token {}; expected {}", found, expected;
-        ReservedIdentifier{name, ..} => "reserved keyword '{name}' was used as an identifier";
-        IllegalRootSegment{..} =>  "$root is only allowed as a prefix";
-        IllegalInfToken{..} => "unexpected token 'inf'; expected an expression";
-        IllegalNatureIdent{..} => "illegal nature identifier";
-        IllegalAttribute{attr, ..} => "illegal value provided for {} attribute", attr;
-        SurplusToken{found, ..} => "unexpected token {}", found;
-        MissingToken{expected, ..} => "unexpected token; expected {}", expected;
-        IllegalDisciplineAttrPath{..} => "illegal discipline attribute path";
-        IllegalBodyPorts{..} => "ports declared in module head and body";
-        PortNotDeclaredInModuleHead{name, ..} => "port '{name}' was not declared in the module head";
-        MixedModuleHead{..} => "module header contains mix of port references and port declarations";
-        DuplicatePort{name, ..} => "port '{name}' was declared multiple times";
-        IllegalNetType{found, ..} => "{} nets are currently not supported", found;
-        IllegalBranchNodeCnt{cnt, ..} => "branch declaration require 1 or 2 nets; found {cnt}";
-        IllegalBranchNodeExpr{..} => "illegal expr was used to declare a branch node!";
-        RangeConstraintForNonNumericParameter{name, ..} => "non-numeric parameter '{name}' has range bounds";
-        BlockDeclsAfterStmt{..}  => "declarations in blocks are only allowed before the first stmt";
-        BlockDeclsWithoutScope{..} => "declarations in blocks require an explicit scope";
-        FuncWithoutBody{..} => "function is missing a body";
-        FuncWithoutArg{..} => "function is missing arguments";
-        ItemsAfterFuncBody{..} => "functions may not contain any items after the function body";
-        MultipleFuncBodies{..} => "functions may only contain one body";
-        NamedFuncBodyBlock{..} => "functions shall not use named blocks";
+        Self::UnexpectedToken{expected, found, ..} => "unexpected token {}; expected {}", found, expected;
+        Self::ReservedIdentifier{name, ..} => "reserved keyword '{name}' was used as an identifier";
+        Self::IllegalRootSegment{..} =>  "$root is only allowed as a prefix";
+        Self::IllegalInfToken{..} => "unexpected token 'inf'; expected an expression";
+        Self::IllegalNatureIdent{..} => "illegal nature identifier";
+        Self::IllegalAttribute{attr, ..} => "illegal value provided for {} attribute", attr;
+        Self::SurplusToken{found, ..} => "unexpected token {}", found;
+        Self::MissingToken{expected, ..} => "unexpected token; expected {}", expected;
+        Self::IllegalDisciplineAttrPath{..} => "illegal discipline attribute path";
+        Self::IllegalBodyPorts{..} => "ports declared in module head and body";
+        Self::PortNotDeclaredInModuleHead{name, ..} => "port '{name}' was not declared in the module head";
+        Self::MixedModuleHead{..} => "module header contains mix of port references and port declarations";
+        Self::DuplicatePort{name, ..} => "port '{name}' was declared multiple times";
+        Self::IllegalNetType{found, ..} => "{} nets are currently not supported", found;
+        Self::IllegalBranchNodeCnt{cnt, ..} => "branch declaration require 1 or 2 nets; found {cnt}";
+        Self::IllegalBranchNodeExpr{..} => "illegal expr was used to declare a branch node!";
+        Self::RangeConstraintForNonNumericParameter{name, ..} => "non-numeric parameter '{name}' has range bounds";
+        Self::BlockDeclsAfterStmt{..}  => "declarations in blocks are only allowed before the first stmt";
+        Self::BlockDeclsWithoutScope{..} => "declarations in blocks require an explicit scope";
+        Self::FuncWithoutBody{..} => "function is missing a body";
+        Self::FuncWithoutArg{..} => "function is missing arguments";
+        Self::ItemsAfterFuncBody{..} => "functions may not contain any items after the function body";
+        Self::MultipleFuncBodies{..} => "functions may only contain one body";
+        Self::NamedFuncBodyBlock{..} => "functions shall not use named blocks";
     }
 }

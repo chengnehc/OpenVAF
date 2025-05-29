@@ -35,7 +35,7 @@ impl Candidate {
     fn as_node(&self) -> Option<Value> {
         match self.kind {
             CandidateKind::Node { potential, .. } => Some(potential),
-            _ => None,
+            CandidateKind::Flow { .. } => None,
         }
     }
 }

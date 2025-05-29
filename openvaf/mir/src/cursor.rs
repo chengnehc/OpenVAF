@@ -244,11 +244,11 @@ pub trait Cursor {
 
     /// Get the block corresponding to the current position.
     fn current_block(&self) -> Option<Block> {
-        use self::CursorPosition::*;
+        use CursorPosition as Pos;
         match self.position() {
-            Nowhere => None,
-            At(inst) => self.layout().inst_block(inst),
-            Before(block) | After(block) => Some(block),
+            Pos::Nowhere => None,
+            Pos::At(inst) => self.layout().inst_block(inst),
+            Pos::Before(block) | Pos::After(block) => Some(block),
         }
     }
 
@@ -430,27 +430,27 @@ pub trait Cursor {
     /// }
     /// ```
     fn next_inst(&mut self) -> Option<Inst> {
-        use self::CursorPosition::*;
+        use CursorPosition as Pos;
         match self.position() {
-            Nowhere | After(..) => None,
-            At(inst) => {
+            Pos::Nowhere | Pos::After(..) => None,
+            Pos::At(inst) => {
                 if let Some(next) = self.layout().next_inst(inst) {
-                    self.set_position(At(next));
+                    self.set_position(Pos::At(next));
                     Some(next)
                 } else {
-                    let pos = After(
+                    let pos = Pos::After(
                         self.layout().inst_block(inst).expect("current instruction removed?"),
                     );
                     self.set_position(pos);
                     None
                 }
             }
-            Before(block) => {
+            Pos::Before(block) => {
                 if let Some(next) = self.layout().first_inst(block) {
-                    self.set_position(At(next));
+                    self.set_position(Pos::At(next));
                     Some(next)
                 } else {
-                    self.set_position(After(block));
+                    self.set_position(Pos::After(block));
                     None
                 }
             }
@@ -482,27 +482,27 @@ pub trait Cursor {
     /// }
     /// ```
     fn prev_inst(&mut self) -> Option<Inst> {
-        use self::CursorPosition::*;
+        use CursorPosition as Pos;
         match self.position() {
-            Nowhere | Before(..) => None,
-            At(inst) => {
+            Pos::Nowhere | Pos::Before(..) => None,
+            Pos::At(inst) => {
                 if let Some(prev) = self.layout().prev_inst(inst) {
-                    self.set_position(At(prev));
+                    self.set_position(Pos::At(prev));
                     Some(prev)
                 } else {
-                    let pos = Before(
+                    let pos = Pos::Before(
                         self.layout().inst_block(inst).expect("current instruction removed?"),
                     );
                     self.set_position(pos);
                     None
                 }
             }
-            After(block) => {
+            Pos::After(block) => {
                 if let Some(prev) = self.layout().last_inst(block) {
-                    self.set_position(At(prev));
+                    self.set_position(Pos::At(prev));
                     Some(prev)
                 } else {
-                    self.set_position(Before(block));
+                    self.set_position(Pos::Before(block));
                     None
                 }
             }
@@ -519,11 +519,11 @@ pub trait Cursor {
     /// In either case, the cursor is not moved, such that repeated calls to `insert_inst()` causes
     /// instructions to appear in insertion order in the block.
     fn insert_inst(&mut self, inst: Inst) {
-        use self::CursorPosition::*;
+        use CursorPosition as Pos;
         match self.position() {
-            Nowhere | Before(..) => panic!("Invalid insert_inst position"),
-            At(cur) => self.layout_mut().prepend_inst(inst, cur),
-            After(block) => self.layout_mut().append_inst_to_block(inst, block),
+            Pos::Nowhere | Pos::Before(..) => panic!("Invalid insert_inst position"),
+            Pos::At(cur) => self.layout_mut().prepend_inst(inst, cur),
+            Pos::After(block) => self.layout_mut().append_inst_to_block(inst, block),
         }
     }
 

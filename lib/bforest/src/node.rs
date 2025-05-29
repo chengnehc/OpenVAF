@@ -252,7 +252,7 @@ impl<F: Forest> NodeData<F> {
                     rhs_data: Self::Leaf { size: r_size as u8, keys: r_keys, vals: r_vals },
                 }
             }
-            _ => panic!("Expected leaf node"),
+            Self::Free { .. } => panic!("Expected leaf node"),
         }
     }
 

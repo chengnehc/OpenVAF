@@ -141,40 +141,40 @@ impl_from! {
 
 impl ScopeItem {
     pub(crate) fn text_range(self, db: &dyn HirDefDB) -> Option<TextRange> {
-        use ScopeItem::*;
-
         let res = match self {
             // items with large span
-            NatureId(nature) => nature.lookup(db).source(db).name()?.syntax().text_range(),
-            DisciplineId(disc) => disc.lookup(db).source(db).name()?.syntax().text_range(),
-            ModuleId(module) => module.lookup(db).source(db).name()?.syntax().text_range(),
-            BlockId(blk) => blk.lookup(db).source(db).block_scope()?.name()?.syntax().text_range(),
-            FunctionId(fun) | FunctionReturn(fun) => {
+            Self::NatureId(nature) => nature.lookup(db).source(db).name()?.syntax().text_range(),
+            Self::DisciplineId(disc) => disc.lookup(db).source(db).name()?.syntax().text_range(),
+            Self::ModuleId(module) => module.lookup(db).source(db).name()?.syntax().text_range(),
+            Self::BlockId(blk) => {
+                blk.lookup(db).source(db).block_scope()?.name()?.syntax().text_range()
+            }
+            Self::FunctionId(fun) | Self::FunctionReturn(fun) => {
                 fun.lookup(db).source(db).name()?.syntax().text_range()
             }
 
             // items with small span
-            NatureAttrId(attr) => attr.lookup(db).ast_ptr(db).text_range(),
-            NatureAccess(access) => access.0.lookup(db).ast_ptr(db).text_range(),
-            NodeId(node) => node.lookup(db).ast_ptr(db).text_range(),
-            VarId(var) => var.lookup(db).ast_ptr(db).text_range(),
-            ParamId(param) => param.lookup(db).ast_ptr(db).text_range(),
-            AliasParamId(alias) => alias.lookup(db).ast_ptr(db).text_range(),
+            Self::NatureAttrId(attr) => attr.lookup(db).ast_ptr(db).text_range(),
+            Self::NatureAccess(access) => access.0.lookup(db).ast_ptr(db).text_range(),
+            Self::NodeId(node) => node.lookup(db).ast_ptr(db).text_range(),
+            Self::VarId(var) => var.lookup(db).ast_ptr(db).text_range(),
+            Self::ParamId(param) => param.lookup(db).ast_ptr(db).text_range(),
+            Self::AliasParamId(alias) => alias.lookup(db).ast_ptr(db).text_range(),
 
             // items with argument list
-            BranchId(branch) => {
+            Self::BranchId(branch) => {
                 let branch = branch.lookup(db);
                 let pos = branch.item_tree(db)[branch.id].name_idx;
                 branch.source(db).names().nth(pos)?.syntax().text_range()
             }
-            FunctionArgId(arg) => {
+            Self::FunctionArgId(arg) => {
                 let arg = arg.lookup(db);
                 let fun = arg.fun.lookup(db);
                 let pos = fun.item_tree(db)[fun.id].args[arg.id].name_idx;
                 arg.source(db).names().nth(pos)?.syntax().text_range()
             }
 
-            BuiltIn(_) | ParamSysFun(_) => return None,
+            Self::BuiltIn(_) | Self::ParamSysFun(_) => return None,
         };
 
         Some(res)
