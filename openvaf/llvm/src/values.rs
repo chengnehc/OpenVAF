@@ -290,11 +290,11 @@ extern "C" {
     // pub fn LLVMGetPreviousGlobal(GlobalVar: &'a Value) -> &'a Value;
     // pub fn LLVMDeleteGlobal(GlobalVar: &'a Value);
     // pub fn LLVMGetInitializer(GlobalVar: &'a Value) -> &'a Value;
-    pub fn LLVMSetInitializer<'a>(global: &'a Value, const_val: &'a Value);
+    pub fn LLVMSetInitializer<'a>(global_var: &'a Value, const_val: &'a Value);
     // pub fn LLVMIsThreadLocal(GlobalVar: &'a Value) -> LLVMBool;
     // pub fn LLVMSetThreadLocal(GlobalVar: &'a Value, IsThreadLocal: LLVMBool);
     // pub fn LLVMIsGlobalConstant(GlobalVar: &'a Value) -> LLVMBool;
-    pub fn LLVMSetGlobalConstant<'a>(GlobalVar: &'a Value, IsConstant: Bool);
+    pub fn LLVMSetGlobalConstant<'a>(global_var: &'a Value, is_constant: Bool);
     // pub fn LLVMGetThreadLocalMode(GlobalVar: &'a Value) -> LLVMThreadLocalMode;
     // pub fn LLVMSetThreadLocalMode(GlobalVar: &'a Value, Mode: LLVMThreadLocalMode);
     // pub fn LLVMIsExternallyInitialized(GlobalVar: &'a Value) -> LLVMBool;

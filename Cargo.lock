@@ -814,7 +814,6 @@ dependencies = [
  "arrayvec",
  "base_n",
  "lasso",
- "libc",
  "llvm",
  "log",
  "mir",

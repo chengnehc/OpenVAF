@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use llvm::{False, Type, Value};
+use llvm::{Type, Value};
 
 use crate::CodegenCx;
 
@@ -63,20 +63,20 @@ impl<'ll> CodegenCx<'_, 'll> {
         fun
     }
 
-    /// Define a a global variable.
+    /// Define a a global variable with default external linkage type.
     ///
-    /// This function returns `None` if the name already has a definition associated with it.
+    /// Returns `None` if the name already has a definition associated with it.
     pub fn define_global(&self, name: &str, ty: &'ll Type) -> Option<&'ll Value> {
-        if self.get_defined_value(name).is_some() {
-            None
-        } else {
+        if self.get_defined_global(name).is_none() {
             let name = CString::new(name).unwrap();
             let global = unsafe { llvm::LLVMAddGlobal(self.llmod, ty, name.as_ptr()) };
             Some(global)
+        } else {
+            None
         }
     }
 
-    /// Declare a private global variable without a name.
+    /// Declare an unnamed global variable with private linkage.
     pub fn define_private_global(&self, ty: &'ll Type) -> &'ll Value {
         unsafe {
             let global = llvm::LLVMAddGlobal(self.llmod, ty, llvm::UNNAMED);
@@ -85,61 +85,33 @@ impl<'ll> CodegenCx<'_, 'll> {
         }
     }
 
-    /// Gets declared global value by name.
-    pub fn get_declared_value(&self, name: &str) -> Option<&'ll Value> {
+    /// Gets global value by name, which could be either a declare or a define.
+    pub fn get_global_value(&self, name: &str) -> Option<&'ll Value> {
         let name = CString::new(name).unwrap();
         unsafe { llvm::LLVMGetNamedGlobal(self.llmod, name.as_ptr()) }
     }
 
-    /// Gets defined or externally defined (externally linked) value by name.
-    pub fn get_defined_value(&self, name: &str) -> Option<&'ll Value> {
-        self.get_declared_value(name).and_then(|val| {
-            let declaration = unsafe { llvm::LLVMIsDeclaration(val) != False };
-            if !declaration {
-                Some(val)
-            } else {
-                None
-            }
+    /// Gets defined global value by name.
+    pub fn get_defined_global(&self, name: &str) -> Option<&'ll Value> {
+        self.get_global_value(name).and_then(|val| {
+            let is_decl = unsafe { llvm::LLVMIsDeclaration(val) != llvm::False };
+            (!is_decl).then_some(val)
         })
     }
 
     // JW: not used
-    pub fn global_const(&self, ty: &'ll Type, val: &'ll Value) -> &'ll Value {
-        unsafe {
-            let res = self.define_private_global(ty);
-            llvm::LLVMSetInitializer(res, val);
-            llvm::LLVMSetUnnamedAddress(res, llvm::UnnamedAddr::No);
-            llvm::LLVMSetGlobalConstant(res, llvm::True);
+    // pub fn define_global_const(&self, ty: &'ll Type, val: &'ll Value) -> &'ll Value {
+    //     unsafe {
+    //         let res = self.define_private_global(ty);
+    //         llvm::LLVMSetInitializer(res, val);
+    //         llvm::LLVMSetUnnamedAddress(res, llvm::UnnamedAddr::No);
+    //         llvm::LLVMSetGlobalConstant(res, llvm::True);
 
-            res
-        }
-    }
+    //         res
+    //     }
+    // }
 
-    pub fn const_arr_ptr(&self, elem_ty: &'ll Type, vals: &[&'ll Value]) -> &'ll Value {
-        for (i, val) in vals.iter().enumerate() {
-            assert_eq!(
-                unsafe { llvm::LLVMTypeOf(val) } as *const Type,
-                elem_ty as *const Type,
-                "val {i} has mismatched type"
-            )
-        }
-
-        let val = self.const_arr(elem_ty, vals);
-        let ty = self.ty_array(elem_ty, vals.len() as u32);
-
-        let name = self.generate_local_symbol_name("arr");
-        let global = self
-            .define_global(&name, ty)
-            .unwrap_or_else(|| unreachable!("symbol {name} already defined"));
-
-        unsafe {
-            llvm::LLVMSetInitializer(global, val);
-            llvm::LLVMSetGlobalConstant(global, llvm::True);
-            llvm::LLVMSetLinkage(global, llvm::Linkage::Internal);
-        }
-        global
-    }
-
+    /// Export a global value with `name` and `ty` and initialize it with `val`.
     pub fn export_val(
         &self,
         name: &str,
@@ -164,6 +136,7 @@ impl<'ll> CodegenCx<'_, 'll> {
         }
     }
 
+    /// Export a global array with `name` and `elem_ty` and initialize it with `vals`.
     pub fn export_array(
         &self,
         name: &str,
@@ -178,7 +151,6 @@ impl<'ll> CodegenCx<'_, 'll> {
             self.const_arr(elem_ty, vals),
             is_const,
         );
-
         if add_cnt {
             let name = format!("{name}.cnt");
             self.export_val(&name, self.ty_size(), self.const_usize(vals.len()), true);
@@ -187,38 +159,63 @@ impl<'ll> CodegenCx<'_, 'll> {
         arr
     }
 
-    pub fn export_zeroed_array(
-        &self,
-        name: &str,
-        elem_ty: &'ll Type,
-        len: usize,
-        add_cnt: bool,
-    ) -> &'ll Value {
-        let ty = self.ty_array(elem_ty, len as u32);
-        let arr = self
-            .define_global(name, ty)
-            .unwrap_or_else(|| unreachable!("symbol '{name}' already defined"));
+    // JW: not used
+    // pub fn export_zeroed_array(
+    //     &self,
+    //     name: &str,
+    //     elem_ty: &'ll Type,
+    //     len: usize,
+    //     add_cnt: bool,
+    // ) -> &'ll Value {
+    //     let ty = self.ty_array(elem_ty, len as u32);
+    //     let arr = self
+    //         .define_global(name, ty)
+    //         .unwrap_or_else(|| unreachable!("symbol '{name}' already defined"));
 
+    //     unsafe {
+    //         let init = llvm::LLVMConstNull(ty);
+    //         llvm::LLVMSetInitializer(arr, init);
+    //         llvm::LLVMSetLinkage(arr, llvm::Linkage::ExternalLinkage);
+    //     }
+
+    //     if add_cnt {
+    //         let name = format!("{name}.cnt");
+    //         let arr_len = self
+    //             .define_global(&name, self.ty_size())
+    //             .unwrap_or_else(|| unreachable!("symbol '{name}' already defined"));
+
+    //         unsafe {
+    //             let init = self.const_usize(len);
+    //             llvm::LLVMSetInitializer(arr_len, init);
+    //             llvm::LLVMSetGlobalConstant(arr_len, llvm::True);
+    //             llvm::LLVMSetLinkage(arr_len, llvm::Linkage::ExternalLinkage);
+    //         }
+    //     }
+
+    //     arr
+    // }
+
+    pub fn const_arr_ptr(&self, elem_ty: &'ll Type, vals: &[&'ll Value]) -> &'ll Value {
+        for (i, val) in vals.iter().enumerate() {
+            assert_eq!(
+                unsafe { llvm::LLVMTypeOf(val) } as *const Type,
+                elem_ty as *const Type,
+                "val {i} has mismatched type"
+            )
+        }
+
+        let ty = self.ty_array(elem_ty, vals.len() as u32);
+        let name = self.generate_local_symbol_name("arr");
+        let global = self
+            .define_global(&name, ty)
+            .unwrap_or_else(|| unreachable!("symbol {name} already defined"));
+
+        let val = self.const_arr(elem_ty, vals);
         unsafe {
-            let init = llvm::LLVMConstNull(ty);
-            llvm::LLVMSetInitializer(arr, init);
-            llvm::LLVMSetLinkage(arr, llvm::Linkage::ExternalLinkage);
+            llvm::LLVMSetInitializer(global, val);
+            llvm::LLVMSetGlobalConstant(global, llvm::True);
+            llvm::LLVMSetLinkage(global, llvm::Linkage::Internal);
         }
-
-        if add_cnt {
-            let name = format!("{name}.cnt");
-            let arr_len = self
-                .define_global(&name, self.ty_size())
-                .unwrap_or_else(|| unreachable!("symbol '{name}' already defined"));
-
-            unsafe {
-                let init = self.const_usize(len);
-                llvm::LLVMSetInitializer(arr_len, init);
-                llvm::LLVMSetGlobalConstant(arr_len, llvm::True);
-                llvm::LLVMSetLinkage(arr_len, llvm::Linkage::ExternalLinkage);
-            }
-        }
-
-        arr
+        global
     }
 }

@@ -1,9 +1,9 @@
 //! LLVM IR Builder
 
+use std::ffi::c_uint;
 use std::slice;
 
 use arrayvec::ArrayVec;
-use libc::c_uint;
 use llvm::UNNAMED;
 use mir::{ControlFlowGraph, Opcode, ValueDef, F_ZERO, ZERO};
 use typed_index_collections::TiVec;
@@ -15,7 +15,7 @@ use crate::CodegenCx;
 pub struct MemLoc<'ll> {
     /// The base pointer of the aggregate type
     pub base_ptr: &'ll llvm::Value,
-    /// The aggregate type (array/struct) in which the MemLoc resides
+    /// The aggregate type (array/struct) in which the `MemLoc` resides
     pub ty: &'ll llvm::Type,
     /// The type of this MemLoc element
     pub elem_ty: &'ll llvm::Type,

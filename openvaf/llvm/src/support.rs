@@ -1,3 +1,6 @@
+//! See also:
+//! - [`inkwell`](https://docs.rs/crate/inkwell/latest/source/src/support/mod.rs)
+
 use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Debug, Display, Formatter};
@@ -8,9 +11,6 @@ use libc::c_char;
 use crate::{LLVMCreateMessage, LLVMDisposeMessage};
 
 /// An owned LLVM String, also known as a LLVM Message.
-///
-/// See also:
-/// - [`inkwell`](https://docs.rs/crate/inkwell/latest/source/src/support/mod.rs)
 #[derive(Eq)]
 #[repr(transparent)]
 pub struct LLVMString {
@@ -19,7 +19,7 @@ pub struct LLVMString {
 
 impl LLVMString {
     /// # Safety
-    /// This functions requires a string that was allocated by LLVM!
+    /// This function requires a string that was allocated by LLVM!
     pub unsafe fn new(ptr: *const c_char) -> Self {
         LLVMString { ptr }
     }
@@ -28,11 +28,6 @@ impl LLVMString {
     pub(crate) fn from_str(string: &str) -> LLVMString {
         let msg = CString::new(string).unwrap();
         unsafe { LLVMString::new(LLVMCreateMessage(msg.as_ptr() as *const _)) }
-    }
-
-    /// This method allocates a C string through LLVM using Rust borrowed C string
-    pub fn from_c_str(string: &CStr) -> LLVMString {
-        unsafe { LLVMString::new(LLVMCreateMessage(string.as_ptr() as *const _)) }
     }
 
     // /// This is a convenience method for creating a Rust `String`,

@@ -1,6 +1,5 @@
-use std::ffi::CString;
+use std::ffi::{c_uint, CString};
 
-use libc::c_uint;
 use llvm::{False, True, Type, Value};
 use mir::Const;
 
@@ -86,6 +85,10 @@ impl<'ll> CodegenCx<'_, 'll> {
     pub fn ty_fat_ptr(&self) -> &'ll Type {
         self.tys.fat_ptr
     }
+    #[inline(always)]
+    pub fn const_null_ptr(&self) -> &'ll Value {
+        self.tys.null_ptr_val
+    }
 
     pub fn ty_aint(&self, bits: u32) -> &'ll Type {
         unsafe { llvm::LLVMIntTypeInContext(self.llcx, bits) }
@@ -112,6 +115,8 @@ impl<'ll> CodegenCx<'_, 'll> {
     }
 }
 
+/* Constants */
+
 impl<'ll> CodegenCx<'_, 'll> {
     pub fn const_val(&self, val: &Const) -> &'ll Value {
         match *val {
@@ -131,9 +136,9 @@ impl<'ll> CodegenCx<'_, 'll> {
         unsafe { llvm::LLVMConstInt(self.ty_int(), val as u64, True) }
     }
 
-    pub fn const_isize(&self, val: isize) -> &'ll Value {
-        unsafe { llvm::LLVMConstInt(self.ty_size(), val as u64, True) }
-    }
+    // pub fn const_isize(&self, val: isize) -> &'ll Value {
+    //     unsafe { llvm::LLVMConstInt(self.ty_size(), val as u64, True) }
+    // }
 
     pub fn const_usize(&self, val: usize) -> &'ll Value {
         unsafe { llvm::LLVMConstInt(self.ty_size(), val as u64, False) }
@@ -163,12 +168,8 @@ impl<'ll> CodegenCx<'_, 'll> {
         unsafe { llvm::LLVMConstNamedStruct(ty, vals.as_ptr(), vals.len() as u32) }
     }
 
-    pub fn const_null(&self, t: &'ll Type) -> &'ll Value {
-        unsafe { llvm::LLVMConstNull(t) }
-    }
-
-    pub fn const_null_ptr(&self) -> &'ll Value {
-        self.tys.null_ptr_val
+    pub fn const_null(&self, ty: &'ll Type) -> &'ll Value {
+        unsafe { llvm::LLVMConstNull(ty) }
     }
 
     /// # Safety

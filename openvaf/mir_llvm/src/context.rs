@@ -1,13 +1,11 @@
 use std::cell::{Cell, RefCell};
-use std::ffi::CString;
+use std::ffi::{c_char, c_uint, CString};
 
 use ahash::AHashMap;
 use lasso::{Rodeo, Spur};
-use libc::{c_char, c_uint};
-use llvm::support::LLVMString;
 use llvm::{
-    LLVMCreateMemoryBufferWithMemoryRange, LLVMGetNamedFunction, LLVMLinkModules2,
-    LLVMParseBitcodeInContext2, Type, Value,
+    support::LLVMString, LLVMCreateMemoryBufferWithMemoryRange, LLVMGetNamedFunction,
+    LLVMLinkModules2, LLVMParseBitcodeInContext2, Type, Value,
 };
 use target::spec::Target;
 
@@ -16,19 +14,16 @@ use crate::types::Types;
 pub struct CodegenCx<'a, 'll> {
     pub llmod: &'ll llvm::Module,
     pub llcx: &'ll llvm::Context,
-
     pub target: &'a Target,
-    // pub target_cpu: &'a str,  // This is handled by LLVMBackend.
     pub literals: &'a Rodeo,
     str_lit_cache: RefCell<AHashMap<Spur, &'ll Value>>,
-
-    pub(crate) intrinsics: RefCell<AHashMap<&'static str, (&'ll Type, &'ll Value)>>,
-    pub(crate) local_gen_sym_counter: Cell<u32>,
-    pub(crate) tys: Types<'ll>,
+    pub intrinsics: RefCell<AHashMap<&'static str, (&'ll Type, &'ll Value)>>,
+    pub local_gen_sym_counter: Cell<u32>,
+    pub tys: Types<'ll>,
 }
 
 impl<'a, 'll> CodegenCx<'a, 'll> {
-    pub(crate) fn new(
+    pub fn new(
         literals: &'a Rodeo,
         module_llvm: &'ll crate::ModuleLlvm,
         target: &'a Target,
@@ -56,7 +51,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
         let sym = self.generate_local_symbol_name("bitcode_buffer");
         let sym = CString::new(sym).unwrap();
         unsafe {
-            let buff = LLVMCreateMemoryBufferWithMemoryRange(
+            let buf = LLVMCreateMemoryBufferWithMemoryRange(
                 bitcode.as_ptr() as *const c_char,
                 bitcode.len(),
                 sym.as_ptr(),
@@ -64,7 +59,7 @@ impl<'a, 'll> CodegenCx<'a, 'll> {
             );
             let mut module = None;
             assert!(
-                LLVMParseBitcodeInContext2(self.llcx, buff, &mut module) == llvm::False,
+                LLVMParseBitcodeInContext2(self.llcx, buf, &mut module) == llvm::False,
                 "failed to parse bitcode"
             );
             assert!(

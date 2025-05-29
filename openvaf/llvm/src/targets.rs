@@ -13,7 +13,7 @@ use crate::{
 
 extern "C" {
     /// Creates target data from a target layout string.
-    pub fn LLVMCreateTargetData(StringRep: *const c_char) -> &'static mut TargetData;
+    pub fn LLVMCreateTargetData(string_rep: *const c_char) -> &'static mut TargetData;
     /// Deallocates a TargetData.
     pub fn LLVMDisposeTargetData(target_data: &'static mut TargetData);
     /// Computes the ABI size of a type in bytes for a target.
@@ -58,10 +58,21 @@ extern "C" {
     //     ErrorMessage: *mut *mut ::libc::c_char,
     //     OutMemBuf: *mut LLVMMemoryBufferRef,
     // ) -> LLVMBool;
+
     /// Normalize a target triple.
+    ///
+    /// # Safety
     /// The result needs to be disposed with LLVMDisposeMessage.
     fn LLVMNormalizeTargetTriple(triple: *const c_char) -> *mut c_char;
+    /// Get the host CPU as a string.
+    ///
+    /// # Safety
+    /// The result needs to be disposed with LLVMDisposeMessage.
     pub fn LLVMGetHostCPUName() -> *const c_char;
+    /// Get the host CPU's features as a string.
+    ///
+    /// # Safety
+    /// The result needs to be disposed with LLVMDisposeMessage.
     pub fn LLVMGetHostCPUFeatures() -> *const c_char;
 }
 
@@ -78,7 +89,7 @@ pub unsafe fn create_target_machine(
     reloc_mode: RelocMode,
     code_model: CodeModel,
 ) -> Result<&'static mut TargetMachine, LLVMString> {
-    let triple_ = LLVMString::from_str(triple);
+    let triple_ = CString::new(triple).unwrap();
     let triple_ = LLVMString::new(LLVMNormalizeTargetTriple(triple_.as_ptr()));
     LLVMSetTarget(module, triple_.as_ptr());
 
@@ -87,7 +98,8 @@ pub unsafe fn create_target_machine(
     if LLVMGetTargetFromTriple(triple_.as_ptr(), &mut target, err_string.as_mut_ptr()) == 1 {
         return Err(LLVMString::new(err_string.assume_init()));
     }
-    let cpu = LLVMString::from_str(cpu);
+
+    let cpu = CString::new(cpu).unwrap();
     let features = CString::new(features).unwrap();
 
     let target_machine = LLVMCreateTargetMachine(

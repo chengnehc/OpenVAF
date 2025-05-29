@@ -4,14 +4,12 @@
 //! See Also:
 //! - [`rustc_codegen_llvm`](https://github.com/rust-lang/rust/tree/master/compiler/rustc_codegen_llvm)
 
-use std::ffi::{CStr, CString};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::mem::MaybeUninit;
-use std::os::raw::c_char;
 use std::path::Path;
 use std::ptr;
 
 use lasso::Rodeo;
-use libc::c_void;
 use llvm::{
     support::LLVMString, LLVMDisposeMessage, LLVMGetDiagInfoDescription, LLVMGetDiagInfoSeverity,
     LLVMGetHostCPUFeatures, LLVMGetHostCPUName, LLVMPassManagerBuilderDispose,
@@ -33,8 +31,7 @@ pub use callbacks::CallbackFun;
 pub use context::CodegenCx;
 pub use llvm::OptLevel;
 
-/// The LLVM backend is a factory of LLVM modules and codegen contexts.
-/// These two are created based on the target information stored in the LLVM backend
+/// `LLVMBackend` is a factory of LLVM modules and codegen contexts.
 pub struct LLVMBackend<'t> {
     target: &'t Target,
     target_cpu: String,
@@ -45,7 +42,7 @@ impl<'t> LLVMBackend<'t> {
     pub fn new(
         codegen_opts: &[String],
         target: &'t Target,
-        mut target_cpu: String,
+        target_cpu: &str,
         target_features: &[String],
     ) -> LLVMBackend<'t> {
         let cstr_to_string = |ptr: *const c_char| {
@@ -56,7 +53,7 @@ impl<'t> LLVMBackend<'t> {
                     CStr::from_ptr(ptr)
                         .to_str()
                         .unwrap_or_else(|err| {
-                            unreachable!("LLVM returned a non-utf8 features string: {err}");
+                            panic!("LLVM returned a non-utf8 features string: {err}");
                         })
                         .to_owned()
                 }
@@ -67,23 +64,25 @@ impl<'t> LLVMBackend<'t> {
 
         let mut features = vec![];
 
-        if target_cpu == "generic" {
-            target_cpu.clone_from(&target.options.cpu);
-        }
-        if target_cpu == "native" {
-            let ptr = unsafe { LLVMGetHostCPUName() };
-            target_cpu = cstr_to_string(ptr);
-
-            let ptr = unsafe { LLVMGetHostCPUFeatures() };
-            let cpu_features = cstr_to_string(ptr);
-            features.extend(cpu_features.split(',').map(String::from));
-        }
+        let target_cpu = match target_cpu {
+            "generic" => target.options.cpu.clone(),
+            "native" => {
+                let ptr = unsafe { LLVMGetHostCPUFeatures() };
+                let cpu_features = cstr_to_string(ptr);
+                features.extend(cpu_features.split(',').map(String::from));
+                let ptr = unsafe { LLVMGetHostCPUName() };
+                cstr_to_string(ptr)
+            }
+            cpu => cpu.to_string(),
+        };
 
         features
             .extend(target.options.features.split(',').filter(|v| !v.is_empty()).map(String::from));
         features.extend(target_features.iter().cloned());
 
-        llvm::init(codegen_opts, &[]); // TODO add target options here if we ever have any
+        // TODO add target options here if we ever have any
+        let target_opts = &[];
+        llvm::init(codegen_opts, target_opts);
 
         LLVMBackend { target, target_cpu, features: features.join(",") }
     }
@@ -107,21 +106,15 @@ impl<'t> LLVMBackend<'t> {
     pub unsafe fn new_codegen_context<'a, 'll>(
         &'a self,
         literals: &'a Rodeo,
-        module: &'ll ModuleLlvm,
+        llmod: &'ll ModuleLlvm,
     ) -> CodegenCx<'a, 'll> {
-        CodegenCx::new(literals, module, self.target)
+        CodegenCx::new(literals, llmod, self.target)
     }
 
     pub fn target(&self) -> &'t Target {
         self.target
     }
 }
-
-/*
-impl Drop for LLVMBackend<'_> {
-    fn drop(&mut self) {}
-}
-*/
 
 // The extern "C" attribute means that some extern C library will call this Rust function
 #[no_mangle]
@@ -136,9 +129,9 @@ extern "C" fn diagnostic_handler(info: &llvm::DiagnosticInfo, _: *mut c_void) {
     }
 }
 
-/// A LLVM module associated with its LLVM context
+/// An LLVM module associated with its LLVM context.
 ///
-/// LLVM programs are composed of Module’s, each of which is a translation unit of the input programs.
+/// LLVM programs are composed of `module`s, each of which is a translation unit of the input program.
 /// Each module consists of functions, global variables, and symbol table entries. Modules may be
 /// combined together with the LLVM linker, which merges function (and global variable) definitions,
 /// resolves forward declarations, and merges symbol table entries.
@@ -164,9 +157,9 @@ impl ModuleLlvm {
         let llmod = llvm::LLVMModuleCreateWithNameInContext(name.as_ptr(), llcx);
 
         let data_layout = CString::new(target.data_layout.as_str()).unwrap();
-        let target_triple = &target.llvm_target;
         llvm::LLVMSetDataLayout(llmod, data_layout.as_ptr());
 
+        let target_triple = &target.llvm_target;
         let tm = llvm::create_target_machine(
             llmod,
             target_triple,
@@ -196,21 +189,21 @@ impl ModuleLlvm {
         let llmod = self.llmod();
 
         unsafe {
-            let builder = llvm::LLVMPassManagerBuilderCreate();
-            llvm::pass_manager_builder_set_opt_lvl(builder, self.opt_lvl);
-            llvm::LLVMPassManagerBuilderSetSizeLevel(builder, 0);
+            let pmb = llvm::LLVMPassManagerBuilderCreate();
+            llvm::pass_manager_builder_set_opt_lvl(pmb, self.opt_lvl);
+            llvm::LLVMPassManagerBuilderSetSizeLevel(pmb, 0);
 
             let fpm = llvm::LLVMCreateFunctionPassManagerForModule(llmod);
-            llvm::LLVMPassManagerBuilderPopulateFunctionPassManager(builder, fpm);
+            llvm::LLVMPassManagerBuilderPopulateFunctionPassManager(pmb, fpm);
             llvm::run_function_pass_manager(fpm, llmod);
             llvm::LLVMDisposePassManager(fpm);
 
             let mpm = llvm::LLVMCreatePassManager();
-            llvm::LLVMPassManagerBuilderPopulateModulePassManager(builder, mpm);
+            llvm::LLVMPassManagerBuilderPopulateModulePassManager(pmb, mpm);
             llvm::LLVMRunPassManager(mpm, llmod);
             llvm::LLVMDisposePassManager(mpm);
 
-            LLVMPassManagerBuilderDispose(builder);
+            LLVMPassManagerBuilderDispose(pmb);
         }
     }
 
@@ -231,14 +224,14 @@ impl ModuleLlvm {
     /// An error message in case the module is invalid.
     pub fn verify(&self) -> Option<LLVMString> {
         unsafe {
-            let mut res = MaybeUninit::uninit();
+            let mut err_msg = MaybeUninit::uninit();
             if llvm::LLVMVerifyModule(
                 self.llmod(),
                 llvm::VerifierFailureAction::ReturnStatus,
-                Some(&mut res),
+                Some(&mut err_msg),
             ) == llvm::True
             {
-                Some(res.assume_init())
+                Some(err_msg.assume_init())
             } else {
                 None
             }
@@ -249,20 +242,20 @@ impl ModuleLlvm {
     pub fn emit_object(&self, dst: &Path) -> Result<(), LLVMString> {
         let path = CString::new(dst.to_str().unwrap()).unwrap();
         let mut err_msg = MaybeUninit::uninit();
-        let return_code = unsafe {
-            llvm::LLVMTargetMachineEmitToFile(
+        unsafe {
+            if llvm::LLVMTargetMachineEmitToFile(
                 self.tm,
                 self.llmod(),
                 path.as_ptr(),
                 llvm::CodeGenFileType::ObjectFile,
                 err_msg.as_mut_ptr(),
-            )
-        };
-        if return_code == 1 {
-            unsafe { return Err(LLVMString::new(err_msg.assume_init())) }
+            ) == llvm::True
+            {
+                Err(LLVMString::new(err_msg.assume_init()))
+            } else {
+                Ok(())
+            }
         }
-
-        Ok(())
     }
 }
 

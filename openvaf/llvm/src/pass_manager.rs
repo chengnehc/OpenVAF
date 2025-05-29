@@ -40,13 +40,13 @@ extern "C" {
     );
     fn LLVMPassManagerBuilderSetOptLevel(PMB: &PassManagerBuilder, OptLevel: c_uint);
 
-    // Defined in the OpenVafWrapper.cpp , not intrinsic to C API
+    // Defined in the OpenVafWrapper.cpp , not intrinsic to LLVM
     fn LLVMPassManagerBuilderSLPVectorize(PMB: &PassManagerBuilder);
 }
 
 /// # Safety
 /// This should always be safe but this low level wrapper intentionally
-/// refrains from making safety garantuees
+/// refrains from making safety guarantees
 pub unsafe fn pass_manager_builder_set_opt_lvl(pmb: &PassManagerBuilder, opt_lvl: OptLevel) {
     LLVMPassManagerBuilderSetOptLevel(pmb, opt_lvl as c_uint);
     if opt_lvl > OptLevel::Less {

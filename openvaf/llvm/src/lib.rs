@@ -204,19 +204,25 @@ pub enum TypeKind {
     X86_AMX = 19,
 }
 
+/// [Linkage Types](https://www.llvm.org/docs/LangRef.html#linkage)
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Linkage {
-    ExternalLinkage = 0,            // Externally visible （default）
-    AvailableExternallyLinkage = 1, //
-    LinkOnceAnyLinkage = 2,         // Keep one copy of function when linking (inline)
-    LinkOnceODRLinkage = 3,         // Same, but only replaced by something equivalent
-    LinkOnceODRAutoHideLinkage = 4, //
-    WeakAnyLinkage = 5,             // Keep one copy of function when linking (weak)
-    WeakODRLinkage = 6,             //
-    AppendingLinkage = 7,           //
-    Internal = 8,                   // Rename collisions when linking (static functions)
-    PrivateLinkage = 9,             // Like Internal, but omit from symbol table
+    /// Externally visible function (default）
+    ExternalLinkage = 0,
+    AvailableExternallyLinkage = 1,
+    /// Keep one copy of function when linking (inline)
+    LinkOnceAnyLinkage = 2,
+    LinkOnceODRLinkage = 3,
+    LinkOnceODRAutoHideLinkage = 4,
+    /// Keep one copy of function when linking (weak)
+    WeakAnyLinkage = 5,
+    WeakODRLinkage = 6,
+    AppendingLinkage = 7,
+    /// Rename collisions when linking (C 'static' keyword)
+    Internal = 8,
+    /// Like Internal, but omit from symbol table
+    PrivateLinkage = 9,
     DLLImportLinkage = 10,
     DLLExportLinkage = 11,
     ExternalWeakLinkage = 12,
@@ -234,17 +240,28 @@ pub enum Visibility {
     Protected = 2,
 }
 
+/// Global variables can be marked with unnamed_addr which indicates that
+/// the address is not significant, only the content.
+///
+/// Constants marked like this can be merged with other constants if they
+/// have the same initializer. Note that a constant with significant address
+/// can be merged with a unnamed_addr constant, the result being a constant
+/// whose address is significant.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnnamedAddr {
     /// Address of the GV is significant.
     No,
-    /// Address of the GV is locally insignificant.
+    /// Address of the GV is not significant within the module (locally).
     Local,
-    /// Address of the GV is globally insignificant.
+    /// Address of the GV is not significant globally.
     Global,
 }
 
+/// All Global Variables and Functions can have DLL storage class.
+/// A symbol with internal or private linkage cannot have a DLL storage class.
+///
+/// [DLL Storage Class](https://www.llvm.org/docs/LangRef.html#dllstorageclass)
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DLLStorageClass {
@@ -275,6 +292,7 @@ pub enum CallConv {
     // AmdGpuKernel = 91,
 }
 
+/// 'U' means unsigned, 'S' means signed
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IntPredicate {

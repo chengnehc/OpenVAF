@@ -37,16 +37,14 @@ extern "C" {
 
 static INIT: Once = Once::new();
 
-/// Initialize and configure the LLVM backend once and for all
+/// Initialize and configure the LLVM backend once and for all.
 pub fn init(cg_opts: &[String], tg_opts: &[String]) {
     unsafe {
         // Before we touch LLVM, make sure that multithreading is enabled.
         if LLVMIsMultithreaded() != 1 {
             panic!("LLVM compiled without support for threads");
         }
-        INIT.call_once(|| {
-            configure_llvm(cg_opts, tg_opts);
-        });
+        INIT.call_once(|| configure_llvm(cg_opts, tg_opts));
     }
 }
 
