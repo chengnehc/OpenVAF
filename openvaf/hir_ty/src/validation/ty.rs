@@ -120,7 +120,7 @@ impl TypeValidator<'_> {
 
         /* node discipline */
         let mut disciplines =
-            node.decls.iter().filter_map(|it| it.discipline(tree).as_ref().map(|name| (it, name)));
+            node.decls.iter().filter_map(|it| it.discipline(tree).map(|name| (it, name)));
         if let Some((first, name)) = disciplines.next() {
             for (decl, name) in iter::once((first, name)).chain(disciplines.clone()) {
                 if let Err(err) =

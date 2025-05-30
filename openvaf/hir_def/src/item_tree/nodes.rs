@@ -136,7 +136,7 @@ pub struct Node {
 }
 impl Node {
     pub fn discipline(&self, tree: &ItemTree) -> Option<Name> {
-        self.decls.iter().find_map(|decl| decl.discipline(tree).clone())
+        self.decls.iter().find_map(|decl| decl.discipline(tree).cloned())
     }
     pub fn is_gnd(&self, tree: &ItemTree) -> bool {
         self.decls.iter().any(|decl| decl.is_gnd(tree))
@@ -163,10 +163,10 @@ impl_from_typed!(
     Port(ItemTreeId<Port>) for NodeTypeDecl
 );
 impl NodeTypeDecl {
-    pub fn discipline(self, tree: &ItemTree) -> &Option<Name> {
+    pub fn discipline(self, tree: &ItemTree) -> Option<&Name> {
         match self {
-            NodeTypeDecl::Net(net) => &tree[net].discipline,
-            NodeTypeDecl::Port(port) => &tree[port].discipline,
+            NodeTypeDecl::Net(net) => tree[net].discipline.as_ref(),
+            NodeTypeDecl::Port(port) => tree[port].discipline.as_ref(),
         }
     }
     pub fn discipline_source(self, db: &dyn HirDefDB, root_file: FileId) -> SyntaxNodePtr {

@@ -29,7 +29,7 @@ impl<'a> Test<'a> {
         runner: &'a dyn Fn(&Path) -> Result,
         ignore: &'r dyn Fn(&Path) -> bool,
         dir: &Path,
-    ) -> impl IntoIterator<Item = Test<'a>> + 'r
+    ) -> impl Iterator<Item = Test<'a>> + 'r
     where
         'a: 'r,
     {
@@ -41,7 +41,7 @@ impl<'a> Test<'a> {
         runner: &'a dyn Fn(T) -> Result,
         ignore: &'r dyn Fn(T) -> bool,
         args: &'r [T],
-    ) -> impl IntoIterator<Item = Test<'a>> + 'r
+    ) -> impl Iterator<Item = Test<'a>> + 'r
     where
         'a: 'r,
     {
@@ -61,7 +61,7 @@ impl<'a> Test<'a> {
         filter: &'r dyn Fn(&Path) -> bool,
         ignore: &'r dyn Fn(&Path) -> bool,
         dir: &Path,
-    ) -> impl IntoIterator<Item = Test<'a>> + 'r
+    ) -> impl Iterator<Item = Test<'a>> + 'r
     where
         'a: 'r,
     {
