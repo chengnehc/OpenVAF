@@ -48,9 +48,11 @@ extern "C" {
 /// This should always be safe but this low level wrapper intentionally
 /// refrains from making safety guarantees
 pub unsafe fn pass_manager_builder_set_opt_lvl(pmb: &PassManagerBuilder, opt_lvl: OptLevel) {
-    LLVMPassManagerBuilderSetOptLevel(pmb, opt_lvl as c_uint);
-    if opt_lvl > OptLevel::Less {
-        LLVMPassManagerBuilderSLPVectorize(pmb);
+    unsafe {
+        LLVMPassManagerBuilderSetOptLevel(pmb, opt_lvl as c_uint);
+        if opt_lvl > OptLevel::Less {
+            LLVMPassManagerBuilderSLPVectorize(pmb);
+        }
     }
 }
 
@@ -77,9 +79,11 @@ extern "C" {
 /// If the module or its contents have been incorrectly constructed this can cause UB.
 /// If the pass manager is not a function pass manager but a global pass manager this will cause UB.
 pub unsafe fn run_function_pass_manager<'a>(fpm: &PassManager<'a>, module: &'a Module) {
-    LLVMInitializeFunctionPassManager(fpm);
-    for fun in function_iter(module) {
-        LLVMRunFunctionPassManager(fpm, fun);
+    unsafe {
+        LLVMInitializeFunctionPassManager(fpm);
+        for fun in function_iter(module) {
+            LLVMRunFunctionPassManager(fpm, fun);
+        }
+        LLVMFinalizeFunctionPassManager(fpm);
     }
-    LLVMFinalizeFunctionPassManager(fpm);
 }

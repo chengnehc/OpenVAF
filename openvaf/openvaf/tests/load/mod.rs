@@ -19,46 +19,49 @@ mod dump;
 
 /// Dynamically load a OSDI library from given `path`.
 pub unsafe fn load_osdi_lib(path: &Utf8Path) -> Result<&'static [OsdiDescriptor]> {
-    let lib = Library::new(path)?;
-    let lib = Box::leak(Box::new(lib));
+    unsafe {
+        let lib = Library::new(path)?;
+        let lib = Box::leak(Box::new(lib));
 
-    let major_version: &u32 = *lib.get(b"OSDI_VERSION_MAJOR\0")?;
-    let minor_version: &u32 = *lib.get(b"OSDI_VERSION_MINOR\0")?;
+        let major_version: &u32 = *lib.get(b"OSDI_VERSION_MAJOR\0")?;
+        let minor_version: &u32 = *lib.get(b"OSDI_VERSION_MINOR\0")?;
 
-    if *major_version != 0 || *minor_version != 3 {
-        bail!("invalid version v{major_version}.{minor_version}",);
-    }
+        if *major_version != 0 || *minor_version != 3 {
+            bail!("invalid version v{major_version}.{minor_version}",);
+        }
 
-    let num_descriptors: &u32 = *lib.get(b"OSDI_NUM_DESCRIPTORS\0")?;
-    let descriptors: *const OsdiDescriptor = *lib.get(b"OSDI_DESCRIPTORS\0")?;
+        let num_descriptors: &u32 = *lib.get(b"OSDI_NUM_DESCRIPTORS\0")?;
+        let descriptors: *const OsdiDescriptor = *lib.get(b"OSDI_DESCRIPTORS\0")?;
 
-    let descriptors: &[OsdiDescriptor] =
-        slice::from_raw_parts(descriptors, *num_descriptors as usize);
+        let descriptors: &[OsdiDescriptor] =
+            slice::from_raw_parts(descriptors, *num_descriptors as usize);
 
-    if let Ok(osdi_log_ptr) =
-        lib.get::<*mut unsafe extern "C" fn(*mut c_void, *const c_char, u32)>(b"osdi_log\0")
-    {
-        osdi_log_ptr.write(osdi_log)
-    }
-    if let Ok(osdi_lim_table) = lib.get(b"OSDI_LIM_TABLE\0") {
-        let lim_table_base: *mut OsdiLimFunction = *osdi_lim_table;
-        let lim_table_len: &u32 = *lib.get(b"OSDI_LIM_TABLE_LEN\0")?;
-        let lim_table = slice::from_raw_parts_mut(lim_table_base, *lim_table_len as usize);
-        for lim_func in lim_table {
-            if osdi_str(lim_func.name) == "pnjlim" {
-                assert_eq!(lim_func.num_args, 2);
-                let ptr: unsafe extern "C" fn(bool, *mut bool, f64, f64, f64, f64) -> f64 =
-                    osdi_pnjlim;
-                lim_func.func_ptr = ptr as *mut c_void;
+        if let Ok(osdi_log_ptr) =
+            lib.get::<*mut unsafe extern "C" fn(*mut c_void, *const c_char, u32)>(b"osdi_log\0")
+        {
+            osdi_log_ptr.write(osdi_log)
+        }
+        if let Ok(osdi_lim_table) = lib.get(b"OSDI_LIM_TABLE\0") {
+            let lim_table_base: *mut OsdiLimFunction = *osdi_lim_table;
+            let lim_table_len: &u32 = *lib.get(b"OSDI_LIM_TABLE_LEN\0")?;
+            let lim_table = slice::from_raw_parts_mut(lim_table_base, *lim_table_len as usize);
+            for lim_func in lim_table {
+                if osdi_str(lim_func.name) == "pnjlim" {
+                    assert_eq!(lim_func.num_args, 2);
+                    let ptr: unsafe extern "C" fn(bool, *mut bool, f64, f64, f64, f64) -> f64 =
+                        osdi_pnjlim;
+                    lim_func.func_ptr = ptr as *mut c_void;
+                }
             }
         }
-    }
 
-    Ok(descriptors)
+        Ok(descriptors)
+    }
 }
 
 pub(super) unsafe fn osdi_str(raw: *mut c_char) -> &'static str {
-    CStr::from_ptr(raw).to_str().expect("All OSDI strings must be encoded in UTF-8")
+    let cstr = unsafe { CStr::from_ptr(raw) };
+    cstr.to_str().expect("All OSDI strings must be encoded in UTF-8")
 }
 
 #[allow(non_camel_case_types)]
@@ -97,7 +100,7 @@ unsafe fn dealloc(ptr: *mut c_void, size: usize) {
         return;
     }
     let layout = max_align_layout(size);
-    std::alloc::dealloc(ptr as *mut u8, layout)
+    unsafe { std::alloc::dealloc(ptr as *mut u8, layout) }
 }
 
 impl OsdiDescriptor {
@@ -371,7 +374,7 @@ impl OsdiInstance {
 /* Callbacks */
 
 unsafe extern "C" fn osdi_log(handle: *mut c_void, msg: *const c_char, lvl: u32) {
-    let _ = panic::catch_unwind(|| osdi_log_impl(handle, msg, lvl));
+    let _ = panic::catch_unwind(|| unsafe { osdi_log_impl(handle, msg, lvl) });
 }
 
 unsafe extern "C" fn osdi_pnjlim(
@@ -387,7 +390,7 @@ unsafe extern "C" fn osdi_pnjlim(
         process::exit(-1)
     };
     if check_ {
-        *check = true;
+        unsafe { *check = true };
     }
     res
 }
@@ -404,9 +407,10 @@ fn osdi_pnjlim_impl(init: bool, vnew: f64, vold: f64, vt: f64, vcrit: f64) -> (f
 }
 
 unsafe fn osdi_log_impl(handle: *mut c_void, msg: *const c_char, lvl: u32) {
-    let instance = handle as *const c_char;
-    let instance = CStr::from_ptr(instance).to_str().expect("all OSDI strings must be valid utf-8");
-    let msg = CStr::from_ptr(msg).to_str().expect("all OSDI strings must be valid utf-8");
+    let instance = unsafe { CStr::from_ptr(handle as *const c_char) };
+    let instance = instance.to_str().expect("all OSDI strings must be valid utf-8");
+    let msg = unsafe { CStr::from_ptr(msg) };
+    let msg = msg.to_str().expect("all OSDI strings must be valid utf-8");
 
     if (lvl & LOG_FMT_ERR) == 0 {
         match lvl & LOG_LVL_MASK {

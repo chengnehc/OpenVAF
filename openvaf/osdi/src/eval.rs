@@ -340,18 +340,20 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
         flag: u32,
         store_val: &dyn Fn(&Builder<'_, '_, 'll>),
     ) {
-        let cx = builder.cx;
-        let bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
-        let next_bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
+        unsafe {
+            let cx = builder.cx;
+            let bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
+            let next_bb = LLVMAppendBasicBlockInContext(cx.llcx, llfunc, UNNAMED);
 
-        let is_set = is_flag_set_mem(cx, flag, flags, builder.llbuilder);
-        LLVMBuildCondBr(builder.llbuilder, is_set, bb, next_bb);
+            let is_set = is_flag_set_mem(cx, flag, flags, builder.llbuilder);
+            LLVMBuildCondBr(builder.llbuilder, is_set, bb, next_bb);
 
-        LLVMPositionBuilderAtEnd(builder.llbuilder, bb);
-        store_val(builder);
-        LLVMBuildBr(builder.llbuilder, next_bb);
+            LLVMPositionBuilderAtEnd(builder.llbuilder, bb);
+            store_val(builder);
+            LLVMBuildBr(builder.llbuilder, next_bb);
 
-        LLVMPositionBuilderAtEnd(builder.llbuilder, next_bb);
+            LLVMPositionBuilderAtEnd(builder.llbuilder, next_bb);
+        }
     }
 
     fn lim_func(

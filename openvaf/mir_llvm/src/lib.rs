@@ -143,21 +143,23 @@ pub struct ModuleLlvm {
 }
 
 impl ModuleLlvm {
-    unsafe fn new(
+    fn new(
         name: &str,
         target: &Target,
         target_cpu: &str,
         features: &str,
         opt_lvl: OptLevel,
     ) -> Result<ModuleLlvm, LLVMString> {
-        let llcx = llvm::LLVMContextCreate();
-        llvm::LLVMContextSetDiagnosticHandler(llcx, Some(diagnostic_handler), ptr::null_mut());
+        let llcx = unsafe { llvm::LLVMContextCreate() };
+        unsafe {
+            llvm::LLVMContextSetDiagnosticHandler(llcx, Some(diagnostic_handler), ptr::null_mut())
+        };
 
         let name = CString::new(name).unwrap();
-        let llmod = llvm::LLVMModuleCreateWithNameInContext(name.as_ptr(), llcx);
+        let llmod = unsafe { llvm::LLVMModuleCreateWithNameInContext(name.as_ptr(), llcx) };
 
         let data_layout = CString::new(target.data_layout.as_str()).unwrap();
-        llvm::LLVMSetDataLayout(llmod, data_layout.as_ptr());
+        unsafe { llvm::LLVMSetDataLayout(llmod, data_layout.as_ptr()) };
 
         let target_triple = &target.llvm_target;
         let tm = llvm::create_target_machine(

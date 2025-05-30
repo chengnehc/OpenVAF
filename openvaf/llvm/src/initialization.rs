@@ -95,24 +95,27 @@ unsafe fn configure_llvm(cg_opts: &[String], tg_opts: &[String]) {
     // TODO(JW) remove dependencies on the following unnecessary functions
     // Since LLVM 17, all functions below for initializing legacy passes have been removed.
     // Calls to such functions can simply be dropped, as they are no longer necessary.
-    let registry = LLVMGetGlobalPassRegistry();
-    LLVMInitializeCore(registry);
-    LLVMInitializeCodeGen(registry);
-    LLVMInitializeScalarOpts(registry);
-    LLVMInitializeVectorization(registry);
-    LLVMInitializeIPO(registry);
-    LLVMInitializeAnalysis(registry);
-    LLVMInitializeTransformUtils(registry);
-    LLVMInitializeInstCombine(registry);
-    LLVMInitializeTarget(registry);
-
+    unsafe {
+        let registry = LLVMGetGlobalPassRegistry();
+        LLVMInitializeCore(registry);
+        LLVMInitializeCodeGen(registry);
+        LLVMInitializeScalarOpts(registry);
+        LLVMInitializeVectorization(registry);
+        LLVMInitializeIPO(registry);
+        LLVMInitializeAnalysis(registry);
+        LLVMInitializeTransformUtils(registry);
+        LLVMInitializeInstCombine(registry);
+        LLVMInitializeTarget(registry);
+    }
     initialize_available_targets();
 
-    LLVMParseCommandLineOptions(
-        llvm_args.len() as c_int,
-        llvm_args.as_ptr(),
-        b"A Verilog-A compiler".as_ptr() as *const c_char,
-    );
+    unsafe {
+        LLVMParseCommandLineOptions(
+            llvm_args.len() as c_int,
+            llvm_args.as_ptr(),
+            b"A Verilog-A compiler".as_ptr() as *const c_char,
+        );
+    }
 }
 
 // https://github.com/rust-lang/rust/blob/master/compiler/rustc_llvm/src/lib.rs

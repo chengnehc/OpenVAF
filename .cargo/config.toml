@@ -1,5 +1,9 @@
 [build]
 rustflags = [
+    # Deny lint "unsafe_op_in_unsafe_fn" to allow
+    # seamless transition to rust 2024 edition
+    "-Dunsafe_op_in_unsafe_fn",
+
     # Opt-in some clippy::pedantic lints
 
     # pattern matching
@@ -115,7 +119,8 @@ rustflags = [
 
 [alias]
 xtask = "run --package xtask --bin xtask --"
-lint = "clippy --all-targets"
+lint = "clippy --all-targets --workspace --exclude verilogae* --exclude melange*"
+runtest = "nextest run --workspace --exclude verilogae* --exclude melange*"
 
 
 [target.x86_64-pc-windows-msvc]

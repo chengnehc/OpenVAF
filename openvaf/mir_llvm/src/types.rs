@@ -181,6 +181,6 @@ impl<'ll> CodegenCx<'_, 'll> {
         ptr: &'ll Value,
         indices: &[&'ll Value],
     ) -> &'ll Value {
-        llvm::LLVMConstInBoundsGEP2(elem_ty, ptr, indices.as_ptr(), indices.len() as u32)
+        unsafe { llvm::LLVMConstInBoundsGEP2(elem_ty, ptr, indices.as_ptr(), indices.len() as u32) }
     }
 }

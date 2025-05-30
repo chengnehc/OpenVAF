@@ -117,12 +117,14 @@ impl AddressSpace {
 /// # Safety
 /// struct_ty must be a valid struct type
 pub unsafe fn struct_element_types(struct_ty: &Type) -> Box<[&Type]> {
-    let count = LLVMCountStructElementTypes(struct_ty);
+    let count = unsafe { LLVMCountStructElementTypes(struct_ty) };
 
     let mut raw_vec: Vec<&Type> = Vec::with_capacity(count as usize);
     let ptr = raw_vec.as_mut_ptr();
     std::mem::forget(raw_vec);
 
-    LLVMGetStructElementTypes(struct_ty, ptr);
-    Vec::from_raw_parts(ptr, count as usize, count as usize).into_boxed_slice()
+    unsafe {
+        LLVMGetStructElementTypes(struct_ty, ptr);
+        Vec::from_raw_parts(ptr, count as usize, count as usize).into_boxed_slice()
+    }
 }

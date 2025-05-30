@@ -80,7 +80,7 @@ extern "C" {
 /// This function calls the LLVM C API and may cause unsafety for invalid inputs.
 ///
 /// Specifically, this function is not thread safe!
-pub unsafe fn create_target_machine(
+pub fn create_target_machine(
     module: &Module,
     triple: &str,
     cpu: &str,
@@ -90,30 +90,33 @@ pub unsafe fn create_target_machine(
     code_model: CodeModel,
 ) -> Result<&'static mut TargetMachine, LLVMString> {
     let triple_ = CString::new(triple).unwrap();
-    let triple_ = LLVMString::new(LLVMNormalizeTargetTriple(triple_.as_ptr()));
-    LLVMSetTarget(module, triple_.as_ptr());
 
-    let mut target = None;
-    let mut err_string = MaybeUninit::uninit();
-    if LLVMGetTargetFromTriple(triple_.as_ptr(), &mut target, err_string.as_mut_ptr()) == 1 {
-        return Err(LLVMString::new(err_string.assume_init()));
+    unsafe {
+        let triple_ = LLVMString::new(LLVMNormalizeTargetTriple(triple_.as_ptr()));
+        LLVMSetTarget(module, triple_.as_ptr());
+
+        let mut target = None;
+        let mut err_string = MaybeUninit::uninit();
+        if LLVMGetTargetFromTriple(triple_.as_ptr(), &mut target, err_string.as_mut_ptr()) == 1 {
+            return Err(LLVMString::new(err_string.assume_init()));
+        }
+
+        let cpu = CString::new(cpu).unwrap();
+        let features = CString::new(features).unwrap();
+
+        let target_machine = LLVMCreateTargetMachine(
+            target.unwrap(),
+            triple_.as_ptr(),
+            cpu.as_ptr(),
+            features.as_ptr(),
+            opt_level,
+            reloc_mode,
+            code_model,
+        );
+
+        target_machine.ok_or_else(|| {
+            let msg = format!("error: codegen not available for target \"{triple}\"");
+            LLVMString::from_str(&msg)
+        })
     }
-
-    let cpu = CString::new(cpu).unwrap();
-    let features = CString::new(features).unwrap();
-
-    let target_machine = LLVMCreateTargetMachine(
-        target.unwrap(),
-        triple_.as_ptr(),
-        cpu.as_ptr(),
-        features.as_ptr(),
-        opt_level,
-        reloc_mode,
-        code_model,
-    );
-
-    target_machine.ok_or_else(|| {
-        let msg = format!("error: codegen not available for target \"{triple}\"");
-        LLVMString::from_str(&msg)
-    })
 }

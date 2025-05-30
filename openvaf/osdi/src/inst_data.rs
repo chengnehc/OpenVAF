@@ -198,7 +198,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         llbuilder: &llvm::Builder<'ll>,
     ) -> Option<&'ll llvm::Value> {
         let idx = self.params.get_index_of(&param)?;
-        let res = self.is_nth_param_given(cx, idx as u32, ptr, llbuilder);
+        let res = unsafe { self.is_nth_param_given(cx, idx as u32, ptr, llbuilder) };
         Some(res)
     }
 
@@ -209,8 +209,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
-        bitfield::is_set(cx, idx, arr_ptr, self.param_given, llbuilder)
+        unsafe {
+            let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
+            bitfield::is_set(cx, idx, arr_ptr, self.param_given, llbuilder)
+        }
     }
 
     pub unsafe fn set_nth_param_given(
@@ -220,8 +222,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) {
-        let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
-        bitfield::set_bit(cx, idx, arr_ptr, self.param_given, llbuilder)
+        unsafe {
+            let arr_ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, PARAM_GIVEN, UNNAMED);
+            bitfield::set_bit(cx, idx, arr_ptr, self.param_given, llbuilder)
+        }
     }
 
     // pub unsafe fn set_param_given(
@@ -268,7 +272,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         llbuilder: &llvm::Builder<'ll>,
     ) -> Option<(&'ll llvm::Value, &'ll llvm::Type)> {
         let idx = self.params.get_index_of(&param)? as u32;
-        let (ptr, ty) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
+        let (ptr, ty) = unsafe { self.nth_param_ptr(idx, struct_ptr, llbuilder) };
         Some((ptr, ty))
     }
 
@@ -280,7 +284,7 @@ impl<'ll> OsdiInstanceData<'ll> {
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let (_, ty) = self.params.get_index(idx as usize).unwrap();
         let idx = NUM_CONST_FIELDS + idx;
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, idx, UNNAMED);
+        let ptr = unsafe { LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, idx, UNNAMED) };
         (ptr, ty)
     }
 
@@ -290,9 +294,11 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> Option<&'ll llvm::Value> {
-        let (ptr, ty) = self.param_ptr(param, struct_ptr, llbuilder)?;
-        let val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
-        Some(val)
+        unsafe {
+            let (ptr, ty) = self.param_ptr(param, struct_ptr, llbuilder)?;
+            let val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
+            Some(val)
+        }
     }
 
     pub unsafe fn read_nth_param(
@@ -301,8 +307,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let (ptr, ty) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
-        LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
+        unsafe {
+            let (ptr, ty) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
+            LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
+        }
     }
 
     pub unsafe fn store_nth_param(
@@ -312,8 +320,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         val: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let (ptr, _) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
-        LLVMBuildStore(llbuilder, val, ptr)
+        unsafe {
+            let (ptr, _) = self.nth_param_ptr(idx, struct_ptr, llbuilder);
+            LLVMBuildStore(llbuilder, val, ptr)
+        }
     }
 
     // pub unsafe fn opvar_ptr(
@@ -354,17 +364,19 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
     ) -> &'ll llvm::Value {
         let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, struct_ptr);
-        let mut val = LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED);
+        let mut val = unsafe { LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED) };
 
         // special treatment for bool value
         if module.init.cache_slots[slot] == hir::Type::Bool {
-            val = LLVMBuildICmp(
-                llbuilder,
-                IntPredicate::IntNE,
-                val,
-                LLVMConstInt(ty, 0, llvm::False),
-                UNNAMED,
-            );
+            val = unsafe {
+                LLVMBuildICmp(
+                    llbuilder,
+                    IntPredicate::IntNE,
+                    val,
+                    LLVMConstInt(ty, 0, llvm::False),
+                    UNNAMED,
+                )
+            };
         }
         val
     }
@@ -381,9 +393,9 @@ impl<'ll> OsdiInstanceData<'ll> {
     ) {
         let (ptr, ty) = self.cache_slot_ptr(llbuilder, slot, ptr);
         if module.init.cache_slots[slot] == hir::Type::Bool {
-            val = LLVMBuildIntCast2(llbuilder, val, ty, llvm::False, UNNAMED);
+            val = unsafe { LLVMBuildIntCast2(llbuilder, val, ty, llvm::False, UNNAMED) };
         }
-        LLVMBuildStore(llbuilder, val, ptr);
+        unsafe { LLVMBuildStore(llbuilder, val, ptr) };
     }
 
     pub unsafe fn store_collapsed_node_pair(
@@ -393,10 +405,12 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
         pair: &'ll llvm::Value,
     ) {
-        let mut ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, COLLAPSED, UNNAMED);
-        let zero = cx.const_unsigned_int(0);
-        ptr = LLVMBuildGEP2(llbuilder, self.collapsed, ptr, [zero, pair].as_ptr(), 2, UNNAMED);
-        LLVMBuildStore(llbuilder, cx.const_c_bool(true), ptr);
+        unsafe {
+            let mut ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, COLLAPSED, UNNAMED);
+            let zero = cx.const_unsigned_int(0);
+            ptr = LLVMBuildGEP2(llbuilder, self.collapsed, ptr, [zero, pair].as_ptr(), 2, UNNAMED);
+            LLVMBuildStore(llbuilder, cx.const_c_bool(true), ptr);
+        }
     }
 
     pub unsafe fn temperature_loc(
@@ -413,8 +427,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
         val: &'ll llvm::Value,
     ) {
-        let ptr = builder.struct_gep(self.ty, struct_ptr, TEMPERATURE);
-        builder.store(ptr, val)
+        unsafe {
+            let ptr = builder.struct_gep(self.ty, struct_ptr, TEMPERATURE);
+            builder.store(ptr, val)
+        }
     }
 
     pub unsafe fn load_connected_ports(
@@ -422,8 +438,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         builder: &mir_llvm::Builder<'_, '_, 'll>,
         struct_ptr: &'ll llvm::Value,
     ) -> &'ll llvm::Value {
-        let ptr = builder.struct_gep(self.ty, struct_ptr, CONNECTED);
-        builder.load(builder.cx.ty_int(), ptr)
+        unsafe {
+            let ptr = builder.struct_gep(self.ty, struct_ptr, CONNECTED);
+            builder.load(builder.cx.ty_int(), ptr)
+        }
     }
 
     pub unsafe fn store_connected_ports(
@@ -432,8 +450,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
         val: &'ll llvm::Value,
     ) {
-        let ptr = builder.struct_gep(self.ty, struct_ptr, CONNECTED);
-        builder.store(ptr, val)
+        unsafe {
+            let ptr = builder.struct_gep(self.ty, struct_ptr, CONNECTED);
+            builder.store(ptr, val)
+        }
     }
 
     pub fn residual_off(
@@ -474,7 +494,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         slot: EvalOutputSlot,
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let elem = self.eval_output_slot_elem(slot);
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, elem, UNNAMED);
+        let ptr = unsafe { LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, elem, UNNAMED) };
         let ty = self.eval_outputs.get_index(slot).unwrap().1;
         (ptr, ty)
     }
@@ -493,8 +513,10 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
         slot: EvalOutputSlot,
     ) -> &'ll llvm::Value {
-        let (ptr, ty) = self.eval_output_slot_ptr(llbuilder, struct_ptr, slot);
-        LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
+        unsafe {
+            let (ptr, ty) = self.eval_output_slot_ptr(llbuilder, struct_ptr, slot);
+            LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
+        }
     }
 
     unsafe fn store_eval_output_slot(
@@ -505,8 +527,10 @@ impl<'ll> OsdiInstanceData<'ll> {
     ) {
         let val = *self.eval_outputs.get_index(slot).unwrap().0;
         let val = builder.values[val].get(builder);
-        let (ptr, _) = self.eval_output_slot_ptr(builder.llbuilder, inst_ptr, slot);
-        builder.store(ptr, val)
+        unsafe {
+            let (ptr, _) = self.eval_output_slot_ptr(builder.llbuilder, inst_ptr, slot);
+            builder.store(ptr, val)
+        }
     }
 
     /// Used by eval() to store its output
@@ -517,7 +541,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         builder: &mir_llvm::Builder<'_, '_, 'll>,
     ) {
         if let EvalOutput::Calculated(slot) = output {
-            self.store_eval_output_slot(slot, inst_ptr, builder)
+            unsafe { self.store_eval_output_slot(slot, inst_ptr, builder) }
         }
     }
 
@@ -529,12 +553,14 @@ impl<'ll> OsdiInstanceData<'ll> {
         struct_ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, NODE_MAPPING, UNNAMED);
-        let zero = cx.const_int(0);
-        let node = cx.const_unsigned_int(node.into());
-        let ptr =
-            LLVMBuildGEP2(llbuilder, self.node_mapping, ptr, [zero, node].as_ptr(), 2, UNNAMED);
-        LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
+        unsafe {
+            let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, struct_ptr, NODE_MAPPING, UNNAMED);
+            let zero = cx.const_int(0);
+            let node = cx.const_unsigned_int(node.into());
+            let ptr =
+                LLVMBuildGEP2(llbuilder, self.node_mapping, ptr, [zero, node].as_ptr(), 2, UNNAMED);
+            LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
+        }
     }
 
     /// Read the node offset first, and then read node voltage at this
@@ -547,9 +573,12 @@ impl<'ll> OsdiInstanceData<'ll> {
         prev_solve: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let off = self.node_off(cx, node, ptr, llbuilder);
-        let ptr = LLVMBuildGEP2(llbuilder, cx.ty_double(), prev_solve, [off].as_ptr(), 1, UNNAMED);
-        LLVMBuildLoad2(llbuilder, cx.ty_double(), ptr, UNNAMED)
+        unsafe {
+            let off = self.node_off(cx, node, ptr, llbuilder);
+            let ptr =
+                LLVMBuildGEP2(llbuilder, cx.ty_double(), prev_solve, [off].as_ptr(), 1, UNNAMED);
+            LLVMBuildLoad2(llbuilder, cx.ty_double(), ptr, UNNAMED)
+        }
     }
 
     /// Used by load_xxx()
@@ -562,7 +591,7 @@ impl<'ll> OsdiInstanceData<'ll> {
     ) -> Option<&'ll llvm::Value> {
         let residual = &self.residual[node];
         let residual = if reactive { &residual.react } else { &residual.resist };
-        let val = self.load_eval_output_slot(llbuilder, ptr, residual.expand()?);
+        let val = unsafe { self.load_eval_output_slot(llbuilder, ptr, residual.expand()?) };
         Some(val)
     }
 
@@ -575,7 +604,7 @@ impl<'ll> OsdiInstanceData<'ll> {
     ) -> Option<&'ll llvm::Value> {
         let residual = &self.residual[node];
         let lim_rhs = if reactive { &residual.react_lim_rhs } else { &residual.resist_lim_rhs };
-        let val = self.load_eval_output_slot(llbuilder, ptr, lim_rhs.expand()?);
+        let val = unsafe { self.load_eval_output_slot(llbuilder, ptr, lim_rhs.expand()?) };
         Some(val)
     }
 
@@ -587,11 +616,14 @@ impl<'ll> OsdiInstanceData<'ll> {
         ptr: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) -> &'ll llvm::Value {
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, STATE_IDX, UNNAMED);
-        let zero = cx.const_int(0);
-        let state = cx.const_unsigned_int(idx.into());
-        let ptr = LLVMBuildGEP2(llbuilder, self.state_idx, ptr, [zero, state].as_ptr(), 2, UNNAMED);
-        LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
+        unsafe {
+            let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, STATE_IDX, UNNAMED);
+            let zero = cx.const_int(0);
+            let state = cx.const_unsigned_int(idx.into());
+            let ptr =
+                LLVMBuildGEP2(llbuilder, self.state_idx, ptr, [zero, state].as_ptr(), 2, UNNAMED);
+            LLVMBuildLoad2(llbuilder, cx.ty_int(), ptr, UNNAMED)
+        }
     }
 
     /// Used by eval()
@@ -605,7 +637,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         let residual = &self.residual[node];
         let slot = if reactive { residual.react } else { residual.resist };
         if let Some(slot) = slot.expand() {
-            self.store_eval_output_slot(slot, ptr, builder);
+            unsafe { self.store_eval_output_slot(slot, ptr, builder) };
             true
         } else {
             false
@@ -622,16 +654,18 @@ impl<'ll> OsdiInstanceData<'ll> {
         contrib: &'ll llvm::Value,
         llbuilder: &llvm::Builder<'ll>,
     ) {
-        let off = self.node_off(cx, node, ptr, llbuilder);
-        let dst = LLVMBuildGEP2(llbuilder, cx.ty_double(), dst, [off].as_ptr(), 1, UNNAMED);
-        let old = LLVMBuildLoad2(llbuilder, cx.ty_double(), dst, UNNAMED);
-        let val = if NEG {
-            LLVMBuildFSub(llbuilder, old, contrib, UNNAMED)
-        } else {
-            LLVMBuildFAdd(llbuilder, old, contrib, UNNAMED)
-        };
-        LLVMSetFastMath(val);
-        LLVMBuildStore(llbuilder, val, dst);
+        unsafe {
+            let off = self.node_off(cx, node, ptr, llbuilder);
+            let dst = LLVMBuildGEP2(llbuilder, cx.ty_double(), dst, [off].as_ptr(), 1, UNNAMED);
+            let old = LLVMBuildLoad2(llbuilder, cx.ty_double(), dst, UNNAMED);
+            let val = if NEG {
+                LLVMBuildFSub(llbuilder, old, contrib, UNNAMED)
+            } else {
+                LLVMBuildFAdd(llbuilder, old, contrib, UNNAMED)
+            };
+            LLVMSetFastMath(val);
+            LLVMBuildStore(llbuilder, val, dst);
+        }
     }
 
     pub unsafe fn store_lim_rhs(
@@ -644,7 +678,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         let dst = &self.residual[node];
         let slot = if reactive { dst.react_lim_rhs } else { dst.resist_lim_rhs };
         if let Some(slot) = slot.expand() {
-            self.store_eval_output_slot(slot, ptr, builder);
+            unsafe { self.store_eval_output_slot(slot, ptr, builder) };
             true
         } else {
             false
@@ -662,7 +696,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         let entry = &self.jacobian[entry];
         let dst = if reactive { entry.react } else { entry.resist };
         if let Some(EvalOutput::Calculated(slot)) = dst {
-            self.store_eval_output_slot(slot, inst_ptr, builder)
+            unsafe { self.store_eval_output_slot(slot, inst_ptr, builder) }
         }
     }
 
@@ -679,19 +713,21 @@ impl<'ll> OsdiInstanceData<'ll> {
         let zero = cx.const_int(0);
         let field = if reactive { JACOBIAN_PTR_REACT } else { JACOBIAN_PTR_RESIST };
         let ty = if reactive { self.jacobian_ptr_react } else { self.jacobian_ptr };
-        let ptr = LLVMBuildStructGEP2(llbuilder, self.ty, ptr, field, UNNAMED);
+        let ptr = unsafe { LLVMBuildStructGEP2(llbuilder, self.ty, ptr, field, UNNAMED) };
         let entry = if reactive {
             self.jacobian[entry].react_off.unwrap_unchecked().into()
         } else {
             entry.into()
         };
         let entry = cx.const_unsigned_int(entry);
-        let ptr = LLVMBuildGEP2(llbuilder, ty, ptr, [zero, entry].as_ptr(), 2, UNNAMED);
-        let dst = LLVMBuildLoad2(llbuilder, cx.ty_ptr(), ptr, UNNAMED);
-        let old = LLVMBuildLoad2(llbuilder, cx.ty_double(), dst, UNNAMED);
-        let val = LLVMBuildFAdd(llbuilder, old, val, UNNAMED);
-        LLVMSetFastMath(val);
-        LLVMBuildStore(llbuilder, val, dst);
+        unsafe {
+            let ptr = LLVMBuildGEP2(llbuilder, ty, ptr, [zero, entry].as_ptr(), 2, UNNAMED);
+            let dst = LLVMBuildLoad2(llbuilder, cx.ty_ptr(), ptr, UNNAMED);
+            let old = LLVMBuildLoad2(llbuilder, cx.ty_double(), dst, UNNAMED);
+            let val = LLVMBuildFAdd(llbuilder, old, val, UNNAMED);
+            LLVMSetFastMath(val);
+            LLVMBuildStore(llbuilder, val, dst);
+        }
     }
 
     pub unsafe fn store_bound_step(
@@ -700,7 +736,7 @@ impl<'ll> OsdiInstanceData<'ll> {
         builder: &mir_llvm::Builder<'_, '_, 'll>,
     ) {
         if let Some(slot) = self.bound_step {
-            self.store_eval_output_slot(slot, ptr, builder);
+            unsafe { self.store_eval_output_slot(slot, ptr, builder) };
         }
     }
 
@@ -720,44 +756,46 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     ) -> &'ll llvm::Value {
         let OsdiCompilationUnit { inst_data, model_data, cx, module, .. } = self;
         let (ptr, ty) = match output {
-            EvalOutput::Calculated(slot) => {
+            EvalOutput::Calculated(slot) => unsafe {
                 inst_data.eval_output_slot_ptr(llbuilder, inst_ptr, slot)
-            }
+            },
             EvalOutput::Const(val, _) => {
                 return cx.const_val(&val);
             }
             EvalOutput::Param(param) => {
                 let intern = &module.intern;
                 let (kind, _) = intern.params.get_index(param).unwrap();
-                match *kind {
-                    ParamKind::Param(param) => inst_data
-                        .param_ptr(OsdiInstanceParam::User(param), inst_ptr, llbuilder)
-                        .unwrap_or_else(|| {
-                            model_data.param_ptr(param, model_ptr, llbuilder).unwrap()
-                        }),
-                    ParamKind::Temperature => (
-                        LLVMBuildStructGEP2(
-                            llbuilder,
+                unsafe {
+                    match *kind {
+                        ParamKind::Param(param) => inst_data
+                            .param_ptr(OsdiInstanceParam::User(param), inst_ptr, llbuilder)
+                            .unwrap_or_else(|| {
+                                model_data.param_ptr(param, model_ptr, llbuilder).unwrap()
+                            }),
+                        ParamKind::Temperature => (
+                            LLVMBuildStructGEP2(
+                                llbuilder,
+                                cx.ty_double(),
+                                inst_ptr,
+                                TEMPERATURE,
+                                UNNAMED,
+                            ),
                             cx.ty_double(),
-                            inst_ptr,
-                            TEMPERATURE,
-                            UNNAMED,
                         ),
-                        cx.ty_double(),
-                    ),
-                    ParamKind::ParamSysFun(func) => inst_data
-                        .param_ptr(OsdiInstanceParam::Builtin(func), inst_ptr, llbuilder)
-                        .unwrap(),
+                        ParamKind::ParamSysFun(func) => inst_data
+                            .param_ptr(OsdiInstanceParam::Builtin(func), inst_ptr, llbuilder)
+                            .unwrap(),
 
-                    ParamKind::HiddenState(_) => todo!("hidden state"),
+                        ParamKind::HiddenState(_) => todo!("hidden state"),
 
-                    _ => unreachable!(),
+                        _ => unreachable!(),
+                    }
                 }
             }
             EvalOutput::Cache(slot) => inst_data.cache_slot_ptr(llbuilder, slot, inst_ptr),
         };
 
-        LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED)
+        unsafe { LLVMBuildLoad2(llbuilder, ty, ptr, UNNAMED) }
     }
 
     pub unsafe fn load_jacobian_entry<const REACTIVE: bool>(
@@ -769,7 +807,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     ) -> Option<&'ll llvm::Value> {
         let entry = &self.inst_data.jacobian[entry];
         let entry = if REACTIVE { entry.react } else { entry.resist };
-        let val = self.load_eval_output(entry?, inst_ptr, model_ptr, llbuilder);
+        let val = unsafe { self.load_eval_output(entry?, inst_ptr, model_ptr, llbuilder) };
         Some(val)
     }
 
@@ -782,15 +820,15 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
     ) -> (&'ll llvm::Value, &'ll llvm::Type) {
         let OsdiCompilationUnit { inst_data, model_data, cx, module, .. } = self;
         match *inst_data.opvars.get_index(idx as usize).unwrap().1 {
-            EvalOutput::Calculated(slot) => {
+            EvalOutput::Calculated(slot) => unsafe {
                 inst_data.eval_output_slot_ptr(llbuilder, inst_ptr, slot)
-            }
-            EvalOutput::Const(val, slot) => {
+            },
+            EvalOutput::Const(val, slot) => unsafe {
                 let (ptr, ty) = inst_data.eval_output_slot_ptr(llbuilder, inst_ptr, slot.unwrap());
                 LLVMBuildStore(llbuilder, cx.const_val(&val), ptr);
                 (ptr, ty)
-            }
-            EvalOutput::Param(param) => {
+            },
+            EvalOutput::Param(param) => unsafe {
                 let intern = &module.intern;
                 let (kind, _) = intern.params.get_index(param).unwrap();
                 match *kind {
@@ -817,7 +855,7 @@ impl<'ll> OsdiCompilationUnit<'_, '_, 'll> {
 
                     _ => unreachable!(),
                 }
-            }
+            },
             EvalOutput::Cache(slot) => inst_data.cache_slot_ptr(llbuilder, slot, inst_ptr),
         }
     }
