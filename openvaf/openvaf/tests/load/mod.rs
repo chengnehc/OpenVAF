@@ -342,7 +342,7 @@ impl OsdiInstance {
 
     /// Setup instance parameters and collapse nodes.
     pub fn process_params(
-        &mut self,
+        &self,
         model: &OsdiModel,
         connected_terminals: u32,
         temp: f64,

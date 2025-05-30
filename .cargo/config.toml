@@ -56,7 +56,7 @@ rustflags = [
 
     # type casts
     "-Wclippy::checked_conversions",
-    "-Wclippy::cast_ptr_alignment",
+    # "-Wclippy::cast_ptr_alignment",
     # "-Wclippy::as_conversions",
     # "-Wclippy::float_cmp",
 
@@ -121,6 +121,7 @@ rustflags = [
 xtask = "run --package xtask --bin xtask --"
 lint = "clippy --all-targets --workspace --exclude verilogae* --exclude melange*"
 runtest = "nextest run --workspace --exclude verilogae* --exclude melange*"
+llcov = "llvm-cov nextest --workspace --exclude verilogae* --exclude melange*"
 
 
 [target.x86_64-pc-windows-msvc]

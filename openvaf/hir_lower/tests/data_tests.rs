@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{iter, path::Path};
 
 use hir::CompilationDB;
 use hir_lower::{MirBuilder, PlaceKind};
@@ -19,7 +19,7 @@ fn lower_to_mir(db: &CompilationDB, is_output: &impl Fn(PlaceKind) -> bool) -> V
     cu.modules(db)
         .iter()
         .map(|&module| {
-            let mut required_vars = [].into_iter();
+            let mut required_vars = iter::empty();
             let mut literals = Rodeo::new();
             let (mir, _) =
                 MirBuilder::new(db, module, is_output, &mut required_vars).build(&mut literals);
@@ -31,7 +31,7 @@ fn lower_to_mir(db: &CompilationDB, is_output: &impl Fn(PlaceKind) -> bool) -> V
 fn integration(dir: &Path) -> Result {
     let name = dir.file_name().unwrap().to_str().unwrap().to_lowercase();
     let main_file = dir.join(format!("{name}.va")).canonicalize()?;
-    let db = CompilationDB::new_from_fs(AbsPathBuf::assert(main_file.clone()), &[], &[], &[])?;
+    let db = CompilationDB::new_from_fs(AbsPathBuf::assert(main_file), &[], &[], &[])?;
     let is_output =
         |kind| matches!(kind, PlaceKind::Contribute { .. } | PlaceKind::ImplicitResidual { .. });
 

@@ -30,7 +30,7 @@ where
     }
 }
 
-impl<'a, K, V, C> MapCursor<'a, K, V, C>
+impl<K, V, C> MapCursor<'_, K, V, C>
 where
     K: Copy + fmt::Display,
     V: Copy + fmt::Display,

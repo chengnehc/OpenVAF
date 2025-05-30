@@ -39,19 +39,19 @@ fn handle_dump(panic_info: &PanicHookInfo) -> Option<PathBuf> {
         panic_info.payload().downcast_ref::<&str>(),
         panic_info.payload().downcast_ref::<String>(),
     ) {
-        (Some(s), _) => Some(s.to_string()),
+        (Some(&s), _) => Some(s.to_string()),
         (_, Some(s)) => Some(s.to_string()),
         (None, None) => None,
     };
 
-    let cause = message.unwrap_or("Unknown".into());
+    let cause = message.unwrap_or_else(|| "Unknown".into());
 
     match panic_info.location() {
-        Some(location) => expl.push_str(&format!(
-            "Panic occurred in file '{}' at line {}\n",
-            location.file(),
-            location.line()
-        )),
+        Some(location) => {
+            let file = location.file();
+            let line = location.line();
+            let _ = writeln!(expl, "Panic occurred in file '{file}' at line {line}",);
+        }
         None => expl.push_str("Panic location unknown.\n"),
     }
 

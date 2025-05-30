@@ -22,10 +22,10 @@ fn i32_as_hex() {
         Parser::new(text).match_imm("unable to parse i32")
     }
 
-    assert_eq!(parse_as_imm32("0x80000000").unwrap(), -2147483648);
+    assert_eq!(parse_as_imm32("0x80000000").unwrap(), -2_147_483_648);
     assert_eq!(parse_as_imm32("0xffffffff").unwrap(), -1);
     assert_eq!(parse_as_imm32("0").unwrap(), 0);
-    assert_eq!(parse_as_imm32("0x7fffffff").unwrap(), 2147483647);
+    assert_eq!(parse_as_imm32("0x7fffffff").unwrap(), 2_147_483_647);
     assert_eq!(parse_as_imm32("-0x00000001").unwrap(), parse_as_imm32("0xffffffff").unwrap());
     assert_eq!(parse_as_imm32("-0x7fffffff").unwrap(), parse_as_imm32("0x80000001").unwrap());
     assert!(parse_as_imm32("0xffffffffa").is_err());

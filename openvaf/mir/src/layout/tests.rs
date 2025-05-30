@@ -11,7 +11,7 @@ struct LayoutCursor<'f> {
     pos: CursorPosition,
 }
 
-impl<'f> Cursor for LayoutCursor<'f> {
+impl Cursor for LayoutCursor<'_> {
     fn position(&self) -> CursorPosition {
         self.pos
     }

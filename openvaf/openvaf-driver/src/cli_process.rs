@@ -93,7 +93,7 @@ pub fn matches_to_opts(matches: ArgMatches) -> Result<Opts> {
     let target = matches.get_one::<String>(TARGET).map_or(host, |s| s.as_str());
     let default_cpu = if host != target { "generic" } else { "native" };
 
-    let Some(target) = openvaf::Target::search(&target) else {
+    let Some(target) = openvaf::Target::search(target) else {
         // should never happened but helpful to provide support just in case
         bail!("The target {target} is not supported by this binary")
     };

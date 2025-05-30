@@ -47,11 +47,11 @@ fn format_ieee64() {
     assert_eq!(Ieee64::with_float(f64::NAN).to_string(), "+NaN");
     assert_eq!(Ieee64::with_float(-f64::NAN).to_string(), "-NaN");
     // Construct some qNaNs with payloads.
-    assert_eq!(Ieee64(0x7ff8000000000001).to_string(), "+NaN:0x1");
-    assert_eq!(Ieee64(0x7ffc000000000001).to_string(), "+NaN:0x4000000000001");
+    assert_eq!(Ieee64(0x7ff8_0000_0000_0001).to_string(), "+NaN:0x1");
+    assert_eq!(Ieee64(0x7ffc_0000_0000_0001).to_string(), "+NaN:0x4000000000001");
     // Signaling NaNs.
-    assert_eq!(Ieee64(0x7ff0000000000001).to_string(), "+sNaN:0x1");
-    assert_eq!(Ieee64(0x7ff4000000000001).to_string(), "+sNaN:0x4000000000001");
+    assert_eq!(Ieee64(0x7ff0_0000_0000_0001).to_string(), "+sNaN:0x1");
+    assert_eq!(Ieee64(0x7ff4_0000_0000_0001).to_string(), "+sNaN:0x4000000000001");
 }
 
 #[test]

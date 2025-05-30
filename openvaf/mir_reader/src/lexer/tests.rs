@@ -104,7 +104,7 @@ fn lex_identifiers() {
     assert_eq!(lex.next(), token(Token::Value(Value::with_number(0).unwrap()), 1));
     assert_eq!(lex.next(), token(Token::Identifier("v00"), 1));
     assert_eq!(lex.next(), token(Token::Identifier("vx01"), 1));
-    assert_eq!(lex.next(), token(Token::Block(Block::with_number(1234567890).unwrap()), 1));
+    assert_eq!(lex.next(), token(Token::Block(Block::with_number(1_234_567_890).unwrap()), 1));
     assert_eq!(lex.next(), token(Token::Identifier("block5234567890"), 1));
     assert_eq!(lex.next(), token(Token::Identifier("v1x"), 1));
     assert_eq!(lex.next(), token(Token::Identifier("vx1"), 1));

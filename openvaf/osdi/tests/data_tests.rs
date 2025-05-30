@@ -25,7 +25,6 @@ fn test_compile(root_file: &Path) -> Result {
     let objs = osdi::compile::<EMIT>(&db, &modules, dst, &back, OptLevel::None);
     if EMIT {
         for obj in objs {
-            dbg!(std::env::current_dir().ok(), &obj);
             std::fs::remove_file(obj)?;
         }
     }

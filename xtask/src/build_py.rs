@@ -6,7 +6,7 @@ use xshell::{cmd, Shell};
 use crate::flags::Verilogae;
 
 impl Verilogae {
-    pub fn run(self, sh: &mut Shell) -> Result<()> {
+    pub fn run(self, sh: &Shell) -> Result<()> {
         match self.subcommand {
             crate::flags::VerilogaeCmd::Build(cmd) => cmd.run(sh),
             crate::flags::VerilogaeCmd::Test(cmd) => cmd.run(sh),
@@ -16,7 +16,7 @@ impl Verilogae {
 }
 
 impl crate::flags::Build {
-    fn run(self, sh: &mut Shell) -> Result<()> {
+    fn run(self, sh: &Shell) -> Result<()> {
         let _env = sh.push_env("RUSTFLAGS", "-C strip=symbols");
         let target =
             if self.windows { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" };
@@ -56,7 +56,7 @@ impl crate::flags::Build {
 
         if self.install {
             for file in sh.read_dir("wheels")? {
-                println!("{file:?}");
+                println!("{}", file.display());
                 for (_, py, tag) in &pythons {
                     if file.to_str().unwrap().contains(tag) {
                         cmd!(sh, "{py} -m pip install --force-reinstall {file}").run()?;
@@ -71,7 +71,7 @@ impl crate::flags::Build {
 }
 
 impl crate::flags::Test {
-    pub fn run(self, sh: &mut Shell) -> Result<()> {
+    pub fn run(self, sh: &Shell) -> Result<()> {
         for (_, py, _tag) in find_py(false) {
             cmd!(sh, "{py} -m pip install numpy").run()?;
             let _dir1 = sh.push_dir("verilogae");
@@ -84,7 +84,7 @@ impl crate::flags::Test {
 }
 
 impl crate::flags::Publish {
-    pub fn run(self, sh: &mut Shell) -> Result<()> {
+    pub fn run(self, sh: &Shell) -> Result<()> {
         crate::flags::Build { force: true, manylinux: true, install: true, windows: self.windows }
             .run(sh)?;
         if !self.windows {

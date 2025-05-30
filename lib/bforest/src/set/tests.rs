@@ -2,7 +2,7 @@ use super::*;
 use crate::NodeData;
 use std::{fmt, mem};
 
-impl<'a, K, C> SetCursor<'a, K, C>
+impl<K, C> SetCursor<'_, K, C>
 where
     K: Copy + fmt::Display,
     C: Comparator<K>,

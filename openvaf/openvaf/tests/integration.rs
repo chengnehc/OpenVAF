@@ -37,7 +37,7 @@ fn test_descriptor(main_file: &Path) -> Result<&'static OsdiDescriptor> {
     model.process_params()?;
 
     // setup instance parameters and collapse internal nodes
-    let mut instance = model.new_instance();
+    let instance = model.new_instance();
     // assume all terminals are connected
     let connected_terminals = desc.num_terminals;
     instance.process_params(&model, connected_terminals, 300.0)?;
@@ -92,8 +92,8 @@ fn test_limit() -> Result<()> {
         return Ok(());
     }
 
-    const KB: f64 = 1.3806488e-23;
-    const Q: f64 = 1.602176565e-19;
+    const KB: f64 = 1.380_648_8e-23;
+    const Q: f64 = 1.602_176_565e-19;
     const TEMP: f64 = 300.0;
     const VT: f64 = KB * TEMP / Q;
     const IS: f64 = 1e-12;
@@ -147,7 +147,7 @@ fn test_limit() -> Result<()> {
     model.set_real_param(5, CJ0);
     model.process_params()?;
 
-    let mut instance = model.new_instance();
+    let instance = model.new_instance();
     let connected_terminals = desc.num_terminals;
     let mut sim = instance.mock_simulation(&model, connected_terminals, TEMP)?;
 
@@ -200,7 +200,7 @@ fn test_noise() -> Result<()> {
     model.set_real_param(1, PWR);
     model.set_real_param(2, EXP);
     model.process_params()?;
-    let mut instance = model.new_instance();
+    let instance = model.new_instance();
     let connected_terminals = desc.num_terminals;
     let mut sim = instance.mock_simulation(&model, connected_terminals, TEMP)?;
 

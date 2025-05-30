@@ -21,12 +21,12 @@ use xshell::Shell;
 mod msvcrt;
 
 fn main() -> Result<()> {
-    let mut sh = Shell::new()?;
+    let sh = Shell::new()?;
     sh.change_dir(project_root());
 
     let flags = flags::Xtask::from_env()?;
     match flags.subcommand {
-        flags::XtaskCmd::Verilogae(cmd) => cmd.run(&mut sh),
+        flags::XtaskCmd::Verilogae(cmd) => cmd.run(&sh),
         flags::XtaskCmd::GenMsvcrt(cmd) => cmd.run(&sh),
     }
 }

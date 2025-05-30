@@ -451,7 +451,7 @@ impl Field {
                 let token: proc_macro2::TokenStream = name.parse().unwrap();
                 Some(quote! { T![#token] })
             }
-            _ => None,
+            Field::Node { .. } => None,
         }
     }
     fn method_name(&self) -> proc_macro2::Ident {

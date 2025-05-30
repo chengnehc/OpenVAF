@@ -255,7 +255,7 @@ fn sparse_matrix_iter() {
     matrix.insert(4, 0);
     matrix.union_rows(3, 5);
 
-    dbg!(&matrix, std::mem::size_of_val(&matrix));
+    // dbg!(&matrix, std::mem::size_of_val(&matrix));
 
     assert!(matrix.contains(2, 99));
     assert!(!matrix.contains(4, 15));

@@ -72,7 +72,7 @@ impl MockSimulation {
             (0..self.jacobian_info.len()).map(|_| UnsafeCell::new(0.0)).collect::<Vec<_>>().leak();
     }
 
-    fn get_jacobian_entry(&mut self, hi: u32, lo: u32) -> usize {
+    fn get_jacobian_entry(&self, hi: u32, lo: u32) -> usize {
         if hi == 0 || lo == 0 {
             0
         } else {
@@ -92,7 +92,7 @@ impl MockSimulation {
         unsafe { (self.jacobian_resist[i].get().read(), self.jacobian_react[i].get().read()) }
     }
 
-    pub fn read_noise(&mut self, src: usize) -> f64 {
+    pub fn read_noise(&self, src: usize) -> f64 {
         self.noise_dense[src]
     }
 
@@ -122,7 +122,7 @@ impl MockSimulation {
 
 impl OsdiInstance {
     pub(super) fn mock_simulation(
-        &mut self,
+        &self,
         model: &OsdiModel,
         connected_terminals: u32,
         temp: f64,
