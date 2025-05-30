@@ -38,39 +38,41 @@ macro_rules! impl_from {
             impl TryFrom<$enum> for $variant {
                 type Error = ();
 
-                fn try_from(it: $enum) -> Result<$variant,()> {
-                    if let $enum::$variant(it) = it{
+                fn try_from(it: $enum) -> Result<$variant, ()> {
+                    if let $enum::$variant(it) = it {
                         Ok(it)
-                    }else{
+                    } else {
                         Err(())
                     }
                 }
             }
-            $($(
-                impl From<$sub_variant> for $enum {
-                    fn from(it: $sub_variant) -> $enum {
-                        $enum::$variant($variant::$sub_variant(it))
-                    }
-                }
-                impl TryFrom<$enum> for $sub_variant {
-                    // FIXME(JW) do not use `()` as Error type, for that conveys no useful message.
-                    // Use a unit struct instead.
-                   type Error = ();
-
-                    fn try_from(it: $enum) -> Result<$sub_variant,()> {
-                        if let $enum::$variant($variant::$sub_variant(it)) = it{
-                            Ok(it)
-                        }else{
-                            Err(())
+            $(
+                $(
+                    impl From<$sub_variant> for $enum {
+                        fn from(it: $sub_variant) -> $enum {
+                            $enum::$variant($variant::$sub_variant(it))
                         }
                     }
-                }
-            )*)?
+                //
+                //     impl TryFrom<$enum> for $sub_variant {
+                //         type Error = ();
+
+                //         fn try_from(it: $enum) -> Result<$sub_variant, ()> {
+                //             if let $enum::$variant($variant::$sub_variant(it)) = it {
+                //                 Ok(it)
+                //             } else {
+                //                 Err(())
+                //             }
+                //         }
+                //     }
+                //
+                )*
+            )?
         )*
     }
 }
 
-/// Generates `From<Foo> for E` and `TryFrom<E> for Foo` impls for `Enum E { Foo(Foo), Bar(Bar) }` enums
+/// Generates `From<Foo> for E` impls for `Enum E { Foo(Foo), Bar(Bar) }` enums
 ///
 /// # Example
 ///
@@ -84,19 +86,6 @@ macro_rules! impl_from_typed {
             impl From<$ty> for $enum {
                 fn from(it: $ty) -> $enum {
                     $enum::$variant(it)
-                }
-            }
-            impl TryFrom<$enum> for $ty {
-                // FIXME(JW) do not use `()` as Error type, for that conveys no useful message.
-                // Use a unit struct instead.
-                type Error = ();
-
-                fn try_from(it: $enum) -> Result<$ty,()> {
-                    if let $enum::$variant(it) = it{
-                        Ok(it)
-                    }else{
-                        Err(())
-                    }
                 }
             }
         )*

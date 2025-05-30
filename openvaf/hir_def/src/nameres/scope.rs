@@ -1,7 +1,7 @@
 use super::*;
 
 use std::sync::LazyLock;
-use stdx::impl_from_typed;
+use stdx::{impl_from, impl_from_typed};
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Scope {

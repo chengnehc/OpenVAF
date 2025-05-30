@@ -1,6 +1,6 @@
 use super::*;
 
-use stdx::impl_display;
+use stdx::{impl_display, impl_from};
 use syntax::name::kw;
 
 use scope::BUILTIN_ITEM_DEF;

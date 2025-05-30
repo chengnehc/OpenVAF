@@ -2,7 +2,6 @@
 
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
-use stdx::impl_from;
 
 use arena::{Arena, Idx};
 use basedb::FileId;
